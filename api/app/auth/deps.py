@@ -3,10 +3,16 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
+from typing import Any
 
-import jwt
 import structlog
 from fastapi import Depends, Header, HTTPException, status
+
+from app.auth.cognito import (
+    CognitoAuthError,
+    CognitoConfigError,
+    verify_cognito_jwt,
+)
 
 log = structlog.get_logger("auth")
 
@@ -39,27 +45,35 @@ def _parse_test_groups() -> tuple[str, ...]:
     return tuple(g.strip() for g in raw.split(",") if g.strip())
 
 
-def _decode_jwt(token: str) -> AuthUser:
-    # Signature verification is wired in when Cognito JWKS is available.
-    # Until then we still enforce structure so route contracts don't drift.
-    try:
-        payload = jwt.decode(token, options={"verify_signature": False})
-    except jwt.PyJWTError as exc:  # pragma: no cover - jwt errors are opaque
+def _user_from_claims(claims: dict[str, Any]) -> AuthUser:
+    """Map verified Cognito claims to :class:`AuthUser`.
+
+    - ID tokens carry ``email``/``name``; access tokens do not — fall back to
+      ``username`` / ``cognito:username`` so the API stays usable either way.
+    - ``cognito:groups`` maps 1:1 to app roles (Marketing, Sales, ..., SystemAdmin).
+    """
+
+    sub = claims.get("sub")
+    if not sub:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token"
-        ) from exc
-    email = payload.get("email")
-    sub = payload.get("sub")
-    if not email or not sub:
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="token missing sub"
+        )
+    email = (
+        claims.get("email")
+        or claims.get("username")
+        or claims.get("cognito:username")
+    )
+    if not email:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="token missing sub/email"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="token missing email/username"
         )
     try:
-        uid = uuid.UUID(sub)
+        uid = uuid.UUID(str(sub))
     except ValueError:
-        uid = uuid.uuid5(uuid.NAMESPACE_URL, f"dealgate:jwt:{sub}")
-    groups = tuple(payload.get("cognito:groups") or [])
-    return AuthUser(id=uid, email=email, name=payload.get("name") or email, groups=groups)
+        uid = uuid.uuid5(uuid.NAMESPACE_URL, f"dealgate:cognito:{sub}")
+    groups = tuple(claims.get("cognito:groups") or [])
+    name = claims.get("name") or email
+    return AuthUser(id=uid, email=email, name=name, groups=groups)
 
 
 async def current_user(
@@ -72,11 +86,30 @@ async def current_user(
     if env == "local" and x_test_user:
         return _fake_user_from_email(x_test_user, _parse_test_groups())
 
-    if authorization and authorization.lower().startswith("bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-        return _decode_jwt(token)
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="not authenticated"
+        )
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="not authenticated"
+        )
 
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not authenticated")
+    try:
+        claims = verify_cognito_jwt(token)
+    except CognitoConfigError as exc:
+        log.error("cognito_config_missing", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="auth not configured"
+        ) from exc
+    except CognitoAuthError as exc:
+        log.info("cognito_reject", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token"
+        ) from exc
+
+    return _user_from_claims(claims)
 
 
 def require_role(*roles: str):

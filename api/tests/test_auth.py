@@ -68,22 +68,27 @@ async def test_require_role_allows_matching_group(monkeypatch):
 
 
 async def test_bearer_jwt_path_used_outside_local(monkeypatch):
-    # Prove the JWT path works when not in local env.
-    import jwt
+    # Prove the JWT path is reached when not in local env. Signature
+    # verification is Cognito's job and is covered in test_cognito_auth;
+    # here we mock the verifier so this test stays a pure routing check.
+    from app.auth import deps as auth_deps
 
     monkeypatch.setenv("DEALGATE_ENV", "staging")
-    token = jwt.encode(
-        {
+
+    def fake_verify(token: str) -> dict:
+        assert token == "opaque-token"
+        return {
             "sub": "00000000-0000-0000-0000-000000000001",
             "email": "ceo@smartek21.com",
             "name": "CEO One",
             "cognito:groups": ["CEO"],
-        },
-        "secret",
-        algorithm="HS256",
-    )
+            "token_use": "id",
+        }
+
+    monkeypatch.setattr(auth_deps, "verify_cognito_jwt", fake_verify)
+
     async with _client(main_app) as c:
-        r = await c.get("/me", headers={"Authorization": f"Bearer {token}"})
+        r = await c.get("/me", headers={"Authorization": "Bearer opaque-token"})
     assert r.status_code == 200
     assert r.json()["email"] == "ceo@smartek21.com"
     assert r.json()["groups"] == ["CEO"]

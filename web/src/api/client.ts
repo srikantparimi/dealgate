@@ -2,10 +2,13 @@
  * DealGate API client (Sprint 1).
  *
  * Manual TypeScript types for now; the auto-generated client lands after the
- * FastAPI OpenAPI schema is stable. In local dev the caller identity is
- * supplied via `X-Test-User` from `VITE_TEST_USER`; production sends a Bearer
- * token set on `window` by the login flow (S1-E3).
+ * FastAPI OpenAPI schema is stable. In production the caller identity is a
+ * Cognito access token (attached as `Authorization: Bearer ...`); in local
+ * dev a `VITE_TEST_USER` env var falls back to the `X-Test-User` header the
+ * FastAPI dev auth backend accepts.
  */
+
+import { getAccessToken } from "../auth/cognito";
 
 export type UUID = string;
 export type ISODate = string; // YYYY-MM-DD
@@ -81,11 +84,21 @@ export class ApiError extends Error {
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
-function authHeaders(): Record<string, string> {
+async function authHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
-  const testUser = import.meta.env.VITE_TEST_USER as string | undefined;
-  if (testUser) {
-    headers["X-Test-User"] = testUser;
+  const token = await getAccessToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+    return headers;
+  }
+  // Dev-only fallback: FastAPI accepts `X-Test-User` when the dev auth
+  // backend is enabled. We deliberately gate on `import.meta.env.DEV` so a
+  // stale env var can never leak into a production build.
+  if (import.meta.env.DEV) {
+    const testUser = import.meta.env.VITE_TEST_USER as string | undefined;
+    if (testUser) {
+      headers["X-Test-User"] = testUser;
+    }
   }
   return headers;
 }
@@ -95,7 +108,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders(),
+      ...(await authHeaders()),
       ...(init.headers ?? {}),
     },
   });

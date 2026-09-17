@@ -1,16 +1,23 @@
 import type { ReactNode } from "react";
+import { useAuth, type AuthUser } from "../auth/AuthProvider";
 
-type User = { name: string; role: string };
+/**
+ * User rendered in the header. May be null in local dev where Cognito is not
+ * configured; in that case we show a "dev user" hint instead of a real name.
+ */
+type ShellUser = Pick<AuthUser, "name" | "groups"> | null;
 
 export function AppShell({
   user,
   nav,
   children,
 }: {
-  user: User;
+  user: ShellUser;
   nav?: ReactNode;
   children: ReactNode;
 }) {
+  const { logout } = useAuth();
+  const groups = user?.groups ?? [];
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", minHeight: "100vh" }}>
       <header
@@ -27,9 +34,33 @@ export function AppShell({
           <strong>DealGate</strong>
           {nav ?? null}
         </div>
-        <span style={{ color: "#6b7280" }}>
-          {user.name} · {user.role}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ color: "#6b7280" }} data-testid="shell-user">
+            {user ? (
+              <>
+                {user.name}
+                {groups.length > 0 ? ` · ${groups.join(", ")}` : ""}
+              </>
+            ) : (
+              "Local dev"
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={logout}
+            style={{
+              fontSize: 13,
+              color: "#374151",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              textDecoration: "underline",
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </header>
       <main style={{ padding: "24px", maxWidth: 960, margin: "0 auto" }}>{children}</main>
     </div>

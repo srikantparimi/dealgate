@@ -45,3 +45,18 @@ extraction, CEO brief).
 
 - Search API choice (Tavily vs Brave) — verify pricing and data-residency in
   Sprint 0, then amend this ADR.
+
+## Amendment 2026-09-17
+
+Switched IaC tool from AWS CDK (TypeScript) to Terraform. Rationale:
+
+- The team already runs Terraform elsewhere, so we keep a single-language
+  toolchain rather than adding a TypeScript build path just for infra.
+- Terraform needs less new-account bootstrap than CDK (no `cdk bootstrap`
+  stack, no CDK-managed asset buckets) which matters for a fresh sub-account
+  like `669810405473` where we want the smallest possible footprint.
+
+The active code lives in `infra-tf/`. The old `infra/` CDK placeholder stays
+until the first Terraform apply has run in dev and staging; the module map
+above (Network / Data / App / Ingest / Pipeline) still describes the target
+shape, only the implementation tool changed.

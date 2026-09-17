@@ -38,6 +38,27 @@ guess. Each question names the sprint it blocks.
   `api/app/services/deals.py::coverage_state_summary`). Which column owns the
   association (deal-level `client_id`, `legal_entity_id`, or a join table),
   and which sprint adds the migration? (Design: build-guide §10, §6.2.)
+- [ ] **Cognito JWKS refresh + clock-skew + token type.** The verifier in
+  `api/app/auth/cognito.py` caches JWKS in-process for 24h and enforces
+  `exp/iss` with PyJWT defaults (no leeway). Confirm the 24h TTL is
+  acceptable given Cognito's key-rotation cadence and whether a `leeway`
+  allowance is wanted for clock drift across ECS tasks. Also: should the
+  API accept both ID and access tokens, or only ID tokens issued to the
+  SPA client? Current code accepts both. (Design: build-guide §3.)
+
+- [ ] **GitHub OIDC provider in the AWS account.** Does account
+  `669810405473` already have an IAM OIDC provider for
+  `token.actions.githubusercontent.com`? If yes, keep
+  `create_github_oidc_provider = false` in `infra-tf/dev.tfvars`; if no, flip
+  it to `true` for the first apply only and then flip back. Also confirm the
+  final GitHub repo slug (default in Terraform is `smartek21/officeapp-dealgate`).
+  (Infra: `infra-tf/modules/github_oidc`.)
+- [ ] **Custom domain / ACM cert for dev.** Terraform currently exposes the
+  API on the ALB DNS over HTTP:80 and the SPA on the default `.cloudfront.net`
+  domain. Confirm we are OK running dev like that (Cognito hosted UI is on
+  HTTPS regardless) and, if not, pick a subdomain + Route53 hosted zone so a
+  follow-up module can add ACM + HTTPS listener + custom CloudFront domain +
+  matching Cognito callback URLs. (Infra: `infra-tf/modules/api`, `web`, `auth`.)
 
 ## Blocks Sprint 2
 
@@ -78,6 +99,21 @@ guess. Each question names the sprint it blocks.
   integration target after. (Design: §9.)
 - [ ] **Executive sponsor and process owner.** Named owner of rate cards,
   approver changes, and failed integrations after go-live.
+
+## Blocks first deploy
+
+- [ ] **ECS migrate task family.** `.github/workflows/deploy.yml` assumes a
+  standalone Fargate task family `officeapp-dev-api-migrate` exists in ECS
+  alongside the service task `officeapp-dev-api`. Terraform (Agent G) needs
+  to register both (same image, different command / entrypoint). Confirm
+  the exact family names before the first deploy — or supply overrides. The
+  workflow also expects `ECS_PRIVATE_SUBNETS` and `ECS_TASK_SECURITY_GROUPS`
+  repo secrets for the one-off task's networking. (Design: build-guide §8.)
+- [ ] **Cognito app-client redirect / logout URIs per env.** The deploy
+  workflow pipes `VITE_COGNITO_REDIRECT_URI` and `VITE_COGNITO_LOGOUT_URI`
+  from repo secrets, but per-env values (dev/staging/prod) need to be
+  registered on the Cognito app client's allowed URL lists before the
+  hosted-UI flow will complete. Owner: Agent G. (Design: build-guide §3.)
 
 ## Ambient
 

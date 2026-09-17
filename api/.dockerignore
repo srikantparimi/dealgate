@@ -1,0 +1,38 @@
+# Local dev / editor cruft
+.venv/
+venv/
+.env
+.env.*
+.envrc
+.git/
+.gitignore
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Tests & dev-only fixtures (not shipped in the runtime image)
+tests/
+docs/
+*.md
+
+# Local databases and logs
+dev.db
+*.sqlite
+*.sqlite3
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

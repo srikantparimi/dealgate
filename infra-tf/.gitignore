@@ -1,0 +1,17 @@
+# Terraform working dirs and lock file scoped to this stack
+.terraform/
+.terraform.lock.hcl
+
+# State (should live in the S3 backend, never in git)
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Local var files with secrets or account-specific values
+*.tfvars
+*.auto.tfvars
+!*.tfvars.example
+
+# Terraform plan artifacts
+*.tfplan

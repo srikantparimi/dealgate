@@ -1,0 +1,9 @@
+env         = "dev"
+region      = "us-east-2"
+image_tag   = "bootstrap"
+github_repo = "smartek21/officeapp-dealgate"
+
+# Set to true only on the first apply if the account has never used GitHub
+# OIDC before (no existing arn:aws:iam::669810405473:oidc-provider/token.actions.githubusercontent.com).
+# Leave false after that so we don't try to re-create the provider.
+create_github_oidc_provider = false
