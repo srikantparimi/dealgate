@@ -52,7 +52,7 @@ resource "aws_db_parameter_group" "pg16" {
 resource "aws_db_instance" "this" {
   identifier     = "${var.name_prefix}-db"
   engine         = "postgres"
-  engine_version = "16.4"
+  engine_version = "16.10"
   instance_class = var.instance_class
 
   allocated_storage     = var.allocated_storage_gb
@@ -94,7 +94,7 @@ resource "aws_db_instance" "this" {
 resource "aws_secretsmanager_secret_version" "db_url" {
   secret_id = var.db_url_secret_id
   secret_string = format(
-    "postgresql://%s:%s@%s:%d/%s?sslmode=require",
+    "postgresql+psycopg://%s:%s@%s:%d/%s?sslmode=require",
     var.db_username,
     var.master_password,
     aws_db_instance.this.address,

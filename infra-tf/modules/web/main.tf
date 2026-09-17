@@ -1,3 +1,12 @@
+# Data lookup for the API ALB. The api module creates it independently; we
+# reference it here as a CloudFront origin so the browser can talk to the API
+# over HTTPS via /api/*. Using a data source avoids a module cycle
+# (web -> auth -> api -> web). Bootstrap needs the ALB to exist before the
+# first plan that includes this behavior — first-apply order in docs.
+data "aws_lb" "api" {
+  name = "${var.name_prefix}-alb"
+}
+
 # Private origin bucket for the SPA build.
 resource "aws_s3_bucket" "web" {
   bucket = "${var.name_prefix}-web-${var.account_id}"
@@ -34,6 +43,24 @@ resource "aws_cloudfront_origin_access_control" "web" {
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_function" "strip_api_prefix" {
+  name    = "${var.name_prefix}-strip-api"
+  runtime = "cloudfront-js-2.0"
+  comment = "Rewrite /api/* to /* before forwarding to the ALB origin."
+  publish = true
+  code    = <<-JS
+    function handler(event) {
+      var req = event.request;
+      if (req.uri.indexOf('/api/') === 0) {
+        req.uri = req.uri.substring(4); // drop leading "/api"
+      } else if (req.uri === '/api') {
+        req.uri = '/';
+      }
+      return req;
+    }
+  JS
 }
 
 resource "aws_cloudfront_response_headers_policy" "web" {
@@ -73,6 +100,18 @@ resource "aws_cloudfront_distribution" "web" {
     origin_access_control_id = aws_cloudfront_origin_access_control.web.id
   }
 
+  origin {
+    domain_name = data.aws_lb.api.dns_name
+    origin_id   = "alb-api"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
   default_cache_behavior {
     target_origin_id       = "s3-${aws_s3_bucket.web.id}"
     viewer_protocol_policy = "redirect-to-https"
@@ -83,6 +122,25 @@ resource "aws_cloudfront_distribution" "web" {
     # AWS-managed CachingOptimized policy
     cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6"
     response_headers_policy_id = aws_cloudfront_response_headers_policy.web.id
+  }
+
+  # /api/* proxies to the ALB; disable caching, forward everything.
+  ordered_cache_behavior {
+    path_pattern           = "/api/*"
+    target_origin_id       = "alb-api"
+    viewer_protocol_policy = "https-only"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    # AWS-managed CachingDisabled + AllViewer origin request policies.
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.strip_api_prefix.arn
+    }
   }
 
   # SPA fallback: rewrite 403/404 to index.html so client-side routing works.

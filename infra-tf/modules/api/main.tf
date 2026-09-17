@@ -7,7 +7,7 @@ data "aws_partition" "current" {}
 
 resource "aws_security_group" "alb" {
   name        = "${var.name_prefix}-alb-sg"
-  description = "Internet -> ALB on 80."
+  description = "Internet to ALB on 80."
   vpc_id      = var.vpc_id
 
   tags = { Name = "${var.name_prefix}-alb-sg" }
