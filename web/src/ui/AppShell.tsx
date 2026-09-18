@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useAuth, type AuthUser } from "../auth/AuthProvider";
+import { NotificationBell } from "./NotificationBell";
 
 /**
  * User rendered in the header. May be null in local dev where Cognito is not
@@ -35,6 +36,7 @@ export function AppShell({
           {nav ?? null}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {user ? <NotificationBell /> : null}
           <span style={{ color: "#6b7280" }} data-testid="shell-user">
             {user ? (
               <>

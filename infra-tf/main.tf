@@ -66,6 +66,15 @@ module "data" {
   db_url_secret_id      = module.secrets.db_url_secret_id
 }
 
+# S2-E3: evidence bucket for NDA/MSA signed uploads. Consumed by the API
+# task via AGREEMENTS_BUCKET (wave integrator wires the env var into
+# module.api once this bucket exists in the target account).
+module "storage" {
+  source      = "./modules/storage"
+  name_prefix = local.name_prefix
+  account_id  = data.aws_caller_identity.current.account_id
+}
+
 module "github_oidc" {
   source                      = "./modules/github_oidc"
   name_prefix                 = local.name_prefix

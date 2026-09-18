@@ -19,7 +19,18 @@ class Task(Base):
     due_date: Mapped[date | None] = mapped_column(Date)
     # escalation_level: 0 = normal, higher values drive alerts (see build-guide §9).
     escalation_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="Open")
+    # Lifecycle state (S2-E3). See `app.services.tasks.TASK_TRANSITIONS`.
+    # Values: assigned | in_progress | snoozed | done | cancelled | reassigned.
+    # Legacy `Open` rows created by S1 intake still exist in some environments;
+    # `transition_task` treats them as `assigned` when evaluating transitions.
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="assigned")
+    # Category groups tasks for filters + notification routing (intake, coverage,
+    # approval, expiry, ...). Nullable so pre-S2 tasks stay valid.
+    category: Mapped[str | None] = mapped_column(String(32))
+    # When set, the task is hidden from "My tasks" until `wake_at` is reached.
+    wake_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("user.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

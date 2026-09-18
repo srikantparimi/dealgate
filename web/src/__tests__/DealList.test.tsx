@@ -18,6 +18,7 @@ const sampleList: apiClient.DealListResponse = {
       id: "11111111-1111-1111-1111-111111111111",
       hubspot_deal_id: "H-100",
       owner_id: "22222222-2222-2222-2222-222222222222",
+      client_id: null,
       client_name: null,
       engagement_type: "Fixed",
       sales_stage: "Qualified",

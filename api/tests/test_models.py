@@ -67,8 +67,14 @@ async def test_task_defaults(session):
     t = Task(subject="Draft SOW")
     session.add(t)
     await session.commit()
-    assert t.status == "Open"
+    # S2-E3 flipped the default from 'Open' to 'assigned' as part of the
+    # lifecycle state machine (see app.services.tasks.TASK_TRANSITIONS).
+    assert t.status == "assigned"
     assert t.escalation_level == 0
+    assert t.wake_at is None
+    assert t.completed_at is None
+    assert t.completed_by is None
+    assert t.category is None
 
 
 async def test_integration_event_source_event_id_unique(session):

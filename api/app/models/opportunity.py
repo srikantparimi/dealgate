@@ -16,6 +16,12 @@ class Opportunity(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     hubspot_deal_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     owner_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("user.id"))
+    # S2 E3: opportunity -> client link. Nullable during backfill; the intake
+    # worker sets it going forward. Sprint 3 will migrate this to NOT NULL
+    # once historical rows are backfilled from HubSpot associations.
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("client.id"), nullable=True
+    )
     engagement_type: Mapped[str | None] = mapped_column(String(64))
     sales_stage: Mapped[str | None] = mapped_column(String(64))
     # governance_status is the DealGate-owned state (Intake → Coverage → SOWDraft → ...).

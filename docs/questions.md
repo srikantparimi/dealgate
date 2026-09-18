@@ -32,12 +32,14 @@ guess. Each question names the sprint it blocks.
   reads `HUBSPOT_WEBHOOK_URL` to reconstruct what HubSpot signed. Confirm
   the staging/prod public URL and whether ALB will preserve query strings
   verbatim. (Story: s1-e2.)
-- [ ] **Opportunity → client linkage.** `opportunity` has no `client_id` or
-  `legal_entity_id` today, so the S1-E2 coverage helper cannot derive NDA/MSA
-  state from a deal — it returns "No client linked" for every row (see
-  `api/app/services/deals.py::coverage_state_summary`). Which column owns the
-  association (deal-level `client_id`, `legal_entity_id`, or a join table),
-  and which sprint adds the migration? (Design: build-guide §10, §6.2.)
+- [x] **Opportunity → client linkage.** Resolved in S2-E3
+  (`20260918_0002a_client_link.py`): `opportunity.client_id` is now a
+  nullable FK to `client(id)` and `client.hubspot_company_id` carries the
+  HubSpot company id (unique). The intake worker upserts a client + default
+  legal entity on every event and falls back to a synthetic
+  `unknown:deal:<id>` client when HubSpot returns no company. Still open:
+  which sprint flips `client_id` to NOT NULL — see the new Sprint 3 question
+  below. (Design: build-guide §10, §6.2.)
 - [ ] **Cognito JWKS refresh + clock-skew + token type.** The verifier in
   `api/app/auth/cognito.py` caches JWKS in-process for 24h and enforces
   `exp/iss` with PyJWT defaults (no leeway). Confirm the 24h TTL is
@@ -62,6 +64,33 @@ guess. Each question names the sprint it blocks.
 
 ## Blocks Sprint 2
 
+- [ ] **Alembic revision id collisions in the S2 wave.** Two S2 migrations
+  (`20260918_0002_client_link.py` and `20260918_0002_rate_cards_policy.py`)
+  originally shipped with the same revision id `20260918_0002`, so
+  `alembic upgrade head` refused to run. They were rebranched as `0002a` /
+  `0002b` with the `tasks_notifications` migration acting as the merge
+  point (`0002b -> 0003`) and the new agreements migration on top
+  (`0003 -> 0004`). Ask: agree the wave convention going forward is
+  "one revision per PR, id includes the story letter" so parallel work
+  cannot collide again. (Infra: `api/alembic/`.)
+
+- [ ] **Agreements S3 IAM.** The `officeapp-<env>-agreements-<account>`
+  bucket is created by `infra-tf/modules/storage`. The API task role also
+  needs `s3:PutObject` + `s3:GetObject` on `arn:aws:s3:::<bucket>/agreements/*`
+  so the pre-signed URLs sign under a principal that has those permissions.
+  Wire the policy into `modules/api` after this story is merged; feed the
+  bucket name into the API task's env as `AGREEMENTS_BUCKET`. Object Lock
+  lands in a later sprint per build-guide §12 — flag if the WORM retention
+  window is needed sooner. (Infra: `infra-tf/modules/storage`.)
+
+- [ ] **Agreements state machine wording (Legal).** The S2 code encodes the
+  transition graph in `app/services/agreement_state.ALLOWED_TRANSITIONS`
+  drawn from build-guide §6.2. Confirm Legal is happy with the specific
+  edges chosen — most notably that `superseded` is only reachable from
+  `executed` and that `sent -> drafting` is allowed for a re-work loop.
+  Docs mirror lives in the file docstring; blueprint §6.2 is silent on the
+  precise DAG. (Design: build-guide §6.2.)
+
 - [ ] **GM definition (Finance).** What is inside `delivery_cost`? Burden,
   bench, tools, travel, subcontractors, PM overhead — in or out? (Design: §7.)
 - [ ] **Mixed fixed-fee allocation (Finance).** How is one fee split between US
@@ -85,6 +114,22 @@ guess. Each question names the sprint it blocks.
 - [ ] **Managed service term basis (Finance).** GM computed over the full
   contracted term (`monthly_fee * term_months`) vs. steady-state month.
   Current library uses full term. (Design: §7 managed service.)
+
+## Blocks Sprint 3
+
+- [ ] **Opportunity.client_id NOT NULL cutover.** S2-E3 landed the FK as
+  nullable so historical rows (pre-intake-refactor) do not block the
+  migration. The intake worker now sets it on every event, and the
+  "Unknown company (deal <id>)" fallback means new rows are never
+  unassociated. When Sprint 3 backfills historical opportunities from
+  HubSpot associations, flip the column to NOT NULL and add a CHECK that
+  no `unknown:deal:*` client is left over (i.e. every deal has a real
+  HubSpot company id). Owner: this story (S2-E3) left the seam; Sprint 3
+  runbook should carry the flip. (Design: build-guide §6.2.)
+- [ ] **Client-owned mutation surface.** S2-E3 exposes only read endpoints
+  on `/clients`. Sprint 3 needs to decide whether Sales-leader can rename
+  a client / re-point its HubSpot company id, or if that stays SystemAdmin
+  only (matches build-guide §3 read/write matrix). (Design: build-guide §3.)
 
 ## Blocks Sprint 4
 

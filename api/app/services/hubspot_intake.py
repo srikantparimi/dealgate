@@ -17,10 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.integrations.hubspot import HubSpotClient
+from app.models.client import Client
 from app.models.integration import IntegrationEvent
 from app.models.opportunity import Opportunity
 from app.models.task import Task
 from app.models.user import User
+from app.services.clients import (
+    upsert_client_from_hubspot,
+    upsert_unknown_client_for_deal,
+)
 
 log = structlog.get_logger("hubspot_intake")
 
@@ -106,11 +111,71 @@ def _extract_deal_id(event: dict[str, Any]) -> str:
     return str(obj_id)
 
 
+def _extract_company_id(deal_payload: dict[str, Any]) -> str | None:
+    """Pull the primary associated company id out of a HubSpot deal payload.
+
+    HubSpot returns associations either at the top level (``associations``)
+    or under ``properties.associations`` depending on the API version. We
+    look at both and fall back to a bare ``company_id`` property some pilot
+    portals still emit.
+    """
+
+    associations = deal_payload.get("associations") or {}
+    companies = (
+        associations.get("companies")
+        if isinstance(associations, dict)
+        else None
+    )
+    if isinstance(companies, dict):
+        results = companies.get("results") or []
+        if results and isinstance(results, list):
+            first = results[0]
+            if isinstance(first, dict):
+                cid = first.get("id") or first.get("toObjectId")
+                if cid is not None:
+                    return str(cid)
+    props = _deal_props(deal_payload)
+    company_id = props.get("associatedcompanyid") or props.get("company_id")
+    return str(company_id) if company_id else None
+
+
+async def _resolve_client(
+    session: AsyncSession,
+    client: HubSpotClient,
+    deal_id: str,
+    deal_payload: dict[str, Any],
+    correlation_id: str,
+) -> Client:
+    """Upsert the client for a deal — real company or the "Unknown" fallback.
+
+    Never returns ``None``: every opportunity gets ``client_id`` set (blueprint
+    §6.2 wants coverage to attach to a legal entity, and the ad-hoc client is
+    the seam a human can later re-point at the real HubSpot company).
+    """
+
+    company_id = _extract_company_id(deal_payload)
+    if company_id:
+        try:
+            company_payload = await client.get_company(company_id)
+        except KeyError:
+            log.info("hubspot_company_missing", company_id=company_id, deal_id=deal_id)
+        else:
+            return await upsert_client_from_hubspot(
+                session,
+                company_payload=company_payload,
+                correlation_id=correlation_id,
+            )
+    return await upsert_unknown_client_for_deal(
+        session, deal_id=deal_id, correlation_id=correlation_id
+    )
+
+
 async def _upsert_opportunity(
     session: AsyncSession,
     deal_id: str,
     deal_payload: dict[str, Any],
     owner: User,
+    client_row: Client,
     correlation_id: str,
 ) -> tuple[Opportunity, bool]:
     """Insert or update the `opportunity` row keyed by `hubspot_deal_id`.
@@ -133,6 +198,7 @@ async def _upsert_opportunity(
         opp = Opportunity(
             hubspot_deal_id=deal_id,
             owner_id=owner.id,
+            client_id=client_row.id,
             engagement_type=engagement,
             sales_stage=stage,
             governance_status="Intake",
@@ -149,6 +215,7 @@ async def _upsert_opportunity(
             after={
                 "hubspot_deal_id": deal_id,
                 "owner_id": str(owner.id),
+                "client_id": str(client_row.id),
                 "engagement_type": engagement,
                 "sales_stage": stage,
                 "governance_status": "Intake",
@@ -159,12 +226,16 @@ async def _upsert_opportunity(
 
     before = {
         "owner_id": str(opp.owner_id) if opp.owner_id else None,
+        "client_id": str(opp.client_id) if opp.client_id else None,
         "engagement_type": opp.engagement_type,
         "sales_stage": opp.sales_stage,
     }
     changed = False
     if opp.owner_id != owner.id:
         opp.owner_id = owner.id
+        changed = True
+    if opp.client_id != client_row.id:
+        opp.client_id = client_row.id
         changed = True
     if engagement is not None and opp.engagement_type != engagement:
         opp.engagement_type = engagement
@@ -184,6 +255,7 @@ async def _upsert_opportunity(
             before=before,
             after={
                 "owner_id": str(opp.owner_id) if opp.owner_id else None,
+                "client_id": str(opp.client_id) if opp.client_id else None,
                 "engagement_type": opp.engagement_type,
                 "sales_stage": opp.sales_stage,
             },
@@ -345,8 +417,11 @@ async def handle_event(
     hubspot_owner_id = props.get("hubspot_owner_id")
 
     owner = await _resolve_owner(session, client, hubspot_owner_id)
+    client_row = await _resolve_client(
+        session, client, deal_id, deal_payload, correlation_id
+    )
     opportunity, created = await _upsert_opportunity(
-        session, deal_id, deal_payload, owner, correlation_id
+        session, deal_id, deal_payload, owner, client_row, correlation_id
     )
 
     if created:

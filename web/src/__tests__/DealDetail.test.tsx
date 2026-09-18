@@ -11,6 +11,7 @@ const initialDeal: apiClient.DealDetail = {
   id: DEAL_ID,
   hubspot_deal_id: "H-100",
   owner_id: "22222222-2222-2222-2222-222222222222",
+  client_id: null,
   client_name: null,
   engagement_type: null,
   sales_stage: "Discovery",

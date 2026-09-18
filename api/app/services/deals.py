@@ -1,4 +1,4 @@
-"""Deal query builder + coverage helper for S1-E2.
+"""Deal query builder + coverage helper.
 
 Row-level access:
 
@@ -8,17 +8,16 @@ Row-level access:
 
 Coverage state:
 
-  The Sprint 1 `opportunity` table has no `client_id` column yet (see
-  `docs/questions.md`). Until that link exists, the coverage helper accepts an
-  optional `client_id` and returns a summary string derived from the client's
-  agreements (NDA + MSA). Callers that cannot resolve a client get
-  "No client linked" so the UI shows a real, non-fabricated state.
+  S2 E3 wired ``opportunity.client_id`` and moved the pure ``coverage_state``
+  logic into :mod:`app.services.clients`. The helper here loads the client's
+  agreements (via its legal entities) and delegates. When a deal has no
+  ``client_id`` yet (pre-migration backfill) we return ``"No client linked"``
+  so the UI never fabricates state.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 
@@ -27,8 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from app.auth import AuthUser
-from app.models.client import Agreement, LegalEntity
+from app.models.client import Agreement, Client, LegalEntity
 from app.models.opportunity import Opportunity
+from app.services.clients import coverage_state as _coverage_state
 
 # Roles that can see every deal (build-guide §3 leader roles + admin).
 LEADER_ROLES: frozenset[str] = frozenset(
@@ -141,52 +141,36 @@ async def coverage_state_summary(
 ) -> str:
     """Return a short human string for the deal's coverage state.
 
-    Rules (Sprint 1 minimum):
-
-    - No client linked                → "No client linked"
-    - No agreements at all            → "NDA missing, MSA missing"
-    - Missing NDA or MSA              → "NDA missing" / "MSA missing"
-    - Any agreement expired          → "NDA expired" / "MSA expired"
-    - Both present, none expired      → "Complete"
+    Delegates to the pure :func:`app.services.clients.coverage_state` after
+    loading the client's agreements. See that function for the label set.
     """
 
     if client_id is None:
         return "No client linked"
 
-    today = today or date.today()
-    entities = (
+    entity_ids = (
         await session.execute(
             select(LegalEntity.id).where(LegalEntity.client_id == client_id)
         )
     ).scalars().all()
-    if not entities:
-        return "NDA missing, MSA missing"
-
-    agreements = (
-        await session.execute(
-            select(Agreement).where(Agreement.legal_entity_id.in_(entities))
+    agreements: list[Agreement] = []
+    if entity_ids:
+        agreements = list(
+            (
+                await session.execute(
+                    select(Agreement).where(Agreement.legal_entity_id.in_(entity_ids))
+                )
+            ).scalars()
         )
-    ).scalars().all()
-
-    return _summarize_agreements(agreements, today)
+    return _coverage_state(agreements, today=today)
 
 
-def _summarize_agreements(agreements: Iterable[Agreement], today: date) -> str:
-    parts: list[str] = []
-    for kind in ("NDA", "MSA"):
-        matching = [a for a in agreements if a.kind == kind]
-        if not matching:
-            parts.append(f"{kind} missing")
-            continue
-        # Pick the freshest agreement (max expiry, then max effective).
-        matching.sort(
-            key=lambda a: (
-                a.expiry_date or date.min,
-                a.effective_date or date.min,
-            ),
-            reverse=True,
-        )
-        latest = matching[0]
-        if latest.expiry_date is not None and latest.expiry_date < today:
-            parts.append(f"{kind} expired")
-    return "Complete" if not parts else ", ".join(parts)
+async def get_client_name(session: AsyncSession, client_id: uuid.UUID | None) -> str | None:
+    """Look up the client name for a deal row. ``None`` when unlinked."""
+
+    if client_id is None:
+        return None
+    row = (
+        await session.execute(select(Client.name).where(Client.id == client_id))
+    ).scalar_one_or_none()
+    return row

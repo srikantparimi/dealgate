@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import type { DealDetail, DealPatch } from "../api/client";
 import { getDeal, patchDeal } from "../api/client";
 import { EmptyState } from "../ui/EmptyState";
@@ -193,6 +193,15 @@ export function DealDetailPage() {
           <StatusChip tone={deal.coverage_state === "Complete" ? "ok" : "warn"}>
             {deal.coverage_state}
           </StatusChip>
+        </Field>
+        <Field label="Client">
+          {deal.client_id ? (
+            <Link to={`/clients/${deal.client_id}`} style={{ color: "#1d4ed8" }}>
+              {deal.client_name ?? deal.client_id}
+            </Link>
+          ) : (
+            "—"
+          )}
         </Field>
       </Panel>
 

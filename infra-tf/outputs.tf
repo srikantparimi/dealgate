@@ -37,3 +37,8 @@ output "db_secret_arn" {
   description = "Secrets Manager ARN holding the composed POSTGRES_URL."
   value       = module.secrets.db_url_secret_arn
 }
+
+output "agreements_bucket_name" {
+  description = "S3 bucket that holds signed NDA/MSA evidence uploads (S2-E3). Feed into the API task's AGREEMENTS_BUCKET env var."
+  value       = module.storage.agreements_bucket_name
+}

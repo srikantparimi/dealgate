@@ -35,6 +35,7 @@ from app.services.deals import (
     build_deal_list_query,
     can_mutate_deal,
     coverage_state_summary,
+    get_client_name,
     is_leader,
 )
 
@@ -49,6 +50,7 @@ class DealRow(BaseModel):
     id: uuid.UUID
     hubspot_deal_id: str
     owner_id: uuid.UUID | None
+    client_id: uuid.UUID | None = None
     client_name: str | None = None
     engagement_type: str | None
     sales_stage: str | None
@@ -92,6 +94,7 @@ class DealDetail(BaseModel):
     id: uuid.UUID
     hubspot_deal_id: str
     owner_id: uuid.UUID | None
+    client_id: uuid.UUID | None = None
     client_name: str | None = None
     engagement_type: str | None
     sales_stage: str | None
@@ -133,12 +136,14 @@ async def _access_or_403(session: AsyncSession, user: AuthUser, opp: Opportunity
 
 
 async def _row_for(session: AsyncSession, opp: Opportunity) -> DealRow:
-    coverage = await coverage_state_summary(session, client_id=None)
+    coverage = await coverage_state_summary(session, client_id=opp.client_id)
+    client_name = await get_client_name(session, opp.client_id)
     return DealRow(
         id=opp.id,
         hubspot_deal_id=opp.hubspot_deal_id,
         owner_id=opp.owner_id,
-        client_name=None,
+        client_id=opp.client_id,
+        client_name=client_name,
         engagement_type=opp.engagement_type,
         sales_stage=opp.sales_stage,
         governance_status=opp.governance_status,
@@ -184,13 +189,15 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
         )
     ).scalars().all()
 
-    coverage = await coverage_state_summary(session, client_id=None)
+    coverage = await coverage_state_summary(session, client_id=opp.client_id)
+    client_name = await get_client_name(session, opp.client_id)
 
     return DealDetail(
         id=opp.id,
         hubspot_deal_id=opp.hubspot_deal_id,
         owner_id=opp.owner_id,
-        client_name=None,
+        client_id=opp.client_id,
+        client_name=client_name,
         engagement_type=opp.engagement_type,
         sales_stage=opp.sales_stage,
         governance_status=opp.governance_status,
