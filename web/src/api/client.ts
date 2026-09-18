@@ -64,6 +64,7 @@ export interface DealDetail extends DealRow {
       | "pending_finance_legal"
       | "pending_ceo_exception"
       | "ready_to_sign"
+      | "released"
       | "voided"
       | "rejected";
     package_hash: string;
@@ -2239,4 +2240,275 @@ export function releaseSignedSow(packageId: UUID): Promise<SignedSowUpload> {
   return request<SignedSowUpload>(`/signed-sow/${packageId}/release`, {
     method: "POST",
   });
+}
+
+// --- Weekly forecast (S6 E9) ----------------------------------------------
+
+/**
+ * One entry in the ``forecast_lines_json`` snapshot. Money-like fields are
+ * Decimal strings (blueprint §2). ``remaining_hours`` is what the Delivery
+ * lead posts each week; the rest is the read-only echo the API keeps so
+ * the trend replay can show geography without joining ``resource_line``.
+ */
+export interface ForecastLineSnapshot {
+  resource_line_id: UUID;
+  role: string;
+  seniority: string;
+  location: "US" | "India";
+  remaining_hours: DecimalStr;
+  hourly_cost: DecimalStr | null;
+  allocation_pct: DecimalStr;
+}
+
+export interface ForecastPeriod {
+  id: UUID;
+  gm_model_id: UUID;
+  week_ending: ISODate;
+  forecast_lines_json: ForecastLineSnapshot[];
+  forecast_revenue: DecimalStr;
+  forecast_cost_us: DecimalStr;
+  forecast_cost_india: DecimalStr;
+  forecast_gm_us: DecimalStr | null;
+  forecast_gm_india: DecimalStr | null;
+  updated_by: UUID | null;
+  updated_at: ISODateTime | null;
+}
+
+export interface ForecastHistoryResponse {
+  items: ForecastPeriod[];
+}
+
+/** One row of the update payload. Kept as string on the wire so the
+ * browser never coerces a Decimal into a float. */
+export interface ForecastLineInput {
+  resource_line_id: UUID;
+  remaining_hours: DecimalStr;
+}
+
+export function postForecast(
+  gmModelId: UUID,
+  lines: ForecastLineInput[],
+): Promise<ForecastPeriod> {
+  return request<ForecastPeriod>(`/forecast/${gmModelId}`, {
+    method: "POST",
+    body: JSON.stringify({ lines }),
+  });
+}
+
+export function getLatestForecast(
+  gmModelId: UUID,
+): Promise<ForecastPeriod | null> {
+  return request<ForecastPeriod | null>(`/forecast/${gmModelId}/latest`);
+}
+
+export function getForecastHistory(
+  gmModelId: UUID,
+  limit = 52,
+): Promise<ForecastHistoryResponse> {
+  return request<ForecastHistoryResponse>(
+    `/forecast/${gmModelId}/history?limit=${limit}`,
+  );
+}
+
+// --- Actuals CSV import (S6 E9) ------------------------------------------
+
+/**
+ * A single actuals-import batch. Status lifecycle:
+ * ``uploading`` -> ``validated`` -> ``committed`` on success, or
+ * ``failed`` with row-level ``errors`` when validation rejects the file
+ * (all-or-nothing per blueprint §2).
+ */
+export interface ActualBatch {
+  id: UUID;
+  uploaded_by: UUID;
+  status: "uploading" | "validated" | "committed" | "failed" | string;
+  row_count: number;
+  errors: Array<Record<string, unknown>> | null;
+}
+
+export interface ActualBatchListResponse {
+  items: ActualBatch[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface ActualGmResponse {
+  gm_model_id: UUID;
+  period_month: ISODate;
+  revenue: DecimalStr;
+  cost_us: DecimalStr;
+  cost_india: DecimalStr;
+  gm_us: DecimalStr | null;
+  gm_india: DecimalStr | null;
+}
+
+/**
+ * Uploads a CSV of actuals to the batch endpoint. Returns 422 with a
+ * per-row error report when validation fails (whole-file reject).
+ */
+export async function importActualsCsv(file: File): Promise<ActualBatch> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}/actuals/import`, {
+    method: "POST",
+    headers: { ...(await authHeaders()) },
+    body: form,
+  });
+  const text = await res.text();
+  const body = text ? safeJson(text) : null;
+  if (!res.ok) {
+    const message =
+      body && typeof body === "object" && "detail" in body
+        ? typeof (body as { detail: unknown }).detail === "string"
+          ? String((body as { detail: unknown }).detail)
+          : `API error ${res.status}`
+        : `API error ${res.status}`;
+    throw new ApiError(res.status, body, message);
+  }
+  return body as ActualBatch;
+}
+
+export function listActualBatches(
+  query: { page?: number; size?: number } = {},
+): Promise<ActualBatchListResponse> {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.size) params.set("size", String(query.size));
+  const qs = params.toString();
+  return request<ActualBatchListResponse>(
+    `/actuals/batches${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function getActualBatch(id: UUID): Promise<ActualBatch> {
+  return request<ActualBatch>(`/actuals/batches/${id}`);
+}
+
+export function getActualGm(
+  gmModelId: UUID,
+  periodMonth: string,
+): Promise<ActualGmResponse> {
+  const qs = new URLSearchParams({ period_month: periodMonth }).toString();
+  return request<ActualGmResponse>(
+    `/actuals/gm-model/${gmModelId}?${qs}`,
+  );
+}
+
+// --- Admin replay (S6) -----------------------------------------------------
+
+/**
+ * DLQ views + replay actions. The API gates every endpoint behind
+ * ``SystemAdmin`` so the nav-link gate on the frontend is UX only.
+ */
+export interface AdminReplayHubspotRow {
+  id: UUID;
+  opportunity_id: UUID;
+  hubspot_deal_id: string;
+  target_state: Record<string, unknown>;
+  status: string;
+  attempts: number;
+  next_attempt_at: ISODateTime | null;
+  last_error: string | null;
+  created_at: ISODateTime;
+  sent_at: ISODateTime | null;
+}
+
+export interface AdminReplayNotificationRow {
+  id: UUID;
+  user_id: UUID;
+  category: string;
+  channel: string;
+  subject: string;
+  status: string;
+  attempts: number;
+  next_attempt_at: ISODateTime | null;
+  last_error: string | null;
+  created_at: ISODateTime;
+  sent_at: ISODateTime | null;
+}
+
+export interface AdminReplayIntegrationEventRow {
+  id: UUID;
+  source: string;
+  source_event_id: string;
+  received_at: ISODateTime;
+  processed_at: ISODateTime | null;
+  payload: Record<string, unknown>;
+}
+
+export interface AdminReplayListResponse<T> {
+  items: T[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface AdminReplayResponse {
+  id: UUID;
+  status: string;
+}
+
+export interface AdminReplayPageQuery {
+  page?: number;
+  size?: number;
+}
+
+function pageParams(query: AdminReplayPageQuery): string {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.size) params.set("size", String(query.size));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export function listAdminReplayHubspotWriteback(
+  query: AdminReplayPageQuery = {},
+): Promise<AdminReplayListResponse<AdminReplayHubspotRow>> {
+  return request<AdminReplayListResponse<AdminReplayHubspotRow>>(
+    `/admin/replay/hubspot-writeback${pageParams(query)}`,
+  );
+}
+
+export function replayAdminHubspotWriteback(
+  jobId: UUID,
+): Promise<AdminReplayResponse> {
+  return request<AdminReplayResponse>(
+    `/admin/replay/hubspot-writeback/${jobId}`,
+    { method: "POST" },
+  );
+}
+
+export function listAdminReplayNotifications(
+  query: AdminReplayPageQuery = {},
+): Promise<AdminReplayListResponse<AdminReplayNotificationRow>> {
+  return request<AdminReplayListResponse<AdminReplayNotificationRow>>(
+    `/admin/replay/notifications${pageParams(query)}`,
+  );
+}
+
+export function replayAdminNotification(
+  notificationId: UUID,
+): Promise<AdminReplayResponse> {
+  return request<AdminReplayResponse>(
+    `/admin/replay/notifications/${notificationId}`,
+    { method: "POST" },
+  );
+}
+
+export function listAdminReplayIntegrationEvents(
+  query: AdminReplayPageQuery = {},
+): Promise<AdminReplayListResponse<AdminReplayIntegrationEventRow>> {
+  return request<AdminReplayListResponse<AdminReplayIntegrationEventRow>>(
+    `/admin/replay/integration-events${pageParams(query)}`,
+  );
+}
+
+export function replayAdminIntegrationEvent(
+  eventId: UUID,
+): Promise<AdminReplayResponse> {
+  return request<AdminReplayResponse>(
+    `/admin/replay/integration-events/${eventId}`,
+    { method: "POST" },
+  );
 }

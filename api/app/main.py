@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 
 from app.routers import (
+    actuals,
     admin_policy,
     admin_rate_cards,
+    admin_replay,
     admin_users,
     adviser,
     agreements,
@@ -13,6 +15,7 @@ from app.routers import (
     dashboards,
     deals,
     delivery_model,
+    forecast,
     gm,
     health,
     hubspot,
@@ -48,3 +51,6 @@ app.include_router(ceo_exception.router)
 app.include_router(signed_sow.router)
 app.include_router(renewals.router)
 app.include_router(dashboards.router)
+app.include_router(forecast.router)
+app.include_router(actuals.router)
+app.include_router(admin_replay.router)

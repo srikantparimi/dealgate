@@ -22,6 +22,7 @@ import { DeliveryModelBuilder } from "./DeliveryModelBuilder";
 import { SignedSOWReview } from "./SignedSOWReview";
 import { SOWConfirm } from "./SOWConfirm";
 import { SOWUpload } from "./SOWUpload";
+import { WeeklyForecast } from "./WeeklyForecast";
 
 const DELIVERY_ROLES = new Set([
   "Delivery",
@@ -327,6 +328,18 @@ export function DealDetailPage() {
         </Panel>
       ) : null}
 
+      {deal.latest_package?.status === "released" &&
+      deal.gm_model &&
+      typeof (deal.gm_model as { id?: unknown }).id === "string" &&
+      id ? (
+        <Panel title="Weekly forecast">
+          <WeeklyForecast
+            gmModelId={(deal.gm_model as { id: string }).id}
+            opportunityId={id}
+          />
+        </Panel>
+      ) : null}
+
       <Panel title="Recent audit">
         {deal.audit.length === 0 ? (
           <EmptyState title="No audit events yet" />
@@ -419,6 +432,7 @@ const APPROVAL_STATUS_TONE: Record<
   pending_finance_legal: "warn",
   pending_ceo_exception: "block",
   ready_to_sign: "ok",
+  released: "ok",
   voided: "neutral",
   rejected: "block",
 };
@@ -447,6 +461,7 @@ function ApprovalPanel({
           | "pending_finance_legal"
           | "pending_ceo_exception"
           | "ready_to_sign"
+          | "released"
           | "voided"
           | "rejected";
         submitted_at: string | null;

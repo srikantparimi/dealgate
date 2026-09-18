@@ -4,11 +4,13 @@ Importing this package registers every mapper on `Base.metadata` — Alembic's
 `env.py` relies on that side-effect.
 """
 
+from app.models.actual import ActualImportBatch, ActualPeriod
 from app.models.adviser_estimate import AdviserEstimate
 from app.models.approval import Approval, ApprovalPackage
 from app.models.audit import AuditEvent
 from app.models.ceo_exception import CeoDelegate, CeoException
 from app.models.client import Agreement, Client, LegalEntity
+from app.models.forecast import ForecastPeriod
 from app.models.gm_model import CostLine, GmModel, ResourceLine
 from app.models.hubspot_writeback import HubspotWritebackJob
 from app.models.integration import IntegrationEvent
@@ -28,6 +30,8 @@ from app.models.user import User
 from app.models.legacy import LegacyImportBatch  # noqa: E402  (order matters)
 
 __all__ = [
+    "ActualImportBatch",
+    "ActualPeriod",
     "AdviserEstimate",
     "Agreement",
     "Approval",
@@ -37,6 +41,7 @@ __all__ = [
     "CeoException",
     "Client",
     "CostLine",
+    "ForecastPeriod",
     "GmModel",
     "HubspotWritebackJob",
     "IntegrationEvent",

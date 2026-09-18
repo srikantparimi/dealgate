@@ -1,6 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthProvider";
 import { RequireAuth } from "./auth/RequireAuth";
+import { ActualsImportPage } from "./pages/ActualsImport";
+import { AdminReplayPage } from "./pages/AdminReplay";
 import { AdviserIntakePage } from "./pages/AdviserIntake";
 import { AdviserDetailPage, AdviserListPage } from "./pages/AdviserList";
 import { ApprovalPackageDetailPage } from "./pages/ApprovalPackageDetail";
@@ -30,6 +32,8 @@ const AUDIT_ROLES = new Set(["Finance", "Legal", "CEO", "SystemAdmin"]);
 // Legacy import (S6) — Finance/CEO/SystemAdmin. The API enforces the same
 // gate; the nav link is a UX hint, not a security boundary.
 const LEGACY_IMPORT_ROLES = new Set(["Finance", "CEO", "SystemAdmin"]);
+// Actuals CSV import (S6 E9) — Finance/SystemAdmin. Same UX-hint pattern.
+const ACTUALS_ROLES = new Set(["Finance", "SystemAdmin"]);
 // Roles that can drive the Opportunity Adviser intake. Reads are broader
 // (any governance role); the nav link only exposes the intake path.
 const ADVISER_ROLES = new Set(["Marketing", "Sales", "Presales", "SystemAdmin"]);
@@ -105,6 +109,9 @@ function navForGroups(groups: string[]): NavItem[] {
   if (groups.some((g) => LEGACY_IMPORT_ROLES.has(g))) {
     items.push({ to: "/legacy/import", label: "Legacy import" });
   }
+  if (groups.some((g) => ACTUALS_ROLES.has(g))) {
+    items.push({ to: "/actuals/import", label: "Actuals" });
+  }
   if (groups.some((g) => CEO_EXCEPTION_ROLES.has(g))) {
     // The API still enforces role + delegate — this link is a UX hint,
     // not a security boundary.
@@ -120,6 +127,8 @@ function navForGroups(groups: string[]): NavItem[] {
     // Client-side gate for the admin section; the API still enforces
     // `require_role("SystemAdmin")` so the real gate cannot be bypassed.
     items.push({ to: "/admin/users", label: "Users" });
+    // S6 DLQ + replay admin surface. API also enforces SystemAdmin.
+    items.push({ to: "/admin/replay", label: "Replay" });
   }
   return items;
 }
@@ -168,7 +177,9 @@ export function App() {
                   <Route path="/admin/rate-cards" element={<RateCardsPage />} />
                   <Route path="/admin/policy" element={<PolicyAdminPage />} />
                   <Route path="/admin/users" element={<UsersAdminPage />} />
+                  <Route path="/admin/replay" element={<AdminReplayPage />} />
                   <Route path="/legacy/import" element={<LegacyImportPage />} />
+                  <Route path="/actuals/import" element={<ActualsImportPage />} />
                   <Route
                     path="/ceo-exceptions/:id"
                     element={<CEOExceptionBriefPage />}
