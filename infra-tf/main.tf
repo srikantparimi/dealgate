@@ -75,6 +75,24 @@ module "storage" {
   account_id  = data.aws_caller_identity.current.account_id
 }
 
+# S2-E3 Wave 2: scheduled alert scheduler + notification sender workers.
+# Reuses the API ECS cluster + SG + subnets to avoid a second Fargate footprint.
+module "schedulers" {
+  source                  = "./modules/schedulers"
+  name_prefix             = local.name_prefix
+  env                     = var.env
+  region                  = var.region
+  ecs_cluster_arn         = module.api.cluster_arn
+  private_subnet_ids      = module.network.private_subnet_ids
+  task_security_group_ids = [module.api.api_security_group_id]
+  ecr_repository_url      = module.ecr.repository_url
+  image_tag               = var.image_tag
+  db_url_secret_arn       = module.secrets.db_url_secret_arn
+  task_execution_role_arn = module.api.task_execution_role_arn
+  cognito_user_pool_id    = module.auth.user_pool_id
+  cognito_client_id       = module.auth.client_id
+}
+
 module "github_oidc" {
   source                      = "./modules/github_oidc"
   name_prefix                 = local.name_prefix

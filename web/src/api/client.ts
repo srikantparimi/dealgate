@@ -886,3 +886,662 @@ export async function exportGmXlsx(body: SandboxRequest): Promise<Blob> {
   }
   return await res.blob();
 }
+
+// --- Opportunity Adviser (S3 E11) -----------------------------------------
+
+/**
+ * The intake form the Adviser accepts. `client_name` + `problem` are the
+ * two required fields; everything else is optional but sharpens the draft.
+ * The API records the payload verbatim so a reviewer sees what the
+ * Marketing/Sales/Presales user actually typed.
+ */
+export interface AdviserIntakeBody {
+  client_name: string;
+  problem: string;
+  website?: string | null;
+  functions?: string[] | null;
+  users_count?: number | null;
+  systems?: string[] | null;
+  geography?: string | null;
+  timeline?: string | null;
+  budget?: string | null;
+}
+
+/** One priced team member. Decimals serialize as strings so we never lose
+ * precision on the wire (blueprint §2). */
+export interface AdviserTeamMember {
+  role: string;
+  seniority: string;
+  location: "US" | "India";
+  hours: DecimalStr;
+  allocation_pct: DecimalStr;
+  cost_low: DecimalStr;
+  cost_base: DecimalStr;
+  cost_high: DecimalStr;
+  is_sentinel: boolean;
+}
+
+export interface AdviserDeliveryOption {
+  key: "us_only" | "india_only" | "mixed";
+  label: string;
+  cost_low: DecimalStr;
+  cost_base: DecimalStr;
+  cost_high: DecimalStr;
+  min_price: DecimalStr;
+  floor_applied: DecimalStr;
+  eligible: boolean;
+}
+
+export interface AdviserEstimate {
+  kind: "estimate";
+  id: UUID;
+  submitted_at: ISODateTime;
+  submitted_by: UUID | null;
+  label: string;
+  scope: string;
+  confidence: "low" | "medium" | "high" | string;
+  reasons: string[];
+  team: AdviserTeamMember[];
+  cost_low: DecimalStr;
+  cost_base: DecimalStr;
+  cost_high: DecimalStr;
+  options: AdviserDeliveryOption[];
+  sources: Array<Record<string, unknown>>;
+  model: string;
+  prompt_version: string;
+  inputs: Record<string, unknown>;
+  rate_card_version_id: UUID | null;
+  has_sentinel_costs: boolean;
+  reviewer_id: UUID | null;
+  reviewed_at: ISODateTime | null;
+}
+
+export interface AdviserQuestions {
+  kind: "questions";
+  questions: string[];
+  note: string;
+  label: string;
+  model: string;
+  prompt_version: string;
+  sources: Array<Record<string, unknown>>;
+}
+
+export type AdviserResult = AdviserEstimate | AdviserQuestions;
+
+export interface AdviserListResponse {
+  items: AdviserEstimate[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface ListAdviserQuery {
+  owner?: "me" | "all" | UUID;
+  page?: number;
+  size?: number;
+}
+
+export function createAdviserEstimate(
+  body: AdviserIntakeBody,
+): Promise<AdviserResult> {
+  return request<AdviserResult>(`/adviser/estimates`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getAdviserEstimate(id: UUID): Promise<AdviserEstimate> {
+  return request<AdviserEstimate>(`/adviser/estimates/${id}`);
+}
+
+export function listAdviserEstimates(
+  query: ListAdviserQuery = {},
+): Promise<AdviserListResponse> {
+  const params = new URLSearchParams();
+  if (query.owner) params.set("owner", query.owner);
+  if (query.page) params.set("page", String(query.page));
+  if (query.size) params.set("size", String(query.size));
+  const qs = params.toString();
+  return request<AdviserListResponse>(`/adviser/estimates${qs ? `?${qs}` : ""}`);
+}
+
+// --- SOW upload + extract + confirm (S3-E5) --------------------------------
+
+/**
+ * The 14 fields the Bedrock extract produces. Kept in lock-step with
+ * `api/app/integrations/bedrock_sow_extract.EXTRACTED_FIELDS`.
+ */
+export type SowFieldName =
+  | "scope_summary"
+  | "price"
+  | "currency"
+  | "billing_basis"
+  | "term_start"
+  | "term_end"
+  | "notice_date"
+  | "deliverables"
+  | "milestones"
+  | "acceptance_criteria"
+  | "assumptions"
+  | "exclusions"
+  | "signatories"
+  | "engagement_type_suggested";
+
+export const SOW_FIELDS: SowFieldName[] = [
+  "scope_summary",
+  "price",
+  "currency",
+  "billing_basis",
+  "term_start",
+  "term_end",
+  "notice_date",
+  "deliverables",
+  "milestones",
+  "acceptance_criteria",
+  "assumptions",
+  "exclusions",
+  "signatories",
+  "engagement_type_suggested",
+];
+
+export type SowFieldStatus = "unconfirmed" | "confirmed" | "disputed";
+export type SowExtractStatus =
+  | "pending"
+  | "complete"
+  | "failed"
+  | "manual_required";
+
+export interface SowExtractedField {
+  value: unknown;
+  page_ref: number;
+  status: SowFieldStatus;
+}
+
+export type SowExtractedFields = Partial<Record<SowFieldName, SowExtractedField>>;
+
+export interface SowVersion {
+  id: UUID;
+  sow_id: UUID;
+  opportunity_id: UUID;
+  uploaded_by: UUID | null;
+  uploaded_at: ISODateTime;
+  file_s3_key: string;
+  file_hash: string;
+  extracted_fields: SowExtractedFields | null;
+  extract_status: SowExtractStatus;
+  extract_model: string | null;
+  extract_prompt_version: string | null;
+  confirmed_by: UUID | null;
+  confirmed_at: ISODateTime | null;
+  engagement_type_suggested: string | null;
+  engagement_type_confirmed: string | null;
+  download_url: string | null;
+}
+
+export interface SowUploadUrlRequest {
+  filename: string;
+  content_type: string;
+}
+
+export interface SowUploadUrlResponse {
+  url: string;
+  s3_key: string;
+  method: "PUT";
+  expires_in: number;
+  required_headers?: Record<string, string> | null;
+  max_bytes: number;
+}
+
+export interface CreateSowVersionBody {
+  file_s3_key: string;
+  file_hash: string;
+  file_size?: number;
+}
+
+export function getSowUploadUrl(
+  opportunityId: UUID,
+  body: SowUploadUrlRequest,
+): Promise<SowUploadUrlResponse> {
+  return request<SowUploadUrlResponse>(`/sow/${opportunityId}/upload-url`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function createSowVersion(
+  opportunityId: UUID,
+  body: CreateSowVersionBody,
+): Promise<SowVersion> {
+  return request<SowVersion>(`/sow/${opportunityId}/versions`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getCurrentSowVersion(
+  opportunityId: UUID,
+): Promise<SowVersion | null> {
+  return request<SowVersion | null>(`/sow/opportunity/${opportunityId}/current`);
+}
+
+export function getSowVersion(sowVersionId: UUID): Promise<SowVersion> {
+  return request<SowVersion>(`/sow/versions/${sowVersionId}`);
+}
+
+export function confirmSowField(
+  sowVersionId: UUID,
+  fieldName: SowFieldName,
+  value: unknown,
+): Promise<SowVersion> {
+  return request<SowVersion>(
+    `/sow/versions/${sowVersionId}/fields/${fieldName}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ value }),
+    },
+  );
+}
+
+export function submitSowVersion(sowVersionId: UUID): Promise<SowVersion> {
+  return request<SowVersion>(`/sow/versions/${sowVersionId}/submit`, {
+    method: "POST",
+  });
+}
+
+// --- Delivery Model Builder (S3 E6) ---------------------------------------
+
+/** Same location alphabet as the rate card + GM sandbox. */
+export type DeliveryLocation = "US" | "India";
+
+/**
+ * Cost line categories mirror the pure library — the Builder never sends
+ * anything else so the API's 422 path is only reachable when the browser is
+ * out of sync with the server (e.g. an old cached bundle).
+ */
+export type DeliveryCostCategory =
+  | "tools"
+  | "travel"
+  | "subcontractor"
+  | "other";
+
+/**
+ * A row in the resource grid. All money / percent fields are strings so the
+ * browser never coerces a Decimal to a float (blueprint §2, CLAUDE.md rule 2).
+ * ``person_name = null`` is the story's "to hire" flag — HR lead-time
+ * warnings key off this.
+ */
+export interface DeliveryResourceLineInput {
+  role: string;
+  seniority: string;
+  location: DeliveryLocation;
+  person_name: string | null;
+  allocation_pct: DecimalStr;
+  start_date: ISODate;
+  end_date: ISODate;
+  hours_billable: DecimalStr;
+  hourly_bill_rate: DecimalStr;
+  hourly_cost: DecimalStr | null;
+  validated_by: UUID | null;
+}
+
+export interface DeliveryCostLineInput {
+  category: DeliveryCostCategory;
+  amount: DecimalStr;
+  location: DeliveryLocation;
+  note?: string | null;
+}
+
+export interface DeliveryResourceLineRow extends DeliveryResourceLineInput {
+  id: UUID;
+}
+
+export interface DeliveryCostLineRow extends DeliveryCostLineInput {
+  id: UUID;
+  note: string | null;
+}
+
+/** Warning surfaced in the resource grid gutter. */
+export interface DeliveryWarning {
+  index: number;
+  severity: "amber" | "red";
+  code: "capacity_conflict" | "hr_lead_time";
+  message: string;
+}
+
+/**
+ * A computed slice — same shape as the sandbox's ``SandboxResponse`` policy
+ * block so the panel can reuse the sandbox's rendering code.
+ */
+export interface DeliveryPolicyResult {
+  us_floor: DecimalStr;
+  india_floor: DecimalStr;
+  us_pass: boolean;
+  india_pass: boolean;
+  requires_ceo: boolean;
+  failing: string[];
+}
+
+export interface DeliveryComputedResult {
+  revenue_us: DecimalStr;
+  cost_us: DecimalStr;
+  gm_us: DecimalStr | null;
+  revenue_india: DecimalStr;
+  cost_india: DecimalStr;
+  gm_india: DecimalStr | null;
+  gm_blended: DecimalStr | null;
+  geography: "US" | "India" | "Mixed";
+  complete: boolean;
+  missing: string[];
+  min_price_us: DecimalStr | null;
+  min_price_india: DecimalStr | null;
+  policy: DeliveryPolicyResult;
+  computed_at: ISODateTime;
+}
+
+export interface DeliveryPreviewResponse {
+  engagement_type: EngagementType;
+  computed: DeliveryComputedResult;
+  warnings: {
+    capacity: DeliveryWarning[];
+    hr: DeliveryWarning[];
+  };
+}
+
+export interface DeliveryGmModel {
+  id: UUID;
+  opportunity_id: UUID | null;
+  sow_version_id: UUID | null;
+  engagement_type: EngagementType;
+  delivery_pattern: string | null;
+  contingency_pct: DecimalStr | null;
+  warranty_days: number | null;
+  revenue_us: DecimalStr | null;
+  revenue_india: DecimalStr | null;
+  created_by: UUID | null;
+  created_at: ISODateTime | null;
+  resource_lines: DeliveryResourceLineRow[];
+  cost_lines: DeliveryCostLineRow[];
+  completeness_issues: string[];
+  computed?: DeliveryComputedResult;
+}
+
+export interface DeliveryModelVersionSummary {
+  id: UUID;
+  engagement_type: EngagementType;
+  delivery_pattern: string | null;
+  revenue_us: DecimalStr | null;
+  revenue_india: DecimalStr | null;
+  resource_line_count: number;
+  cost_line_count: number;
+  created_by: UUID | null;
+  created_at: ISODateTime | null;
+}
+
+export interface DeliveryLatestResponse {
+  gm_model: DeliveryGmModel | null;
+  warnings?: {
+    capacity: DeliveryWarning[];
+    hr: DeliveryWarning[];
+  };
+}
+
+export interface DeliveryPreviewRequestInputs {
+  resource_lines: DeliveryResourceLineInput[];
+  cost_lines: DeliveryCostLineInput[];
+  // Templates other than staff_aug carry these top-level fields; the API
+  // forwards whichever keys are present, so the Builder just spreads them
+  // in when the current template needs them.
+  total_price?: DecimalStr;
+  revenue_us?: DecimalStr;
+  revenue_india?: DecimalStr;
+  deliverable?: string;
+  monthly_fee_us?: DecimalStr;
+  monthly_fee_india?: DecimalStr;
+  term_months?: DecimalStr;
+  revenue_cap?: DecimalStr;
+  replacement_obligation?: boolean;
+  delivery_pattern?: string | null;
+  contingency_pct?: DecimalStr | null;
+  warranty_days?: number | null;
+  sow_version_id?: UUID | null;
+}
+
+export interface DeliveryPreviewRequest {
+  engagement_type: EngagementType;
+  inputs: DeliveryPreviewRequestInputs;
+}
+
+export interface DeliverySaveRequest {
+  engagement_type: EngagementType;
+  sow_version_id?: UUID | null;
+  delivery_pattern?: string | null;
+  contingency_pct?: DecimalStr | null;
+  warranty_days?: number | null;
+  resource_lines: DeliveryResourceLineInput[];
+  cost_lines: DeliveryCostLineInput[];
+  // Template scalars persisted implicitly via the snapshot revenue_us /
+  // revenue_india columns; still passed here for compute.
+  total_price?: DecimalStr;
+  revenue_us?: DecimalStr;
+  revenue_india?: DecimalStr;
+  deliverable?: string;
+  monthly_fee_us?: DecimalStr;
+  monthly_fee_india?: DecimalStr;
+  term_months?: DecimalStr;
+  revenue_cap?: DecimalStr;
+  replacement_obligation?: boolean;
+}
+
+export interface DeliverySaveResponse {
+  gm_model: DeliveryGmModel;
+  warnings?: {
+    capacity: DeliveryWarning[];
+    hr: DeliveryWarning[];
+  };
+}
+
+export function previewDeliveryModel(
+  body: DeliveryPreviewRequest,
+): Promise<DeliveryPreviewResponse> {
+  return request<DeliveryPreviewResponse>(`/delivery-model/preview`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function saveDeliveryModelVersion(
+  opportunityId: UUID,
+  body: DeliverySaveRequest,
+): Promise<DeliverySaveResponse> {
+  return request<DeliverySaveResponse>(
+    `/delivery-model/${opportunityId}/versions`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export function getLatestDeliveryModel(
+  opportunityId: UUID,
+): Promise<DeliveryLatestResponse> {
+  return request<DeliveryLatestResponse>(`/delivery-model/${opportunityId}`);
+}
+
+export function listDeliveryModelVersions(
+  opportunityId: UUID,
+): Promise<{ items: DeliveryModelVersionSummary[] }> {
+  return request<{ items: DeliveryModelVersionSummary[] }>(
+    `/delivery-model/${opportunityId}/versions`,
+  );
+}
+
+export async function exportDeliveryModelXlsx(gmModelId: UUID): Promise<Blob> {
+  const res = await fetch(
+    `${BASE_URL}/delivery-model/versions/${gmModelId}/xlsx`,
+    {
+      method: "GET",
+      headers: { ...(await authHeaders()) },
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    const errBody = text ? safeJson(text) : null;
+    const message =
+      errBody && typeof errBody === "object" && "detail" in errBody
+        ? String((errBody as { detail: unknown }).detail)
+        : `API error ${res.status}`;
+    throw new ApiError(res.status, errBody, message);
+  }
+  return await res.blob();
+}
+
+// --- Legacy import (S6 user-added scope) ---------------------------------
+
+/**
+ * The batch envelope for a single bulk-upload session. Status transitions
+ * `uploading` → `reviewing` → `approved`. `errors` is populated when an
+ * Excel import fails validation so the UI can render a red-highlighted
+ * error report.
+ */
+export interface LegacyBatch {
+  id: UUID;
+  uploaded_by: UUID;
+  status: "uploading" | "reviewing" | "approved" | string;
+  sow_count: number;
+  resource_line_count: number;
+  errors: Array<Record<string, unknown>> | null;
+  approved_by: UUID | null;
+}
+
+export interface LegacyUploadUrlResponse {
+  url: string;
+  s3_key: string;
+  method: "PUT";
+  expires_in: number;
+  required_headers: Record<string, string> | null;
+}
+
+export interface LegacySowAttachRow {
+  s3_key: string;
+  filename: string;
+  sow_ref: string;
+  client_name?: string | null;
+}
+
+export interface LegacyAttachSowsResponse {
+  batch: LegacyBatch;
+  versions: UUID[];
+}
+
+export interface LegacyExcelImportResponse {
+  imported: number;
+  sow_refs: string[];
+  errors: Array<Record<string, unknown>>;
+}
+
+export interface LegacyProjectGm {
+  sow_ref: string;
+  revenue_us: DecimalStr;
+  revenue_india: DecimalStr;
+  cost_us: DecimalStr;
+  cost_india: DecimalStr;
+  gm_us: DecimalStr | null;
+  gm_india: DecimalStr | null;
+  below_floor: boolean;
+  failing: string[];
+  complete: boolean;
+}
+
+export interface LegacyReconciliationResponse {
+  batch_id: UUID;
+  status: string;
+  matched: Array<{
+    sow_id: UUID;
+    sow_ref: string;
+    filename: string | null;
+    gm_model_id: UUID;
+    line_count: number;
+    gm_us: DecimalStr | null;
+    gm_india: DecimalStr | null;
+    below_floor: boolean;
+    failing: string[];
+    complete: boolean;
+  }>;
+  unmatched_sows: Array<{ sow_id: UUID; sow_ref: string; filename: string | null }>;
+  orphaned_resource_lines: Array<{
+    gm_model_id: UUID;
+    engagement_type: string;
+    line_count: number;
+  }>;
+  project_gm: LegacyProjectGm[];
+  below_floor: string[];
+}
+
+export function getLegacyUploadUrl(body: {
+  filename: string;
+  content_type: string;
+}): Promise<LegacyUploadUrlResponse> {
+  return request<LegacyUploadUrlResponse>(`/legacy/upload-url`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function createLegacyBatch(): Promise<LegacyBatch> {
+  return request<LegacyBatch>(`/legacy/batches`, { method: "POST" });
+}
+
+export function attachLegacySows(
+  batchId: UUID,
+  files: LegacySowAttachRow[],
+): Promise<LegacyAttachSowsResponse> {
+  return request<LegacyAttachSowsResponse>(`/legacy/batches/${batchId}/sows`, {
+    method: "POST",
+    body: JSON.stringify({ files }),
+  });
+}
+
+/**
+ * Uploads the resource-line Excel to the batch. Returns 422 with a per-row
+ * error report when validation fails (all-or-nothing per file).
+ */
+export async function importLegacyExcel(
+  batchId: UUID,
+  file: File,
+): Promise<LegacyExcelImportResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}/legacy/batches/${batchId}/excel`, {
+    method: "POST",
+    headers: { ...(await authHeaders()) },
+    body: form,
+  });
+  const text = await res.text();
+  const body = text ? safeJson(text) : null;
+  if (!res.ok) {
+    const message =
+      body && typeof body === "object" && "detail" in body
+        ? String((body as { detail: unknown }).detail)
+        : `API error ${res.status}`;
+    throw new ApiError(res.status, body, message);
+  }
+  return body as LegacyExcelImportResponse;
+}
+
+export function getLegacyReconciliation(
+  batchId: UUID,
+): Promise<LegacyReconciliationResponse> {
+  return request<LegacyReconciliationResponse>(
+    `/legacy/batches/${batchId}/reconciliation`,
+  );
+}
+
+export function approveLegacyBatch(
+  batchId: UUID,
+): Promise<LegacyReconciliationResponse> {
+  return request<LegacyReconciliationResponse>(
+    `/legacy/batches/${batchId}/approve`,
+    { method: "POST" },
+  );
+}

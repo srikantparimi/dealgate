@@ -4,15 +4,19 @@ from app.routers import (
     admin_policy,
     admin_rate_cards,
     admin_users,
+    adviser,
     agreements,
     audit,
     clients,
     deals,
+    delivery_model,
     gm,
     health,
     hubspot,
+    legacy,
     me,
     notifications,
+    sow,
     tasks,
 )
 
@@ -30,3 +34,7 @@ app.include_router(notifications.router)
 app.include_router(admin_rate_cards.router)
 app.include_router(admin_policy.router)
 app.include_router(gm.router)
+app.include_router(sow.router)
+app.include_router(delivery_model.router)
+app.include_router(adviser.router)
+app.include_router(legacy.router)

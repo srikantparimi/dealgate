@@ -16,6 +16,10 @@ dependencies = [
   "pyjwt[crypto]>=2.9",
   "cryptography>=43",
   "openpyxl>=3.1",
+  # aiobotocore is loaded lazily by app.integrations.ses; only the sender
+  # worker image needs it at runtime, but keeping it in the API deps
+  # simplifies the shared container recipe.
+  "aiobotocore>=2.13",
 ]
 
 [project.optional-dependencies]

@@ -75,3 +75,74 @@ resource "aws_s3_bucket_lifecycle_configuration" "agreements" {
     }
   }
 }
+
+# -----------------------------------------------------------------------------
+# S3-E5: SOW bucket (`officeapp-<env>-sows-<account>`).
+#
+# Shape mirrors the agreements bucket above — versioning ON, SSE-AES256,
+# public-access-block ALL, no CORS. Each uploaded SOW becomes a new S3
+# object (the `s3_key` is per-version) so the bucket-level versioning
+# mostly protects against accidental overwrites; DB-level immutability of
+# `sow_version` is the primary retention story.
+#
+# The API task's `SOW_BUCKET` env var reads the value output below; the
+# wave integrator wires that in when `module.storage` is added to root.
+# -----------------------------------------------------------------------------
+
+resource "aws_s3_bucket" "sows" {
+  bucket        = "${var.name_prefix}-sows-${var.account_id}"
+  force_destroy = false
+
+  tags = {
+    Name    = "${var.name_prefix}-sows"
+    Purpose = "SOW uploads for AI extraction + human confirm (S3-E5)"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "sows" {
+  bucket = aws_s3_bucket.sows.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "sows" {
+  bucket = aws_s3_bucket.sows.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+    bucket_key_enabled = true
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "sows" {
+  bucket = aws_s3_bucket.sows.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# SOW uploads land server-signed PUT, so no CORS block is needed. If the
+# confirm screen ever streams PDF bytes cross-origin from the browser
+# (rather than the `<embed>` on the same-origin API-issued download URL),
+# add an `aws_s3_bucket_cors_configuration` here.
+
+resource "aws_s3_bucket_lifecycle_configuration" "sows" {
+  bucket = aws_s3_bucket.sows.id
+
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 365
+    }
+  }
+}

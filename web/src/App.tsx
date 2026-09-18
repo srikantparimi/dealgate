@@ -1,6 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthProvider";
 import { RequireAuth } from "./auth/RequireAuth";
+import { AdviserIntakePage } from "./pages/AdviserIntake";
+import { AdviserDetailPage, AdviserListPage } from "./pages/AdviserList";
 import { AuditPage } from "./pages/Audit";
 import { AuthCallback } from "./pages/AuthCallback";
 import { ClientDetailPage } from "./pages/ClientDetail";
@@ -8,6 +10,8 @@ import { ClientListPage } from "./pages/ClientList";
 import { DealDetailPage } from "./pages/DealDetail";
 import { DealListPage } from "./pages/DealList";
 import { GMSandboxPage } from "./pages/GMSandbox";
+import { LegacyImportPage } from "./pages/LegacyImport";
+import { LegacyReconciliationPage } from "./pages/LegacyReconciliation";
 import { MyTasksPage } from "./pages/MyTasks";
 import { NotificationSettingsPage } from "./pages/NotificationSettings";
 import { PolicyAdminPage } from "./pages/PolicyAdmin";
@@ -17,6 +21,12 @@ import { AppShell } from "./ui/AppShell";
 import { Nav, type NavItem } from "./ui/Nav";
 
 const AUDIT_ROLES = new Set(["Finance", "Legal", "CEO", "SystemAdmin"]);
+// Legacy import (S6) — Finance/CEO/SystemAdmin. The API enforces the same
+// gate; the nav link is a UX hint, not a security boundary.
+const LEGACY_IMPORT_ROLES = new Set(["Finance", "CEO", "SystemAdmin"]);
+// Roles that can drive the Opportunity Adviser intake. Reads are broader
+// (any governance role); the nav link only exposes the intake path.
+const ADVISER_ROLES = new Set(["Marketing", "Sales", "Presales", "SystemAdmin"]);
 const GM_SANDBOX_ROLES = new Set([
   "Finance",
   "Delivery",
@@ -39,6 +49,12 @@ function navForGroups(groups: string[]): NavItem[] {
     // access so a stale link can never expose someone else's inbox.
     { to: "/tasks", label: "My tasks" },
   ];
+  if (groups.some((g) => ADVISER_ROLES.has(g))) {
+    // Client-side gate for the intake; the API still enforces the write
+    // roles (Marketing/Sales/Presales/SystemAdmin) so the real gate cannot
+    // be bypassed from the browser.
+    items.push({ to: "/adviser/new", label: "Adviser" });
+  }
   if (canSeeGmSandbox(groups)) {
     // Client-side gate; the API also enforces `require_role(...)` so this
     // link's absence is a UX hint, not a security boundary.
@@ -50,6 +66,9 @@ function navForGroups(groups: string[]): NavItem[] {
   if (groups.some((g) => RATE_CARD_ADMIN_ROLES.has(g))) {
     items.push({ to: "/admin/rate-cards", label: "Rate cards" });
     items.push({ to: "/admin/policy", label: "Policy" });
+  }
+  if (groups.some((g) => LEGACY_IMPORT_ROLES.has(g))) {
+    items.push({ to: "/legacy/import", label: "Legacy import" });
   }
   if (groups.includes("SystemAdmin")) {
     // Client-side gate for the admin section; the API still enforces
@@ -92,9 +111,17 @@ export function App() {
                   />
                   <Route path="/gm/sandbox" element={<GMSandboxPage />} />
                   <Route path="/audit" element={<AuditPage />} />
+                  <Route path="/adviser" element={<AdviserListPage />} />
+                  <Route path="/adviser/new" element={<AdviserIntakePage />} />
+                  <Route path="/adviser/:id" element={<AdviserDetailPage />} />
                   <Route path="/admin/rate-cards" element={<RateCardsPage />} />
                   <Route path="/admin/policy" element={<PolicyAdminPage />} />
                   <Route path="/admin/users" element={<UsersAdminPage />} />
+                  <Route path="/legacy/import" element={<LegacyImportPage />} />
+                  <Route
+                    path="/legacy/reconciliation/:batchId"
+                    element={<LegacyReconciliationPage />}
+                  />
                 </Routes>
               </AuthedShell>
             </RequireAuth>

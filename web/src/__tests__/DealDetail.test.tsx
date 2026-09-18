@@ -36,6 +36,7 @@ function renderPage() {
 describe("DealDetail", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(apiClient, "getCurrentSowVersion").mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -51,6 +52,7 @@ describe("DealDetail", () => {
     expect(screen.getByRole("heading", { name: "Intake" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Coverage" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Tasks" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "SOW" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Recent audit" })).toBeInTheDocument();
   });
 

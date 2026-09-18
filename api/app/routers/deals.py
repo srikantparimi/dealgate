@@ -37,6 +37,7 @@ from app.services.deals import (
     coverage_state_summary,
     get_client_name,
     is_leader,
+    latest_gm_model_summary,
 )
 
 router = APIRouter(prefix="/deals", tags=["deals"])
@@ -104,6 +105,12 @@ class DealDetail(BaseModel):
     coverage_state: str
     tasks: list[TaskRow]
     audit: list[AuditRow]
+    # S3 E6: compact summary of the latest gm_model for the deal, or None.
+    # The Delivery Model Builder pulls the full payload from
+    # /delivery-model/{opportunity_id}; this field lets the deal card
+    # render an "existing model" chip + "open builder" affordance without
+    # a second request.
+    gm_model: dict[str, Any] | None = None
 
 
 class DealPatch(BaseModel):
@@ -191,6 +198,7 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
 
     coverage = await coverage_state_summary(session, client_id=opp.client_id)
     client_name = await get_client_name(session, opp.client_id)
+    gm_model_summary = await latest_gm_model_summary(session, opp.id)
 
     return DealDetail(
         id=opp.id,
@@ -206,6 +214,7 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
         coverage_state=coverage,
         tasks=[TaskRow.model_validate(t) for t in tasks],
         audit=[AuditRow.model_validate(a) for a in audit_rows],
+        gm_model=gm_model_summary,
     )
 
 

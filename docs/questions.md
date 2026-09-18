@@ -117,6 +117,17 @@ guess. Each question names the sprint it blocks.
 
 ## Blocks Sprint 3
 
+- [x] **Bedrock (Claude) model access for SOW extraction (S3-E5).** Story
+  s3-e5 depends on Claude via Bedrock in the dev account and region.
+  Verified 2026-09-17 via `aws bedrock list-foundation-models --region us-east-2
+  --by-provider anthropic` — 13 Anthropic models listed, including
+  `anthropic.claude-sonnet-4-20250514-v1:0`. The extract module
+  (`api/app/integrations/bedrock_sow_extract.py`) currently ships with a
+  `StubBedrock` for tests and a `BedrockSowExtract` placeholder that
+  returns `ManualRequired`; the real `invoke_model` call lands in
+  Sprint 3 wave 2. Confirm the exact model id + region the API task role
+  should be granted `bedrock:InvokeModel` on before wave 2. (Design:
+  build-guide §6.3, story s3-e5.)
 - [ ] **Opportunity.client_id NOT NULL cutover.** S2-E3 landed the FK as
   nullable so historical rows (pre-intake-refactor) do not block the
   migration. The intake worker now sets it on every event, and the

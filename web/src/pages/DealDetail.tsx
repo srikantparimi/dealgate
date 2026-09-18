@@ -1,12 +1,48 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { DealDetail, DealPatch } from "../api/client";
-import { getDeal, patchDeal } from "../api/client";
+import type {
+  DealDetail,
+  DealPatch,
+  EngagementType,
+  SowVersion,
+} from "../api/client";
+import { getCurrentSowVersion, getDeal, patchDeal } from "../api/client";
+import { useAuth } from "../auth/AuthProvider";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { PageHeader } from "../ui/PageHeader";
 import { StatusChip } from "../ui/StatusChip";
 import { Table, type Column } from "../ui/Table";
+import { DeliveryModelBuilder } from "./DeliveryModelBuilder";
+import { SOWConfirm } from "./SOWConfirm";
+import { SOWUpload } from "./SOWUpload";
+
+const DELIVERY_ROLES = new Set([
+  "Delivery",
+  "Presales",
+  "Finance",
+  "HR",
+  "SystemAdmin",
+  "CEO",
+  "Legal",
+]);
+const DELIVERY_WRITE_ROLES = new Set(["Delivery", "SystemAdmin"]);
+
+const KNOWN_ENGAGEMENT_TYPES: readonly EngagementType[] = [
+  "staff_aug",
+  "single_resource",
+  "fixed_price",
+  "assessment",
+  "tm",
+  "managed_service",
+];
+
+function toEngagementType(value: string | null | undefined): EngagementType | null {
+  if (!value) return null;
+  return KNOWN_ENGAGEMENT_TYPES.includes(value as EngagementType)
+    ? (value as EngagementType)
+    : null;
+}
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -61,12 +97,26 @@ function Toast({ message }: { message: string }) {
   );
 }
 
+/** `useAuth` throws when the provider is absent (as in test harnesses that
+ * mount the page directly). Wrap it so a missing provider degrades to a
+ * read-only view instead of crashing the entire panel. */
+function useOptionalAuth(): { user: ReturnType<typeof useAuth>["user"] | null } {
+  try {
+    const { user } = useAuth();
+    return { user };
+  } catch {
+    return { user: null };
+  }
+}
+
 export function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useOptionalAuth();
   const [deal, setDeal] = useState<DealDetail | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [sowVersion, setSowVersion] = useState<SowVersion | null>(null);
 
   const [ownerId, setOwnerId] = useState<string>("");
   const [engagement, setEngagement] = useState<string>("");
@@ -83,11 +133,25 @@ export function DealDetailPage() {
         setNextAction(d.next_client_action ?? "");
       })
       .catch(setError);
+    // Independent load so a SOW fetch failure never blocks the deal panel.
+    getCurrentSowVersion(id)
+      .then(setSowVersion)
+      .catch(() => setSowVersion(null));
   }, [id]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // The API is the real gate — this is a UX hint so the dropzone / confirm
+  // buttons render for users who can plausibly perform them. Anyone with
+  // Sales/SalesLeader/SystemAdmin sees the write UI; the API still rejects
+  // a mutation from a non-owner with 403.
+  const groups = user?.groups ?? [];
+  const canEditSow =
+    groups.includes("SystemAdmin") ||
+    groups.includes("Sales") ||
+    groups.includes("SalesLeader");
 
   async function save() {
     if (!id || !deal) return;
@@ -213,6 +277,29 @@ export function DealDetailPage() {
         )}
       </Panel>
 
+      <Panel title="SOW">
+        {sowVersion ? (
+          <SOWConfirm
+            version={sowVersion}
+            onVersionChanged={setSowVersion}
+            canEdit={canEditSow}
+          />
+        ) : canEditSow && id ? (
+          <SOWUpload opportunityId={id} onUploaded={setSowVersion} />
+        ) : (
+          <EmptyState
+            title="No SOW uploaded yet"
+            hint="The account owner will upload the signed SOW here."
+          />
+        )}
+      </Panel>
+
+      <DeliveryModelPanel
+        opportunityId={id ?? null}
+        userGroups={groups}
+        sowVersion={sowVersion}
+      />
+
       <Panel title="Recent audit">
         {deal.audit.length === 0 ? (
           <EmptyState title="No audit events yet" />
@@ -222,5 +309,77 @@ export function DealDetailPage() {
       </Panel>
       {toast ? <Toast message={toast} /> : null}
     </div>
+  );
+}
+
+/** Inline Delivery Model panel — hidden for roles that must not see cost
+ * bands (Sales/Marketing). Once the SOW has been confirmed the Builder
+ * mounts inline; otherwise we render a hint plus a "Start anyway" button
+ * so Delivery can still model an early plan.
+ */
+function DeliveryModelPanel({
+  opportunityId,
+  userGroups,
+  sowVersion,
+}: {
+  opportunityId: string | null;
+  userGroups: string[];
+  sowVersion: SowVersion | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const canRead = userGroups.some((g) => DELIVERY_ROLES.has(g));
+  const canWrite = userGroups.some((g) => DELIVERY_WRITE_ROLES.has(g));
+  if (!opportunityId || !canRead) return null;
+
+  const sowConfirmed = Boolean(sowVersion?.confirmed_at);
+  const suggested = toEngagementType(
+    sowVersion?.engagement_type_confirmed ?? sowVersion?.engagement_type_suggested ?? null,
+  );
+
+  return (
+    <Panel title="Delivery model">
+      {!open ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            {sowConfirmed ? (
+              <span data-testid="dm-hint-confirmed">
+                SOW confirmed — open the Builder to plan resources.
+              </span>
+            ) : (
+              <span data-testid="dm-hint-no-sow">
+                SOW not confirmed yet; the Builder will pre-select the confirmed
+                engagement type once it lands.
+              </span>
+            )}
+          </div>
+          {canWrite ? (
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              data-testid="dm-open-btn"
+              style={{
+                padding: "6px 12px",
+                background: "#111827",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              Open builder
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, color: "#6b7280" }}>Read-only role</span>
+          )}
+        </div>
+      ) : (
+        <DeliveryModelBuilder
+          opportunityId={opportunityId}
+          suggestedEngagement={suggested}
+          sowVersionId={sowVersion?.id ?? null}
+        />
+      )}
+    </Panel>
   );
 }

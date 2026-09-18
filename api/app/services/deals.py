@@ -27,6 +27,7 @@ from sqlalchemy.sql import ColumnElement
 
 from app.auth import AuthUser
 from app.models.client import Agreement, Client, LegalEntity
+from app.models.gm_model import GmModel
 from app.models.opportunity import Opportunity
 from app.services.clients import coverage_state as _coverage_state
 
@@ -174,3 +175,35 @@ async def get_client_name(session: AsyncSession, client_id: uuid.UUID | None) ->
         await session.execute(select(Client.name).where(Client.id == client_id))
     ).scalar_one_or_none()
     return row
+
+
+async def latest_gm_model_summary(
+    session: AsyncSession, opportunity_id: uuid.UUID
+) -> dict | None:
+    """Compact summary of the newest ``gm_model`` for a deal, if any.
+
+    Kept as a thin joined lookup so ``GET /deals/{id}`` can render the "GM
+    model" card without pulling the full builder payload. The Builder page
+    calls the dedicated ``/delivery-model/{opportunity_id}`` endpoint for
+    resource_lines + cost_lines + computed numbers.
+    """
+
+    stmt = (
+        select(GmModel)
+        .where(GmModel.opportunity_id == opportunity_id)
+        .order_by(GmModel.created_at.desc(), GmModel.id.desc())
+        .limit(1)
+    )
+    model = (await session.execute(stmt)).scalar_one_or_none()
+    if model is None:
+        return None
+    return {
+        "id": str(model.id),
+        "engagement_type": model.engagement_type,
+        "delivery_pattern": model.delivery_pattern,
+        "revenue_us": (format(model.revenue_us, "f") if model.revenue_us is not None else None),
+        "revenue_india": (
+            format(model.revenue_india, "f") if model.revenue_india is not None else None
+        ),
+        "created_at": model.created_at.isoformat() if model.created_at else None,
+    }
