@@ -55,6 +55,21 @@ export interface AuditRow {
 export interface DealDetail extends DealRow {
   tasks: TaskRow[];
   audit: AuditRow[];
+  // S3 E6 / S4 E7: compact GM model + latest approval package summaries.
+  gm_model?: Record<string, unknown> | null;
+  latest_package?: {
+    id: UUID;
+    status:
+      | "pending_delivery_hr"
+      | "pending_finance_legal"
+      | "pending_ceo_exception"
+      | "ready_to_sign"
+      | "voided"
+      | "rejected";
+    package_hash: string;
+    submitted_at: ISODateTime | null;
+    submitted_by: UUID;
+  } | null;
 }
 
 export interface DealPatch {
@@ -1543,5 +1558,251 @@ export function approveLegacyBatch(
   return request<LegacyReconciliationResponse>(
     `/legacy/batches/${batchId}/approve`,
     { method: "POST" },
+  );
+}
+
+// --- CEO exception (S4 E7) -------------------------------------------------
+
+/**
+ * The CEO brief per the story. Every money field lives as a Decimal-string
+ * (`DecimalStr`) so the browser never coerces to float (rule 2). Fields
+ * marked nullable stay null until the numbers land or the human writes them.
+ */
+export interface CeoBriefClient {
+  name: string;
+  context: string;
+}
+
+export interface CeoBriefGmComponent {
+  value: DecimalStr | null;
+  floor: DecimalStr | null;
+  passes: boolean;
+}
+
+export interface CeoBriefJson {
+  client: CeoBriefClient;
+  scope: string;
+  team_summary: string;
+  revenue: { us: DecimalStr | null; india: DecimalStr | null; blended: DecimalStr | null };
+  cost: { us: DecimalStr | null; india: DecimalStr | null; blended: DecimalStr | null };
+  gm: {
+    us: CeoBriefGmComponent;
+    india: CeoBriefGmComponent;
+    blended: { value: DecimalStr | null };
+  };
+  price_uplift: { us: DecimalStr | null; india: DecimalStr | null };
+  gross_profit_shortfall_usd: DecimalStr | null;
+  alternatives: string[];
+  finance_recommendation: string;
+  delivery_recommendation: string;
+  rationale: null;
+  sources: Array<Record<string, unknown>>;
+  model: string;
+  prompt_version: string;
+}
+
+export type CeoDecision = "approve" | "reject" | "return_for_changes";
+
+export interface CeoException {
+  id: UUID;
+  package_id: UUID;
+  brief_json: CeoBriefJson;
+  rationale_text: string | null;
+  rationale_tidied_text: string | null;
+  rationale_set_by: UUID | null;
+  rationale_set_at: ISODateTime | null;
+  conditions_text: string | null;
+  valid_until: ISODate | null;
+  decision: CeoDecision | null;
+  decided_by: UUID | null;
+  decided_at: ISODateTime | null;
+  drafted_at: ISODateTime | null;
+}
+
+export interface CeoExceptionListResponse {
+  items: CeoException[];
+}
+
+export interface CeoRationaleBody {
+  rationale_text: string;
+  tidy?: boolean;
+}
+
+export interface CeoDecisionBody {
+  decision: CeoDecision;
+  conditions_text?: string | null;
+  valid_until?: ISODate | null;
+}
+
+export interface CeoDelegateBody {
+  delegate_id: UUID;
+  effective_from: ISODate;
+  expiry: ISODate;
+}
+
+export interface CeoDelegateRow {
+  id: UUID;
+  delegate_id: UUID;
+  effective_from: ISODate;
+  expiry: ISODate;
+  granted_by: UUID;
+  granted_at: ISODateTime | null;
+}
+
+export function listCeoExceptions(
+  status: "pending" | "all" = "pending",
+): Promise<CeoExceptionListResponse> {
+  return request<CeoExceptionListResponse>(
+    `/ceo-exceptions?status=${status}`,
+  );
+}
+
+export function getCeoException(id: UUID): Promise<CeoException> {
+  return request<CeoException>(`/ceo-exceptions/${id}`);
+}
+
+export function patchCeoRationale(
+  id: UUID,
+  body: CeoRationaleBody,
+): Promise<CeoException> {
+  return request<CeoException>(`/ceo-exceptions/${id}/rationale`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function postCeoDecision(
+  id: UUID,
+  body: CeoDecisionBody,
+): Promise<CeoException> {
+  return request<CeoException>(`/ceo-exceptions/${id}/decisions`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function grantCeoDelegate(
+  body: CeoDelegateBody,
+): Promise<CeoDelegateRow> {
+  return request<CeoDelegateRow>(`/admin/ceo-delegates`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// --- Approval packages (S4 E7) --------------------------------------------
+
+export type ApprovalPackageStatus =
+  | "pending_delivery_hr"
+  | "pending_finance_legal"
+  | "pending_ceo_exception"
+  | "ready_to_sign"
+  | "voided"
+  | "rejected";
+
+export type ApprovalFunction = "delivery" | "hr" | "finance" | "legal";
+export type ApprovalDecision = "approve" | "reject" | "request_changes";
+
+export interface ApprovalRow {
+  id: UUID;
+  package_id: UUID;
+  function: ApprovalFunction;
+  approver_id: UUID;
+  decision: ApprovalDecision;
+  reason: string | null;
+  decided_at: ISODateTime | null;
+}
+
+export interface ApprovalPackageFloors {
+  us_pass: boolean;
+  india_pass: boolean;
+  requires_ceo: boolean;
+  failing: string[];
+  error?: string;
+}
+
+export interface ApprovalPackage {
+  id: UUID;
+  opportunity_id: UUID;
+  sow_version_id: UUID;
+  gm_model_id: UUID;
+  package_hash: string;
+  status: ApprovalPackageStatus;
+  submitted_by: UUID;
+  submitted_at: ISODateTime | null;
+  released_at: ISODateTime | null;
+  voided_at: ISODateTime | null;
+  voided_reason: string | null;
+  policy_version_id: UUID | null;
+  approvals: ApprovalRow[];
+  floors?: ApprovalPackageFloors;
+}
+
+export interface ApprovalPackageListResponse {
+  items: ApprovalPackage[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface ApprovalPackageSummary {
+  id: UUID;
+  status: ApprovalPackageStatus;
+  package_hash: string;
+  submitted_at: ISODateTime | null;
+  submitted_by: UUID;
+}
+
+export interface ListApprovalPackagesQuery {
+  status?: ApprovalPackageStatus;
+  opportunity_id?: UUID;
+  page?: number;
+  size?: number;
+}
+
+export function submitApprovalPackage(
+  opportunityId: UUID,
+): Promise<ApprovalPackage> {
+  return request<ApprovalPackage>(`/approvals/packages/${opportunityId}`, {
+    method: "POST",
+  });
+}
+
+export function getApprovalPackage(packageId: UUID): Promise<ApprovalPackage> {
+  return request<ApprovalPackage>(`/approvals/packages/${packageId}`);
+}
+
+export function decideApprovalPackage(
+  packageId: UUID,
+  fn: ApprovalFunction,
+  body: { decision: ApprovalDecision; reason?: string | null },
+): Promise<ApprovalPackage> {
+  return request<ApprovalPackage>(
+    `/approvals/packages/${packageId}/decisions/${fn}`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export function voidApprovalPackage(
+  packageId: UUID,
+  reason: string,
+): Promise<ApprovalPackage> {
+  return request<ApprovalPackage>(`/approvals/packages/${packageId}/void`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function listApprovalPackages(
+  query: ListApprovalPackagesQuery = {},
+): Promise<ApprovalPackageListResponse> {
+  const params = new URLSearchParams();
+  if (query.status) params.set("status", query.status);
+  if (query.opportunity_id) params.set("opportunity_id", query.opportunity_id);
+  if (query.page) params.set("page", String(query.page));
+  if (query.size) params.set("size", String(query.size));
+  const qs = params.toString();
+  return request<ApprovalPackageListResponse>(
+    `/approvals/packages${qs ? `?${qs}` : ""}`,
   );
 }

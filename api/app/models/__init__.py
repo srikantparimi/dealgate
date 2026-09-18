@@ -5,9 +5,12 @@ Importing this package registers every mapper on `Base.metadata` — Alembic's
 """
 
 from app.models.adviser_estimate import AdviserEstimate
+from app.models.approval import Approval, ApprovalPackage
 from app.models.audit import AuditEvent
+from app.models.ceo_exception import CeoDelegate, CeoException
 from app.models.client import Agreement, Client, LegalEntity
 from app.models.gm_model import CostLine, GmModel, ResourceLine
+from app.models.hubspot_writeback import HubspotWritebackJob
 from app.models.integration import IntegrationEvent
 from app.models.notification import Notification, NotificationSetting
 from app.models.opportunity import Opportunity
@@ -25,10 +28,15 @@ from app.models.legacy import LegacyImportBatch  # noqa: E402  (order matters)
 __all__ = [
     "AdviserEstimate",
     "Agreement",
+    "Approval",
+    "ApprovalPackage",
     "AuditEvent",
+    "CeoDelegate",
+    "CeoException",
     "Client",
     "CostLine",
     "GmModel",
+    "HubspotWritebackJob",
     "IntegrationEvent",
     "LegacyImportBatch",
     "LegalEntity",

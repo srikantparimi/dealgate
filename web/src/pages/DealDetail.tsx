@@ -6,7 +6,12 @@ import type {
   EngagementType,
   SowVersion,
 } from "../api/client";
-import { getCurrentSowVersion, getDeal, patchDeal } from "../api/client";
+import {
+  getCurrentSowVersion,
+  getDeal,
+  patchDeal,
+  submitApprovalPackage,
+} from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
@@ -300,6 +305,15 @@ export function DealDetailPage() {
         sowVersion={sowVersion}
       />
 
+      <ApprovalPanel
+        opportunityId={id ?? null}
+        userGroups={groups}
+        ownerId={deal.owner_id}
+        currentUserId={user?.sub ?? null}
+        latestPackage={deal.latest_package ?? null}
+        onSubmitted={load}
+      />
+
       <Panel title="Recent audit">
         {deal.audit.length === 0 ? (
           <EmptyState title="No audit events yet" />
@@ -380,6 +394,141 @@ function DeliveryModelPanel({
           sowVersionId={sowVersion?.id ?? null}
         />
       )}
+    </Panel>
+  );
+}
+
+const APPROVAL_STATUS_TONE: Record<
+  string,
+  "ok" | "warn" | "block" | "neutral"
+> = {
+  pending_delivery_hr: "warn",
+  pending_finance_legal: "warn",
+  pending_ceo_exception: "block",
+  ready_to_sign: "ok",
+  voided: "neutral",
+  rejected: "block",
+};
+
+/** Approval package panel — shows the current package (if any) with a
+ * link to its detail, and lets the account owner (or SystemAdmin) submit
+ * a fresh package once no active one exists. Every guard is UX-only; the
+ * server rejects unauthorised POSTs with 403 either way. */
+function ApprovalPanel({
+  opportunityId,
+  userGroups,
+  ownerId,
+  currentUserId,
+  latestPackage,
+  onSubmitted,
+}: {
+  opportunityId: string | null;
+  userGroups: readonly string[];
+  ownerId: string | null;
+  currentUserId: string | null;
+  latestPackage:
+    | {
+        id: string;
+        status:
+          | "pending_delivery_hr"
+          | "pending_finance_legal"
+          | "pending_ceo_exception"
+          | "ready_to_sign"
+          | "voided"
+          | "rejected";
+        submitted_at: string | null;
+      }
+    | null;
+  onSubmitted: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  if (!opportunityId) return null;
+
+  const isOwner = ownerId !== null && currentUserId !== null && ownerId === currentUserId;
+  const isAdmin = userGroups.includes("SystemAdmin");
+  const canSubmit = isOwner || isAdmin;
+  const activeStatuses = new Set([
+    "pending_delivery_hr",
+    "pending_finance_legal",
+    "pending_ceo_exception",
+    "ready_to_sign",
+  ]);
+  const activePackage =
+    latestPackage && activeStatuses.has(latestPackage.status) ? latestPackage : null;
+
+  async function submit() {
+    if (!opportunityId) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitApprovalPackage(opportunityId);
+      onSubmitted();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Panel title="Approval package">
+      {activePackage ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <StatusChip tone={APPROVAL_STATUS_TONE[activePackage.status] ?? "neutral"}>
+            {activePackage.status}
+          </StatusChip>
+          <Link to={`/approvals/${activePackage.id}`} style={{ color: "#1d4ed8" }}>
+            View package
+          </Link>
+          <span style={{ color: "#6b7280", fontSize: 13 }}>
+            submitted {activePackage.submitted_at?.slice(0, 19) ?? "—"}Z
+          </span>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span style={{ color: "#6b7280", fontSize: 13 }}>
+            {latestPackage
+              ? `Previous package ${latestPackage.status}. Submit a fresh one when ready.`
+              : "No approval package submitted yet."}
+          </span>
+          {canSubmit ? (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting}
+              data-testid="submit-approval-btn"
+              style={{
+                padding: "6px 12px",
+                background: "#111827",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                cursor: submitting ? "wait" : "pointer",
+                fontSize: 13,
+              }}
+            >
+              {submitting ? "Submitting…" : "Submit for approval"}
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, color: "#6b7280" }}>
+              Only the account owner may submit.
+            </span>
+          )}
+        </div>
+      )}
+      {error ? (
+        <p style={{ color: "#991b1b", marginTop: 8, fontSize: 13 }}>
+          {String((error as { message?: string })?.message ?? error)}
+        </p>
+      ) : null}
     </Panel>
   );
 }

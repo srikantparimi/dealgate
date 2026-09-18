@@ -3,8 +3,11 @@ import { useAuth } from "./auth/AuthProvider";
 import { RequireAuth } from "./auth/RequireAuth";
 import { AdviserIntakePage } from "./pages/AdviserIntake";
 import { AdviserDetailPage, AdviserListPage } from "./pages/AdviserList";
+import { ApprovalPackageDetailPage } from "./pages/ApprovalPackageDetail";
+import { ApprovalQueuePage } from "./pages/ApprovalQueue";
 import { AuditPage } from "./pages/Audit";
 import { AuthCallback } from "./pages/AuthCallback";
+import { CEOExceptionBriefPage } from "./pages/CEOExceptionBrief";
 import { ClientDetailPage } from "./pages/ClientDetail";
 import { ClientListPage } from "./pages/ClientList";
 import { DealDetailPage } from "./pages/DealDetail";
@@ -36,6 +39,22 @@ const GM_SANDBOX_ROLES = new Set([
 // Finance-owned admin surfaces. The API also enforces role gates so hiding
 // the nav link is UX only.
 const RATE_CARD_ADMIN_ROLES = new Set(["Finance", "SystemAdmin"]);
+// CEO exception inbox — CEO or SystemAdmin see the link. Delegates get
+// the same link when logged in as themselves; the API's inbox endpoint
+// resolves the active delegate at request time so the nav-side gate is
+// only a UX hint (never a security boundary).
+const CEO_EXCEPTION_ROLES = new Set(["CEO", "SystemAdmin"]);
+// S4 E7: any governance function may read the approvals inbox. The API
+// enforces per-decision role gates so this nav link is only a UX hint.
+const APPROVAL_ROLES = new Set([
+  "Delivery",
+  "HR",
+  "Finance",
+  "Legal",
+  "CEO",
+  "SalesLeader",
+  "SystemAdmin",
+]);
 
 function canSeeGmSandbox(groups: string[]): boolean {
   return groups.some((g) => GM_SANDBOX_ROLES.has(g));
@@ -69,6 +88,14 @@ function navForGroups(groups: string[]): NavItem[] {
   }
   if (groups.some((g) => LEGACY_IMPORT_ROLES.has(g))) {
     items.push({ to: "/legacy/import", label: "Legacy import" });
+  }
+  if (groups.some((g) => CEO_EXCEPTION_ROLES.has(g))) {
+    // The API still enforces role + delegate — this link is a UX hint,
+    // not a security boundary.
+    items.push({ to: "/ceo-exceptions", label: "CEO exceptions" });
+  }
+  if (groups.some((g) => APPROVAL_ROLES.has(g))) {
+    items.push({ to: "/approvals", label: "Approvals" });
   }
   if (groups.includes("SystemAdmin")) {
     // Client-side gate for the admin section; the API still enforces
@@ -119,8 +146,17 @@ export function App() {
                   <Route path="/admin/users" element={<UsersAdminPage />} />
                   <Route path="/legacy/import" element={<LegacyImportPage />} />
                   <Route
+                    path="/ceo-exceptions/:id"
+                    element={<CEOExceptionBriefPage />}
+                  />
+                  <Route
                     path="/legacy/reconciliation/:batchId"
                     element={<LegacyReconciliationPage />}
+                  />
+                  <Route path="/approvals" element={<ApprovalQueuePage />} />
+                  <Route
+                    path="/approvals/:id"
+                    element={<ApprovalPackageDetailPage />}
                   />
                 </Routes>
               </AuthedShell>

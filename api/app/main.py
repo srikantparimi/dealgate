@@ -6,7 +6,9 @@ from app.routers import (
     admin_users,
     adviser,
     agreements,
+    approvals,
     audit,
+    ceo_exception,
     clients,
     deals,
     delivery_model,
@@ -38,3 +40,5 @@ app.include_router(sow.router)
 app.include_router(delivery_model.router)
 app.include_router(adviser.router)
 app.include_router(legacy.router)
+app.include_router(approvals.router)
+app.include_router(ceo_exception.router)

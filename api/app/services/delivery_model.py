@@ -583,6 +583,19 @@ async def create_gm_model_version(
             "revenue_india": format(revenue_india, "f"),
         },
     )
+
+    # S4 E7 hook: a new gm_model version voids the active approval package
+    # (change-voids-approval). Behind a single hook module so this service
+    # has no direct dependency on the approvals package.
+    from app.services.approvals_hooks import on_gm_model_created
+
+    await on_gm_model_created(
+        session,
+        opportunity_id=opportunity_id,
+        new_gm_model_id=model.id,
+        actor_id=actor_id,
+    )
+
     await session.commit()
 
     return await load_gm_model(session, model.id)

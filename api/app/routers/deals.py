@@ -37,6 +37,7 @@ from app.services.deals import (
     coverage_state_summary,
     get_client_name,
     is_leader,
+    latest_approval_package_summary,
     latest_gm_model_summary,
 )
 
@@ -111,6 +112,10 @@ class DealDetail(BaseModel):
     # render an "existing model" chip + "open builder" affordance without
     # a second request.
     gm_model: dict[str, Any] | None = None
+    # S4 E7: compact summary of the newest approval_package for the deal,
+    # or None. Lets the deal detail page show "current package: X" without
+    # a second /approvals request. Detail lives at /approvals/packages/{id}.
+    latest_package: dict[str, Any] | None = None
 
 
 class DealPatch(BaseModel):
@@ -199,6 +204,7 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
     coverage = await coverage_state_summary(session, client_id=opp.client_id)
     client_name = await get_client_name(session, opp.client_id)
     gm_model_summary = await latest_gm_model_summary(session, opp.id)
+    package_summary = await latest_approval_package_summary(session, opp.id)
 
     return DealDetail(
         id=opp.id,
@@ -215,6 +221,7 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
         tasks=[TaskRow.model_validate(t) for t in tasks],
         audit=[AuditRow.model_validate(a) for a in audit_rows],
         gm_model=gm_model_summary,
+        latest_package=package_summary,
     )
 
 

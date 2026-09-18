@@ -215,6 +215,19 @@ async def create_sow_version(
             "extract_status": "pending",
         },
     )
+
+    # S4 E7 hook: any new sow_version voids the active approval package
+    # (change-voids-approval). Kept behind a single hook module so this
+    # service has no direct dependency on the approvals package.
+    from app.services.approvals_hooks import on_sow_version_created
+
+    await on_sow_version_created(
+        session,
+        opportunity_id=opportunity_id,
+        new_sow_version_id=version.id,
+        actor_id=uploaded_by,
+    )
+
     return _snapshot(version, opportunity_id)
 
 

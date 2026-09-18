@@ -207,3 +207,15 @@ async def latest_gm_model_summary(
         ),
         "created_at": model.created_at.isoformat() if model.created_at else None,
     }
+
+
+async def latest_approval_package_summary(
+    session: AsyncSession, opportunity_id: uuid.UUID
+) -> dict | None:
+    """Delegate to the approvals service so ``GET /deals/{id}`` can render
+    a "current approval package" card without a second round trip."""
+
+    # Local import — avoid a hard cross-service dependency at module load.
+    from app.services.approvals import latest_package_summary
+
+    return await latest_package_summary(session, opportunity_id)

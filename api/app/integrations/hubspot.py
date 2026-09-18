@@ -50,6 +50,17 @@ class HubSpotClient:
             r.raise_for_status()
             return r.json()
 
+    async def _patch(self, path: str, json_body: dict[str, Any]) -> dict[str, Any]:
+        headers = {**self._headers(), "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.patch(
+                f"{self._base_url}{path}",
+                headers=headers,
+                json=json_body,
+            )
+            r.raise_for_status()
+            return r.json() if r.content else {}
+
     async def get_deal(self, deal_id: str) -> dict[str, Any]:
         """Return the deal record including hubspot_owner_id and associated company."""
 
@@ -74,6 +85,24 @@ class HubSpotClient:
             params={"properties": "name,domain"},
         )
 
+    async def update_deal(self, deal_id: str, properties: dict[str, Any]) -> None:
+        """Write DealGate governance properties back to a HubSpot deal.
+
+        Uses the CRM v3 ``PATCH /crm/v3/objects/deals/{deal_id}`` endpoint.
+        The caller (`app.services.hubspot_writeback`) is responsible for
+        restricting ``properties`` to the three governance keys DealGate is
+        allowed to write; this method does not re-validate.
+
+        On non-2xx, ``httpx.HTTPStatusError`` bubbles up so the worker can
+        distinguish 429 (retry with back-off) from 404 (deal missing) from
+        other 4xx/5xx (final failure).
+        """
+
+        await self._patch(
+            f"/crm/v3/objects/deals/{deal_id}",
+            {"properties": properties},
+        )
+
 
 class StubHubSpotClient(HubSpotClient):
     """In-memory HubSpot client for tests and local dev.
@@ -95,6 +124,12 @@ class StubHubSpotClient(HubSpotClient):
         self.deals: dict[str, dict[str, Any]] = deals or {}
         self.owners: dict[str, dict[str, Any] | None] = owners or {}
         self.companies: dict[str, dict[str, Any]] = companies or {}
+        # Records every ``update_deal`` call so write-back tests can assert
+        # on the exact HubSpot payload the service sent.
+        self.updates: list[dict[str, Any]] = []
+        # When set, the next ``update_deal`` call raises the given error.
+        # Tests use this to simulate HubSpot 429 / 404 / 500 responses.
+        self.update_error: Exception | None = None
 
     async def get_deal(self, deal_id: str) -> dict[str, Any]:
         return self.deals[deal_id]
@@ -108,6 +143,11 @@ class StubHubSpotClient(HubSpotClient):
 
     async def get_company(self, company_id: str) -> dict[str, Any]:
         return self.companies[company_id]
+
+    async def update_deal(self, deal_id: str, properties: dict[str, Any]) -> None:
+        if self.update_error is not None:
+            raise self.update_error
+        self.updates.append({"deal_id": deal_id, "properties": dict(properties)})
 
 
 def get_hubspot_client() -> HubSpotClient:
