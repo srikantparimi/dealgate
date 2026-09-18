@@ -10,6 +10,8 @@ import { AuthCallback } from "./pages/AuthCallback";
 import { CEOExceptionBriefPage } from "./pages/CEOExceptionBrief";
 import { ClientDetailPage } from "./pages/ClientDetail";
 import { ClientListPage } from "./pages/ClientList";
+import { ClientSowGmPage } from "./pages/ClientSowGm";
+import { DashboardPage } from "./pages/Dashboard";
 import { DealDetailPage } from "./pages/DealDetail";
 import { DealListPage } from "./pages/DealList";
 import { GMSandboxPage } from "./pages/GMSandbox";
@@ -19,6 +21,7 @@ import { MyTasksPage } from "./pages/MyTasks";
 import { NotificationSettingsPage } from "./pages/NotificationSettings";
 import { PolicyAdminPage } from "./pages/PolicyAdmin";
 import { RateCardsPage } from "./pages/RateCards";
+import { RenewalBoardPage } from "./pages/RenewalBoard";
 import { UsersAdminPage } from "./pages/UsersAdmin";
 import { AppShell } from "./ui/AppShell";
 import { Nav, type NavItem } from "./ui/Nav";
@@ -55,6 +58,15 @@ const APPROVAL_ROLES = new Set([
   "SalesLeader",
   "SystemAdmin",
 ]);
+// S5 E9: renewals inbox surfaces to Sales, CEO, Finance and SystemAdmin per
+// the story. The API still enforces the per-row edit gate (account owner).
+const RENEWAL_NAV_ROLES = new Set([
+  "Sales",
+  "SalesLeader",
+  "CEO",
+  "Finance",
+  "SystemAdmin",
+]);
 
 function canSeeGmSandbox(groups: string[]): boolean {
   return groups.some((g) => GM_SANDBOX_ROLES.has(g));
@@ -62,6 +74,10 @@ function canSeeGmSandbox(groups: string[]): boolean {
 
 function navForGroups(groups: string[]): NavItem[] {
   const items: NavItem[] = [
+    // S5 E10: every authenticated user gets a Dashboard link that routes to
+    // their role's page. The Dashboard page also handles multi-role users
+    // with an in-page selector; API enforces the real gate.
+    { to: "/dashboard", label: "Dashboard" },
     { to: "/deals", label: "Deals" },
     { to: "/clients", label: "Clients" },
     // Available to every authenticated user; the API also enforces per-row
@@ -97,6 +113,9 @@ function navForGroups(groups: string[]): NavItem[] {
   if (groups.some((g) => APPROVAL_ROLES.has(g))) {
     items.push({ to: "/approvals", label: "Approvals" });
   }
+  if (groups.some((g) => RENEWAL_NAV_ROLES.has(g))) {
+    items.push({ to: "/renewals", label: "Renewals" });
+  }
   if (groups.includes("SystemAdmin")) {
     // Client-side gate for the admin section; the API still enforces
     // `require_role("SystemAdmin")` so the real gate cannot be bypassed.
@@ -127,10 +146,15 @@ export function App() {
               <AuthedShell>
                 <Routes>
                   <Route path="/" element={<Navigate to="/deals" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/deals" element={<DealListPage />} />
                   <Route path="/deals/:id" element={<DealDetailPage />} />
                   <Route path="/clients" element={<ClientListPage />} />
                   <Route path="/clients/:id" element={<ClientDetailPage />} />
+                  <Route
+                    path="/clients/:id/sows"
+                    element={<ClientSowGmPage />}
+                  />
                   <Route path="/tasks" element={<MyTasksPage />} />
                   <Route
                     path="/settings/notifications"
@@ -158,6 +182,7 @@ export function App() {
                     path="/approvals/:id"
                     element={<ApprovalPackageDetailPage />}
                   />
+                  <Route path="/renewals" element={<RenewalBoardPage />} />
                 </Routes>
               </AuthedShell>
             </RequireAuth>

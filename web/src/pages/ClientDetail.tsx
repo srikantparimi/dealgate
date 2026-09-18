@@ -7,6 +7,7 @@ import type {
   ClientRecentActivity,
 } from "../api/client";
 import { getClient } from "../api/client";
+import { useAuth } from "../auth/AuthProvider";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { PageHeader } from "../ui/PageHeader";
@@ -14,6 +15,16 @@ import { StatusChip } from "../ui/StatusChip";
 import { Table, type Column } from "../ui/Table";
 import { AgreementsPanel } from "./AgreementsPanel";
 import { coverageTone } from "./ClientList";
+
+// S5 E10: "SOWs & GM" tab visibility mirrors the governance read set that
+// the ``/dashboards/client/{id}`` API enforces. The API is the source of
+// truth; hiding the tab is a UX hint, not a security boundary.
+const SOW_GM_TAB_ROLES = new Set([
+  "Finance",
+  "CEO",
+  "Delivery",
+  "SystemAdmin",
+]);
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -33,8 +44,22 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+function useOptionalAuth() {
+  // Existing ClientDetail tests render the page without wrapping it in
+  // AuthProvider. Wrap the hook so that unwrapped renders still work and
+  // simply hide the "SOWs & GM" tab.
+  try {
+    return useAuth();
+  } catch {
+    return null;
+  }
+}
+
 export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const auth = useOptionalAuth();
+  const groups = auth?.user?.groups ?? [];
+  const canSeeSowGm = groups.some((g) => SOW_GM_TAB_ROLES.has(g));
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -107,6 +132,17 @@ export function ClientDetailPage() {
               <span style={{ color: "#6b7280" }}>
                 HubSpot: {client.hubspot_company_id}
               </span>
+            ) : null}
+            {canSeeSowGm ? (
+              <>
+                {" · "}
+                <Link
+                  to={`/clients/${client.id}/sows`}
+                  style={{ color: "#1d4ed8" }}
+                >
+                  SOWs &amp; GM
+                </Link>
+              </>
             ) : null}
           </span>
         }

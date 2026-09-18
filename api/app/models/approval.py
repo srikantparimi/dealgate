@@ -36,6 +36,11 @@ PACKAGE_STATUSES: tuple[str, ...] = (
     "pending_finance_legal",
     "pending_ceo_exception",
     "ready_to_sign",
+    # S5 E8: signed SOW distribution flips ``ready_to_sign`` → ``released``
+    # via ``app.services.approvals.mark_released``. The row is still
+    # append-only w.r.t. every other column; only ``status`` /
+    # ``released_at`` mutate on this last transition.
+    "released",
     "voided",
     "rejected",
 )
@@ -87,7 +92,8 @@ class ApprovalPackage(Base):
         CheckConstraint(
             "status IN ("
             "'pending_delivery_hr', 'pending_finance_legal', "
-            "'pending_ceo_exception', 'ready_to_sign', 'voided', 'rejected'"
+            "'pending_ceo_exception', 'ready_to_sign', 'released', "
+            "'voided', 'rejected'"
             ")",
             name="ck_approval_package_status",
         ),

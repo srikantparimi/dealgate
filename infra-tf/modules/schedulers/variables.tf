@@ -131,3 +131,9 @@ variable "schedule_expression" {
   type        = string
   default     = "rate(5 minutes)"
 }
+
+variable "renewals_schedule_expression" {
+  description = "EventBridge schedule expression for the renewals-scheduler tick. Daily is enough — the finest time granularity a renewal cares about is a whole day."
+  type        = string
+  default     = "rate(1 hour)"
+}

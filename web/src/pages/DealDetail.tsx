@@ -19,6 +19,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { StatusChip } from "../ui/StatusChip";
 import { Table, type Column } from "../ui/Table";
 import { DeliveryModelBuilder } from "./DeliveryModelBuilder";
+import { SignedSOWReview } from "./SignedSOWReview";
 import { SOWConfirm } from "./SOWConfirm";
 import { SOWUpload } from "./SOWUpload";
 
@@ -313,6 +314,18 @@ export function DealDetailPage() {
         latestPackage={deal.latest_package ?? null}
         onSubmitted={load}
       />
+
+      {deal.latest_package?.status === "ready_to_sign" ? (
+        <Panel title="Signed SOW">
+          <SignedSOWReview
+            packageId={deal.latest_package.id}
+            canWrite={
+              groups.includes("SystemAdmin") ||
+              (deal.owner_id !== null && user?.sub === deal.owner_id)
+            }
+          />
+        </Panel>
+      ) : null}
 
       <Panel title="Recent audit">
         {deal.audit.length === 0 ? (

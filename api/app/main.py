@@ -10,6 +10,7 @@ from app.routers import (
     audit,
     ceo_exception,
     clients,
+    dashboards,
     deals,
     delivery_model,
     gm,
@@ -18,6 +19,8 @@ from app.routers import (
     legacy,
     me,
     notifications,
+    renewals,
+    signed_sow,
     sow,
     tasks,
 )
@@ -42,3 +45,6 @@ app.include_router(adviser.router)
 app.include_router(legacy.router)
 app.include_router(approvals.router)
 app.include_router(ceo_exception.router)
+app.include_router(signed_sow.router)
+app.include_router(renewals.router)
+app.include_router(dashboards.router)

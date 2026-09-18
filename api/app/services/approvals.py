@@ -303,6 +303,16 @@ async def submit_package(
       - 409 if an active package with the same package_hash exists.
     """
 
+    # S5 E9: block new commitments on a churned SOW. Import lazily to
+    # avoid an app.services.renewals ↔ app.services.approvals import cycle.
+    from app.services.renewals import has_churn as _renewal_has_churn
+
+    if await _renewal_has_churn(session, opportunity_id):
+        raise ApprovalError(
+            status_code=409,
+            detail="SOW churned — new commitments blocked",
+        )
+
     sow_version = await _latest_confirmed_sow_version(session, opportunity_id)
     if sow_version is None:
         raise ApprovalError(
@@ -898,6 +908,52 @@ async def serialize_package_with_floors(
     return payload
 
 
+# ---- released transition (S5 E8 hook) -----------------------------------
+
+
+async def mark_released(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    package: ApprovalPackage,
+) -> ApprovalPackage:
+    """Move a ``ready_to_sign`` package to ``released``.
+
+    Called from :mod:`app.services.signed_sow` once the distribution email
+    has been sent + kickoff/billing tasks are filed. Kept tight so the
+    caller owns the transaction — this helper flips ``status`` +
+    ``released_at`` and audits the change (rule 5). A call on a
+    non-``ready_to_sign`` package surfaces as 409.
+    """
+
+    if package.status != "ready_to_sign":
+        raise ApprovalError(
+            status_code=409,
+            detail=(
+                f"package is {package.status!r}; "
+                "only 'ready_to_sign' can be released"
+            ),
+        )
+    old = package.status
+    package.status = "released"
+    if package.released_at is None:
+        package.released_at = datetime.now(UTC)
+    await session.flush()
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="package.released",
+        entity="approval_package",
+        entity_id=str(package.id),
+        before={"status": old},
+        after={
+            "status": package.status,
+            "released_at": package.released_at.isoformat(),
+        },
+    )
+    return package
+
+
 __all__ = [
     "ApprovalError",
     "ListFilters",
@@ -907,6 +963,7 @@ __all__ = [
     "list_packages",
     "load_package",
     "manual_void",
+    "mark_released",
     "package_hash",
     "serialize_approval",
     "serialize_package",

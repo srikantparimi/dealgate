@@ -16,6 +16,8 @@ from app.models.notification import Notification, NotificationSetting
 from app.models.opportunity import Opportunity
 from app.models.policy import PolicyVersion
 from app.models.rate_card import RateCardRow, RateCardVersion
+from app.models.renewal import Renewal
+from app.models.signed_sow import SignedSowUpload
 from app.models.sow import Sow, SowVersion
 from app.models.task import Task
 from app.models.user import User
@@ -46,7 +48,9 @@ __all__ = [
     "PolicyVersion",
     "RateCardRow",
     "RateCardVersion",
+    "Renewal",
     "ResourceLine",
+    "SignedSowUpload",
     "Sow",
     "SowVersion",
     "Task",

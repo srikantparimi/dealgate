@@ -1806,3 +1806,437 @@ export function listApprovalPackages(
     `/approvals/packages${qs ? `?${qs}` : ""}`,
   );
 }
+
+// --- Renewals (S5 E9) ------------------------------------------------------
+
+export type RenewalStatus = "open" | "closed" | "extended" | "churn";
+
+export interface RenewalRow {
+  id: UUID;
+  opportunity_id: UUID;
+  term_end: ISODate;
+  trigger_date: ISODate;
+  status: RenewalStatus;
+  outcome_summary: string | null;
+  replacement_sow_version_id: UUID | null;
+  opened_at: ISODateTime | null;
+  updated_at: ISODateTime | null;
+  days_until_end: number;
+  hubspot_deal_id: string | null;
+  owner_id: UUID | null;
+  client_id: UUID | null;
+}
+
+export interface RenewalListResponse {
+  items: RenewalRow[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface ListRenewalsQuery {
+  status?: RenewalStatus;
+  owner?: "me" | UUID;
+  page?: number;
+  size?: number;
+}
+
+export interface PatchRenewalBody {
+  outcome_summary?: string | null;
+  status?: "closed" | "extended";
+  replacement_sow_version_id?: UUID | null;
+}
+
+export function listRenewals(
+  query: ListRenewalsQuery = {},
+): Promise<RenewalListResponse> {
+  const params = new URLSearchParams();
+  if (query.status) params.set("status", query.status);
+  if (query.owner) params.set("owner", query.owner);
+  if (query.page) params.set("page", String(query.page));
+  if (query.size) params.set("size", String(query.size));
+  const qs = params.toString();
+  return request<RenewalListResponse>(`/renewals${qs ? `?${qs}` : ""}`);
+}
+
+export function getRenewal(id: UUID): Promise<RenewalRow> {
+  return request<RenewalRow>(`/renewals/${id}`);
+}
+
+export function patchRenewal(
+  id: UUID,
+  body: PatchRenewalBody,
+): Promise<RenewalRow> {
+  return request<RenewalRow>(`/renewals/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+// --- Role dashboards (S5 E10) ----------------------------------------------
+
+/**
+ * Every dashboard response ships pre-computed by the server (blueprint §2,
+ * CLAUDE.md rule 2). Money fields are Decimal strings — do not coerce to
+ * ``number`` before rendering. The typed clients below match one-to-one
+ * with :mod:`app.services.dashboards`.
+ */
+export interface CeoBelowFloorDeal {
+  opportunity_id: UUID;
+  hubspot_deal_id: string;
+  governance_status: string;
+  revenue: DecimalStr | null;
+  gm_us: DecimalStr | null;
+  gm_india: DecimalStr | null;
+}
+
+export interface CeoExceptionPending {
+  id: UUID;
+  package_id: UUID;
+  drafted_at: ISODateTime | null;
+  has_rationale: boolean;
+}
+
+export interface CeoAgedBlocker {
+  task_id: UUID;
+  subject: string;
+  due_date: ISODate | null;
+  escalation_level: number;
+  category: string | null;
+}
+
+export interface CeoDashboard {
+  pipeline_value: DecimalStr;
+  approved_vs_forecast_gp: {
+    approved_gp: DecimalStr;
+    forecast_gp: DecimalStr;
+  };
+  below_floor_deals: CeoBelowFloorDeal[];
+  ceo_exceptions_pending: CeoExceptionPending[];
+  revenue_expiring_in_90_days: Array<Record<string, unknown>>;
+  aged_blockers_by_owner: Record<string, CeoAgedBlocker[]>;
+  notes?: Record<string, string>;
+}
+
+export interface FinanceGmBySowRow {
+  opportunity_id: UUID;
+  hubspot_deal_id: string;
+  gm_model_id: UUID;
+  engagement_type: string;
+  revenue: DecimalStr | null;
+  cost: DecimalStr | null;
+  gm_us: DecimalStr | null;
+  gm_india: DecimalStr | null;
+  gm_blended: DecimalStr | null;
+  complete: boolean;
+  approved: boolean;
+}
+
+export interface FinanceGeographyTotals {
+  revenue: DecimalStr | null;
+  cost: DecimalStr | null;
+  gm: DecimalStr | null;
+}
+
+export interface FinanceMissingCostRow {
+  opportunity_id: UUID;
+  hubspot_deal_id: string;
+  gm_model_id: UUID;
+}
+
+export interface FinanceExposureRow {
+  ceo_exception_id: UUID;
+  package_id: UUID;
+  gross_profit_shortfall_usd: DecimalStr | null;
+}
+
+export interface FinanceDashboard {
+  gm_by_sow: FinanceGmBySowRow[];
+  gm_by_geography: {
+    US: FinanceGeographyTotals;
+    India: FinanceGeographyTotals;
+  };
+  approved_vs_forecast_vs_actual: {
+    approved_gp: DecimalStr | null;
+    forecast_gp: DecimalStr | null;
+    actual_gp: DecimalStr | null;
+  };
+  missing_cost_inputs: FinanceMissingCostRow[];
+  exceptions_and_exposure: FinanceExposureRow[];
+  notes?: Record<string, string>;
+}
+
+export interface DeliveryEstimateAwaitingReview {
+  id: UUID;
+  submitted_at: ISODateTime | null;
+  submitted_by: UUID | null;
+}
+
+export interface DeliveryStaffingGap {
+  resource_line_id: UUID;
+  gm_model_id: UUID;
+  role: string;
+  seniority: string;
+  location: "US" | "India";
+  start_date: ISODate;
+  days_until_start: number;
+  lead_time_days: number;
+  warning: string;
+}
+
+export interface DeliveryUpcomingStart {
+  resource_line_id: UUID;
+  gm_model_id: UUID;
+  role: string;
+  seniority: string;
+  location: "US" | "India";
+  start_date: ISODate;
+  person_name: string | null;
+}
+
+export interface DeliveryDashboard {
+  estimates_awaiting_review: DeliveryEstimateAwaitingReview[];
+  staffing_gaps: DeliveryStaffingGap[];
+  upcoming_starts: DeliveryUpcomingStart[];
+  effort_variance: Array<Record<string, unknown>>;
+  notes?: Record<string, string>;
+}
+
+export interface SalesMyDeal {
+  id: UUID;
+  hubspot_deal_id: string;
+  governance_status: string;
+  sales_stage: string | null;
+  engagement_type: string | null;
+  client_id: UUID | null;
+  next_client_action: string | null;
+  next_client_date: ISODate | null;
+}
+
+export interface SalesMissingContract {
+  client_id: UUID;
+  client_name: string | null;
+  coverage_state: string;
+}
+
+export interface SalesAdviserEstimate {
+  id: UUID;
+  submitted_at: ISODateTime | null;
+  label: string;
+  reviewed: boolean;
+}
+
+export interface SalesApprovalStatus {
+  id: UUID;
+  opportunity_id: UUID;
+  status: ApprovalPackageStatus;
+  submitted_at: ISODateTime | null;
+}
+
+export interface SalesDashboard {
+  my_deals: SalesMyDeal[];
+  next_client_actions: SalesMyDeal[];
+  missing_contracts: SalesMissingContract[];
+  adviser_estimates: SalesAdviserEstimate[];
+  approval_statuses: SalesApprovalStatus[];
+}
+
+export interface HrDemandBySkillRow {
+  role: string;
+  seniority: string;
+  location: "US" | "India";
+  confirmed_fte: DecimalStr | null;
+  weighted_fte: DecimalStr | null;
+}
+
+export interface HrDashboard {
+  demand_by_skill: HrDemandBySkillRow[];
+}
+
+export interface LegalPackageAwaiting {
+  id: UUID;
+  opportunity_id: UUID;
+  submitted_at: ISODateTime | null;
+}
+
+export interface LegalNoticeDate {
+  agreement_id: UUID;
+  kind: string;
+  state: string;
+  due_date: ISODate | null;
+  next_action: string | null;
+  owner_email: string | null;
+}
+
+export interface LegalDashboard {
+  nda_msa_coverage_summary: Record<string, number>;
+  packages_awaiting_legal: LegalPackageAwaiting[];
+  notice_dates_approaching: LegalNoticeDate[];
+}
+
+export interface ClientSowRow {
+  opportunity_id: UUID;
+  hubspot_deal_id: string;
+  gm_model_id: UUID;
+  engagement_type: string;
+  start_date: ISODate | null;
+  end_date: ISODate | null;
+  revenue_us: DecimalStr | null;
+  revenue_india: DecimalStr | null;
+  cost_us: DecimalStr | null;
+  cost_india: DecimalStr | null;
+  approved_gm: DecimalStr | null;
+  forecast_gm: DecimalStr | null;
+  actual_gm: DecimalStr | null;
+  exception_flag: boolean;
+}
+
+export interface ClientSowTotals {
+  revenue_us: DecimalStr | null;
+  revenue_india: DecimalStr | null;
+  revenue: DecimalStr | null;
+  cost_us: DecimalStr | null;
+  cost_india: DecimalStr | null;
+  cost: DecimalStr | null;
+  gross_profit: DecimalStr | null;
+  client_gm: DecimalStr | null;
+  formula: string;
+}
+
+export interface ClientSowGmDashboard {
+  client_id: UUID;
+  client_name: string | null;
+  rows: ClientSowRow[];
+  totals: ClientSowTotals;
+}
+
+export function getCeoDashboard(): Promise<CeoDashboard> {
+  return request<CeoDashboard>(`/dashboards/ceo`);
+}
+
+export function getFinanceDashboard(): Promise<FinanceDashboard> {
+  return request<FinanceDashboard>(`/dashboards/finance`);
+}
+
+export function getDeliveryDashboard(): Promise<DeliveryDashboard> {
+  return request<DeliveryDashboard>(`/dashboards/delivery`);
+}
+
+export function getSalesDashboard(): Promise<SalesDashboard> {
+  return request<SalesDashboard>(`/dashboards/sales`);
+}
+
+export function getHrDashboard(): Promise<HrDashboard> {
+  return request<HrDashboard>(`/dashboards/hr`);
+}
+
+export function getLegalDashboard(): Promise<LegalDashboard> {
+  return request<LegalDashboard>(`/dashboards/legal`);
+}
+
+export function getClientSowGmDashboard(
+  clientId: UUID,
+): Promise<ClientSowGmDashboard> {
+  return request<ClientSowGmDashboard>(`/dashboards/client/${clientId}`);
+}
+
+// --- Signed SOW verify + distribution (S5 E8) ------------------------------
+
+/**
+ * The four "material terms" the signed SOW diff engine locks against.
+ * Kept in lock-step with ``app.services.signed_sow._MATERIAL_FIELDS``.
+ */
+export type SignedSowFieldName =
+  | "price"
+  | "term_start"
+  | "term_end"
+  | "scope_summary";
+
+/** One row in the side-by-side diff viewer. */
+export interface SignedSowDiffField {
+  field: SignedSowFieldName;
+  approved: string | null;
+  extracted: string | null;
+  match: boolean;
+  // Only populated on the scope row.
+  similarity?: number;
+  threshold?: number;
+}
+
+export interface SignedSowDiff {
+  fields: SignedSowDiffField[];
+  match: boolean;
+  reason?: string;
+}
+
+export type SignedSowVerifyStatus = "pending" | "verified" | "blocked";
+
+export interface SignedSowUpload {
+  id: UUID;
+  package_id: UUID;
+  file_s3_key: string;
+  file_hash: string;
+  uploaded_by: UUID;
+  uploaded_at: ISODateTime | null;
+  verify_status: SignedSowVerifyStatus;
+  diff_json: SignedSowDiff | null;
+  verified_at: ISODateTime | null;
+  released_at: ISODateTime | null;
+}
+
+export interface SignedSowUploadUrlRequest {
+  filename: string;
+  content_type: string;
+}
+
+export interface SignedSowUploadUrlResponse {
+  url: string;
+  s3_key: string;
+  method: "PUT";
+  expires_in: number;
+  required_headers?: Record<string, string> | null;
+  max_bytes: number;
+}
+
+export interface CreateSignedSowUploadBody {
+  file_s3_key: string;
+  file_hash: string;
+}
+
+export function getSignedSowUploadUrl(
+  packageId: UUID,
+  body: SignedSowUploadUrlRequest,
+): Promise<SignedSowUploadUrlResponse> {
+  return request<SignedSowUploadUrlResponse>(
+    `/signed-sow/${packageId}/upload-url`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export function createSignedSowUpload(
+  packageId: UUID,
+  body: CreateSignedSowUploadBody,
+): Promise<SignedSowUpload> {
+  return request<SignedSowUpload>(`/signed-sow/${packageId}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getSignedSowUpload(
+  packageId: UUID,
+): Promise<SignedSowUpload | null> {
+  return request<SignedSowUpload | null>(`/signed-sow/${packageId}`);
+}
+
+export function verifySignedSow(packageId: UUID): Promise<SignedSowUpload> {
+  return request<SignedSowUpload>(`/signed-sow/${packageId}/verify`, {
+    method: "POST",
+  });
+}
+
+export function releaseSignedSow(packageId: UUID): Promise<SignedSowUpload> {
+  return request<SignedSowUpload>(`/signed-sow/${packageId}/release`, {
+    method: "POST",
+  });
+}
