@@ -49,6 +49,7 @@ from app.services.gm_sandbox import (
     parse_engagement_type,
     parse_inputs,
 )
+from app.services.client_rate_cards import ResolvedBillRate, resolve_bill_rate
 from app.services.rate_cards import CostBand, active_rate_card, lookup_cost
 
 # --- exceptions ------------------------------------------------------------
@@ -326,6 +327,47 @@ async def _cost_band_for(
     return lookup_cost(line.role, line.seniority, line.location, card)
 
 
+async def _client_id_for(
+    session: AsyncSession, opportunity_id: uuid.UUID
+) -> Optional[uuid.UUID]:
+    """Return the ``client_id`` on the opportunity, or ``None``."""
+
+    from app.models.opportunity import Opportunity
+
+    opp = (
+        await session.execute(
+            select(Opportunity).where(Opportunity.id == opportunity_id)
+        )
+    ).scalar_one_or_none()
+    if opp is None:
+        return None
+    return opp.client_id
+
+
+async def _resolve_bill_rate_for(
+    session: AsyncSession,
+    *,
+    client_id: Optional[uuid.UUID],
+    line: ResourceLinePayload,
+) -> ResolvedBillRate:
+    """Resolve a bill rate for a resource line via the client card ladder.
+
+    Wraps :func:`app.services.client_rate_cards.resolve_bill_rate` so the
+    Builder gets a single "one call, one answer" surface.
+    """
+
+    return await resolve_bill_rate(
+        session,
+        client_id=client_id,
+        role=line.role,
+        seniority=line.seniority,
+        location=line.location,
+        sow_stated=(
+            line.hourly_bill_rate if line.hourly_bill_rate and line.hourly_bill_rate > 0 else None
+        ),
+    )
+
+
 # --- pure computation ------------------------------------------------------
 
 
@@ -522,14 +564,33 @@ async def create_gm_model_version(
     if not payload.resource_lines:
         raise DeliveryModelInputError("resource_lines must not be empty")
 
-    # Pre-fill missing costs from the rate card, once per role/seniority/loc.
+    # Look up the deal's client so ``resolve_bill_rate`` can pull the
+    # client rate card. ``None`` collapses the resolver to the loud
+    # "company default" fallback path (S9 wave 1).
+    client_id = await _client_id_for(session, opportunity_id)
+
+    # Pre-fill missing costs from the rate card, and missing bill rates
+    # via the client rate card (S9 wave 1). Explicit caller values always
+    # win — this only fills gaps.
     filled_lines: list[ResourceLinePayload] = []
     for line in payload.resource_lines:
-        if line.hourly_cost is not None:
-            filled_lines.append(line)
-            continue
-        band = await _cost_band_for(session, line)
-        if band is None:
+        # Resolve bill rate when the caller sent zero/None.
+        resolved_bill = line.hourly_bill_rate
+        if not resolved_bill or resolved_bill <= 0:
+            r = await _resolve_bill_rate_for(
+                session, client_id=client_id, line=line
+            )
+            if r.rate is not None:
+                resolved_bill = r.rate
+
+        # Resolve cost band when the caller sent no cost.
+        cost = line.hourly_cost
+        if cost is None:
+            band = await _cost_band_for(session, line)
+            if band is not None:
+                cost = band.base
+
+        if resolved_bill == line.hourly_bill_rate and cost == line.hourly_cost:
             filled_lines.append(line)
             continue
         filled_lines.append(
@@ -542,9 +603,10 @@ async def create_gm_model_version(
                 start_date=line.start_date,
                 end_date=line.end_date,
                 hours_billable=line.hours_billable,
-                hourly_bill_rate=line.hourly_bill_rate,
-                hourly_cost=band.base,
+                hourly_bill_rate=resolved_bill,
+                hourly_cost=cost,
                 validated_by=line.validated_by,
+                phase_name=line.phase_name,
             )
         )
 

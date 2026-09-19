@@ -21,6 +21,12 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
    No backend-only or UI-only feature PRs, no pages on mock data. Build pages
    from the shared UI kit in `web/src/ui`; no business math in the browser.
    A story is not done until a human can complete it in the browser on staging.
+10. **Every field has a provenance** (`extracted` / `looked_up` / `calculated` /
+    `defaulted` / `manual`). `manual` requires a written justification in the
+    story file for why the value cannot be derived from the SOW, master data,
+    or a calculation. **A blank form on open is a defect.** Pre-filled is
+    the default state; screens confirm what the system decided, they do not
+    ask a person to type it. See `docs/sow-first-principles.md`.
 
 ## Where things live
 

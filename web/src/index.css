@@ -3,72 +3,98 @@
 @tailwind utilities;
 
 /*
- * DealGate design tokens. Every value here mirrors
- * `docs/design/DealGate_Design_Tokens.json`. Do not change one without the
- * other — `src/__tests__/ui-v2/tokens.test.ts` fails when they drift.
+ * DealGate v2.1 design tokens. Every value here mirrors
+ * `docs/design/DealGate_Design_Tokens_v2.1.json`. Do not change one without
+ * the other — `src/__tests__/ui-v2/tokens.test.ts` fails when they drift.
+ *
+ * Rules of the palette (see the tokens JSON `colorRules`):
+ *   - `--dg-primary` is the only accent.
+ *   - `--dg-lime` shows only inside the plum banner.
+ *   - `--dg-plum` is banner / toast / tooltip only, never a page or card.
+ *   - `--dg-success` / `--dg-warning` / `--dg-danger` are semantic only.
  */
 :root,
 [data-theme="light"] {
   color-scheme: light;
 
-  --dg-canvas: #F5F4F8;
+  --dg-canvas: #F6F5F9;
   --dg-surface: #FFFFFF;
-  --dg-navigation: #FDFCFF;
-  --dg-text: #272337;
-  --dg-text-secondary: #746E82;
-  --dg-divider: #E9E5EF;
+  --dg-surface-sunken: #F1EFF5;
+  --dg-navigation: #FBFAFD;
+  --dg-text: #1F1B2E;
+  --dg-text-secondary: #665F7A;
+  --dg-text-muted: #756D8A;
+  --dg-border: #E7E3EE;
+  --dg-border-strong: #D3CDDD;
   --dg-input-border: #8F819F;
-  --dg-primary: #7146CE;
+  --dg-primary: #6D42C8;
+  --dg-primary-hover: #5B34B4;
+  --dg-primary-text: #5B34B4;
+  --dg-primary-subtle: #F0EBFB;
   --dg-on-primary: #FFFFFF;
-  --dg-primary-subtle: #EFE9FB;
-  --dg-success: #13765C;
-  --dg-success-surface: #E7F5EF;
-  --dg-warning: #9A5B0A;
-  --dg-warning-surface: #FFF4DF;
-  --dg-danger: #BD3446;
-  --dg-danger-surface: #FCEBEE;
-  --dg-focus: #4F46E5;
-  --dg-executive-banner: #242035;
-  --dg-executive-text: #FBFAFF;
-  --dg-executive-secondary: #C1B9D2;
-  --dg-hero-action: #D8F58C;
-  --dg-hero-action-text: #24301B;
+  --dg-plum: #241F35;
+  --dg-plum-raised: #2F2946;
+  --dg-plum-line: #3E3757;
+  --dg-on-plum: #F7F4FF;
+  --dg-on-plum-secondary: #B9B1CC;
+  --dg-lime: #D8F58C;
+  --dg-on-lime: #1F2A14;
+  --dg-success: #146A52;
+  --dg-success-surface: #E3F3EA;
+  --dg-warning: #8A4E06;
+  --dg-warning-surface: #FFF1D6;
+  --dg-danger: #B12A3E;
+  --dg-danger-surface: #FBE8EB;
+  --dg-focus: #6D42C8;
+  --dg-chart-series-1: #6D42C8;
+  --dg-chart-series-2: #128F7C;
+  --dg-shadow-overlay: 0 8px 24px rgba(31,27,46,0.12);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --dg-canvas: #10101A;
-  --dg-surface: #1A1927;
-  --dg-navigation: #15131F;
-  --dg-text: #F2EFFF;
-  --dg-text-secondary: #BAB2CF;
-  --dg-divider: #383247;
-  --dg-input-border: #776B8C;
-  --dg-primary: #7957C2;
-  --dg-on-primary: #FFFFFF;
-  --dg-primary-subtle: #32264C;
-  --dg-success: #77D8B6;
-  --dg-success-surface: #163D33;
-  --dg-warning: #F2C071;
-  --dg-warning-surface: #3E301C;
-  --dg-danger: #FF9BAB;
-  --dg-danger-surface: #402331;
-  --dg-focus: #B7B1FF;
-  --dg-executive-banner: #242035;
-  --dg-executive-text: #FBFAFF;
-  --dg-executive-secondary: #C1B9D2;
-  --dg-hero-action: #D8F58C;
-  --dg-hero-action-text: #24301B;
+  --dg-canvas: #121120;
+  --dg-surface: #1B1929;
+  --dg-surface-sunken: #221F33;
+  --dg-navigation: #161422;
+  --dg-text: #F1EEFA;
+  --dg-text-secondary: #B0A9C4;
+  --dg-text-muted: #8C859F;
+  --dg-border: #2F2A40;
+  --dg-border-strong: #413A55;
+  --dg-input-border: #7F7396;
+  --dg-primary: #A38BEA;
+  --dg-primary-hover: #B8A4F2;
+  --dg-primary-text: #B8A4F2;
+  --dg-primary-subtle: #2E2547;
+  --dg-on-primary: #1A1230;
+  --dg-plum: #2A2440;
+  --dg-plum-raised: #352E4E;
+  --dg-plum-line: #463E60;
+  --dg-on-plum: #F7F4FF;
+  --dg-on-plum-secondary: #B9B1CC;
+  --dg-lime: #D8F58C;
+  --dg-on-lime: #1F2A14;
+  --dg-success: #6FD3AE;
+  --dg-success-surface: #153A2E;
+  --dg-warning: #F0BD68;
+  --dg-warning-surface: #3D2E17;
+  --dg-danger: #FF9AAA;
+  --dg-danger-surface: #41222F;
+  --dg-focus: #B8A4F2;
+  --dg-chart-series-1: #8F76DE;
+  --dg-chart-series-2: #23A38E;
+  --dg-shadow-overlay: 0 8px 24px rgba(0,0,0,0.45);
 }
 
 /* Density preference on <html>. Comfortable is the default. Compact
- * tightens table rows to 40px and reduces vertical padding on primitives. */
+ * tightens table rows to 36px (v2.1 `rowPx.compact`). */
 [data-density="compact"] {
-  --dg-row-height: 40px;
+  --dg-row-height: 36px;
 }
 :root {
-  --dg-row-height: 52px;
+  --dg-row-height: 44px;
 }
 
 @layer base {
@@ -81,6 +107,8 @@
       Inter,
       ui-sans-serif,
       system-ui,
+      -apple-system,
+      "Segoe UI",
       sans-serif;
     font-feature-settings: "cv11" on;
   }
@@ -117,5 +145,16 @@
   .transition-motion {
     transition-duration: 150ms;
     transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* Fraunces serif for the executive banner headline and page H1 only
+   * (v2.1 addendum typography rule). Everything else uses Inter. */
+  .font-display {
+    font-family: Fraunces, "Iowan Old Style", Georgia, serif;
+  }
+
+  /* Global tabular-numerals utility. Money, percentages, counts, dates. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
 }

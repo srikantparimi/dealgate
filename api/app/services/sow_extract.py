@@ -30,6 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.integrations.bedrock_sow_extract import (
+    EXTRACT_MODEL,
+    EXTRACT_PROMPT_VERSION,
     EXTRACTED_FIELDS,
     BedrockSowExtract,
     ExtractedFields,
@@ -39,6 +41,7 @@ from app.integrations.bedrock_sow_extract import (
 from app.integrations.textract import TextractClient, TextractError
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
+from app.services.provenance import read as read_provenance, wrap as wrap_provenance
 
 ALLOWED_EXTRACT_STATUSES: tuple[str, ...] = (
     "pending",
@@ -161,16 +164,47 @@ def _snapshot(version: SowVersion, opportunity_id: uuid.UUID) -> SowVersionState
 def _blank_manual_fields() -> dict[str, dict[str, Any]]:
     """Seed the fields dict for a manual-entry version.
 
-    Every field gets ``value=None``, ``page_ref=1``, ``status=disputed`` so
-    the UI surfaces each row as needing attention. The human sets values
-    via :func:`confirm_field` and then :func:`submit_sow` succeeds only
-    when every field carries ``status="confirmed"``.
+    Every field lands as a ``manual`` provenance envelope with
+    ``value=None`` and ``status=disputed`` so the UI surfaces each row as
+    needing attention. :func:`confirm_field` is the only path that flips
+    a row to ``status="confirmed"`` (rule 6).
     """
 
     return {
-        name: {"value": None, "page_ref": 1, "status": "disputed"}
+        name: wrap_provenance(
+            None, provenance="manual", page_ref=1, status="disputed"
+        )
         for name in EXTRACTED_FIELDS
     }
+
+
+def _to_provenance_fields(
+    extracted: dict[str, dict[str, Any]],
+    *,
+    model: str,
+    prompt_version: str,
+) -> dict[str, dict[str, Any]]:
+    """Upgrade the Bedrock extract payload to the provenance envelope.
+
+    The extractor still speaks the legacy ``{value, page_ref, status}``
+    shape (kept so its own schema validator stays tight). We wrap every
+    field with ``provenance="extracted"`` and stamp the model/prompt as
+    ``source_id`` so audit can attribute the write.
+    """
+
+    out: dict[str, dict[str, Any]] = {}
+    source_id = f"{model}:{prompt_version}"
+    for name in EXTRACTED_FIELDS:
+        entry = extracted.get(name, {})
+        out[name] = wrap_provenance(
+            entry.get("value"),
+            provenance="extracted",
+            page_ref=entry.get("page_ref"),
+            source_id=source_id,
+            confidence=entry.get("confidence"),
+            status=entry.get("status", "unconfirmed"),
+        )
+    return out
 
 
 # --- public API -----------------------------------------------------------
@@ -384,7 +418,11 @@ async def run_extract(
         }
     else:
         version.extract_status = "complete"
-        fields_out = dict(result.fields)
+        fields_out = _to_provenance_fields(
+            result.fields,
+            model=result.model,
+            prompt_version=result.prompt_version,
+        )
         fields_out["metadata"] = {"extract_source": extract_source}
         version.extracted_fields = fields_out
         version.extract_model = result.model
@@ -436,12 +474,35 @@ async def confirm_field(
     opportunity_id = await _opportunity_id_for(session, version.sow_id)
 
     fields = dict(version.extracted_fields or {})
-    prev = dict(fields.get(field_name, {"value": None, "page_ref": 1, "status": "disputed"}))
-    updated = {
-        "value": value,
-        "page_ref": int(prev.get("page_ref", 1)),
-        "status": "confirmed",
-    }
+    prev = read_provenance(fields.get(field_name))
+    prev_value = prev.get("value")
+    # If the human accepted the extracted value verbatim, keep the
+    # original provenance (``extracted`` / ``looked_up`` / ...); a change
+    # in value flips the row to ``manual`` per rule 10 — a hand-typed
+    # value has no upstream source.
+    if prev_value == value and prev.get("provenance") in {
+        "extracted",
+        "looked_up",
+        "calculated",
+        "defaulted",
+    }:
+        new_provenance = prev["provenance"]
+        source_id = prev.get("source_id")
+        confidence = prev.get("confidence")
+    else:
+        new_provenance = "manual"
+        source_id = None
+        confidence = None
+
+    updated = wrap_provenance(
+        value,
+        provenance=new_provenance,
+        page_ref=prev.get("page_ref"),
+        source_id=source_id,
+        confidence=confidence,
+        warning=prev.get("warning"),
+        status="confirmed",
+    )
     fields[field_name] = updated
     # Reassign so SQLAlchemy detects the mutation on the JSONB column.
     version.extracted_fields = fields
@@ -455,8 +516,18 @@ async def confirm_field(
         action="sow.field_confirmed",
         entity="sow_version",
         entity_id=str(version.id),
-        before={"field": field_name, "value": prev.get("value"), "status": prev.get("status")},
-        after={"field": field_name, "value": value, "status": "confirmed"},
+        before={
+            "field": field_name,
+            "value": prev_value,
+            "provenance": prev.get("provenance"),
+            "status": prev.get("status"),
+        },
+        after={
+            "field": field_name,
+            "value": value,
+            "provenance": new_provenance,
+            "status": "confirmed",
+        },
     )
     return _snapshot(version, opportunity_id)
 
@@ -467,8 +538,8 @@ def _unconfirmed_fields(fields: dict[str, Any] | None) -> list[str]:
     fields = fields or {}
     missing: list[str] = []
     for name in EXTRACTED_FIELDS:
-        entry = fields.get(name)
-        if not isinstance(entry, dict) or entry.get("status") != "confirmed":
+        entry = read_provenance(fields.get(name))
+        if entry.get("status") != "confirmed":
             missing.append(name)
     return missing
 

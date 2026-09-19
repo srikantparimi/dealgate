@@ -1,0 +1,149 @@
+{
+  "name": "DealGate",
+  "version": "2.1",
+  "status": "Refined visual system. Supersedes v2.0 tokens; policy values unchanged.",
+  "direction": "Plum executive surface, one violet accent, lime reserved for the single hero action inside plum. Editorial serif for titles only; Inter for everything else.",
+  "colors": {
+    "light": {
+      "canvas": "#F6F5F9",
+      "surface": "#FFFFFF",
+      "surfaceSunken": "#F1EFF5",
+      "navigation": "#FBFAFD",
+      "text": "#1F1B2E",
+      "textSecondary": "#665F7A",
+      "textMuted": "#756D8A",
+      "border": "#E7E3EE",
+      "borderStrong": "#D3CDDD",
+      "inputBorder": "#8F819F",
+      "primary": "#6D42C8",
+      "primaryHover": "#5B34B4",
+      "primaryText": "#5B34B4",
+      "primarySubtle": "#F0EBFB",
+      "onPrimary": "#FFFFFF",
+      "plum": "#241F35",
+      "plumRaised": "#2F2946",
+      "plumLine": "#3E3757",
+      "onPlum": "#F7F4FF",
+      "onPlumSecondary": "#B9B1CC",
+      "lime": "#D8F58C",
+      "onLime": "#1F2A14",
+      "success": "#146A52",
+      "successSurface": "#E3F3EA",
+      "warning": "#8A4E06",
+      "warningSurface": "#FFF1D6",
+      "danger": "#B12A3E",
+      "dangerSurface": "#FBE8EB",
+      "focus": "#6D42C8",
+      "chartSeries1": "#6D42C8",
+      "chartSeries2": "#128F7C",
+      "shadowOverlay": "0 8px 24px rgba(31,27,46,0.12)"
+    },
+    "dark": {
+      "canvas": "#121120",
+      "surface": "#1B1929",
+      "surfaceSunken": "#221F33",
+      "navigation": "#161422",
+      "text": "#F1EEFA",
+      "textSecondary": "#B0A9C4",
+      "textMuted": "#8C859F",
+      "border": "#2F2A40",
+      "borderStrong": "#413A55",
+      "inputBorder": "#7F7396",
+      "primary": "#A38BEA",
+      "primaryHover": "#B8A4F2",
+      "primaryText": "#B8A4F2",
+      "primarySubtle": "#2E2547",
+      "onPrimary": "#1A1230",
+      "plum": "#2A2440",
+      "plumRaised": "#352E4E",
+      "plumLine": "#463E60",
+      "onPlum": "#F7F4FF",
+      "onPlumSecondary": "#B9B1CC",
+      "lime": "#D8F58C",
+      "onLime": "#1F2A14",
+      "success": "#6FD3AE",
+      "successSurface": "#153A2E",
+      "warning": "#F0BD68",
+      "warningSurface": "#3D2E17",
+      "danger": "#FF9AAA",
+      "dangerSurface": "#41222F",
+      "focus": "#B8A4F2",
+      "chartSeries1": "#8F76DE",
+      "chartSeries2": "#23A38E",
+      "shadowOverlay": "0 8px 24px rgba(0,0,0,0.45)"
+    }
+  },
+  "colorRules": [
+    "primary is the only accent. It is used for the main button, selected navigation, links, the in-progress state and focus rings.",
+    "lime appears only on the single hero action inside the plum banner. Never on a normal page.",
+    "plum is the executive banner and the toast/tooltip surface. It is not a page or card background.",
+    "success, warning and danger are semantic. They are never used decoratively or as chart series.",
+    "Chart series are chartSeries1 and chartSeries2 only, assigned in fixed order. A floor or target is a text-colored line, not a third color.",
+    "Every status chip carries a dot and a word. Color alone never encodes state."
+  ],
+  "contrast": {
+    "method": "WCAG 2.x relative luminance, computed on 19 Sep 2026 for the pairs below",
+    "light": {
+      "text/surface": 16.7, "textSecondary/surface": 6.0, "textMuted/surface": 4.5,
+      "primaryText/surface": 8.1, "onPrimary/primary": 6.4, "primaryText/primarySubtle": 6.9,
+      "success/successSurface": 5.7, "warning/warningSurface": 5.9, "danger/dangerSurface": 5.5,
+      "onPlum/plum": 14.6, "onPlumSecondary/plum": 7.7, "onLime/lime": 12.4, "inputBorder/surface": 3.6
+    },
+    "dark": {
+      "text/surface": 15.1, "textSecondary/surface": 7.7, "textMuted/surface": 4.9,
+      "primaryText/surface": 7.9, "onPrimary/primary": 6.3, "primaryText/primarySubtle": 8.0,
+      "success/successSurface": 6.9, "warning/warningSurface": 7.6, "danger/dangerSurface": 7.0,
+      "onPlum/plum": 13.6, "inputBorder/surface": 3.9
+    },
+    "note": "border and borderStrong are decorative and below 3:1 by design; inputBorder is the control boundary. Chart series pairs pass CVD separation in both themes (validated)."
+  },
+  "typography": {
+    "display": { "family": "Fraunces, 'Iowan Old Style', Georgia, serif", "use": "Executive banner headline and page H1 only", "weights": [500, 600] },
+    "ui": { "family": "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif", "weights": [400, 500, 600] },
+    "scale": {
+      "bannerHeadline": { "sizePx": 40, "lineHeight": 1.05, "face": "display", "weight": 500 },
+      "pageHeading": { "sizePx": 28, "lineHeight": 1.15, "face": "display", "weight": 500 },
+      "metric": { "sizePx": 26, "lineHeight": 1.1, "weight": 600, "letterSpacing": "-0.02em" },
+      "sectionHeading": { "sizePx": 15, "lineHeight": 1.4, "weight": 600 },
+      "body": { "sizePx": 14, "lineHeight": 1.45, "weight": 400 },
+      "table": { "sizePx": 13, "lineHeight": 1.4, "weight": 400 },
+      "secondary": { "sizePx": 12, "lineHeight": 1.5, "weight": 400 },
+      "label": { "sizePx": 11, "lineHeight": 1.45, "weight": 600, "letterSpacing": "0.06em", "transform": "uppercase" }
+    },
+    "numerals": "font-variant-numeric: tabular-nums on every money, percentage, count and date column"
+  },
+  "spacingPx": [4, 8, 12, 16, 20, 24, 32, 48],
+  "radiusPx": { "control": 6, "chip": 4, "card": 12, "panel": 16, "avatar": 999 },
+  "elevation": {
+    "rule": "Borders separate; shadows float. Cards and panels use a 1px border and no shadow. Only menus, tooltips and dialogs get shadowOverlay.",
+    "stripe": "A 3px left stripe in danger, warning or primary marks a blocked, at-risk or in-progress card. Nothing else gets a stripe."
+  },
+  "layout": {
+    "sidebarPx": 224,
+    "headerPx": 56,
+    "pagePaddingPx": 24,
+    "pagePaddingMobilePx": 16,
+    "sectionGapPx": 24,
+    "controlHeightPx": 36,
+    "compactControlHeightPx": 30,
+    "touchTargetMinPx": 44,
+    "rowPx": { "comfortable": 44, "compact": 36 },
+    "tableHeaderPx": 36,
+    "breakpointsPx": { "sixLaneBoard": 1560, "twoColumnCollapse": 1180, "mobile": 820 }
+  },
+  "components": {
+    "statusChip": { "height": 22, "radius": 4, "dot": 6, "variants": ["neutral", "success", "warning", "danger", "progress"], "text": "12px/500" },
+    "functionMark": { "size": "22x18", "letters": ["D", "H", "F", "L"], "states": ["pending", "progress", "ok", "bad"], "note": "Always followed by 'n/4 reviews' text" },
+    "floorBar": { "track": 10, "floorMarker": "2px text-colored line with label above", "fill": "success when at or above floor, danger below", "scale": "0 to 60%" },
+    "gateSteps": { "states": ["done", "now", "pending", "hold"], "note": "hold is danger-tinted and reads 'Will trigger' before the gate is reached" },
+    "executiveBanner": { "surface": "plum", "radius": 16, "motif": "two thin plumLine circles, top right, never overlapping text", "metrics": "plumRaised tiles, 26px value, alert values in lime" }
+  },
+  "motion": { "durationMs": 150, "respectReducedMotion": true },
+  "marginPolicy": {
+    "usMinimum": "0.35",
+    "indiaMinimum": "0.50",
+    "mixedRule": "Evaluate each applicable geography independently; combined GM is informational",
+    "exceptionAuthority": "CEO; additional to Delivery, HR, Finance and Legal review",
+    "precision": "Decimal arithmetic; full precision for thresholds; rounding only for display"
+  }
+}

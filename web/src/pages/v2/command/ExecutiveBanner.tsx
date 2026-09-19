@@ -44,20 +44,23 @@ export function ExecutiveBanner({
     <section
       aria-label="Command center overview"
       className={cn(
-        "rounded-hero bg-executive text-executive-fg p-6 sm:p-8",
+        // v2.1: plum surface, 16px radius (panel token), 28-40px padding.
+        "rounded-panel bg-plum text-onPlum p-6 sm:p-8",
       )}
     >
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <h1
             className={cn(
-              "text-page-mobile sm:text-page text-executive-fg font-semibold",
+              // Fraunces display face — banner headline only.
+              "font-display text-onPlum",
+              "text-[30px] sm:text-bannerHeadline",
             )}
           >
             {title}
           </h1>
           {subtitle ? (
-            <p className="mt-2 text-body text-executive-muted">{subtitle}</p>
+            <p className="mt-2 text-body text-onPlumSecondary">{subtitle}</p>
           ) : null}
         </div>
         <div className="flex-shrink-0">
@@ -65,7 +68,8 @@ export function ExecutiveBanner({
             to={actionHref}
             className={cn(
               "inline-flex items-center gap-2 rounded-control",
-              "bg-hero text-hero-fg font-medium text-body",
+              // Lime hero action — only inside the plum banner.
+              "bg-lime text-onLime font-medium text-body",
               "px-5 h-12 transition-motion hover:opacity-95",
               "focus-visible:outline-focus",
             )}
@@ -89,23 +93,23 @@ export function ExecutiveBanner({
               to={m.href}
               className={cn(
                 "flex flex-col gap-1 rounded-panel p-4 h-full",
-                "bg-executive-fg/5 hover:bg-executive-fg/10",
+                "bg-plumRaised hover:brightness-110",
                 "transition-motion focus-visible:outline-focus",
               )}
             >
-              <span className="text-secondary uppercase tracking-wide text-executive-muted">
+              <span className="text-label uppercase tracking-wide text-onPlumSecondary">
                 {m.label}
               </span>
               <span
                 className={cn(
-                  "text-metric tnum text-executive-fg",
-                  m.value === null && "text-executive-muted text-body normal-case",
+                  "text-metric tnum text-onPlum",
+                  m.value === null && "text-onPlumSecondary text-body normal-case",
                 )}
               >
                 {m.value ?? "Unavailable"}
               </span>
               {m.description ? (
-                <span className="text-secondary text-executive-muted">
+                <span className="text-secondary text-onPlumSecondary">
                   {m.description}
                 </span>
               ) : null}
@@ -115,7 +119,7 @@ export function ExecutiveBanner({
       </ul>
 
       {freshness ? (
-        <p className="mt-4 text-secondary text-executive-muted">{freshness}</p>
+        <p className="mt-4 text-secondary text-onPlumSecondary">{freshness}</p>
       ) : null}
     </section>
   );

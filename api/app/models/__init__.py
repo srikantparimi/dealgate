@@ -11,8 +11,10 @@ from app.models.audit import AuditEvent
 from app.models.capability import CapabilityCatalog
 from app.models.ceo_exception import CeoDelegate, CeoException
 from app.models.client import Agreement, Client, LegalEntity
+from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
 from app.models.embedding import SowEmbedding
 from app.models.forecast import ForecastPeriod
+from app.models.function_owner import FunctionOwner
 from app.models.gm_model import CostLine, GmModel, ResourceLine
 from app.models.hubspot_writeback import HubspotWritebackJob
 from app.models.integration import IntegrationEvent
@@ -50,8 +52,11 @@ __all__ = [
     "CeoDelegate",
     "CeoException",
     "Client",
+    "ClientRateCard",
+    "ClientRateCardRow",
     "CostLine",
     "ForecastPeriod",
+    "FunctionOwner",
     "GmModel",
     "GmModelPhase",
     "GmModelTemplate",

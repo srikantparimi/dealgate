@@ -214,7 +214,7 @@ export function SowApprovalsPage() {
         <div
           role="status"
           aria-label="Loading approval packages"
-          className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6"
+          className="grid grid-cols-1 gap-3 md:grid-cols-3 min-[1560px]:grid-cols-6"
         >
           {LANES.map((lane) => (
             <div
@@ -224,7 +224,7 @@ export function SowApprovalsPage() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 min-[1560px]:grid-cols-6">
           {LANES.map((lane) => (
             <LaneColumn
               key={lane.id}

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.routers import (
     actuals,
+    admin_function_owners,
     admin_policy,
     admin_rate_cards,
     admin_replay,
@@ -12,6 +13,7 @@ from app.routers import (
     audit,
     capability_catalog,
     ceo_exception,
+    client_rate_cards,
     clients,
     dashboards,
     deals,
@@ -37,6 +39,7 @@ app.include_router(deals.router)
 app.include_router(audit.router)
 app.include_router(admin_users.router)
 app.include_router(clients.router)
+app.include_router(client_rate_cards.router)
 app.include_router(agreements.router)
 app.include_router(tasks.router)
 app.include_router(notifications.router)
@@ -55,4 +58,5 @@ app.include_router(dashboards.router)
 app.include_router(forecast.router)
 app.include_router(actuals.router)
 app.include_router(admin_replay.router)
+app.include_router(admin_function_owners.router)
 app.include_router(capability_catalog.router)

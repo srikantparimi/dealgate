@@ -11,15 +11,19 @@ import { Toaster } from "./primitives/toaster";
 import { WorkspaceHeader } from "./WorkspaceHeader";
 
 /**
- * DealGate V2 application shell.
+ * DealGate V2.1 application shell.
  *
  * Composition:
- *   - Left: 194px `PrimaryNavigation` (spec §3, promoted to 224px on
- *     large displays).
- *   - Right: 70px `WorkspaceHeader` + main content region with 24–28px
- *     padding.
- *   - Below 1024px the sidebar collapses into a right-drawer opened by
- *     the burger menu in the header.
+ *   - Left: 224px `PrimaryNavigation` (v2.1 layout — labels like
+ *     "Delivery & actuals" no longer truncate).
+ *   - Right: 56px `WorkspaceHeader` + main content region with 24px
+ *     padding (16px on mobile — v2.1 layout tokens `pagePaddingPx` and
+ *     `pagePaddingMobilePx`).
+ *   - Below the `mobile` breakpoint (820px) the sidebar collapses into a
+ *     left-drawer opened by the burger menu in the header.
+ *   - The plum executive banner is rendered by pages inside `<main>`;
+ *     the shell itself is canvas / surface only. Plum never appears on
+ *     the shell background (v2.1 colour rule).
  *
  * Auth wiring is untouched — the shell reads `useAuth()` and hides
  * nav items the user's role list does not intersect (server enforces).
@@ -52,7 +56,7 @@ export function AppShell({ children, workspaceName }: AppShellProps) {
             {/* Desktop sidebar */}
             <aside
               aria-label="Primary navigation"
-              className="hidden lg:flex shrink-0"
+              className="hidden md:flex shrink-0"
             >
               <PrimaryNavigation
                 groups={groups}
@@ -62,7 +66,7 @@ export function AppShell({ children, workspaceName }: AppShellProps) {
 
             {/* Main column */}
             <div className="flex min-w-0 flex-1 flex-col">
-              <div className="flex items-center gap-2 border-b border-divider bg-surface px-4 lg:hidden">
+              <div className="flex items-center gap-2 border-b border-divider bg-surface px-4 md:hidden">
                 <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
                   <SheetTrigger asChild>
                     <Button
@@ -88,10 +92,10 @@ export function AppShell({ children, workspaceName }: AppShellProps) {
 
               <main
                 className={cn(
-                  "flex-1 px-6 py-6 sm:px-6 lg:px-6",
+                  "flex-1 py-6",
+                  "px-4 md:px-6",
                   "max-w-full",
                 )}
-                style={{ paddingInline: "var(--page-x, 24px)" }}
               >
                 {children}
               </main>

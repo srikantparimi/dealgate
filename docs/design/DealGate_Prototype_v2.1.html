@@ -1,0 +1,640 @@
+<title>DealGate Workspace</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* ============ DealGate v2.1 tokens ============ */
+:root{
+  --canvas:#F6F5F9; --surface:#FFFFFF; --surface-2:#F1EFF5; --nav:#FBFAFD;
+  --text:#1F1B2E; --text-2:#665F7A; --text-3:#756D8A;
+  --border:#E7E3EE; --border-strong:#D3CDDD; --input:#8F819F;
+  --primary:#6D42C8; --primary-hover:#5B34B4; --primary-text:#5B34B4; --primary-subtle:#F0EBFB; --on-primary:#FFFFFF;
+  --plum:#241F35; --plum-2:#2F2946; --on-plum:#F7F4FF; --on-plum-2:#B9B1CC; --plum-line:#3E3757;
+  --lime:#D8F58C; --on-lime:#1F2A14;
+  --ok:#146A52; --ok-fill:#E3F3EA; --warn:#8A4E06; --warn-fill:#FFF1D6; --bad:#B12A3E; --bad-fill:#FBE8EB;
+  --focus:#6D42C8;
+  --s1:#6D42C8; --s2:#128F7C; /* chart series */
+  --shadow:0 8px 24px rgba(31,27,46,.12);
+  --r-ctl:6px; --r-card:12px; --r-panel:16px;
+  --row:44px;
+  --font-ui:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-display:"Fraunces","Iowan Old Style","Georgia",serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --canvas:#121120; --surface:#1B1929; --surface-2:#221F33; --nav:#161422;
+  --text:#F1EEFA; --text-2:#B0A9C4; --text-3:#8C859F;
+  --border:#2F2A40; --border-strong:#413A55; --input:#7F7396;
+  --primary:#A38BEA; --primary-hover:#B8A4F2; --primary-text:#B8A4F2; --primary-subtle:#2E2547; --on-primary:#1A1230;
+  --plum:#2A2440; --plum-2:#352E4E; --on-plum:#F7F4FF; --on-plum-2:#B9B1CC; --plum-line:#463E60;
+  --ok:#6FD3AE; --ok-fill:#153A2E; --warn:#F0BD68; --warn-fill:#3D2E17; --bad:#FF9AAA; --bad-fill:#41222F;
+  --focus:#B8A4F2; --s1:#8F76DE; --s2:#23A38E;
+  --shadow:0 8px 24px rgba(0,0,0,.45);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --canvas:#121120; --surface:#1B1929; --surface-2:#221F33; --nav:#161422;
+  --text:#F1EEFA; --text-2:#B0A9C4; --text-3:#8C859F;
+  --border:#2F2A40; --border-strong:#413A55; --input:#7F7396;
+  --primary:#A38BEA; --primary-hover:#B8A4F2; --primary-text:#B8A4F2; --primary-subtle:#2E2547; --on-primary:#1A1230;
+  --plum:#2A2440; --plum-2:#352E4E; --on-plum:#F7F4FF; --on-plum-2:#B9B1CC; --plum-line:#463E60;
+  --ok:#6FD3AE; --ok-fill:#153A2E; --warn:#F0BD68; --warn-fill:#3D2E17; --bad:#FF9AAA; --bad-fill:#41222F;
+  --focus:#B8A4F2; --s1:#8F76DE; --s2:#23A38E;
+  --shadow:0 8px 24px rgba(0,0,0,.45);
+  color-scheme:dark;
+}
+:root[data-density="compact"]{ --row:36px; }
+
+/* ============ base ============ */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--canvas);color:var(--text);font:400 14px/1.45 var(--font-ui);-webkit-font-smoothing:antialiased}
+a{color:var(--primary-text)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--r-ctl)}
+h1,h2,h3{margin:0;text-wrap:balance}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--text-2)}
+.faint{color:var(--text-3)}
+.small{font-size:12px;line-height:18px}
+.label{font-size:11px;line-height:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+.right{text-align:right}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ============ shell ============ */
+.app{display:grid;grid-template-columns:224px 1fr;min-height:100%}
+.side{background:var(--nav);border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:20px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px}
+.brand .mark{width:28px;height:28px;border-radius:8px;background:var(--plum);color:var(--lime);display:grid;place-items:center;font:600 13px var(--font-display)}
+.brand b{font-weight:600;font-size:15px;letter-spacing:-.01em}
+.brand span{display:block;font-size:11px;color:var(--text-3)}
+.group{display:flex;flex-direction:column;gap:2px}
+.group .label{padding:0 8px 6px}
+.nav{display:flex;align-items:center;gap:10px;padding:0 10px;height:34px;border-radius:8px;text-decoration:none;color:var(--text-2);font-weight:500;border:0;background:none;width:100%;text-align:left;cursor:pointer}
+.nav svg{width:16px;height:16px;flex:none;opacity:.8}
+.nav:hover{background:var(--surface-2);color:var(--text)}
+.nav[aria-current="page"]{background:var(--primary-subtle);color:var(--primary-text)}
+.nav .cnt{margin-left:auto;font-size:11px;font-weight:600;color:var(--bad);background:var(--bad-fill);padding:1px 6px;border-radius:4px}
+.side .bottom{margin-top:auto}
+.main{min-width:0}
+.top{height:56px;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+.crumb{display:flex;align-items:center;gap:8px;color:var(--text-2);font-size:13px}
+.crumb b{color:var(--text);font-weight:500}
+.top .sp{flex:1}
+.search{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--canvas);color:var(--text-2);width:260px;cursor:text;white-space:nowrap;font-size:13px}
+.search kbd{margin-left:auto;font:500 11px var(--font-ui);color:var(--text-3);border:1px solid var(--border-strong);border-radius:4px;padding:0 5px}
+.iconbtn{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:none;display:grid;place-items:center;cursor:pointer;position:relative}
+.iconbtn:hover{background:var(--surface-2)}
+.iconbtn .dot{position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--bad);border:2px solid var(--surface)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--primary-subtle);color:var(--primary-text);display:grid;place-items:center;font-weight:600;font-size:12px}
+.menu{position:absolute;right:24px;top:52px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:var(--shadow);padding:6px;min-width:220px;z-index:20}
+.menu .row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:6px;font-size:13px}
+.menu .row:hover{background:var(--surface-2)}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:none;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--text-2)}
+.seg button[aria-pressed="true"]{background:var(--primary-subtle);color:var(--primary-text);font-weight:600}
+.page{padding:24px 24px 48px;display:flex;flex-direction:column;gap:24px}
+.screen[hidden]{display:none}
+.mobile-nav{display:none}
+
+/* ============ primitives ============ */
+.btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid var(--border-strong);background:var(--surface);font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.btn.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
+.btn.lime{background:var(--lime);border-color:var(--lime);color:var(--on-lime);font-weight:600}
+.btn.ghost{border-color:transparent;background:none;color:var(--primary-text)}
+.btn.sm{height:30px;padding:0 10px;font-size:13px}
+.btn.danger{color:var(--bad);border-color:var(--border-strong)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;font-size:12px;font-weight:500;white-space:nowrap;background:var(--surface-2);color:var(--text-2)}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip.ok{background:var(--ok-fill);color:var(--ok)}
+.chip.warn{background:var(--warn-fill);color:var(--warn)}
+.chip.bad{background:var(--bad-fill);color:var(--bad)}
+.chip.prog{background:var(--primary-subtle);color:var(--primary-text)}
+.chip.plain::before{display:none}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card)}
+.card.pad{padding:18px 20px}
+.card-h{display:flex;align-items:baseline;gap:8px 12px;padding:16px 20px 0;flex-wrap:wrap}
+.card-h h2{font-size:15px;font-weight:600}
+.card-h .sub{color:var(--text-3);font-size:12px}
+.card-h .more{margin-left:auto;font-size:13px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fchip{height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--border-strong);background:var(--surface);font-size:13px;cursor:pointer;color:var(--text-2)}
+.fchip[aria-pressed="true"]{background:var(--plum);border-color:var(--plum);color:var(--on-plum);font-weight:500}
+.fchip .n{opacity:.7;margin-left:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-2);font-weight:600;text-align:left;padding:0 12px;height:36px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:0 12px;height:var(--row);border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--surface-2)}
+td.num,th.num{text-align:right}
+.rowlink{font-weight:500;color:var(--text);text-decoration:none}
+.rowlink:hover{color:var(--primary-text);text-decoration:underline}
+.tscroll{overflow-x:auto}
+.who{display:flex;align-items:center;gap:8px}
+.who .av{width:24px;height:24px;border-radius:50%;background:var(--surface-2);color:var(--text-2);font-size:10px;font-weight:600;display:grid;place-items:center;flex:none;border:1px solid var(--border)}
+.ph{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.ph h1{font:500 28px/1.15 var(--font-display);letter-spacing:-.01em}
+.ph .sub{color:var(--text-2);margin-top:4px}
+.ph .actions{margin-left:auto;display:flex;gap:8px}
+.metric{display:flex;flex-direction:column;gap:2px}
+.metric .v{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.metric .k{font-size:12px;color:var(--text-2)}
+.metric .b{font-size:11px;color:var(--text-3)}
+.grid{display:grid;gap:16px}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.floorbar{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;font-size:13px}
+.floorbar .track{position:relative;height:10px;background:var(--surface-2);border-radius:999px;overflow:visible}
+.floorbar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--ok)}
+.floorbar .fill.bad{background:var(--bad)}
+.floorbar .mark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--text)}
+.floorbar .mark::after{content:attr(data-l);position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--text-3);white-space:nowrap}
+.steps{display:flex;gap:0;border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;background:var(--surface)}
+.step{flex:1;padding:10px 14px;display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--border);min-width:0}
+.step:last-child{border-right:0}
+.step .n{font-size:11px;color:var(--text-3)}
+.step .t{font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step.done .n{color:var(--ok)}
+.step.now{background:var(--primary-subtle)}
+.step.now .n,.step.now .t{color:var(--primary-text)}
+.step.hold{background:var(--bad-fill)}
+.step.hold .n,.step.hold .t{color:var(--bad)}
+.stripe-bad{border-left:3px solid var(--bad)}
+.stripe-warn{border-left:3px solid var(--warn)}
+.stripe-prog{border-left:3px solid var(--primary)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px}
+.kv dt{color:var(--text-2);margin:0}
+.kv dd{margin:0;font-weight:500}
+.checks{display:flex;flex-direction:column;gap:8px;font-size:13px}
+.checks div{display:flex;gap:10px;align-items:flex-start}
+.checks .i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:11px;font-weight:700}
+.checks .i.ok{background:var(--ok-fill);color:var(--ok)}
+.checks .i.bad{background:var(--bad-fill);color:var(--bad)}
+.checks .i.warn{background:var(--warn-fill);color:var(--warn)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--plum);color:var(--on-plum);padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:var(--shadow);z-index:50}
+.sample{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-3);border:1px dashed var(--border-strong);border-radius:4px;padding:2px 8px}
+
+/* ============ command center ============ */
+.banner{background:var(--plum);color:var(--on-plum);border-radius:var(--r-panel);padding:28px 32px;display:grid;grid-template-columns:1.1fr 1fr;gap:24px;position:relative;overflow:hidden}
+.banner::before{content:"";position:absolute;right:-120px;top:-160px;width:420px;height:420px;border-radius:50%;border:1px solid var(--plum-line);pointer-events:none}
+.banner::after{content:"";position:absolute;right:40px;top:-60px;width:220px;height:220px;border-radius:50%;border:1px solid var(--plum-line);pointer-events:none}
+.banner .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--on-plum-2);font-weight:600}
+.banner h1{font:500 40px/1.05 var(--font-display);letter-spacing:-.015em;margin:8px 0 10px}
+.banner h1 em{font-style:italic;color:var(--lime)}
+.banner p{margin:0 0 18px;color:var(--on-plum-2);max-width:48ch}
+.banner .cta{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.banner .btn.ghost{color:var(--on-plum);border-color:var(--plum-line)}
+.bmetrics{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;align-self:center;position:relative}
+.bm{background:var(--plum-2);border:1px solid var(--plum-line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.bm .v{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.05}
+.bm .k{font-size:12px;color:var(--on-plum-2)}
+.bm .b{font-size:11px;color:var(--on-plum-2);opacity:.75}
+.bm.alert .v{color:var(--lime)}
+.sig{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:16px 18px;text-decoration:none;color:inherit;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card)}
+.sig:hover{border-color:var(--border-strong)}
+.sig .ic{width:36px;height:36px;border-radius:8px;display:grid;place-items:center}
+.sig .ic.bad{background:var(--bad-fill);color:var(--bad)} .sig .ic.warn{background:var(--warn-fill);color:var(--warn)} .sig .ic.prog{background:var(--primary-subtle);color:var(--primary-text)}
+.sig .t{font-weight:600;display:flex;justify-content:space-between;gap:8px}
+.sig .d{color:var(--text-2);font-size:13px;margin-top:2px}
+.sig .m{font-size:12px;color:var(--text-3);margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
+.lanes3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:12px 20px 20px}
+.lane{background:var(--surface-2);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.lane .lh{display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:var(--text-2);padding:2px 4px}
+.sow{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:13px;cursor:pointer}
+.sow:hover{border-color:var(--border-strong)}
+.sow .t{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.sow .t b{font-weight:600}
+.sow .t .v{font-size:12px;color:var(--text-2)}
+.sow .c{font-size:12px;color:var(--text-2)}
+.sow .fx{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.sow .chip{white-space:normal;height:auto;min-height:22px;padding:2px 8px;line-height:16px}
+.fmark{display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;border-radius:4px;font-size:10px;font-weight:700;background:var(--surface-2);color:var(--text-3);border:1px solid var(--border)}
+.fmark.ok{background:var(--ok-fill);color:var(--ok);border-color:transparent}
+.fmark.bad{background:var(--bad-fill);color:var(--bad);border-color:transparent}
+.fmark.prog{background:var(--primary-subtle);color:var(--primary-text);border-color:transparent}
+.sow .foot{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-3);margin-top:2px}
+.chartwrap{padding:8px 20px 20px;overflow-x:auto}
+.chartwrap svg{min-width:640px;display:block}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--text-2);padding:0 20px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px;background:var(--s1)}
+.legend span.s2::before{background:var(--s2)}
+.legend span.fl::before{width:2px;height:12px;background:var(--text);border-radius:0}
+svg text{font-family:var(--font-ui);fill:var(--text-2);font-size:11px}
+.tip{position:absolute;pointer-events:none;background:var(--plum);color:var(--on-plum);font-size:12px;padding:6px 8px;border-radius:6px;white-space:nowrap;display:none;z-index:9}
+
+/* ============ board ============ */
+.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+@media (min-width:1560px){.board{grid-template-columns:repeat(6,minmax(0,1fr))}}
+.bl{background:var(--surface-2);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.bl .lh{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;color:var(--text-2);padding:2px 4px}
+.bl .lh .n{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:0 6px;font-size:11px}
+.bl .empty{font-size:12px;color:var(--text-3);padding:16px 8px;text-align:center;border:1px dashed var(--border-strong);border-radius:8px}
+
+/* ============ GM ============ */
+.gmtabs{display:flex;gap:4px;border-bottom:1px solid var(--border)}
+.gmtabs button{border:0;background:none;padding:10px 14px;font-weight:500;color:var(--text-2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.gmtabs button[aria-selected="true"]{color:var(--primary-text);border-bottom-color:var(--primary)}
+.vsel{display:inline-flex;align-items:center;gap:8px;font-size:13px}
+.vsel select{height:32px;border:1px solid var(--input);border-radius:6px;background:var(--surface);color:var(--text);padding:0 8px;font:inherit}
+.geo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.geo .card{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.geo .hd{display:flex;justify-content:space-between;align-items:center}
+.geo .big{font-size:28px;font-weight:600;letter-spacing:-.02em;line-height:1}
+.geo .big small{font-size:13px;font-weight:400;color:var(--text-2);margin-left:6px}
+input.cell{width:100%;height:30px;border:1px solid var(--input);border-radius:5px;background:var(--surface);color:var(--text);font:inherit;padding:0 8px;text-align:right;font-variant-numeric:tabular-nums}
+input.cell:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.masked{color:var(--text-3);font-size:12px}
+.draftbar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--warn-fill);color:var(--warn);font-size:13px;font-weight:500}
+
+/* ============ CEO ============ */
+.ceo{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:20px;align-items:start}
+.case h3{font-size:14px;font-weight:600;margin:0 0 6px}
+.case p{margin:0;color:var(--text-2)}
+.case section{padding:16px 20px;border-bottom:1px solid var(--border)}
+.case section:last-child{border-bottom:0}
+.decide{position:sticky;top:80px;display:flex;flex-direction:column;gap:14px;padding:18px 20px}
+.decide .acts{display:grid;gap:8px}
+.cond{border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:6px}
+.cond .h{display:flex;justify-content:space-between;gap:8px;font-weight:500}
+.cond .m{font-size:12px;color:var(--text-2);display:flex;gap:10px;flex-wrap:wrap}
+textarea{width:100%;min-height:72px;border:1px solid var(--input);border-radius:6px;background:var(--surface);color:var(--text);font:inherit;padding:8px 10px;resize:vertical}
+
+/* ============ responsive ============ */
+@media (max-width:1180px){
+  .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .banner{grid-template-columns:1fr}
+  .ceo{grid-template-columns:1fr}
+  .decide{position:static}
+  .geo{grid-template-columns:1fr}
+}
+@media (max-width:820px){
+  .app{grid-template-columns:1fr}
+  .side{display:none}
+  .mobile-nav{display:flex;gap:6px;overflow-x:auto;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .mobile-nav button{flex:none}
+  .page{padding:16px 16px 40px;gap:16px}
+  .top{padding:0 16px}
+  .search{display:none}
+  .g3,.g2,.lanes3{grid-template-columns:1fr}
+  .board{grid-template-columns:1fr}
+  .banner{padding:22px 20px}
+  .banner h1{font-size:30px}
+  .bmetrics{grid-template-columns:1fr 1fr}
+  .steps{flex-wrap:wrap}
+  .step{flex:1 1 33%;border-bottom:1px solid var(--border)}
+  .ph .actions{margin-left:0}
+}
+</style>
+
+<div class="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="side" aria-label="Primary">
+    <div class="brand"><div class="mark">D</div><div><b>DealGate</b><span>SmarTek21 workspace</span></div></div>
+    <div class="group"><div class="label">Workspace</div>
+      <button class="nav" data-go="command" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Command center</button>
+      <button class="nav" data-go="work"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>My work<span class="cnt">4</span></button>
+    </div>
+    <div class="group"><div class="label">Growth</div>
+      <button class="nav" data-go="pipeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M6 12h12M10 18h4"/></svg>Pipeline clients</button>
+      <button class="nav" data-go="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>AI discovery</button>
+      <button class="nav" data-go="agreements"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/></svg>NDA &amp; MSA</button>
+    </div>
+    <div class="group"><div class="label">Commitments</div>
+      <button class="nav" data-go="sows"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/></svg>SOW approvals<span class="cnt">2</span></button>
+      <button class="nav" data-go="studio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New SOW studio</button>
+      <button class="nav" data-go="gm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>Staffing &amp; GM</button>
+    </div>
+    <div class="group"><div class="label">Operations</div>
+      <button class="nav" data-go="projects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16M6 16V9M10 16V5M14 16v-6M18 16v-3"/></svg>Delivery &amp; actuals</button>
+      <button class="nav" data-go="renewals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Renewals</button>
+      <button class="nav" data-go="handoffs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/></svg>Signed handoff</button>
+      <button class="nav" data-go="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M10 19V11M16 19V8M22 19H2"/></svg>Reporting</button>
+    </div>
+    <div class="group bottom">
+      <button class="nav" data-go="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings &amp; controls</button>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <div class="main">
+    <header class="top">
+      <div class="crumb" id="crumb"><span>Workspace</span><span>/</span><b>Command center</b></div>
+      <div class="sp"></div>
+      <div class="search" role="button" tabindex="0" aria-label="Search (Ctrl+K)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Search clients, SOWs…<kbd>⌘K</kbd></div>
+      <button class="iconbtn" aria-label="Notifications, 3 unread"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot"></span></button>
+      <button class="iconbtn" id="profileBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Account menu"><span class="avatar">KP</span></button>
+      <div class="menu" id="menu" hidden role="menu">
+        <div class="row"><div><b style="font-weight:600">Kanna Parimi</b><div class="small muted">Delivery · Executive view</div></div></div>
+        <div class="row"><span>Appearance</span><span class="seg" id="themeSeg"><button data-t="system" aria-pressed="true">Auto</button><button data-t="light" aria-pressed="false">Light</button><button data-t="dark" aria-pressed="false">Dark</button></span></div>
+        <div class="row"><span>Density</span><span class="seg" id="densSeg"><button data-d="comfortable" aria-pressed="true">Comfortable</button><button data-d="compact" aria-pressed="false">Compact</button></span></div>
+        <div class="row"><span>Notification preferences</span></div>
+        <div class="row"><span>Sign out</span></div>
+      </div>
+    </header>
+    <nav class="mobile-nav" aria-label="Sections">
+      <button class="fchip" data-go="command" aria-pressed="true">Command</button>
+      <button class="fchip" data-go="pipeline" aria-pressed="false">Pipeline</button>
+      <button class="fchip" data-go="sows" aria-pressed="false">SOW board</button>
+      <button class="fchip" data-go="gm" aria-pressed="false">Staffing &amp; GM</button>
+      <button class="fchip" data-go="ceo" aria-pressed="false">CEO exception</button>
+    </nav>
+
+    <!-- ========== SCREEN: COMMAND CENTER ========== -->
+    <main class="page screen" id="s-command" data-crumb="Workspace / Command center">
+      <section class="banner" aria-label="Executive summary">
+        <div>
+          <div class="eyebrow">Friday 19 September · Data as of 08:10 PT</div>
+          <h1>Every commitment.<br><em>In view.</em></h1>
+          <p>Two SOWs are waiting on a decision, three pipeline clients cannot be contracted yet, and one renewal is inside its notice window.</p>
+          <div class="cta"><button class="btn lime" data-go="sows">Open approval pipeline</button><button class="btn ghost" data-go="pipeline">Pipeline readiness</button></div>
+        </div>
+        <div class="bmetrics">
+          <div class="bm"><div class="v num">$680k</div><div class="k">Open pipeline, proposed value</div><div class="b">6 clients · 1 value unknown, excluded</div></div>
+          <div class="bm"><div class="v num">5</div><div class="k">SOW packages in progress</div><div class="b">2 blocked · median age 6 days</div></div>
+          <div class="bm alert"><div class="v num">3</div><div class="k">Clients with agreement gaps</div><div class="b">NDA or MSA not executed</div></div>
+          <div class="bm alert"><div class="v num">1</div><div class="k">CEO decision pending</div><div class="b">Northstar · 2 days waiting</div></div>
+        </div>
+      </section>
+
+      <div class="grid g3" aria-label="Priority signals">
+        <a class="sig" href="#ceo" data-go="ceo">
+          <div class="ic bad"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+          <div><div class="t">Northstar Health · CEO exception <span class="chip bad">Below floor</span></div><div class="d">US 27.8% vs 35% floor · India 45.5% vs 50%. $145k fixed price.</div><div class="m"><span>Owner: R. Patel</span><span>Waiting 2 days</span><span>Package v3 / GM v4</span></div></div>
+        </a>
+        <a class="sig" href="#pipeline" data-go="pipeline">
+          <div class="ic warn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
+          <div><div class="t">Atlas Logistics · MSA awaiting signature <span class="chip warn">Sent 9 days</span></div><div class="d">SOW-0142 is ready for Finance review but cannot reach signature until the MSA is executed.</div><div class="m"><span>Owner: Legal · J. Moreno</span><span>Next: chase signatory</span></div></div>
+        </a>
+        <a class="sig" href="#renewals" data-go="renewals">
+          <div class="ic prog"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <div><div class="t">Meridian Bank · renewal review <span class="chip prog">Week 3 of 8</span></div><div class="d">$420k managed service expires 15 Nov. Notice deadline 16 Oct. Last client update 6 days ago.</div><div class="m"><span>Owner: S. Chen</span><span>Weekly update due Mon</span></div></div>
+        </a>
+      </div>
+
+      <section class="card">
+        <div class="card-h"><h2>Pipeline client readiness</h2><span class="sub">HubSpot synced 4 min ago</span><a class="more" href="#pipeline" data-go="pipeline">All clients →</a></div>
+        <div class="tscroll" style="padding:8px 8px 8px"><table>
+          <thead><tr><th>Client · owner</th><th>Stage</th><th>NDA</th><th>MSA</th><th>SOW gate</th><th>Next client action</th></tr></thead>
+          <tbody id="readiness"></tbody>
+        </table></div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><h2>SOW approvals</h2><span class="sub">3 of 6 stages shown</span><a class="more" href="#sows" data-go="sows">All stages →</a></div>
+        <div class="lanes3" id="lanesPreview"></div>
+      </section>
+
+      <section class="card" style="position:relative">
+        <div class="card-h"><h2>Delivery economics</h2><span class="sub">Active signed SOWs · approved vs forecast GM · sample data</span><a class="more" href="#projects" data-go="projects">Delivery &amp; actuals →</a></div>
+        <div class="legend"><span>Approved GM</span><span class="s2">Forecast final GM</span><span class="fl">Policy floor</span></div>
+        <div class="chartwrap"><svg id="econ" width="100%" viewBox="0 0 900 230" role="img" aria-label="Approved versus forecast gross margin for five active SOWs, with policy floor"></svg></div>
+        <div class="tip" id="tip"></div>
+      </section>
+    </main>
+
+    <!-- ========== SCREEN: PIPELINE ========== -->
+    <main class="page screen" id="s-pipeline" hidden data-crumb="Growth / Pipeline clients">
+      <div class="ph"><div><h1>Pipeline clients</h1><div class="sub">Agreement readiness and next client action for every open opportunity.</div></div><div class="actions"><button class="btn">Export</button><button class="btn primary">New opportunity</button></div></div>
+      <div class="filters" id="pipeFilters">
+        <button class="fchip" data-f="all" aria-pressed="true">All clients<span class="n">6</span></button>
+        <button class="fchip" data-f="gap" aria-pressed="false">Agreement gaps<span class="n">3</span></button>
+        <button class="fchip" data-f="ready" aria-pressed="false">Ready agreements<span class="n">3</span></button>
+        <button class="fchip" data-f="due" aria-pressed="false">Follow-up due<span class="n">2</span></button>
+        <span style="flex:1"></span><span class="sample">Sample data · fictitious clients</span>
+      </div>
+      <section class="card"><div class="tscroll"><table>
+        <thead><tr><th>Client · account owner</th><th>HubSpot stage</th><th>NDA</th><th>MSA</th><th>SOWs · gate</th><th class="num">Proposed value</th><th>Next client action</th><th>Last sync</th></tr></thead>
+        <tbody id="pipeRows"></tbody>
+      </table></div></section>
+    </main>
+
+    <!-- ========== SCREEN: SOW BOARD ========== -->
+    <main class="page screen" id="s-sows" hidden data-crumb="Commitments / SOW approvals">
+      <div class="ph"><div><h1>SOW approvals</h1><div class="sub">Six gates. A card cannot be dragged past a gate; it moves when the record moves.</div></div><div class="actions"><button class="btn" data-go="studio">New SOW</button></div></div>
+      <div class="filters">
+        <button class="fchip" aria-pressed="true">All packages<span class="n">7</span></button>
+        <button class="fchip" aria-pressed="false">Blocked<span class="n">2</span></button>
+        <button class="fchip" aria-pressed="false">My decisions<span class="n">1</span></button>
+        <button class="fchip" aria-pressed="false">New drafts<span class="n">1</span></button>
+      </div>
+      <div class="board" id="board"></div>
+    </main>
+
+    <!-- ========== SCREEN: STAFFING & GM ========== -->
+    <main class="page screen" id="s-gm" hidden data-crumb="Commitments / Northstar Health / SOW-0138 / Staffing & GM">
+      <div class="ph"><div><div class="label" style="margin-bottom:4px">Northstar Health · SOW-0138 · Fixed price · Mixed US/India</div><h1>Staffing &amp; GM</h1></div><div class="actions"><button class="btn">Export GM (.xlsx)</button><button class="btn">Compare versions</button><button class="btn primary">Submit model</button></div></div>
+      <div class="steps" aria-label="Approval progress">
+        <div class="step done"><span class="n">1 · Done</span><span class="t">Intake</span></div>
+        <div class="step now"><span class="n">2 · Now</span><span class="t">Scope &amp; GM</span></div>
+        <div class="step"><span class="n">3</span><span class="t">Function reviews</span></div>
+        <div class="step hold"><span class="n">4 · Will trigger</span><span class="t">CEO exception</span></div>
+        <div class="step"><span class="n">5</span><span class="t">Signature</span></div>
+        <div class="step"><span class="n">6</span><span class="t">Handoff</span></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="gmtabs" role="tablist"><button role="tab" aria-selected="false">Approved baseline</button><button role="tab" aria-selected="true">Current draft</button><button role="tab" aria-selected="false">Scenarios (2)</button></div>
+        <div class="vsel"><span class="muted">Version</span><select id="gmver"><option>GM v4 · draft · 19 Sep</option><option>GM v3 · submitted · 12 Sep</option><option>GM v2 · returned · 4 Sep</option></select></div>
+      </div>
+      <div class="draftbar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>Draft · not approved for commitment. Rate card v2026.3 · FX 1 USD = 83.9 INR (15 Sep) · Cost policy: Finance-2026-01</div>
+
+      <div class="geo" aria-label="Margin tests">
+        <div class="card"><div class="hd"><span class="label">Combined · informational</span><span class="chip plain">Not a gate</span></div><div class="big num" id="gmAll">34.5%<small>GM</small></div><dl class="kv"><dt>Revenue</dt><dd class="num" id="revAll">$145,000</dd><dt>Delivery cost</dt><dd class="num" id="costAll">$95,000</dd><dt>Gross profit</dt><dd class="num" id="gpAll">$50,000</dd></dl></div>
+        <div class="card"><div class="hd"><span class="label">US component · floor 35%</span><span class="chip bad" id="usChip">Fails by 7.2 pts</span></div><div class="big num" id="gmUS">27.8%<small>GM</small></div><div class="floorbar"><span class="muted">0%</span><div class="track"><div class="fill bad" id="usFill" style="width:46%"></div><div class="mark" data-l="35% floor" style="left:58%"></div></div><span class="muted">60%</span></div><dl class="kv"><dt>Revenue</dt><dd class="num" id="revUS">$90,000</dd><dt>Cost</dt><dd class="num">$65,000</dd><dt>Min. price at floor</dt><dd class="num">$100,000</dd></dl></div>
+        <div class="card"><div class="hd"><span class="label">India component · floor 50%</span><span class="chip bad" id="inChip">Fails by 4.5 pts</span></div><div class="big num" id="gmIN">45.5%<small>GM</small></div><div class="floorbar"><span class="muted">0%</span><div class="track"><div class="fill bad" id="inFill" style="width:76%"></div><div class="mark" data-l="50% floor" style="left:83%"></div></div><span class="muted">60%</span></div><dl class="kv"><dt>Revenue</dt><dd class="num" id="revIN">$55,000</dd><dt>Cost</dt><dd class="num">$30,000</dd><dt>Min. price at floor</dt><dd class="num">$60,000</dd></dl></div>
+      </div>
+
+      <section class="card">
+        <div class="card-h"><h2>Revenue allocation</h2><span class="sub">Finance-approved split by work package · locked on submit</span></div>
+        <div style="padding:12px 20px 18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px" class="alloc">
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:13px"><span class="muted">US revenue (USD)</span><input class="cell" id="inUS" value="90,000" inputmode="numeric" aria-label="US revenue"></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:13px"><span class="muted">India revenue (USD)</span><input class="cell" id="inIN" value="55,000" inputmode="numeric" aria-label="India revenue"></label>
+        </div>
+        <div class="small faint" style="padding:0 20px 16px">Change a value to see the tests recalculate. In production the calculation runs on the server; this preview is marked until verified.</div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><h2>Staffing grid</h2><span class="sub">8 resource lines · 2 to hire</span><button class="btn sm more">Add resource</button></div>
+        <div class="tscroll"><table>
+          <thead><tr><th>Role</th><th>Location</th><th>Resource</th><th>Dates</th><th class="num">Alloc.</th><th class="num">Hours</th><th class="num">Bill rate</th><th class="num">Loaded cost</th><th class="num">Revenue</th><th class="num">Cost</th><th class="num">GM</th></tr></thead>
+          <tbody id="staff"></tbody>
+        </table></div>
+      </section>
+    </main>
+
+    <!-- ========== SCREEN: CEO EXCEPTION ========== -->
+    <main class="page screen" id="s-ceo" hidden data-crumb="Commitments / Northstar Health / SOW-0138 / CEO exception">
+      <div class="ph"><div><div class="label" style="margin-bottom:4px">Margin exception · SOW v3 · GM v4 · Policy 2026-01</div><h1>Northstar Health · Claims intake modernization</h1><div class="sub">Both geographic components are below floor. Delivery, HR, Finance and Legal have completed review; their decisions are attached below.</div></div><div class="actions"><span class="chip warn">Awaiting CEO · 2 days</span></div></div>
+
+      <div class="grid g4">
+        <div class="card pad metric"><span class="k">Proposed revenue</span><span class="v num">$145,000</span><span class="b">Fixed price · 14 weeks</span></div>
+        <div class="card pad metric"><span class="k">Eligible delivery cost</span><span class="v num">$95,000</span><span class="b">HR-validated · rate card v2026.3</span></div>
+        <div class="card pad metric"><span class="k">Gross profit · combined GM</span><span class="v num">$50,000 <span class="muted" style="font-size:16px;font-weight:500">34.5%</span></span><span class="b">Informational; components govern</span></div>
+        <div class="card pad metric stripe-bad"><span class="k">Price increase to reach policy</span><span class="v num" style="color:var(--bad)">+$15,000</span><span class="b">Or $9,000 gross-profit shortfall at this price</span></div>
+      </div>
+
+      <section class="card"><div class="tscroll"><table>
+        <thead><tr><th>Component</th><th class="num">Allocated revenue</th><th class="num">Cost</th><th class="num">Proposed GM</th><th class="num">Required</th><th class="num">Shortfall</th><th class="num">Compliant revenue</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td><b>United States</b></td><td class="num">$90,000</td><td class="num">$65,000</td><td class="num">27.78%</td><td class="num">35.00%</td><td class="num" style="color:var(--bad)">−7.22 pts · $6,500</td><td class="num">$100,000</td><td><span class="chip bad">Below floor</span></td></tr>
+          <tr><td><b>India</b></td><td class="num">$55,000</td><td class="num">$30,000</td><td class="num">45.45%</td><td class="num">50.00%</td><td class="num" style="color:var(--bad)">−4.55 pts · $2,500</td><td class="num">$60,000</td><td><span class="chip bad">Below floor</span></td></tr>
+          <tr><td class="muted">Combined</td><td class="num muted">$145,000</td><td class="num muted">$95,000</td><td class="num muted">34.48%</td><td class="num muted">40.63% weighted</td><td class="num muted">−6.15 pts · $9,000</td><td class="num muted">$160,000</td><td><span class="chip plain">Informational</span></td></tr>
+        </tbody>
+      </table></div></section>
+
+      <div class="ceo">
+        <div class="card case">
+          <section><h3>What the client is buying</h3><p>Replace Northstar's manual claims intake with a document-extraction pipeline and reviewer workbench for 3 regional offices. 14 weeks, fixed price, acceptance by processed-claim accuracy ≥ 96% on a 500-claim sample.</p></section>
+          <section><h3>Why the exception is requested</h3><p>Written by R. Patel (account owner). Northstar is a new logo in insurance with a published $1.2M FY27 modernization budget. The intake project is their qualifying step; the incumbent priced at $138k. We recommend accepting the $9,000 shortfall to establish the account. Follow-on value is not contracted and is shown separately.</p></section>
+          <section><h3>Alternatives considered</h3><div class="checks"><div><span class="i warn">–</span><span><b>Reprice to $160,000.</b> Client declined on 15 Sep; budget authority capped at $150k this quarter.</span></div><div><span class="i warn">–</span><span><b>Shift 2 US developer lines to India.</b> Moves US to 41% but India to 38%; client requires US-based access to PHI data, so only the QA line can move.</span></div><div><span class="i ok">✓</span><span><b>Phase the work.</b> A $98k phase 1 at policy margin is possible; client prefers a single SOW. Kept as fallback.</span></div><div><span class="i bad">✕</span><span><b>Decline.</b> Not recommended by Sales; Finance neutral.</span></div></div></section>
+          <section><h3>Functional recommendations</h3><div class="checks"><div><span class="i ok">✓</span><span><b>Delivery · A. Nair:</b> feasible with named team; 12% contingency included; PHI handling adds 1 week risk.</span></div><div><span class="i ok">✓</span><span><b>HR · L. Ortiz:</b> 6 of 8 resources available; 2 India hires within 3-week lead time.</span></div><div><span class="i warn">–</span><span><b>Finance · S. Pfeiffer:</b> approves the model; recommends accepting only with a 30% deposit and phase-2 pricing at policy.</span></div><div><span class="i ok">✓</span><span><b>Legal · J. Moreno:</b> MSA executed 2025; NDA covers the entity; BAA required before data access.</span></div></section>
+          <section><h3>Downside and recovery</h3><p>If effort overruns by 15%, combined GM falls to 24.7%. Recovery owner: A. Nair. Review date: week 6 forecast. Cash exposure before first milestone: $41k without deposit.</p></section>
+        </div>
+
+        <aside class="card decide" aria-label="Decision">
+          <div><div class="label">Decision</div><div style="font-weight:600;margin-top:4px">Adil Lalji · CEO</div><div class="small muted">Approvable versions: SOW v3 · GM v4 · Policy 2026-01. Approval valid for signature until 19 Oct.</div></div>
+          <div><div class="label" style="margin-bottom:8px">Conditions</div>
+            <div style="display:flex;flex-direction:column;gap:8px" id="conds">
+              <div class="cond"><div class="h"><span>30% deposit invoiced before kickoff</span><span class="chip warn">Blocks signature</span></div><div class="m"><span>Owner: Finance</span><span>Evidence: paid invoice</span></div></div>
+              <div class="cond"><div class="h"><span>BAA executed before PHI access</span><span class="chip plain">Blocks delivery</span></div><div class="m"><span>Owner: Legal</span><span>Evidence: signed BAA</span></div></div>
+            </div>
+            <button class="btn ghost sm" style="margin-top:6px">+ Add condition</button>
+          </div>
+          <div><div class="label" style="margin-bottom:6px">Rationale (required)</div><textarea id="rat" placeholder="Why this exception is acceptable, in your words."></textarea></div>
+          <div class="acts">
+            <button class="btn primary" data-toast="Approved with 2 conditions · SOW v3 / GM v4 recorded">Approve with conditions</button>
+            <button class="btn" data-toast="Approved · SOW v3 / GM v4 recorded">Approve exception</button>
+            <button class="btn" data-toast="Returned to R. Patel with your reason">Request changes</button>
+            <button class="btn danger" data-toast="Declined · deal returns to reprice or close">Decline</button>
+          </div>
+          <div class="small faint">Every decision records your identity, time, versions and rationale. It cannot waive Legal or staffing requirements.</div>
+        </aside>
+      </div>
+    </main>
+
+    <!-- ========== PLACEHOLDER SCREENS ========== -->
+    <main class="page screen" id="s-other" hidden data-crumb="">
+      <div class="ph"><div><h1 id="otherTitle">My work</h1><div class="sub">Not part of this prototype. The spec (sections 6, 10–12, 15–18) defines this screen; it uses the same shell, table and card patterns shown here.</div></div></div>
+      <section class="card pad" style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn" data-go="command">Command center</button><button class="btn" data-go="pipeline">Pipeline clients</button><button class="btn" data-go="sows">SOW approvals</button><button class="btn" data-go="gm">Staffing &amp; GM</button><button class="btn" data-go="ceo">CEO exception</button></section>
+    </main>
+  </div>
+</div>
+
+<script>
+/* ---------- sample data (fictitious) ---------- */
+const clients=[
+ {n:"Atlas Logistics",o:"M. Reyes",st:"Proposal",nda:["ok","Executed"],msa:["warn","Awaiting signature · 9d"],sow:"SOW-0142 · Functional review",v:"$185,000",next:"Chase MSA signatory · 22 Sep",sync:"4 min",gap:1,due:0},
+ {n:"Beacon Retail",o:"K. Shaw",st:"Discovery",nda:["bad","Expired 31 Aug"],msa:["ok","Executed"],sow:"— · Intake",v:"$120,000",next:"Renew NDA · 18 Sep",sync:"4 min",gap:1,due:1},
+ {n:"Cedar Mutual",o:"Unassigned",st:"Qualification",nda:["warn","Requested"],msa:["bad","Missing"],sow:"— · Intake",v:"Unknown",next:"Assign owner · overdue 3d",sync:"4 min",gap:1,due:1},
+ {n:"Harbor Freight Co.",o:"T. Nguyen",st:"Negotiation",nda:["ok","Executed"],msa:["ok","Executed"],sow:"SOW-0140 · Finance review",v:"$96,000",next:"Pricing call · 24 Sep",sync:"4 min",gap:0,due:0},
+ {n:"Northstar Health",o:"R. Patel",st:"Negotiation",nda:["ok","Executed"],msa:["ok","Executed"],sow:"SOW-0138 · CEO exception",v:"$145,000",next:"Await CEO decision",sync:"4 min",gap:0,due:0},
+ {n:"Vista Media",o:"D. Okafor",st:"Closed won",nda:["ok","Executed"],msa:["ok","Executed"],sow:"SOW-0135 · Client signature",v:"$134,000",next:"Signature follow-up · 20 Sep",sync:"4 min",gap:0,due:0},
+];
+const chip=(c,t)=>`<span class="chip ${c}">${t}</span>`;
+const who=(o)=>o==="Unassigned"?`<span class="who"><span class="av">?</span><span style="color:var(--bad);font-weight:500">Unassigned</span></span>`:`<span class="who"><span class="av">${o.split(" ").map(s=>s[0]).join("").slice(0,2)}</span>${o}</span>`;
+
+document.getElementById("readiness").innerHTML=clients.map(c=>`<tr><td><a class="rowlink" href="#pipeline" data-go="pipeline">${c.n}</a><div class="small muted">${c.o}</div></td><td>${c.st}</td><td>${chip(c.nda[0],c.nda[1])}</td><td>${chip(c.msa[0],c.msa[1])}</td><td>${c.sow}</td><td>${c.next}</td></tr>`).join("");
+
+function renderPipe(f){
+  const rows=clients.filter(c=>f==="all"||(f==="gap"&&c.gap)||(f==="ready"&&!c.gap)||(f==="due"&&c.due));
+  document.getElementById("pipeRows").innerHTML=rows.map(c=>`<tr><td><a class="rowlink" href="#" onclick="return false">${c.n}</a><div class="small">${who(c.o)}</div></td><td>${c.st}</td><td>${chip(c.nda[0],c.nda[1])}</td><td>${chip(c.msa[0],c.msa[1])}</td><td>${c.sow}</td><td class="num ${c.v==="Unknown"?"faint":""}">${c.v}</td><td>${c.next}</td><td class="muted">${c.sync}</td></tr>`).join("");
+}
+renderPipe("all");
+document.getElementById("pipeFilters").addEventListener("click",e=>{const b=e.target.closest("[data-f]");if(!b)return;document.querySelectorAll("#pipeFilters [data-f]").forEach(x=>x.setAttribute("aria-pressed",x===b));renderPipe(b.dataset.f)});
+
+/* ---------- SOW cards ---------- */
+const sows=[
+ {lane:0,c:"Beacon Retail",t:"Store analytics assessment · 4 wk",v:"$38k",gm:"—",gmc:"plain",gmt:"GM not built",nda:"bad",msa:"ok",f:["","","",""],o:"K. Shaw",next:"Confirm SOW fields",age:"1d",stripe:""},
+ {lane:1,c:"Northstar Health",t:"SOW-0138 · Claims intake",v:"$145k",gm:"34.5%",gmc:"bad",gmt:"US & India below floor",nda:"ok",msa:"ok",f:["ok","ok","ok","ok"],o:"R. Patel",next:"CEO decision",age:"2d",stripe:"stripe-bad",go:"ceo"},
+ {lane:2,c:"Atlas Logistics",t:"SOW-0142 · WMS integration",v:"$185k",gm:"41.2%",gmc:"ok",gmt:"Passes both floors",nda:"ok",msa:"warn",f:["ok","ok","prog","bad"],o:"M. Reyes",next:"Legal: MSA unsigned",age:"9d",stripe:"stripe-warn"},
+ {lane:2,c:"Harbor Freight Co.",t:"SOW-0140 · 2 SRE staff aug",v:"$96k",gm:"38.0%",gmc:"ok",gmt:"US-only · passes",nda:"ok",msa:"ok",f:["ok","ok","prog",""],o:"T. Nguyen",next:"Finance review due 22 Sep",age:"3d",stripe:"stripe-prog"},
+ {lane:3,c:"Northstar Health",t:"SOW-0138 · Claims intake",v:"$145k",gm:"34.5%",gmc:"bad",gmt:"Awaiting CEO",nda:"ok",msa:"ok",f:["ok","ok","ok","ok"],o:"Adil Lalji",next:"Approve · conditions · decline",age:"2d",stripe:"stripe-bad",go:"ceo",ceoOnly:true},
+ {lane:4,c:"Vista Media",t:"SOW-0135 · Ad-ops managed service",v:"$134k",gm:"52.4%",gmc:"ok",gmt:"India-only · passes",nda:"ok",msa:"ok",f:["ok","ok","ok","ok"],o:"D. Okafor",next:"Client viewed 18 Sep · follow up",age:"5d",stripe:""},
+ {lane:5,c:"Summit Semiconductor",t:"SOW-0131 · ServiceNow GRC",v:"$210k",gm:"39.6%",gmc:"ok",gmt:"Executed 12 Sep",nda:"ok",msa:"ok",f:["ok","ok","ok","ok"],o:"P. Iyer",next:"Delivery to accept handoff",age:"7d",stripe:""},
+];
+const laneNames=["Draft intake","Scope & GM","Functional review","CEO exception","Client signature","Handoff"];
+const fn=["D","H","F","L"];
+const card=(s)=>`<div class="sow ${s.stripe}" ${s.go?`data-go="${s.go}"`:""} role="button" tabindex="0"><div class="t"><b>${s.c}</b><span class="v num">${s.v}</span></div><div class="c">${s.t}</div><div class="fx">${chip(s.gmc,s.gm==="—"?s.gmt:s.gm+" · "+s.gmt)}</div><div class="fx"><span class="small faint">NDA</span>${chip(s.nda,s.nda==="ok"?"OK":s.nda==="warn"?"Pending":"Gap")}<span class="small faint">MSA</span>${chip(s.msa,s.msa==="ok"?"OK":s.msa==="warn"?"Pending":"Gap")}</div><div class="fx" title="Delivery · HR · Finance · Legal">${fn.map((f,i)=>`<span class="fmark ${s.f[i]}">${f}</span>`).join("")}<span class="small faint" style="margin-left:4px">${s.f.filter(x=>x==="ok").length}/4 reviews</span></div><div class="foot"><span class="who"><span class="av">${s.o.split(" ").map(x=>x[0]).join("").slice(0,2)}</span>${s.next}</span><span>${s.age}</span></div></div>`;
+document.getElementById("board").innerHTML=laneNames.map((n,i)=>{const items=sows.filter(s=>s.lane===i&&!(i===1&&s.c==="Northstar Health"));return `<div class="bl"><div class="lh"><span>${n}</span><span class="n">${items.length}</span></div>${items.length?items.map(card).join(""):`<div class="empty">Nothing at this gate</div>`}</div>`}).join("");
+document.getElementById("lanesPreview").innerHTML=[1,2,3].map(i=>{const items=sows.filter(s=>s.lane===i&&!(i===1&&s.c==="Northstar Health"));return `<div class="lane"><div class="lh"><span>${laneNames[i]}</span><span>${items.length}</span></div>${items.map(card).join("")}</div>`}).join("");
+
+/* ---------- staffing grid ---------- */
+const staff=[
+ ["Solution architect","US","A. Nair","22 Sep – 19 Dec","50%","280","$210","$128","58,800","35,840","39.0%"],
+ ["Senior developer","US","J. Kim","22 Sep – 19 Dec","100%","560","—","$96","—","53,760","—"],
+ ["QA engineer","US","To hire · 3 wk lead","6 Oct – 19 Dec","100%","440","—","$72","—","31,680","—"],
+ ["Project manager","US","M. Reyes","22 Sep – 19 Dec","25%","140","—","$110","—","15,400","—"],
+ ["ML engineer","India","V. Sharma","22 Sep – 19 Dec","100%","560","—","$28","—","15,680","—"],
+ ["Developer","India","To hire · 3 wk lead","6 Oct – 19 Dec","100%","440","—","$22","—","9,680","—"],
+ ["Developer","India","R. Das","22 Sep – 19 Dec","100%","560","—","$22","—","12,320","—"],
+ ["Data annotator ×2","India","Pool","29 Sep – 5 Dec","100%","800","—","$9","—","7,200","—"],
+];
+document.getElementById("staff").innerHTML=staff.map(r=>`<tr><td><b style="font-weight:500">${r[0]}</b></td><td>${r[1]}</td><td>${r[2].startsWith("To hire")?`<span class="chip warn">${r[2]}</span>`:r[2]}</td><td class="muted">${r[3]}</td><td class="num">${r[4]}</td><td class="num">${r[5]}</td><td class="num"><span class="masked">Fixed price</span></td><td class="num">${r[7]}<span class="small faint"> /h</span></td><td class="num muted">Allocated</td><td class="num">$${r[9]}</td><td class="num muted">—</td></tr>`).join("")+`<tr><td colspan="9" class="muted">Total delivery cost (labor $181,560 shown at hourly; fixed-price model uses effort-adjusted $95,000 eligible cost per Finance policy)</td><td class="num"><b>$95,000</b></td><td></td></tr>`;
+
+/* ---------- live GM recalculation (preview only) ---------- */
+const money=s=>Number(String(s).replace(/[^0-9.]/g,""))||0;
+const fmt=n=>"$"+Math.round(n).toLocaleString("en-US");
+function recalc(){
+  const us=money(document.getElementById("inUS").value),ind=money(document.getElementById("inIN").value);
+  const cu=65000,ci=30000;
+  const g=(r,c)=>r>0?(r-c)/r:NaN;
+  const gus=g(us,cu),gin=g(ind,ci),gall=g(us+ind,cu+ci);
+  const pct=x=>isNaN(x)?"—":(x*100).toFixed(1)+"%";
+  document.getElementById("gmUS").innerHTML=pct(gus)+"<small>GM</small>";
+  document.getElementById("gmIN").innerHTML=pct(gin)+"<small>GM</small>";
+  document.getElementById("gmAll").innerHTML=pct(gall)+"<small>GM</small>";
+  document.getElementById("revUS").textContent=fmt(us);document.getElementById("revIN").textContent=fmt(ind);
+  document.getElementById("revAll").textContent=fmt(us+ind);document.getElementById("gpAll").textContent=fmt(us+ind-cu-ci);
+  const set=(chipEl,fillEl,gm,floor)=>{const d=(gm-floor)*100;const ok=gm>=floor-1e-12;chipEl.className="chip "+(ok?"ok":"bad");chipEl.textContent=isNaN(gm)?"Revenue required":ok?"Passes by "+d.toFixed(1)+" pts":"Fails by "+(-d).toFixed(1)+" pts";fillEl.className="fill "+(ok?"":"bad");fillEl.style.width=Math.max(0,Math.min(100,(isNaN(gm)?0:gm)/0.6*100))+"%";};
+  set(document.getElementById("usChip"),document.getElementById("usFill"),gus,0.35);
+  set(document.getElementById("inChip"),document.getElementById("inFill"),gin,0.50);
+}
+["inUS","inIN"].forEach(id=>document.getElementById(id).addEventListener("input",recalc));
+
+/* ---------- economics chart ---------- */
+(function(){
+  const data=[{n:"Summit Semi.",a:39.6,f:37.1,fl:35,geo:"US"},{n:"Meridian Bank",a:52.4,f:48.9,fl:50,geo:"India"},{n:"Vista Media",a:52.4,f:53.0,fl:50,geo:"India"},{n:"Orion Gaming",a:36.8,f:31.2,fl:35,geo:"US"},{n:"Pacific Ins.",a:44.1,f:44.5,fl:41.2,geo:"Mixed"}];
+  const svg=document.getElementById("econ"),W=900,H=230,L=110,R=20,T=16,B=30,cw=W-L-R,ch=H-T-B,max=60;
+  const y=v=>T+ch-(v/max)*ch;
+  let s="";
+  for(const t of [0,20,40,60]){s+=`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--border)" stroke-width="1"/><text x="${L-8}" y="${y(t)+4}" text-anchor="end">${t}%</text>`;}
+  const gw=cw/data.length,bw=Math.min(24,gw*0.2);
+  data.forEach((d,i)=>{const cx=L+gw*i+gw/2;
+    s+=`<g class="grp" data-i="${i}"><rect x="${cx-bw-3}" y="${y(d.a)}" width="${bw}" height="${y(0)-y(d.a)}" rx="3" fill="var(--s1)"/><rect x="${cx+3}" y="${y(d.f)}" width="${bw}" height="${y(0)-y(d.f)}" rx="3" fill="var(--s2)"/><line x1="${cx-bw-10}" x2="${cx+bw+10}" y1="${y(d.fl)}" y2="${y(d.fl)}" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="${d.geo==="Mixed"?"3 3":"0"}"/>${d.f<d.fl?`<text x="${cx+3+bw/2}" y="${Math.min(y(d.f),y(d.fl))-6}" text-anchor="middle" style="fill:var(--bad);font-weight:600">${d.f}%</text>`:""}<text x="${cx}" y="${H-10}" text-anchor="middle">${d.n}</text><rect x="${L+gw*i}" y="${T}" width="${gw}" height="${ch}" fill="transparent"/></g>`;});
+  svg.innerHTML=s;
+  const tip=document.getElementById("tip");
+  svg.addEventListener("mousemove",e=>{const g=e.target.closest(".grp");if(!g){tip.style.display="none";return;}const d=data[g.dataset.i];tip.style.display="block";tip.innerHTML=`<b>${d.n}</b> · ${d.geo}<br>Approved ${d.a}% · Forecast ${d.f}% · Floor ${d.fl}%`;const r=svg.parentElement.parentElement.getBoundingClientRect();tip.style.left=(e.clientX-r.left+12)+"px";tip.style.top=(e.clientY-r.top-40)+"px";});
+  svg.addEventListener("mouseleave",()=>tip.style.display="none");
+})();
+
+/* ---------- navigation ---------- */
+const screens={command:"s-command",pipeline:"s-pipeline",sows:"s-sows",gm:"s-gm",ceo:"s-ceo"};
+const titles={work:"My work",discovery:"AI discovery",agreements:"NDA & MSA",studio:"New SOW studio",projects:"Delivery & actuals",renewals:"Renewals",handoffs:"Signed handoff",reports:"Reporting",settings:"Settings & controls"};
+function go(key){
+  const id=screens[key]||"s-other";
+  document.querySelectorAll(".screen").forEach(s=>s.hidden=(s.id!==id));
+  if(id==="s-other"){document.getElementById("otherTitle").textContent=titles[key]||key;}
+  const crumb=id==="s-other"?"Workspace / "+(titles[key]||key):document.getElementById(id).dataset.crumb;
+  const parts=crumb.split(" / ");document.getElementById("crumb").innerHTML=parts.map((p,i)=>i===parts.length-1?`<b>${p}</b>`:`<span>${p}</span><span>/</span>`).join("");
+  document.querySelectorAll(".side .nav").forEach(b=>{if(b.dataset.go===key)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
+  document.querySelectorAll(".mobile-nav [data-go]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.go===key));
+  window.scrollTo({top:0});
+  try{history.replaceState(null,"","#"+key)}catch(e){}
+}
+document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(g){e.preventDefault();go(g.dataset.go);return;}
+  const t=e.target.closest("[data-toast]");if(t){toast(t.dataset.toast);}
+});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"){const g=e.target.closest(".sow[data-go]");if(g)go(g.dataset.go);}});
+const start=(location.hash||"#command").slice(1);go(screens[start]||titles[start]?start:"command");
+
+/* ---------- toast ---------- */
+function toast(msg){let t=document.querySelector(".toast");if(!t){t=document.createElement("div");t.className="toast";t.setAttribute("role","status");document.body.appendChild(t);}t.textContent=msg+" (prototype, nothing sent)";clearTimeout(t._h);t._h=setTimeout(()=>t.remove(),3200);}
+
+/* ---------- profile menu, theme, density ---------- */
+const pb=document.getElementById("profileBtn"),menu=document.getElementById("menu");
+pb.addEventListener("click",()=>{menu.hidden=!menu.hidden;pb.setAttribute("aria-expanded",String(!menu.hidden));});
+document.addEventListener("click",e=>{if(!menu.hidden&&!e.target.closest("#menu")&&!e.target.closest("#profileBtn")){menu.hidden=true;pb.setAttribute("aria-expanded","false");}});
+document.getElementById("themeSeg").addEventListener("click",e=>{const b=e.target.closest("[data-t]");if(!b)return;const t=b.dataset.t;if(t==="system")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",t);document.querySelectorAll("#themeSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));try{localStorage.setItem("dg-theme",t)}catch(err){}});
+document.getElementById("densSeg").addEventListener("click",e=>{const b=e.target.closest("[data-d]");if(!b)return;document.documentElement.setAttribute("data-density",b.dataset.d);document.querySelectorAll("#densSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b));try{localStorage.setItem("dg-density",b.dataset.d)}catch(err){}});
+try{const t=localStorage.getItem("dg-theme");if(t&&t!=="system"){document.documentElement.setAttribute("data-theme",t);document.querySelectorAll("#themeSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.t===t));}const d=localStorage.getItem("dg-density");if(d){document.documentElement.setAttribute("data-density",d);document.querySelectorAll("#densSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.d===d));}}catch(err){}
+</script>

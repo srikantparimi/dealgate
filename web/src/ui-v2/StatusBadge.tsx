@@ -1,62 +1,78 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  CircleDashed,
-  Info,
-  ShieldAlert,
-  XCircle,
-  type LucideIcon,
-} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge, type BadgeProps } from "./primitives/badge";
 import { cn } from "../lib/cn";
 
 /**
- * Named status badge. Colour is supplementary — every status also has a
- * word and an icon (spec §2 and §20). Callers pass a semantic `tone` plus
- * the human-readable label; the icon is chosen by tone by default but can
- * be overridden.
+ * Named status badge — v2.1 spec.
+ *
+ * Five variants are the source of truth:
+ *   `neutral | success | warning | danger | progress`
+ *
+ * The v2.0 tone names (`ok`, `warn`, `primarySubtle`) are still accepted
+ * so existing call sites keep working; they map onto the new variants at
+ * render time. The `security` alias remains for the settings page.
+ *
+ * Rendering is dot + word (v2.1 addendum rule: colour alone never encodes
+ * state — the dot survives grayscale and colour-blindness; the word is
+ * always there). An optional icon is still supported for callers that
+ * previously relied on it; when an icon is shown the leading dot is
+ * hidden so the chip stays 22px tall.
  */
 export type StatusTone =
+  // v2.1 canonical names
   | "neutral"
+  | "success"
+  | "warning"
+  | "danger"
+  | "progress"
+  // Legacy aliases kept for backwards compatibility.
   | "ok"
   | "warn"
-  | "danger"
   | "primarySubtle";
 
-const iconByTone: Record<StatusTone, LucideIcon> = {
-  neutral: CircleDashed,
-  ok: CheckCircle2,
-  warn: AlertTriangle,
-  danger: XCircle,
-  primarySubtle: Info,
-};
-
-const fallbackIcons: Record<string, LucideIcon> = {
-  security: ShieldAlert,
+const ALIAS: Record<StatusTone, "neutral" | "success" | "warning" | "danger" | "progress"> = {
+  neutral: "neutral",
+  success: "success",
+  warning: "warning",
+  danger: "danger",
+  progress: "progress",
+  ok: "success",
+  warn: "warning",
+  primarySubtle: "progress",
 };
 
 export interface StatusBadgeProps
-  extends Omit<BadgeProps, "tone" | "children"> {
+  extends Omit<BadgeProps, "tone" | "children" | "showDot"> {
   tone: StatusTone;
   label: ReactNode;
+  /**
+   * Optional lucide icon shown before the label. When present, the leading
+   * coloured dot is suppressed so the chip stays 22px tall.
+   */
   icon?: LucideIcon;
-  /** Set to `false` to hide the icon (label still required). */
+  /** Set to `false` to hide any icon (label still required). */
   showIcon?: boolean;
 }
 
 export function StatusBadge({
   tone,
   label,
-  icon,
+  icon: Icon,
   showIcon = true,
   className,
   ...rest
 }: StatusBadgeProps) {
-  const Icon = icon ?? iconByTone[tone] ?? fallbackIcons.security;
+  const canonical = ALIAS[tone];
+  const hasIcon = Boolean(Icon) && showIcon;
   return (
-    <Badge tone={tone} className={cn("gap-1", className)} {...rest}>
-      {showIcon ? <Icon className="h-3 w-3" aria-hidden /> : null}
+    <Badge
+      tone={canonical}
+      showDot={!hasIcon}
+      className={cn(className)}
+      {...rest}
+    >
+      {hasIcon && Icon ? <Icon className="h-3 w-3" aria-hidden /> : null}
       <span>{label}</span>
     </Badge>
   );

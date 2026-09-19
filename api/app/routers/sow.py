@@ -345,6 +345,64 @@ async def patch_field(
     return _to_response(new_state, download_url=download)
 
 
+@router.get("/{opportunity_id}/confirmation")
+async def get_confirmation(
+    opportunity_id: uuid.UUID,
+    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """One-shot derived package for the confirmation screen (S9 wave 1).
+
+    Runs classify → auto-staff → auto-GM in the request. Idempotent: a
+    repeat call within the same session reuses the GM model already
+    tied to the SOW version.
+    """
+
+    from app.services.sow_confirmation import (
+        build_confirmation,
+        serialize_confirmation,
+    )
+
+    try:
+        payload = await build_confirmation(
+            session, opportunity_id=opportunity_id, actor_id=None
+        )
+    except SowNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    # Commit the auto-GM row if one was created — build_confirmation
+    # writes through delivery_model.create_gm_model_version which flushes
+    # but its own commit is what persists the audit + row together.
+    await session.commit()
+    return serialize_confirmation(payload)
+
+
+@router.post("/{opportunity_id}/confirmation/submit")
+async def submit_confirmation_endpoint(
+    opportunity_id: uuid.UUID,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Commit + transition. Idempotent by (sow_version_id, gm_model_id)."""
+
+    opp = await _load_opportunity(session, opportunity_id)
+    if not can_mutate_deal(user, opp) and "SystemAdmin" not in user.groups:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"
+        )
+    from app.services.sow_confirmation import (
+        serialize_confirmation,
+        submit_confirmation,
+    )
+
+    try:
+        payload = await submit_confirmation(
+            session, opportunity_id=opportunity_id, actor_id=user.id
+        )
+    except SowNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return serialize_confirmation(payload)
+
+
 @router.post(
     "/versions/{sow_version_id}/submit", response_model=VersionResponse
 )
