@@ -24,6 +24,7 @@ from app.services.adviser import (
     load_estimate,
     serialize_row,
 )
+from app.services.redact import redact_costs
 
 router = APIRouter(prefix="/adviser", tags=["adviser"])
 
@@ -104,18 +105,21 @@ async def list_estimates_endpoint(
     rows, total = await list_estimates(
         session, owner_id=owner_id, page=page, size=size
     )
-    return {
+    payload = {
         "items": [serialize_row(r) for r in rows],
         "page": page,
         "size": size,
         "total": total,
     }
+    # S7 B: strip cost bands for readers without a cost-authorized role
+    # (Sales / SalesLeader / Marketing / Presales / Legal).
+    return redact_costs(payload, set(user.groups))
 
 
 @router.get("/estimates/{estimate_id}")
 async def get_estimate(
     estimate_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*READ_ROLES)),
+    user: AuthUser = Depends(require_role(*READ_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     row = await load_estimate(session, estimate_id)
@@ -123,7 +127,7 @@ async def get_estimate(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="adviser estimate not found"
         )
-    return serialize_row(row)
+    return redact_costs(serialize_row(row), set(user.groups))
 
 
 # NOTE: There is deliberately no `GET /adviser/estimates/{id}/pdf` route.

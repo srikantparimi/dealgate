@@ -38,3 +38,10 @@ variable "create_github_oidc_provider" {
   type        = bool
   default     = false
 }
+
+# S7: observability module wires this straight into the SNS alerts subscription.
+variable "alert_email" {
+  description = "Email that receives SNS alerts (RDS CPU / free storage / ECS task failures). Recipient must confirm the SNS subscription."
+  type        = string
+  default     = "srikantp@smartek21.com"
+}

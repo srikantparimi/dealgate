@@ -40,6 +40,7 @@ from app.services.deals import (
     latest_approval_package_summary,
     latest_gm_model_summary,
 )
+from app.services.redact import redact_costs
 
 router = APIRouter(prefix="/deals", tags=["deals"])
 
@@ -225,15 +226,20 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
     )
 
 
-@router.get("/{deal_id}", response_model=DealDetail)
+@router.get("/{deal_id}", response_model=None)
 async def get_deal(
     deal_id: uuid.UUID,
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
-) -> DealDetail:
+) -> dict[str, Any]:
+    """Deal detail — cost fields inside ``gm_model`` / ``latest_package`` are
+    stripped for users without a cost-authorized role (blueprint §3)."""
+
     opp = await _load_opportunity(session, deal_id)
     await _access_or_403(session, user, opp)
-    return await _build_detail(session, opp)
+    detail = await _build_detail(session, opp)
+    payload = detail.model_dump(mode="json")
+    return redact_costs(payload, set(user.groups))
 
 
 _TRACKED_FIELDS: tuple[str, ...] = (

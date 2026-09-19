@@ -52,6 +52,10 @@ from app.models.approval import (
 from app.models.gm_model import GmModel
 from app.models.opportunity import Opportunity
 from app.models.sow import SowVersion
+from app.models.task import Task
+from app.models.user import User
+from app.services.business_days import add_business_days
+from app.services.coverage_gate import check_msa_and_nda_executed
 from app.services.legacy_import import assert_not_legacy_for_approval
 from app.services.notifications import queue_notification
 from app.services.policy import active_policy
@@ -268,6 +272,108 @@ async def latest_package_summary(
     }
 
 
+# ---- SLA task creation (S7 C) --------------------------------------------
+
+
+_APPROVAL_SLA_BUSINESS_DAYS: int = 2
+
+# Which roles get an approver task per pending state. Matches
+# ``_STATE_TO_FUNCTIONS`` — this map exists so we can find real User rows
+# by group membership without extra plumbing.
+_STATE_TO_APPROVER_GROUPS: dict[str, tuple[str, ...]] = {
+    "pending_delivery_hr": ("Delivery", "HR"),
+    "pending_finance_legal": ("Finance", "Legal"),
+}
+
+
+async def _users_in_group(session: AsyncSession, group: str) -> list[User]:
+    """Return every User carrying ``group`` in their ``groups`` list.
+
+    SQLite (used in tests) does not support JSONB containment ops, so we
+    fetch all rows and filter in Python. The user table is small; this is
+    fine for the alert scheduler + submit_package hot path.
+    """
+
+    rows = list(
+        (await session.execute(select(User))).scalars().all()
+    )
+    return [u for u in rows if group in (u.groups or [])]
+
+
+async def _create_approval_tasks(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    package: ApprovalPackage,
+    state: str,
+) -> list[Task]:
+    """File ``approval.awaiting`` tasks for the approvers of ``state``.
+
+    One task per user in each approver group. If a group has no user we
+    create a single unassigned task carrying the group name in its
+    subject — the alert scheduler will escalate to the function head via
+    :func:`app.scheduler.resolve_head_for_role`.
+
+    Every task write emits a ``task.created`` audit row (rule 5) in the
+    same transaction as the caller's package transition.
+    """
+
+    groups = _STATE_TO_APPROVER_GROUPS.get(state, ())
+    if not groups:
+        return []
+
+    now = datetime.now(UTC)
+    due = add_business_days(now.date(), _APPROVAL_SLA_BUSINESS_DAYS)
+
+    created: list[Task] = []
+    for group in groups:
+        approvers = await _users_in_group(session, group)
+        if approvers:
+            targets: list[User | None] = list(approvers)
+        else:
+            # No user in the DB carrying this group — file an unassigned
+            # task so the scheduler still surfaces the SLA breach to the
+            # function head via routing.
+            targets = [None]
+
+        for owner in targets:
+            subject = (
+                f"{group} approval awaiting on package {package.id} "
+                f"(due {due.isoformat()})"
+            )
+            task = Task(
+                id=uuid.uuid4(),
+                owner_id=owner.id if owner else None,
+                subject=subject,
+                due_date=due,
+                category="approval.awaiting",
+                status="assigned",
+            )
+            session.add(task)
+            await session.flush()
+            await append_audit(
+                session,
+                actor_id=actor_id,
+                action="task.created",
+                entity="task",
+                entity_id=str(task.id),
+                before=None,
+                after={
+                    "owner_id": str(owner.id) if owner else None,
+                    "subject": subject,
+                    "category": "approval.awaiting",
+                    "due_date": due.isoformat(),
+                    "related_entity": "approval_package",
+                    "related_entity_id": str(package.id),
+                    "source": f"approvals.{state}",
+                    "approver_group": group,
+                },
+            )
+            created.append(task)
+
+    return created
+
+
 # ---- submit --------------------------------------------------------------
 
 
@@ -329,6 +435,17 @@ async def submit_package(
             detail="no gm_model for opportunity — build one before submitting",
         )
 
+    # S7 A: hard-block on missing NDA + MSA. Runs before any write so a
+    # 409 leaves the transaction clean (no partial approval_package row).
+    opportunity = (
+        await session.execute(
+            select(Opportunity).where(Opportunity.id == opportunity_id)
+        )
+    ).scalar_one_or_none()
+    if opportunity is None:
+        raise ApprovalError(status_code=404, detail="opportunity not found")
+    await check_msa_and_nda_executed(session, opportunity)
+
     hash_value = package_hash(sow_version, gm_model)
     if await _duplicate_hash_exists(
         session, opportunity_id=opportunity_id, hash_value=hash_value
@@ -369,6 +486,17 @@ async def submit_package(
             "status": package.status,
         },
     )
+
+    # S7 C: file "approval awaiting" tasks for the Delivery + HR approver
+    # groups with a 2-business-day due date. Runs same transaction so the
+    # SLA clock is anchored to the state change (rule 5).
+    await _create_approval_tasks(
+        session,
+        actor_id=actor_id,
+        package=package,
+        state="pending_delivery_hr",
+    )
+
     await session.commit()
     return await load_package(session, package.id)
 
@@ -680,6 +808,13 @@ async def _advance(
             entity_id=str(package.id),
             before={"status": old},
             after={"status": package.status},
+        )
+        # S7 C: fresh SLA timer for the Finance + Legal reviewers.
+        await _create_approval_tasks(
+            session,
+            actor_id=actor_id,
+            package=package,
+            state="pending_finance_legal",
         )
         return
 

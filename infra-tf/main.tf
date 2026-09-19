@@ -21,15 +21,29 @@ module "ecr" {
   name_prefix = local.name_prefix
 }
 
+# S7: KMS is the anchor for encryption-at-rest across the stack (S3 buckets,
+# RDS storage, Secrets Manager). Instantiated early because storage / web /
+# data / secrets all need `module.kms.key_arn`. The KMS module itself has no
+# module dependencies — the task-role KMS grant lives on the API side to
+# avoid a kms -> api -> secrets -> kms cycle.
+module "kms" {
+  source      = "./modules/kms"
+  name_prefix = local.name_prefix
+  region      = var.region
+  account_id  = data.aws_caller_identity.current.account_id
+}
+
 module "secrets" {
   source      = "./modules/secrets"
   name_prefix = local.name_prefix
+  kms_key_arn = module.kms.key_arn
 }
 
 module "web" {
   source      = "./modules/web"
   name_prefix = local.name_prefix
   account_id  = data.aws_caller_identity.current.account_id
+  kms_key_arn = module.kms.key_arn
 }
 
 module "auth" {
@@ -54,6 +68,7 @@ module "api" {
   jwt_signing_secret_arn = module.secrets.jwt_signing_secret_arn
   cognito_user_pool_id   = module.auth.user_pool_id
   cognito_client_id      = module.auth.client_id
+  kms_key_arn            = module.kms.key_arn
 }
 
 module "data" {
@@ -64,6 +79,7 @@ module "data" {
   api_security_group_id = module.api.api_security_group_id
   master_password       = module.secrets.db_password
   db_url_secret_id      = module.secrets.db_url_secret_id
+  kms_key_arn           = module.kms.key_arn
 }
 
 # S2-E3: evidence bucket for NDA/MSA signed uploads. Consumed by the API
@@ -73,24 +89,27 @@ module "storage" {
   source      = "./modules/storage"
   name_prefix = local.name_prefix
   account_id  = data.aws_caller_identity.current.account_id
+  kms_key_arn = module.kms.key_arn
 }
 
 # S2-E3 Wave 2: scheduled alert scheduler + notification sender workers.
 # Reuses the API ECS cluster + SG + subnets to avoid a second Fargate footprint.
 module "schedulers" {
-  source                  = "./modules/schedulers"
-  name_prefix             = local.name_prefix
-  env                     = var.env
-  region                  = var.region
-  ecs_cluster_arn         = module.api.cluster_arn
-  private_subnet_ids      = module.network.private_subnet_ids
-  task_security_group_ids = [module.api.api_security_group_id]
-  ecr_repository_url      = module.ecr.repository_url
-  image_tag               = var.image_tag
-  db_url_secret_arn       = module.secrets.db_url_secret_arn
-  task_execution_role_arn = module.api.task_execution_role_arn
-  cognito_user_pool_id    = module.auth.user_pool_id
-  cognito_client_id       = module.auth.client_id
+  source                   = "./modules/schedulers"
+  name_prefix              = local.name_prefix
+  env                      = var.env
+  region                   = var.region
+  ecs_cluster_arn          = module.api.cluster_arn
+  private_subnet_ids       = module.network.private_subnet_ids
+  task_security_group_ids  = [module.api.api_security_group_id]
+  ecr_repository_url       = module.ecr.repository_url
+  image_tag                = var.image_tag
+  db_url_secret_arn        = module.secrets.db_url_secret_arn
+  task_execution_role_arn  = module.api.task_execution_role_arn
+  cognito_user_pool_id     = module.auth.user_pool_id
+  cognito_client_id        = module.auth.client_id
+  audit_export_bucket_name = module.storage.audit_exports_bucket_name
+  audit_export_bucket_arn  = module.storage.audit_exports_bucket_arn
 }
 
 module "github_oidc" {
@@ -105,4 +124,18 @@ module "github_oidc" {
   task_role_arn               = module.api.task_role_arn
   web_bucket_arn              = module.web.bucket_arn
   cloudfront_distribution_arn = module.web.distribution_arn
+}
+
+# S7: CloudTrail + GuardDuty + CloudWatch alarms + SNS alerts topic.
+module "observability" {
+  source                   = "./modules/observability"
+  name_prefix              = local.name_prefix
+  region                   = var.region
+  account_id               = data.aws_caller_identity.current.account_id
+  kms_key_arn              = module.kms.key_arn
+  rds_instance_id          = module.data.db_instance_id
+  rds_allocated_storage_gb = module.data.db_allocated_storage_gb
+  ecs_cluster_name         = module.api.cluster_name
+  ecs_service_name         = module.api.service_name
+  alert_email              = var.alert_email
 }

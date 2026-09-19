@@ -23,6 +23,7 @@ from app.db import get_session
 from app.main import app as main_app
 from app.models.approval import Approval, ApprovalPackage
 from app.models.audit import AuditEvent
+from app.models.client import Agreement, Client, LegalEntity
 from app.models.notification import Notification
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
@@ -86,12 +87,52 @@ async def _seed_owner(session, email: str = "owner@smartek21.com") -> User:
 
 
 async def _seed_opp_with_sow(
-    session, owner: User, *, legacy: bool = False, confirmed: bool = True
+    session,
+    owner: User,
+    *,
+    legacy: bool = False,
+    confirmed: bool = True,
+    with_coverage: bool = True,
 ) -> tuple[Opportunity, SowVersion]:
+    # S7 A: submit_package now enforces NDA + MSA coverage. Give the opp a
+    # client with an Executed NDA + MSA by default so existing behaviour
+    # (packages submit successfully) is preserved. Tests that want to
+    # exercise the coverage gate pass ``with_coverage=False``.
+    client_id: uuid.UUID | None = None
+    if with_coverage:
+        client = Client(
+            id=uuid.uuid4(),
+            name=f"Client for {owner.email}",
+            hubspot_company_id=f"HS-CO-{uuid.uuid4().hex[:6]}",
+        )
+        session.add(client)
+        await session.flush()
+        entity = LegalEntity(
+            id=uuid.uuid4(),
+            client_id=client.id,
+            name="Default entity",
+        )
+        session.add(entity)
+        await session.flush()
+        for kind in ("NDA", "MSA"):
+            session.add(
+                Agreement(
+                    id=uuid.uuid4(),
+                    legal_entity_id=entity.id,
+                    kind=kind,
+                    state="executed",
+                    effective_date=date(2026, 1, 1),
+                    expiry=date(2030, 12, 31),
+                )
+            )
+        await session.flush()
+        client_id = client.id
+
     opp = Opportunity(
         id=uuid.uuid4(),
         hubspot_deal_id=f"H-AP-{uuid.uuid4().hex[:6]}",
         owner_id=owner.id,
+        client_id=client_id,
         governance_status="SOWDraft.confirmed" if confirmed else "SOWDraft",
     )
     session.add(opp)

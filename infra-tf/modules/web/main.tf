@@ -31,8 +31,17 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "web" {
   bucket = aws_s3_bucket.web.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      # S7: was AES256; move to customer-managed KMS for consistency with the
+      # rest of the stack. CloudFront reads via OAC — the OAC principal is
+      # granted access to the CMK by the delegated-service statement in the
+      # KMS key policy (kms:ViaService = s3.<region>.amazonaws.com), so no
+      # extra grant is needed here.
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = var.kms_key_arn
     }
+    # Bucket key on the SPA bucket cuts KMS API cost to nearly zero — every
+    # GET on index.html and the JS bundles would otherwise hit KMS.
+    bucket_key_enabled = true
   }
 }
 

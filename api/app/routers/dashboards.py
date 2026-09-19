@@ -37,6 +37,7 @@ from app.services.dashboards import (
     legal_view,
     sales_view,
 )
+from app.services.redact import redact_costs
 
 
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
@@ -126,4 +127,8 @@ async def get_client_sow_dashboard(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="insufficient role"
         )
-    return await client_sow_gm_view(session, client_id)
+    # S7 B: Sales-side readers (SalesLeader) see revenue + GM ratio but
+    # not the raw cost split. Cost-authorized roles (Finance, CEO,
+    # Delivery, HR, SystemAdmin) see the full payload verbatim.
+    payload = await client_sow_gm_view(session, client_id)
+    return redact_costs(payload, set(user.groups))

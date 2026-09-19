@@ -45,6 +45,7 @@ from app.scheduler import (
     record_trigger,
     resolve_head_for_role,
 )
+from app.services.business_days import add_business_days
 from app.services.notifications import queue_notification
 
 log = structlog.get_logger("worker.alert_scheduler")
@@ -507,6 +508,155 @@ async def _process_task_escalations(
         result.triggers_fired.append(key)
 
 
+# ---- trigger 5: approval SLA nudge + escalation (S7 C) ----------------
+
+
+async def _process_approval_sla(
+    session: AsyncSession, now: datetime, result: TickResult
+) -> None:
+    """Nudge approvers 1 business day before due, escalate past due.
+
+    Reads every ``approval.awaiting`` task that is still open and:
+
+    - Between ``due_date - 1 business day`` and ``due_date`` → queue an
+      ``approval_pending`` "approver nudge" notification to the assignee.
+      Idempotent via the scheduler_fired ledger (one nudge per task per
+      calendar day).
+    - Past ``due_date`` with ``escalation_level == 0`` → bump to 1 and
+      queue an ``escalation`` notification to the function head. The
+      existing overdue-task trigger handles subsequent bumps every
+      business day up to ``MAX_TASK_ESCALATION_LEVEL``.
+    """
+
+    today = now.date()
+    stmt = (
+        select(Task)
+        .where(Task.category == "approval.awaiting")
+        .where(Task.due_date.is_not(None))
+        .where(Task.status.in_(["assigned", "in_progress", "Open"]))
+    )
+    rows = list((await session.execute(stmt)).scalars().all())
+
+    for task in rows:
+        assert task.due_date is not None
+        # Nudge window: [due - 1 biz day, due).
+        nudge_start = add_business_days(task.due_date, 0)  # normalise weekend
+        # Walk 1 business day back from due_date; equivalent to
+        # "the previous business day".
+        nudge_start = _prev_business_day(task.due_date)
+        if nudge_start <= today < task.due_date:
+            key = _trigger_key(
+                "approval.nudge", str(task.id), today.isoformat()
+            )
+            fired = await record_trigger(
+                session,
+                trigger_key=key,
+                trigger_name="approval.nudge",
+                entity="task",
+                entity_id=str(task.id),
+            )
+            if not fired:
+                result.triggers_skipped += 1
+            else:
+                owner = (
+                    await session.execute(
+                        select(User).where(User.id == task.owner_id)
+                    )
+                ).scalar_one_or_none() if task.owner_id else None
+                if owner is not None:
+                    subject = (
+                        f"Approval due {task.due_date.isoformat()} — please review"
+                    )
+                    queued = await queue_notification(
+                        session,
+                        user_id=owner.id,
+                        category="approval_pending",
+                        subject=subject,
+                        body_md=(
+                            f"Task **{task.subject}** is due on "
+                            f"`{task.due_date.isoformat()}`. Please record "
+                            "your decision before the SLA elapses."
+                        ),
+                        related_entity="task",
+                        related_entity_id=str(task.id),
+                    )
+                    result.notifications_queued += len(queued)
+                result.triggers_fired.append(key)
+
+        # Escalation on day-past-due for level 0. Higher levels are
+        # handled by the generic task.escalation loop below.
+        if today >= task.due_date and task.escalation_level == 0:
+            key = _trigger_key(
+                "approval.escalation", str(task.id), today.isoformat()
+            )
+            fired = await record_trigger(
+                session,
+                trigger_key=key,
+                trigger_name="approval.escalation",
+                entity="task",
+                entity_id=str(task.id),
+            )
+            if not fired:
+                result.triggers_skipped += 1
+                continue
+
+            before = {"escalation_level": task.escalation_level}
+            task.escalation_level = 1
+            await session.flush()
+            await append_audit(
+                session,
+                actor_id=None,
+                action="task.escalated",
+                entity="task",
+                entity_id=str(task.id),
+                before=before,
+                after={
+                    "escalation_level": 1,
+                    "due_date": task.due_date.isoformat(),
+                    "reason": "approval.awaiting past due_date",
+                },
+                correlation_id=f"scheduler:{key}",
+            )
+
+            owner = (
+                await session.execute(
+                    select(User).where(User.id == task.owner_id)
+                )
+            ).scalar_one_or_none() if task.owner_id else None
+            head = await resolve_head_for_role(
+                session, owner.groups if owner is not None else None
+            )
+            if head is not None:
+                subject = (
+                    f"Escalation L1: approval overdue since "
+                    f"{task.due_date.isoformat()}"
+                )
+                queued = await queue_notification(
+                    session,
+                    user_id=head.id,
+                    category="escalation",
+                    subject=subject,
+                    body_md=(
+                        f"Approval task **{task.subject}** has passed its "
+                        f"SLA (due `{task.due_date.isoformat()}`) and has "
+                        "been escalated to level `1`."
+                    ),
+                    related_entity="task",
+                    related_entity_id=str(task.id),
+                )
+                result.notifications_queued += len(queued)
+            result.triggers_fired.append(key)
+
+
+def _prev_business_day(day: date) -> date:
+    """Return the business day immediately before ``day``."""
+
+    cursor = day - timedelta(days=1)
+    while cursor.weekday() >= 5:
+        cursor = cursor - timedelta(days=1)
+    return cursor
+
+
 # ---- public entry point -----------------------------------------------
 
 
@@ -521,6 +671,7 @@ async def run_tick(session: AsyncSession, now: datetime | None = None) -> TickRe
     result = TickResult()
     await _process_agreement_expiries(session, when, result)
     await _process_opportunity_overdue(session, when, result)
+    await _process_approval_sla(session, when, result)
     await _process_task_escalations(session, when, result)
     await session.commit()
     return result

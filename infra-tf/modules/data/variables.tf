@@ -29,6 +29,15 @@ variable "db_url_secret_id" {
   type        = string
 }
 
+# S7: RDS storage encryption is switching from the default AWS-managed key
+# to a customer-managed CMK. See README migration notes for what to do on
+# an existing instance (snapshot + restore required — RDS cannot rekey in
+# place).
+variable "kms_key_arn" {
+  description = "ARN of the customer-managed KMS key used for RDS storage_encrypted."
+  type        = string
+}
+
 variable "db_name" {
   description = "Initial database name."
   type        = string

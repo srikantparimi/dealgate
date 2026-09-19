@@ -27,3 +27,8 @@ output "log_group_name" {
   value       = aws_cloudwatch_log_group.schedulers.name
   description = "CloudWatch log group both scheduled tasks stream to."
 }
+
+output "audit_export_task_definition_arn" {
+  value       = aws_ecs_task_definition.audit_export.arn
+  description = "Task definition ARN launched by the nightly audit-export EventBridge rule (S7)."
+}

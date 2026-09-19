@@ -148,11 +148,71 @@ resource "aws_iam_role_policy" "task_execution_secrets" {
   policy = data.aws_iam_policy_document.secrets_read.json
 }
 
-# Task role (application runtime perms). Empty for now; extend when we wire
-# Bedrock / SES / SQS. Kept as a stub so we don't rebuild the task def later.
+# Task role (application runtime perms). Empty at S2; extended in S7 with
+# KMS data-key ops so the task can PUT/GET SSE-KMS S3 objects and pull
+# secrets that are encrypted under the shared CMK. Bedrock / SES / SQS
+# grants get bolted on here as those integrations land.
 resource "aws_iam_role" "task" {
   name               = "${var.name_prefix}-api-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
+}
+
+# S7: allow the task role to mint data keys and decrypt under the CMK, but
+# only when the call is proxied through S3 or Secrets Manager in this
+# region. This mirrors the key-policy delegation on the KMS side — both
+# sides must agree before the request goes through. Scoping via ViaService
+# means a compromised task can't rip data keys out of KMS directly.
+data "aws_iam_policy_document" "task_kms" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "kms:GenerateDataKey",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+    ]
+    resources = [var.kms_key_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values = [
+        "s3.${var.region}.amazonaws.com",
+        "secretsmanager.${var.region}.amazonaws.com",
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "task_kms" {
+  name   = "${var.name_prefix}-api-task-kms"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.task_kms.json
+}
+
+# The task execution role also needs Decrypt on the CMK — ECS reads the two
+# Secrets Manager secrets *before* the container starts, so it decrypts
+# them with the execution role, not the task role.
+data "aws_iam_policy_document" "task_execution_kms" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey",
+    ]
+    resources = [var.kms_key_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["secretsmanager.${var.region}.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "task_execution_kms" {
+  name   = "${var.name_prefix}-api-exec-kms"
+  role   = aws_iam_role.task_execution.id
+  policy = data.aws_iam_policy_document.task_execution_kms.json
 }
 
 # ------------------------------------------------------------------

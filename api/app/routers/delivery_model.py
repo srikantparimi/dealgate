@@ -50,6 +50,7 @@ from app.services.delivery_model import (
     summarize_gm_model,
 )
 from app.services.gm_sandbox import SandboxInputError
+from app.services.redact import redact_costs
 
 # Sales/Marketing never see cost bands (story: 403). CEO reads dashboards.
 _PREVIEW_ROLES = ("Delivery", "Presales", "Finance", "SystemAdmin")
@@ -173,25 +174,31 @@ async def create_version_endpoint(
         # Persisted rows are fine even if compute rejects (e.g. missing
         # cost that the payload chose to leave null) — surface the shape
         # without the ``computed`` field.
-        return {"gm_model": serialize_gm_model(model)}
+        return redact_costs(
+            {"gm_model": serialize_gm_model(model)}, set(actor.groups)
+        )
 
     capacity = await capacity_conflicts(
         session, payload.resource_lines, exclude_gm_model_id=model.id
     )
     hr = hr_lead_time_warnings(payload.resource_lines)
-    return {
+    response = {
         "gm_model": serialize_gm_model(model, result=result),
         "warnings": {
             "capacity": serialize_warnings(capacity),
             "hr": serialize_warnings(hr),
         },
     }
+    # S7 B: strip cost fields for readers without a cost-authorized role.
+    # _WRITE_ROLES already restricts to Delivery/SystemAdmin, both allowed
+    # so this is a defence-in-depth pass rather than the main enforcement.
+    return redact_costs(response, set(actor.groups))
 
 
 @router.get("/{opportunity_id}")
 async def get_latest_endpoint(
     opportunity_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
+    user: AuthUser = Depends(require_role(*_READ_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Latest version for an opportunity with computed numbers."""
@@ -213,7 +220,7 @@ async def get_latest_endpoint(
             session, payload.resource_lines, exclude_gm_model_id=model.id
         )
         hr = hr_lead_time_warnings(payload.resource_lines)
-        return {
+        response = {
             "gm_model": serialize_gm_model(model, result=result),
             "warnings": {
                 "capacity": serialize_warnings(capacity),
@@ -221,7 +228,9 @@ async def get_latest_endpoint(
             },
         }
     except (DeliveryModelInputError, SandboxInputError):
-        return {"gm_model": serialize_gm_model(model)}
+        response = {"gm_model": serialize_gm_model(model)}
+    # S7 B: strip cost keys for Legal / Presales readers.
+    return redact_costs(response, set(user.groups))
 
 
 @router.get("/{opportunity_id}/versions")

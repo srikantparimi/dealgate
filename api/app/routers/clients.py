@@ -39,6 +39,7 @@ from app.services.clients import (
     list_clients,
 )
 from app.services.deals import LEADER_ROLES, is_leader
+from app.services.redact import redact_costs
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -202,12 +203,12 @@ async def list_clients_endpoint(
     )
 
 
-@router.get("/{client_id}", response_model=ClientDetailResponse)
+@router.get("/{client_id}", response_model=None)
 async def get_client_endpoint(
     client_id: uuid.UUID,
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
-) -> ClientDetailResponse:
+) -> dict[str, Any]:
     if not (_can_read_clients(user) or "Sales" in user.groups):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"
@@ -225,7 +226,7 @@ async def get_client_endpoint(
 
     recent = await _load_recent_activity(session, detail)
 
-    return ClientDetailResponse(
+    response = ClientDetailResponse(
         id=detail.id,
         name=detail.name,
         hubspot_company_id=detail.hubspot_company_id,
@@ -260,6 +261,7 @@ async def get_client_endpoint(
         ],
         recent_activity=recent,
     )
+    return redact_costs(response.model_dump(mode="json"), set(user.groups))
 
 
 async def _load_recent_activity(session: AsyncSession, detail: Any) -> list[RecentAuditRow]:

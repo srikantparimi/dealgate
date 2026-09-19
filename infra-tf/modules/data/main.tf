@@ -58,7 +58,24 @@ resource "aws_db_instance" "this" {
   allocated_storage     = var.allocated_storage_gb
   max_allocated_storage = 100
   storage_type          = "gp3"
-  storage_encrypted     = true
+
+  # S7: encrypt storage under the customer-managed CMK from modules/kms.
+  #
+  # IMPORTANT — RDS cannot rekey an existing instance in place. Applying
+  # `kms_key_id` to a pre-existing RDS instance that was created against a
+  # different key (or the AWS-managed aws/rds key) forces a replacement,
+  # and Terraform will happily destroy the DB. Before `terraform apply`
+  # on an existing environment, the integrator must:
+  #   1. `aws rds create-db-snapshot --db-instance-identifier <id> --db-snapshot-identifier <id>-preS7`
+  #   2. `aws rds copy-db-snapshot --source-db-snapshot-identifier <id>-preS7 \
+  #        --target-db-snapshot-identifier <id>-preS7-kms --kms-key-id <cmk-arn>`
+  #   3. Coordinate a maintenance window; run `terraform apply` (which drops
+  #      the old instance and creates a new one under the CMK).
+  #   4. `aws rds restore-db-instance-from-db-snapshot` into the new instance
+  #      identifier, then swap the secret / DNS.
+  # For fresh envs (staging, prod) this is a clean create — no migration.
+  storage_encrypted = true
+  kms_key_id        = var.kms_key_arn
 
   db_name  = var.db_name
   username = var.db_username

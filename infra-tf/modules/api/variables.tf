@@ -87,3 +87,12 @@ variable "log_retention_days" {
   type        = number
   default     = 14
 }
+
+# S7: the API task talks to KMS transparently through S3 (SSE-KMS PUT/GET)
+# and Secrets Manager (secret decrypt on start). This is the CMK ARN it is
+# allowed to invoke. Passed in from the root stack so this module doesn't
+# need a data lookup on the alias.
+variable "kms_key_arn" {
+  description = "ARN of the customer-managed KMS key the task role needs GenerateDataKey / Decrypt on."
+  type        = string
+}

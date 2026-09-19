@@ -137,3 +137,22 @@ variable "renewals_schedule_expression" {
   type        = string
   default     = "rate(1 hour)"
 }
+
+# S7: nightly audit-event S3 export (WORM bucket). Runs once a day; the
+# default is 03:00 UTC so the previous UTC day is fully closed and the
+# scheduler + notification-sender tasks (rate(5 minutes)) are quiet.
+variable "audit_export_schedule_expression" {
+  description = "EventBridge schedule expression for the nightly audit-export task. Default fires at 03:00 UTC daily."
+  type        = string
+  default     = "cron(0 3 * * ? *)"
+}
+
+variable "audit_export_bucket_name" {
+  description = "S3 bucket name for the nightly audit export. Feed from module.storage.audit_exports_bucket_name."
+  type        = string
+}
+
+variable "audit_export_bucket_arn" {
+  description = "S3 bucket ARN for the nightly audit export. Used to scope the task role IAM policy to only this bucket."
+  type        = string
+}

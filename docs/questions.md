@@ -17,10 +17,17 @@ guess. Each question names the sprint it blocks.
   story files plus minimal skeletons for `client`, `legal_entity`, `agreement`
   (see `api/alembic/versions/20260917_0001_initial.py`). Mirror §10 and confirm
   or flag columns to add / rename. (Design: build-guide §10.)
-- [ ] **`audit_event` DB grants in infra.** Migration adds a length CHECK on
-  `row_hash` but the real append-only guarantee (no UPDATE/DELETE for the app
-  role) must be granted in CDK/psql, not the app migration. Who owns adding
-  that to `infra/`? (Design: blueprint §12.)
+- [x] **`audit_event` DB grants in infra.** Resolved in S7
+  (`20260919_0021_audit_hardening.py`). The migration `REVOKE`s
+  `UPDATE, DELETE, TRUNCATE` from `CURRENT_USER` and installs a
+  `BEFORE UPDATE OR DELETE` trigger (`audit_event_no_update_delete_trg`)
+  that `RAISE EXCEPTION`s regardless of grant state — belt and braces.
+  Skipped on SQLite so the local test path stays green; a Postgres-only
+  test (`test_audit_hardening.py`, gated on `DEALGATE_POSTGRES_URL`)
+  proves both statements are rejected. Nightly S3 Object-Lock export
+  worker (`worker.audit_export`) ships alongside so a compromise of the
+  RDS instance still cannot silently rewrite history. (Design:
+  blueprint §12, story `docs/backlog/s7-audit-hardening.md`.)
 - [ ] **Task-to-opportunity linkage.** `task` has no `opportunity_id` column in
   the S1 schema (see `api/app/models/task.py`). The HubSpot intake service
   currently records the linkage inside `audit_event.after` (`opportunity_id`,
