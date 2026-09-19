@@ -44,8 +44,18 @@ NOTIFICATION_CHANNELS: tuple[str, ...] = (
     "inapp",
 )
 
+# S7 story B: Teams + Slack are retired as delivery channels. The enum
+# values stay on the model so legacy rows don't blow FK / enum checks, but
+# the settings API + queue fan-out only consider ``ACTIVE_CHANNELS``. Any
+# PATCH targeting an inactive channel is rejected with 422 "channel
+# disabled"; queue rows for legacy Teams/Slack settings are written as
+# ``suppressed`` with ``last_error="channel disabled"``.
+ACTIVE_CHANNELS: tuple[str, ...] = ("email", "inapp")
+
 _CATEGORY_SET: frozenset[str] = frozenset(NOTIFICATION_CATEGORIES)
 _CHANNEL_SET: frozenset[str] = frozenset(NOTIFICATION_CHANNELS)
+_ACTIVE_CHANNEL_SET: frozenset[str] = frozenset(ACTIVE_CHANNELS)
+_DISABLED_CHANNELS: frozenset[str] = _CHANNEL_SET - _ACTIVE_CHANNEL_SET
 
 # Statuses (kept as strings on the model for portability).
 STATUS_PENDING = "pending"
@@ -95,6 +105,8 @@ async def get_settings_matrix(
 ) -> list[dict[str, Any]]:
     """Return one row per (category, channel) with the effective ``enabled`` value.
 
+    Only :data:`ACTIVE_CHANNELS` are surfaced; legacy Teams/Slack rows in
+    the database are ignored here so the UI matrix cannot re-enable them.
     Missing rows default to True. The response is ordered by category then
     channel so the UI matrix is deterministic across renders.
     """
@@ -104,7 +116,7 @@ async def get_settings_matrix(
     by_key = {(r.category, r.channel): r.enabled for r in rows}
     matrix: list[dict[str, Any]] = []
     for category in NOTIFICATION_CATEGORIES:
-        for channel in NOTIFICATION_CHANNELS:
+        for channel in ACTIVE_CHANNELS:
             matrix.append(
                 {
                     "category": category,
@@ -123,10 +135,21 @@ async def upsert_setting(
     channel: str,
     enabled: bool,
 ) -> NotificationSetting:
-    """Insert or update the row; audit if the effective value changes."""
+    """Insert or update the row; audit if the effective value changes.
+
+    Rejects PATCH targeting a disabled channel (Teams / Slack after S7
+    story B) with HTTP 422 "channel disabled". The enum value stays valid
+    for legacy rows already in the DB — this guard only fires on user-
+    initiated writes.
+    """
 
     _validate_category(category)
     _validate_channel(channel)
+    if channel in _DISABLED_CHANNELS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="channel disabled",
+        )
 
     stmt = select(NotificationSetting).where(
         NotificationSetting.user_id == user_id,
@@ -199,7 +222,15 @@ async def queue_notification(
     now = datetime.now(UTC)
     created: list[Notification] = []
     for channel in target_channels:
-        enabled = await _channel_enabled(session, user_id, category, channel)
+        # A channel retired by policy (Teams / Slack after S7 story B) is
+        # always suppressed regardless of the user's stored setting so a
+        # legacy ``teams=true`` row cannot resurrect a dropped channel.
+        if channel in _DISABLED_CHANNELS:
+            enabled = False
+            suppression_reason = "channel disabled"
+        else:
+            enabled = await _channel_enabled(session, user_id, category, channel)
+            suppression_reason = "channel disabled by user setting"
         row = Notification(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -212,7 +243,7 @@ async def queue_notification(
             status=STATUS_PENDING if enabled else STATUS_SUPPRESSED,
             attempts=0,
             next_attempt_at=now if enabled else None,
-            last_error=None if enabled else "channel disabled by user setting",
+            last_error=None if enabled else suppression_reason,
         )
         session.add(row)
         await session.flush()
@@ -367,6 +398,7 @@ def _ensure_utc(ts: datetime | None) -> datetime | None:
 
 
 __all__ = [
+    "ACTIVE_CHANNELS",
     "MAX_ATTEMPTS",
     "NOTIFICATION_CATEGORIES",
     "NOTIFICATION_CHANNELS",

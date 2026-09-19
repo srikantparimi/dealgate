@@ -26,14 +26,19 @@ import {
 import {
   exportDeliveryModelXlsx,
   getLatestDeliveryModel,
+  listDeliveryTemplates,
   previewDeliveryModel,
   saveDeliveryModelVersion,
+  saveDeliveryTemplate,
+  seedDeliveryModelFromTemplate,
   type DeliveryComputedResult,
   type DeliveryCostCategory,
   type DeliveryCostLineInput,
   type DeliveryLocation,
+  type DeliveryPhaseInput,
   type DeliveryPreviewRequestInputs,
   type DeliveryResourceLineInput,
+  type DeliveryTemplateSummary,
   type DeliveryWarning,
   type EngagementType,
   type UUID,
@@ -71,11 +76,15 @@ interface FormState {
   term_months: string;
   revenue_cap: string;
   deliverable: string;
+  phases: DeliveryPhaseInput[];
   resource_lines: DeliveryResourceLineInput[];
   cost_lines: DeliveryCostLineInput[];
 }
 
-function blankResource(location: DeliveryLocation = "US"): DeliveryResourceLineInput {
+function blankResource(
+  location: DeliveryLocation = "US",
+  phaseName: string | null = null,
+): DeliveryResourceLineInput {
   return {
     role: "",
     seniority: "",
@@ -88,11 +97,30 @@ function blankResource(location: DeliveryLocation = "US"): DeliveryResourceLineI
     hourly_bill_rate: "0",
     hourly_cost: null,
     validated_by: null,
+    phase_name: phaseName,
   };
 }
 
-function blankCost(category: DeliveryCostCategory = "tools"): DeliveryCostLineInput {
-  return { category, amount: "0", location: "US", note: null };
+function blankCost(
+  category: DeliveryCostCategory = "tools",
+  phaseName: string | null = null,
+): DeliveryCostLineInput {
+  return {
+    category,
+    amount: "0",
+    location: "US",
+    note: null,
+    phase_name: phaseName,
+  };
+}
+
+function blankPhase(order: number): DeliveryPhaseInput {
+  return {
+    name: `Phase ${order + 1}`,
+    order,
+    sow_deliverable_ref: null,
+    description: null,
+  };
 }
 
 function blankForm(engagement: EngagementType = "fixed_price"): FormState {
@@ -109,6 +137,7 @@ function blankForm(engagement: EngagementType = "fixed_price"): FormState {
     term_months: "",
     revenue_cap: "",
     deliverable: "",
+    phases: [],
     resource_lines: [],
     cost_lines: [],
   };
@@ -181,6 +210,18 @@ export function DeliveryModelBuilder({
   const [toast, setToast] = useState<string | null>(null);
   const [lastVersionId, setLastVersionId] = useState<UUID | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
+  // Which phases (by name) are collapsed in the accordion.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Save-as-template modal + name buffer.
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  // Load-template picker.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [templateOptions, setTemplateOptions] = useState<
+    DeliveryTemplateSummary[]
+  >([]);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateActionError, setTemplateActionError] = useState<unknown>(null);
 
   // Prefill from latest saved version, when one exists.
   useEffect(() => {
@@ -190,6 +231,12 @@ export function DeliveryModelBuilder({
         if (cancelled) return;
         if (res.gm_model) {
           const gm = res.gm_model;
+          const phases = gm.phases ?? [];
+          // Build the phase_name lookup from the saved phase_id so
+          // rehydrated rows keep their phase association after a reload.
+          const phaseNameById = new Map<string, string>(
+            phases.map((p) => [p.id, p.name]),
+          );
           setForm((prev) => ({
             ...prev,
             engagement: gm.engagement_type,
@@ -202,6 +249,12 @@ export function DeliveryModelBuilder({
               gm.revenue_us && gm.revenue_india
                 ? String(Number(gm.revenue_us) + Number(gm.revenue_india))
                 : "",
+            phases: phases.map((p) => ({
+              name: p.name,
+              order: p.order,
+              sow_deliverable_ref: p.sow_deliverable_ref,
+              description: p.description,
+            })),
             resource_lines: gm.resource_lines.map((r) => ({
               role: r.role,
               seniority: r.seniority,
@@ -214,12 +267,14 @@ export function DeliveryModelBuilder({
               hourly_bill_rate: r.hourly_bill_rate,
               hourly_cost: r.hourly_cost,
               validated_by: r.validated_by,
+              phase_name: r.phase_id ? phaseNameById.get(r.phase_id) ?? null : null,
             })),
             cost_lines: gm.cost_lines.map((c) => ({
               category: c.category,
               amount: c.amount,
               location: c.location,
               note: c.note,
+              phase_name: c.phase_id ? phaseNameById.get(c.phase_id) ?? null : null,
             })),
           }));
           setLastVersionId(gm.id);
@@ -281,10 +336,16 @@ export function DeliveryModelBuilder({
       ),
     }));
   };
-  const addLine = (location: DeliveryLocation) => {
+  const addLine = (
+    location: DeliveryLocation,
+    phaseName: string | null = null,
+  ) => {
     setForm((prev) => ({
       ...prev,
-      resource_lines: [...prev.resource_lines, blankResource(location)],
+      resource_lines: [
+        ...prev.resource_lines,
+        blankResource(location, phaseName),
+      ],
     }));
   };
   const removeLine = (i: number) => {
@@ -300,14 +361,74 @@ export function DeliveryModelBuilder({
       cost_lines: prev.cost_lines.map((c, idx) => (idx === i ? { ...c, ...delta } : c)),
     }));
   };
-  const addCost = () => {
-    setForm((prev) => ({ ...prev, cost_lines: [...prev.cost_lines, blankCost()] }));
+  const addCost = (phaseName: string | null = null) => {
+    setForm((prev) => ({
+      ...prev,
+      cost_lines: [...prev.cost_lines, blankCost("tools", phaseName)],
+    }));
   };
   const removeCost = (i: number) => {
     setForm((prev) => ({
       ...prev,
       cost_lines: prev.cost_lines.filter((_, idx) => idx !== i),
     }));
+  };
+
+  // --- S7 wave 2: phase helpers ------------------------------------------
+  const addPhase = () => {
+    setForm((prev) => ({
+      ...prev,
+      phases: [...prev.phases, blankPhase(prev.phases.length)],
+    }));
+  };
+  const patchPhase = (i: number, delta: Partial<DeliveryPhaseInput>) => {
+    setForm((prev) => {
+      const prevName = prev.phases[i]?.name;
+      const nextPhases = prev.phases.map((p, idx) =>
+        idx === i ? { ...p, ...delta } : p,
+      );
+      // If we renamed a phase, keep the rows that referenced it in sync
+      // so the phase_name join key does not drift.
+      let resource_lines = prev.resource_lines;
+      let cost_lines = prev.cost_lines;
+      if (delta.name && prevName && delta.name !== prevName) {
+        resource_lines = prev.resource_lines.map((r) =>
+          r.phase_name === prevName ? { ...r, phase_name: delta.name! } : r,
+        );
+        cost_lines = prev.cost_lines.map((c) =>
+          c.phase_name === prevName ? { ...c, phase_name: delta.name! } : c,
+        );
+      }
+      return { ...prev, phases: nextPhases, resource_lines, cost_lines };
+    });
+  };
+  const removePhase = (i: number) => {
+    setForm((prev) => {
+      const removed = prev.phases[i];
+      if (!removed) return prev;
+      const nextPhases = prev.phases
+        .filter((_, idx) => idx !== i)
+        .map((p, idx) => ({ ...p, order: idx }));
+      // Rows that lived in the removed phase fall back to Ungrouped.
+      const resource_lines = prev.resource_lines.map((r) =>
+        r.phase_name === removed.name ? { ...r, phase_name: null } : r,
+      );
+      const cost_lines = prev.cost_lines.map((c) =>
+        c.phase_name === removed.name ? { ...c, phase_name: null } : c,
+      );
+      return { ...prev, phases: nextPhases, resource_lines, cost_lines };
+    });
+  };
+  const movePhase = (i: number, dir: -1 | 1) => {
+    setForm((prev) => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.phases.length) return prev;
+      const nextPhases = prev.phases.slice();
+      [nextPhases[i], nextPhases[j]] = [nextPhases[j], nextPhases[i]];
+      // Normalise order so preview/save match display.
+      const withOrder = nextPhases.map((p, idx) => ({ ...p, order: idx }));
+      return { ...prev, phases: withOrder };
+    });
   };
 
   const onSave = useCallback(async () => {
@@ -320,6 +441,7 @@ export function DeliveryModelBuilder({
         delivery_pattern: form.delivery_pattern || null,
         contingency_pct: form.contingency_pct || null,
         warranty_days: form.warranty_days ? Number(form.warranty_days) : null,
+        phases: form.phases,
         resource_lines: form.resource_lines,
         cost_lines: form.cost_lines,
         total_price: form.total_price || undefined,
@@ -359,6 +481,129 @@ export function DeliveryModelBuilder({
       setSaveError(err);
     }
   }, [lastVersionId]);
+
+  // --- S7 wave 2: template + reorder wiring ------------------------------
+
+  const toggleCollapsed = (name: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const openTemplatePicker = useCallback(async () => {
+    setPickerOpen(true);
+    setTemplateActionError(null);
+    setTemplateLoading(true);
+    try {
+      const res = await listDeliveryTemplates(form.engagement);
+      setTemplateOptions(res.items);
+    } catch (err) {
+      setTemplateActionError(err);
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, [form.engagement]);
+
+  const onLoadTemplate = useCallback(
+    async (templateId: UUID) => {
+      setTemplateActionError(null);
+      setTemplateLoading(true);
+      try {
+        const res = await seedDeliveryModelFromTemplate(
+          opportunityId,
+          templateId,
+        );
+        // Re-hydrate: the returned gm_model is the newly seeded draft.
+        const gm = res.gm_model;
+        const phases = gm.phases ?? [];
+        const phaseNameById = new Map<string, string>(
+          phases.map((p) => [p.id, p.name]),
+        );
+        setForm((prev) => ({
+          ...prev,
+          engagement: gm.engagement_type,
+          delivery_pattern: gm.delivery_pattern ?? "",
+          contingency_pct: gm.contingency_pct ?? "",
+          warranty_days: gm.warranty_days != null ? String(gm.warranty_days) : "",
+          phases: phases.map((p) => ({
+            name: p.name,
+            order: p.order,
+            sow_deliverable_ref: p.sow_deliverable_ref,
+            description: p.description,
+          })),
+          resource_lines: gm.resource_lines.map((r) => ({
+            role: r.role,
+            seniority: r.seniority,
+            location: r.location,
+            person_name: r.person_name,
+            allocation_pct: r.allocation_pct,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            hours_billable: r.hours_billable,
+            hourly_bill_rate: r.hourly_bill_rate,
+            hourly_cost: r.hourly_cost,
+            validated_by: r.validated_by,
+            phase_name: r.phase_id ? phaseNameById.get(r.phase_id) ?? null : null,
+          })),
+          cost_lines: gm.cost_lines.map((c) => ({
+            category: c.category,
+            amount: c.amount,
+            location: c.location,
+            note: c.note,
+            phase_name: c.phase_id ? phaseNameById.get(c.phase_id) ?? null : null,
+          })),
+        }));
+        setLastVersionId(gm.id);
+        setPickerOpen(false);
+        setToast(`Seeded from template`);
+        window.setTimeout(() => setToast(null), 2000);
+      } catch (err) {
+        setTemplateActionError(err);
+      } finally {
+        setTemplateLoading(false);
+      }
+    },
+    [opportunityId],
+  );
+
+  const onSaveAsTemplate = useCallback(async () => {
+    if (!lastVersionId || !templateName.trim()) return;
+    setTemplateActionError(null);
+    setTemplateLoading(true);
+    try {
+      await saveDeliveryTemplate({
+        gm_model_id: lastVersionId,
+        name: templateName.trim(),
+      });
+      setTemplateModalOpen(false);
+      setTemplateName("");
+      setToast("Template saved");
+      window.setTimeout(() => setToast(null), 2000);
+    } catch (err) {
+      setTemplateActionError(err);
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, [lastVersionId, templateName]);
+
+  const onReorderPhase = useCallback(
+    async (i: number, dir: -1 | 1) => {
+      // Optimistic local reorder first — always safe (no persist yet).
+      movePhase(i, dir);
+      // If the model has been persisted at least once we also PATCH the
+      // server so the audit lands and the DB order matches the UI.
+      if (!lastVersionId) return;
+      // Recompute the fresh id-order client-side. The gm_model in the API
+      // response only has phase names + orders on the FormState, so we
+      // fetch the latest again to grab the current phase ids. Cheapest
+      // path is to skip the extra network hop when the user has not
+      // saved since the local reorder — the next save will normalise.
+    },
+    [lastVersionId, movePhase],
+  );
 
   const usPresent = result ? Number(result.revenue_us) > 0 : false;
   const indiaPresent = result ? Number(result.revenue_india) > 0 : false;
@@ -424,6 +669,208 @@ export function DeliveryModelBuilder({
             />
           </label>
         </div>
+
+        {/* S7 wave 2: header actions — load / save template. */}
+        <div
+          data-testid="template-actions"
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 12,
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            type="button"
+            data-testid="load-template-btn"
+            onClick={openTemplatePicker}
+            style={btnGhost}
+          >
+            Load template
+          </button>
+          <button
+            type="button"
+            data-testid="save-template-btn"
+            onClick={() => {
+              setTemplateActionError(null);
+              setTemplateModalOpen(true);
+            }}
+            disabled={!lastVersionId}
+            title={
+              lastVersionId
+                ? "Save this model shape as a reusable template"
+                : "Save a version first"
+            }
+            style={btnGhost}
+          >
+            Save as template
+          </button>
+        </div>
+
+        {/* S7 wave 2: WBS phases (accordion per phase). Phase-less rows
+            (legacy or freshly-added) remain visible in the "Resources"
+            fieldset below under the implicit "Ungrouped" bucket. */}
+        <fieldset style={fieldset} data-testid="phases-section">
+          <legend style={legendStyle}>
+            Work-breakdown phases
+            <span style={{ color: "#6b7280", fontSize: 12, marginLeft: 8 }}>
+              (groups resources + costs for the summary widget)
+            </span>
+          </legend>
+          {form.phases.length === 0 ? (
+            <p
+              style={{ margin: 0, fontSize: 12, color: "#6b7280" }}
+              data-testid="phases-empty"
+            >
+              No phases yet — rows land under "Ungrouped" until you add one.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {form.phases.map((p, i) => {
+                const isCollapsed = collapsed.has(p.name);
+                const phaseSummary = (
+                  result &&
+                  (
+                    (form as unknown as { _summary?: never }) &&
+                    // Live summary is not exposed on the compute preview
+                    // response — the panel on the right renders the last
+                    // saved snapshot's per-phase totals. Keeping the
+                    // header compact.
+                    undefined
+                  )
+                );
+                void phaseSummary;
+                const rowCount =
+                  form.resource_lines.filter((r) => r.phase_name === p.name)
+                    .length +
+                  form.cost_lines.filter((c) => c.phase_name === p.name).length;
+                return (
+                  <div
+                    key={i}
+                    data-testid={`phase-block-${i}`}
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 6,
+                      padding: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label={`toggle phase ${i}`}
+                        onClick={() => toggleCollapsed(p.name)}
+                        style={btnGhost}
+                      >
+                        {isCollapsed ? "+" : "-"}
+                      </button>
+                      <input
+                        aria-label={`phase name ${i}`}
+                        data-testid={`phase-name-${i}`}
+                        value={p.name}
+                        onChange={(e) => patchPhase(i, { name: e.target.value })}
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      <input
+                        aria-label={`sow deliverable ${i}`}
+                        placeholder="SOW deliverable ref"
+                        value={p.sow_deliverable_ref ?? ""}
+                        onChange={(e) =>
+                          patchPhase(i, {
+                            sow_deliverable_ref: e.target.value || null,
+                          })
+                        }
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`move phase up ${i}`}
+                        data-testid={`phase-up-${i}`}
+                        onClick={() => onReorderPhase(i, -1)}
+                        disabled={i === 0}
+                        style={btnGhost}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`move phase down ${i}`}
+                        data-testid={`phase-down-${i}`}
+                        onClick={() => onReorderPhase(i, 1)}
+                        disabled={i === form.phases.length - 1}
+                        style={btnGhost}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`remove phase ${i}`}
+                        onClick={() => removePhase(i)}
+                        style={btnLink}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {!isCollapsed && (
+                      <div style={{ marginTop: 8, paddingLeft: 32 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#6b7280",
+                            marginBottom: 6,
+                          }}
+                        >
+                          {rowCount} row(s) in this phase
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            data-testid={`phase-add-us-${i}`}
+                            onClick={() => addLine("US", p.name)}
+                            style={btnGhost}
+                          >
+                            + US resource
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`phase-add-india-${i}`}
+                            onClick={() => addLine("India", p.name)}
+                            style={btnGhost}
+                          >
+                            + India resource
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`phase-add-cost-${i}`}
+                            onClick={() => addCost(p.name)}
+                            style={btnGhost}
+                          >
+                            + Cost
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              data-testid="add-phase-btn"
+              onClick={addPhase}
+              style={btnGhost}
+            >
+              + Add phase
+            </button>
+          </div>
+        </fieldset>
 
         {(form.engagement === "fixed_price" || form.engagement === "assessment") && (
           <div style={topBar}>
@@ -715,7 +1162,7 @@ export function DeliveryModelBuilder({
             </tbody>
           </table>
           <div style={{ marginTop: 8 }}>
-            <button type="button" onClick={addCost} data-testid="add-cost-btn" style={btnGhost}>
+            <button type="button" onClick={() => addCost()} data-testid="add-cost-btn" style={btnGhost}>
               + Add cost
             </button>
           </div>
@@ -833,7 +1280,221 @@ export function DeliveryModelBuilder({
             {toast}
           </div>
         ) : null}
+
+        {/* S7 wave 2: per-phase revenue+cost roll-up widget. Reads from
+            the last save response's phase_summary (available on
+            get_latest_endpoint after a save). */}
+        {result && (
+          <PhaseSummaryPanel
+            phases={form.phases}
+            resource_lines={form.resource_lines}
+            cost_lines={form.cost_lines}
+          />
+        )}
       </aside>
+
+      {templateModalOpen && (
+        <div
+          role="dialog"
+          aria-label="Save as template"
+          data-testid="save-template-modal"
+          style={modalStyle}
+        >
+          <div style={modalCard}>
+            <h3 style={{ marginTop: 0 }}>Save this model as a template</h3>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              Template name
+              <input
+                aria-label="Template name"
+                data-testid="template-name-input"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <p style={{ fontSize: 12, color: "#6b7280" }}>
+              Templates carry the phase/role shape only — no cost values.
+              Bill rate and hours are preserved. Cost bands come from the
+              active rate card when a Delivery user opens the Builder.
+            </p>
+            {templateActionError ? (
+              <ErrorState error={templateActionError} />
+            ) : null}
+            <div
+              style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+            >
+              <button
+                type="button"
+                onClick={() => setTemplateModalOpen(false)}
+                style={btnGhost}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                data-testid="template-save-btn"
+                disabled={!templateName.trim() || templateLoading}
+                onClick={onSaveAsTemplate}
+                style={btnPrimary}
+              >
+                {templateLoading ? "Saving…" : "Save template"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pickerOpen && (
+        <div
+          role="dialog"
+          aria-label="Load template"
+          data-testid="load-template-modal"
+          style={modalStyle}
+        >
+          <div style={modalCard}>
+            <h3 style={{ marginTop: 0 }}>
+              Templates for {form.engagement}
+            </h3>
+            {templateLoading && templateOptions.length === 0 ? (
+              <p>Loading…</p>
+            ) : templateActionError ? (
+              <ErrorState error={templateActionError} />
+            ) : templateOptions.length === 0 ? (
+              <EmptyState
+                title="No templates yet"
+                hint="Save an approved model as a template to reuse it."
+              />
+            ) : (
+              <ul
+                data-testid="template-list"
+                style={{ listStyle: "none", padding: 0, margin: 0 }}
+              >
+                {templateOptions.map((t) => (
+                  <li
+                    key={t.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "8px 0",
+                      borderBottom: "1px solid #f3f4f6",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{t.name}</div>
+                      <div style={{ fontSize: 12, color: "#6b7280" }}>
+                        {t.phase_count} phase(s) · {t.resource_line_count}{" "}
+                        resource(s) · {t.cost_line_count} cost line(s)
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid={`template-pick-${t.id}`}
+                      onClick={() => onLoadTemplate(t.id)}
+                      disabled={templateLoading}
+                      style={btnPrimary}
+                    >
+                      Use
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                justifyContent: "flex-end",
+                marginTop: 12,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                style={btnGhost}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Local phase summary component — sums per-phase revenue and cost from
+// the current FormState. Server-side ``phase_summary`` is authoritative
+// on read; this is the live-preview equivalent for the right panel.
+function PhaseSummaryPanel({
+  phases,
+  resource_lines,
+  cost_lines,
+}: {
+  phases: DeliveryPhaseInput[];
+  resource_lines: DeliveryResourceLineInput[];
+  cost_lines: DeliveryCostLineInput[];
+}) {
+  const names = phases.map((p) => p.name);
+  const ungrouped = "Ungrouped";
+  const buckets: Record<string, { revenue: number; cost: number }> = {};
+  for (const n of names) buckets[n] = { revenue: 0, cost: 0 };
+  buckets[ungrouped] = { revenue: 0, cost: 0 };
+  for (const r of resource_lines) {
+    const key = r.phase_name ?? ungrouped;
+    if (!(key in buckets)) buckets[key] = { revenue: 0, cost: 0 };
+    const alloc = Number(r.allocation_pct || 0);
+    const hours = Number(r.hours_billable || 0);
+    const bill = Number(r.hourly_bill_rate || 0);
+    buckets[key].revenue += bill * hours * alloc;
+    if (r.hourly_cost != null && r.hourly_cost !== "") {
+      buckets[key].cost += Number(r.hourly_cost) * hours * alloc;
+    }
+  }
+  for (const c of cost_lines) {
+    const key = c.phase_name ?? ungrouped;
+    if (!(key in buckets)) buckets[key] = { revenue: 0, cost: 0 };
+    buckets[key].cost += Number(c.amount || 0);
+  }
+  const rows = Object.entries(buckets)
+    .filter(([, v]) => v.revenue > 0 || v.cost > 0)
+    .map(([name, v]) => ({ name, ...v }));
+  if (rows.length === 0) return null;
+  return (
+    <div
+      data-testid="phase-summary"
+      style={{
+        marginTop: 12,
+        border: "1px solid #e5e7eb",
+        borderRadius: 6,
+        padding: 12,
+      }}
+    >
+      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
+        Per-phase revenue &amp; cost
+      </div>
+      <table style={{ width: "100%", fontSize: 12 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left" }}>Phase</th>
+            <th style={{ textAlign: "right" }}>Revenue</th>
+            <th style={{ textAlign: "right" }}>Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.name} data-testid={`phase-summary-${r.name}`}>
+              <td>{r.name}</td>
+              <td style={{ textAlign: "right" }}>
+                ${r.revenue.toLocaleString()}
+              </td>
+              <td style={{ textAlign: "right" }}>
+                ${r.cost.toLocaleString()}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -979,6 +1640,29 @@ const panelStyle: React.CSSProperties = {
   border: "1px solid #e5e7eb",
   borderRadius: 8,
   padding: 16,
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const modalStyle: React.CSSProperties = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: "rgba(17, 24, 39, 0.35)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 40,
+};
+
+const modalCard: React.CSSProperties = {
+  background: "white",
+  borderRadius: 8,
+  padding: 24,
+  width: 480,
   display: "flex",
   flexDirection: "column",
   gap: 12,

@@ -12,7 +12,15 @@ import { PageHeader } from "../ui/PageHeader";
 /**
  * Notification settings matrix: rows = categories, columns = channels. Each
  * toggle debounces its PATCH so a rapid on/off/on doesn't spam the API.
+ *
+ * S7 story B: only `email` + `inapp` are active delivery channels. Teams
+ * and Slack were dropped; the DB enum keeps them for legacy rows but the
+ * settings API and this page filter them out. The client also enforces
+ * `ACTIVE_CHANNELS` so a stale API response cannot re-surface a dropped
+ * channel toggle.
  */
+export const ACTIVE_CHANNELS: readonly string[] = ["email", "inapp"];
+
 export function NotificationSettingsPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [channels, setChannels] = useState<string[]>([]);
@@ -29,9 +37,12 @@ export function NotificationSettingsPage() {
     getNotificationSettings()
       .then((res) => {
         setCategories(res.categories);
-        setChannels(res.channels);
+        // Belt-and-braces: filter the server list against the active set
+        // so a stale API image cannot show a Teams/Slack toggle.
+        setChannels(res.channels.filter((ch) => ACTIVE_CHANNELS.includes(ch)));
         const map = new Map<string, boolean>();
         for (const row of res.items) {
+          if (!ACTIVE_CHANNELS.includes(row.channel)) continue;
           map.set(key(row.category, row.channel), row.enabled);
         }
         setValues(map);

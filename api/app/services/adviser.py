@@ -40,7 +40,10 @@ from app.integrations.bedrock_adviser import (
     TeamMember,
     propose_team,
 )
+from app.integrations.bedrock_embeddings import Embedder, default_embedder
+from app.integrations.tavily import Source, TavilyClient, get_tavily_client
 from app.models.adviser_estimate import DEFAULT_LABEL, AdviserEstimate
+from app.services.embeddings import search_capabilities, search_sow
 from app.services.rate_cards import CostBand, active_rate_card, lookup_cost
 
 
@@ -143,6 +146,15 @@ class Estimate:
     has_sentinel_costs: bool
     reviewer_id: uuid.UUID | None = None
     reviewed_at: str | None = None
+    # Public web-research outcome for this estimate. "ok" when Tavily
+    # returned at least one citation; "unavailable" when the key is missing
+    # or the upstream call failed. Never invented (Blueprint rule 6).
+    research_status: str = "unavailable"
+    # S7 wave 2: snapshot of the past-SOW + capability catalog matches
+    # the LLM saw for this estimate. ``{"past_sows": [...],
+    # "capabilities": [...]}`` (both lists may be empty). Persisted on
+    # ``adviser_estimate.retrieved`` for audit / debug.
+    retrieved: dict[str, Any] = field(default_factory=dict)
 
     def serialize(self) -> dict[str, Any]:
         return {
@@ -169,6 +181,8 @@ class Estimate:
             "has_sentinel_costs": self.has_sentinel_costs,
             "reviewer_id": str(self.reviewer_id) if self.reviewer_id else None,
             "reviewed_at": self.reviewed_at,
+            "research_status": self.research_status,
+            "retrieved": dict(self.retrieved or {}),
         }
 
 
@@ -182,6 +196,7 @@ class Questions:
     model: str = ""
     prompt_version: str = ""
     sources: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    research_status: str = "unavailable"
 
     def serialize(self) -> dict[str, Any]:
         return {
@@ -192,6 +207,7 @@ class Questions:
             "model": self.model,
             "prompt_version": self.prompt_version,
             "sources": list(self.sources),
+            "research_status": self.research_status,
         }
 
 
@@ -326,6 +342,130 @@ async def _resolve_floors(session: AsyncSession) -> tuple[Decimal, Decimal]:
     return _dec(us), _dec(india)
 
 
+# --- public research -------------------------------------------------------
+
+# Confidential fields — MUST NEVER end up in a Tavily query. The intake
+# schema (routers/adviser.py::AdviserIntake) may add more free-text fields
+# over time; keeping this list explicit makes the guardrail auditable.
+_CONFIDENTIAL_INTAKE_KEYS: frozenset[str] = frozenset(
+    {"problem", "notes", "budget", "attachments"}
+)
+
+
+def public_search_terms(inputs: dict[str, Any]) -> list[str]:
+    """Return the *public* search terms for an intake, in query order.
+
+    Blueprint §5 guardrail: public research and confidential uploads run in
+    separate steps. Client-confidential text (``problem``, ``notes``,
+    ``budget``, uploads) is never put into a search query. This helper is
+    the single choke-point — the adviser service calls it and passes the
+    result verbatim to Tavily.
+
+    The first term is always ``"{client_name} company overview"`` (with an
+    optional ``{industry}``/``{geography}`` suffix); a second term is the
+    bare website domain when supplied. Absent client_name → ``[]`` (Tavily
+    then returns [] and the caller flags ``research_status=unavailable``).
+    """
+
+    client_name = str(inputs.get("client_name") or "").strip()
+    if not client_name:
+        return []
+
+    # Public suffix: prefer industry over geography (industry is a stronger
+    # search signal). Both are optional; both are public.
+    suffix_parts: list[str] = []
+    for key in ("industry", "geography"):
+        val = inputs.get(key)
+        if isinstance(val, str) and val.strip():
+            suffix_parts.append(val.strip())
+    primary = f"{client_name} company overview"
+    if suffix_parts:
+        primary = f"{primary} {' '.join(suffix_parts)}"
+
+    terms: list[str] = [primary]
+
+    website = inputs.get("website")
+    if isinstance(website, str) and website.strip():
+        # Bare domain only — no path, no query string. Tavily indexes the
+        # domain itself well.
+        domain = website.strip()
+        for prefix in ("https://", "http://"):
+            if domain.lower().startswith(prefix):
+                domain = domain[len(prefix):]
+        domain = domain.split("/", 1)[0].strip()
+        if domain:
+            terms.append(domain)
+
+    # Belt: assert we didn't accidentally pick up a confidential value.
+    lowered_terms = " ".join(terms).lower()
+    for key in _CONFIDENTIAL_INTAKE_KEYS:
+        val = inputs.get(key)
+        if isinstance(val, str) and val.strip():
+            for word in val.split():
+                if len(word) < 4:
+                    continue
+                assert word.lower() not in lowered_terms, (
+                    f"public_search_terms leaked confidential value from {key!r}"
+                )
+    return terms
+
+
+async def _run_retrieval(
+    session: AsyncSession,
+    inputs: dict[str, Any],
+    embedder: Embedder | None,
+) -> dict[str, Any]:
+    """Run past-SOW + capability retrieval on the intake ``problem``.
+
+    Returns ``{"past_sows": [...], "capabilities": [...]}`` (both lists
+    may be empty). Never raises: a search failure logs and falls back to
+    empty lists so the estimate is not blocked on the retrieval layer —
+    matching Blueprint rule 6.
+    """
+
+    problem = str(inputs.get("problem") or "").strip()
+    if not problem:
+        return {"past_sows": [], "capabilities": []}
+    emb = embedder or default_embedder()
+    try:
+        past_sows = await search_sow(
+            session, embedder=emb, query_text=problem, top_k=5
+        )
+    except Exception:
+        past_sows = []
+    try:
+        capabilities = await search_capabilities(
+            session, embedder=emb, query_text=problem, top_k=5
+        )
+    except Exception:
+        capabilities = []
+    return {"past_sows": past_sows, "capabilities": capabilities}
+
+
+async def _run_public_research(
+    inputs: dict[str, Any], tavily: TavilyClient | None
+) -> tuple[list[Source], str]:
+    """Call Tavily with the public search terms and return (sources, status).
+
+    Never raises: any exception is swallowed and reported as
+    ``research_status = "unavailable"``. The service continues without
+    public sources rather than blocking the estimate — Blueprint rule 6.
+    """
+
+    terms = public_search_terms(inputs)
+    if not terms:
+        return [], "unavailable"
+    client = tavily or get_tavily_client()
+    query = terms[0]
+    try:
+        results = await client.search(query, max_results=5)
+    except Exception:
+        return [], "unavailable"
+    if not results:
+        return [], "unavailable"
+    return list(results), "ok"
+
+
 # --- public entry ----------------------------------------------------------
 
 
@@ -335,14 +475,37 @@ async def estimate(
     actor_id: uuid.UUID | None,
     inputs: dict[str, Any],
     adapter: Adviser | None = None,
+    tavily: TavilyClient | None = None,
+    embedder: Embedder | None = None,
 ) -> Estimate | Questions:
     """Draft, price and persist one opportunity estimate.
 
     Returns an :class:`Estimate` (persisted) or a :class:`Questions` payload
     (nothing persisted — the LLM asked for more information).
+
+    The flow is: (1) call Tavily with the *public* search terms to gather
+    background on the client, (2) query pgvector for the top past-SOW
+    chunks + capability-catalog matches on the confidential ``problem``
+    string, (3) hand *all three* (public research, retrieved refs,
+    confidential intake) to Bedrock, (4) price the resulting team
+    deterministically. When any upstream is unavailable the estimate
+    still runs — Blueprint rule 6: never block on external context,
+    never invent sources.
     """
 
-    draft: ProposeResult = propose_team(inputs, adapter=adapter)
+    public_sources, research_status = await _run_public_research(inputs, tavily)
+
+    # S7 wave 2: embed the confidential ``problem`` string and pull the
+    # top-5 past-SOW chunks + capability matches. Failures degrade
+    # silently to an empty retrieval so the estimate still runs.
+    retrieved = await _run_retrieval(session, inputs, embedder)
+
+    draft: ProposeResult = propose_team(
+        inputs,
+        adapter=adapter,
+        public_research=list(public_sources),
+        retrieved=retrieved,
+    )
 
     if isinstance(draft, ClarifyingQuestions):
         return Questions(
@@ -350,7 +513,8 @@ async def estimate(
             note=draft.note,
             model=draft.model,
             prompt_version=draft.prompt_version,
-            sources=draft.sources,
+            sources=tuple(public_sources) or draft.sources,
+            research_status=research_status,
         )
 
     assert isinstance(draft, StructuredTeam)
@@ -413,17 +577,27 @@ async def estimate(
         "has_sentinel_costs": any(m.is_sentinel for m in priced),
         "us_floor": _fmt(us_floor),
         "india_floor": _fmt(india_floor),
+        "research_status": research_status,
     }
+
+    # Prefer public research citations (from Tavily) over anything the
+    # adapter might have echoed back. The stub adapter never invents
+    # sources; the real one is instructed not to. Belt + braces.
+    sources_out: tuple[dict[str, Any], ...] = (
+        tuple(public_sources) if public_sources else tuple(draft.sources)
+    )
 
     row = AdviserEstimate(
         id=uuid.uuid4(),
         submitted_by=actor_id,
         inputs=inputs,
         structured_output=structured,
-        sources=list(draft.sources),
+        sources=list(sources_out),
         model=draft.model,
         prompt_version=draft.prompt_version,
         label=DEFAULT_LABEL,
+        research_status=research_status,
+        retrieved=retrieved,
     )
     session.add(row)
     await session.flush()
@@ -441,6 +615,7 @@ async def estimate(
             "team_size": len(priced),
             "rate_card_version_id": structured["rate_card_version_id"],
             "has_sentinel_costs": structured["has_sentinel_costs"],
+            "research_status": research_status,
         },
     )
     await session.commit()
@@ -459,7 +634,7 @@ async def estimate(
         cost_base=total_base,
         cost_high=total_high,
         options=options,
-        sources=draft.sources,
+        sources=sources_out,
         model=row.model,
         prompt_version=row.prompt_version,
         inputs=inputs,
@@ -467,6 +642,8 @@ async def estimate(
         has_sentinel_costs=structured["has_sentinel_costs"],
         reviewer_id=row.reviewer_id,
         reviewed_at=row.reviewed_at.isoformat() if row.reviewed_at else None,
+        research_status=research_status,
+        retrieved=dict(retrieved),
     )
 
 
@@ -520,6 +697,13 @@ def serialize_row(row: AdviserEstimate) -> dict[str, Any]:
         "has_sentinel_costs": structured.get("has_sentinel_costs", False),
         "reviewer_id": str(row.reviewer_id) if row.reviewer_id else None,
         "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+        # Prefer the dedicated column but fall back to the structured_output
+        # blob for rows written by intermediate builds during the sprint.
+        "research_status": (
+            row.research_status
+            or structured.get("research_status")
+        ),
+        "retrieved": dict(row.retrieved or {}),
     }
 
 
@@ -532,5 +716,6 @@ __all__ = [
     "estimate",
     "list_estimates",
     "load_estimate",
+    "public_search_terms",
     "serialize_row",
 ]

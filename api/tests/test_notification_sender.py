@@ -97,10 +97,14 @@ async def test_email_goes_through_ses_and_marks_sent(session, alice):
     assert await verify_chain(session) is True
 
 
-# ---- teams w/o webhook -> suppressed -----------------------------------
+# ---- teams / slack are disabled channels (S7 story B) -------------------
+# After S7 story B the queue itself writes teams/slack rows as SUPPRESSED
+# with ``last_error="channel disabled"`` — the sender never touches them.
+# The sender's webhook branches remain in place for schema compat but are
+# unreachable via ``pending_notifications``.
 
 
-async def test_teams_without_webhook_is_suppressed(session, alice):
+async def test_teams_is_suppressed_at_queue_time_not_sender(session, alice):
     await queue_notification(
         session,
         user_id=alice.id,
@@ -109,17 +113,22 @@ async def test_teams_without_webhook_is_suppressed(session, alice):
         body_md="body",
     )
     await session.commit()
-
-    ses = StubSES()
-    await process_batch(session, ses=ses)
 
     teams = await _pick(session, alice, "teams")
     await session.refresh(teams)
     assert teams.status == STATUS_SUPPRESSED
-    assert teams.last_error == "channel not configured"
+    assert teams.last_error == "channel disabled"
+
+    # Running the sender is a no-op for a SUPPRESSED row (it never appears
+    # in pending_notifications), so the state does not change.
+    ses = StubSES()
+    await process_batch(session, ses=ses)
+    await session.refresh(teams)
+    assert teams.status == STATUS_SUPPRESSED
+    assert teams.last_error == "channel disabled"
 
 
-async def test_slack_without_webhook_is_suppressed(session, alice):
+async def test_slack_is_suppressed_at_queue_time_not_sender(session, alice):
     await queue_notification(
         session,
         user_id=alice.id,
@@ -129,13 +138,16 @@ async def test_slack_without_webhook_is_suppressed(session, alice):
     )
     await session.commit()
 
-    ses = StubSES()
-    await process_batch(session, ses=ses)
-
     slack = await _pick(session, alice, "slack")
     await session.refresh(slack)
     assert slack.status == STATUS_SUPPRESSED
-    assert slack.last_error == "channel not configured"
+    assert slack.last_error == "channel disabled"
+
+    ses = StubSES()
+    await process_batch(session, ses=ses)
+    await session.refresh(slack)
+    assert slack.status == STATUS_SUPPRESSED
+    assert slack.last_error == "channel disabled"
 
 
 # ---- inapp -> immediate sent ------------------------------------------

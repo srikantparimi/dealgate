@@ -219,8 +219,12 @@ async def test_extract_manual_required_when_bedrock_disabled(
     assert res["status"] == 201, res
     body = res["body"]
     assert body["extract_status"] == "manual_required"
-    # No hallucinated values — every field is None / disputed.
+    # No hallucinated values — every field is None / disputed. The
+    # ``metadata`` key carries the extract-source tag (S7 story A) and is
+    # not a field, so it is skipped.
     for name, entry in body["extracted_fields"].items():
+        if name == "metadata":
+            continue
         assert entry["value"] is None
         assert entry["status"] == "disputed"
     assert body["engagement_type_suggested"] is None

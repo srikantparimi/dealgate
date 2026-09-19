@@ -970,6 +970,8 @@ export interface AdviserEstimate {
   has_sentinel_costs: boolean;
   reviewer_id: UUID | null;
   reviewed_at: ISODateTime | null;
+  /** Public research outcome: "ok" | "unavailable" | null for pre-S7-wave2 rows. */
+  research_status?: string | null;
 }
 
 export interface AdviserQuestions {
@@ -980,6 +982,7 @@ export interface AdviserQuestions {
   model: string;
   prompt_version: string;
   sources: Array<Record<string, unknown>>;
+  research_status?: string | null;
 }
 
 export type AdviserResult = AdviserEstimate | AdviserQuestions;
@@ -1198,6 +1201,9 @@ export interface DeliveryResourceLineInput {
   hourly_bill_rate: DecimalStr;
   hourly_cost: DecimalStr | null;
   validated_by: UUID | null;
+  /** S7 wave 2 — WBS phase name join key at save time. Null keeps the
+   * row in the Builder's "Ungrouped" bucket. */
+  phase_name?: string | null;
 }
 
 export interface DeliveryCostLineInput {
@@ -1205,15 +1211,43 @@ export interface DeliveryCostLineInput {
   amount: DecimalStr;
   location: DeliveryLocation;
   note?: string | null;
+  phase_name?: string | null;
 }
 
 export interface DeliveryResourceLineRow extends DeliveryResourceLineInput {
   id: UUID;
+  phase_id?: UUID | null;
 }
 
 export interface DeliveryCostLineRow extends DeliveryCostLineInput {
   id: UUID;
   note: string | null;
+  phase_id?: UUID | null;
+}
+
+/** S7 wave 2 — one WBS phase in the save payload. */
+export interface DeliveryPhaseInput {
+  name: string;
+  order: number;
+  sow_deliverable_ref?: string | null;
+  description?: string | null;
+}
+
+/** S7 wave 2 — one WBS phase as returned by the API. */
+export interface DeliveryPhaseRow {
+  id: UUID;
+  name: string;
+  order: number;
+  sow_deliverable_ref: string | null;
+  description: string | null;
+}
+
+/** S7 wave 2 — per-phase revenue + cost roll-up for the right-panel widget. */
+export interface DeliveryPhaseSummary {
+  phase_id: UUID | null;
+  name: string;
+  revenue: DecimalStr;
+  cost?: DecimalStr;
 }
 
 /** Warning surfaced in the resource grid gutter. */
@@ -1275,6 +1309,9 @@ export interface DeliveryGmModel {
   revenue_india: DecimalStr | null;
   created_by: UUID | null;
   created_at: ISODateTime | null;
+  /** S7 wave 2 — WBS phases + per-phase roll-up. */
+  phases?: DeliveryPhaseRow[];
+  phase_summary?: DeliveryPhaseSummary[];
   resource_lines: DeliveryResourceLineRow[];
   cost_lines: DeliveryCostLineRow[];
   completeness_issues: string[];
@@ -1333,6 +1370,9 @@ export interface DeliverySaveRequest {
   delivery_pattern?: string | null;
   contingency_pct?: DecimalStr | null;
   warranty_days?: number | null;
+  /** S7 wave 2 — WBS phases. Empty list keeps the model phase-less
+   * (rows land in the "Ungrouped" bucket). */
+  phases?: DeliveryPhaseInput[];
   resource_lines: DeliveryResourceLineInput[];
   cost_lines: DeliveryCostLineInput[];
   // Template scalars persisted implicitly via the snapshot revenue_us /
@@ -1410,6 +1450,71 @@ export async function exportDeliveryModelXlsx(gmModelId: UUID): Promise<Blob> {
     throw new ApiError(res.status, errBody, message);
   }
   return await res.blob();
+}
+
+// --- S7 wave 2: phase reorder + templates --------------------------------
+
+export interface DeliveryTemplateSummary {
+  id: UUID;
+  name: string;
+  engagement_type: EngagementType;
+  created_by: UUID | null;
+  created_at: ISODateTime | null;
+  updated_at: ISODateTime | null;
+  active: boolean;
+  phase_count: number;
+  resource_line_count: number;
+  cost_line_count: number;
+}
+
+export function reorderDeliveryPhases(
+  opportunityId: UUID,
+  orderedPhaseIds: UUID[],
+): Promise<{ phases: DeliveryPhaseRow[] }> {
+  return request<{ phases: DeliveryPhaseRow[] }>(
+    `/delivery-model/${opportunityId}/phases/reorder`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ ordered_phase_ids: orderedPhaseIds }),
+    },
+  );
+}
+
+export function saveDeliveryTemplate(
+  body: { gm_model_id: UUID; name: string },
+): Promise<{ template: DeliveryTemplateSummary }> {
+  return request<{ template: DeliveryTemplateSummary }>(
+    `/delivery-model/templates`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export function listDeliveryTemplates(
+  engagementType?: EngagementType,
+): Promise<{ items: DeliveryTemplateSummary[] }> {
+  const q = engagementType ? `?engagement_type=${encodeURIComponent(engagementType)}` : "";
+  return request<{ items: DeliveryTemplateSummary[] }>(
+    `/delivery-model/templates${q}`,
+  );
+}
+
+export function deleteDeliveryTemplate(templateId: UUID): Promise<void> {
+  return request<void>(`/delivery-model/templates/${templateId}`, {
+    method: "DELETE",
+  });
+}
+
+export function seedDeliveryModelFromTemplate(
+  opportunityId: UUID,
+  templateId: UUID,
+): Promise<{ gm_model: DeliveryGmModel }> {
+  return request<{ gm_model: DeliveryGmModel }>(
+    `/delivery-model/${opportunityId}/from-template/${templateId}`,
+    { method: "POST" },
+  );
 }
 
 // --- Legacy import (S6 user-added scope) ---------------------------------
@@ -2511,4 +2616,85 @@ export function replayAdminIntegrationEvent(
     `/admin/replay/integration-events/${eventId}`,
     { method: "POST" },
   );
+}
+
+// --- Capability catalog (S7 wave 2) ---------------------------------------
+
+/**
+ * One curated capability entry. The API never returns the raw embedding —
+ * ``has_embedding`` is a boolean flag so the UI can surface "pending
+ * embed" without paging a 1536-float blob into the browser.
+ */
+export interface CapabilityRow {
+  id: UUID;
+  name: string;
+  description: string;
+  tags: string[];
+  has_embedding: boolean;
+  curated_by: UUID | null;
+  created_at: ISODateTime | null;
+  updated_at: ISODateTime | null;
+}
+
+export interface CapabilityListResponse {
+  items: CapabilityRow[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface ListCapabilitiesQuery {
+  search?: string;
+  tag?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface CreateCapabilityBody {
+  name: string;
+  description: string;
+  tags?: string[];
+}
+
+export interface PatchCapabilityBody {
+  name?: string;
+  description?: string;
+  tags?: string[];
+}
+
+export function listCapabilities(
+  query: ListCapabilitiesQuery = {},
+): Promise<CapabilityListResponse> {
+  const params = new URLSearchParams();
+  if (query.search) params.set("search", query.search);
+  if (query.tag) params.set("tag", query.tag);
+  if (query.page) params.set("page", String(query.page));
+  if (query.size) params.set("size", String(query.size));
+  const qs = params.toString();
+  return request<CapabilityListResponse>(
+    `/admin/capability-catalog${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function createCapability(
+  body: CreateCapabilityBody,
+): Promise<CapabilityRow> {
+  return request<CapabilityRow>(`/admin/capability-catalog`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchCapability(
+  id: UUID,
+  body: PatchCapabilityBody,
+): Promise<CapabilityRow> {
+  return request<CapabilityRow>(`/admin/capability-catalog/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteCapability(id: UUID): Promise<void> {
+  return request<void>(`/admin/capability-catalog/${id}`, { method: "DELETE" });
 }

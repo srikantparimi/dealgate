@@ -8,8 +8,10 @@ from app.models.actual import ActualImportBatch, ActualPeriod
 from app.models.adviser_estimate import AdviserEstimate
 from app.models.approval import Approval, ApprovalPackage
 from app.models.audit import AuditEvent
+from app.models.capability import CapabilityCatalog
 from app.models.ceo_exception import CeoDelegate, CeoException
 from app.models.client import Agreement, Client, LegalEntity
+from app.models.embedding import SowEmbedding
 from app.models.forecast import ForecastPeriod
 from app.models.gm_model import CostLine, GmModel, ResourceLine
 from app.models.hubspot_writeback import HubspotWritebackJob
@@ -29,6 +31,13 @@ from app.models.user import User
 # mappers above so ``__table__.append_column`` sees the ready tables.
 from app.models.legacy import LegacyImportBatch  # noqa: E402  (order matters)
 
+# S7 wave 2: WBS phases + reusable templates. Phase model uses the same
+# ``append_column`` idiom to attach ``phase_id`` FKs to resource_line and
+# cost_line, so it must import after ``legacy`` for the mapper order to
+# be deterministic.
+from app.models.gm_model_phase import GmModelPhase  # noqa: E402
+from app.models.gm_model_template import GmModelTemplate  # noqa: E402
+
 __all__ = [
     "ActualImportBatch",
     "ActualPeriod",
@@ -37,12 +46,15 @@ __all__ = [
     "Approval",
     "ApprovalPackage",
     "AuditEvent",
+    "CapabilityCatalog",
     "CeoDelegate",
     "CeoException",
     "Client",
     "CostLine",
     "ForecastPeriod",
     "GmModel",
+    "GmModelPhase",
+    "GmModelTemplate",
     "HubspotWritebackJob",
     "IntegrationEvent",
     "LegacyImportBatch",
@@ -57,6 +69,7 @@ __all__ = [
     "ResourceLine",
     "SignedSowUpload",
     "Sow",
+    "SowEmbedding",
     "SowVersion",
     "Task",
     "User",

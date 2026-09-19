@@ -40,12 +40,19 @@ from app.services.delivery_model import (
     capacity_conflicts,
     compute_live,
     create_gm_model_version,
+    delete_template,
     hr_lead_time_warnings,
     latest_gm_model_for,
+    latest_gm_model_for as _latest,  # noqa: F401 (kept for clarity)
     list_gm_models_for,
+    list_templates,
     load_gm_model,
     parse_gm_model_payload,
+    reorder_phases,
+    save_as_template,
+    seed_from_template,
     serialize_gm_model,
+    serialize_template,
     serialize_warnings,
     summarize_gm_model,
 )
@@ -195,6 +202,163 @@ async def create_version_endpoint(
     return redact_costs(response, set(actor.groups))
 
 
+# --- S7 wave 2: templates (declared before ``/{opportunity_id}`` so the
+# literal ``/templates`` path matches BEFORE FastAPI tries to parse
+# "templates" as a UUID) ---------------------------------------------------
+
+
+class SaveTemplateRequest(BaseModel):
+    gm_model_id: uuid.UUID
+    name: str
+
+
+@router.post("/templates", status_code=201)
+async def save_template_endpoint(
+    body: SaveTemplateRequest,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Save an existing GM model version as a reusable template."""
+
+    try:
+        tpl = await save_as_template(
+            session,
+            actor_id=actor.id,
+            gm_model_id=body.gm_model_id,
+            name=body.name,
+        )
+    except DeliveryModelInputError as exc:
+        raise _bad_request(exc) from exc
+    return {"template": serialize_template(tpl)}
+
+
+# Templates are shape-only (no cost values). Presales sees them so they
+# can pick one when starting a new opportunity from the Adviser flow.
+_TEMPLATE_READ_ROLES = ("Delivery", "Presales", "SystemAdmin", "Finance")
+
+
+@router.get("/templates")
+async def list_templates_endpoint(
+    engagement_type: str | None = None,
+    _user: AuthUser = Depends(require_role(*_TEMPLATE_READ_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    tpls = await list_templates(session, engagement_type=engagement_type)
+    return {"items": [serialize_template(t) for t in tpls]}
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+async def delete_template_endpoint(
+    template_id: uuid.UUID,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    try:
+        await delete_template(session, template_id=template_id, actor_id=actor.id)
+    except DeliveryModelInputError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(status_code=204)
+
+
+@router.get("/versions/{gm_model_id}/xlsx")
+async def export_version_endpoint(
+    gm_model_id: uuid.UUID,
+    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Excel export. Numbers must match the compute response for the same
+    inputs (story AC: "download matches the GM sandbox numbers exactly")."""
+
+    try:
+        model = await load_gm_model(session, gm_model_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail="gm_model not found") from exc
+
+    from app.services.delivery_model import (
+        _extra_inputs_for_model,
+        _model_to_payload,
+    )
+
+    payload = _model_to_payload(model)
+    try:
+        result = compute_live(payload, extra_inputs=_extra_inputs_for_model(model))
+    except (DeliveryModelInputError, SandboxInputError) as exc:
+        raise _bad_request(exc) from exc
+    response_body = build_compute_response(result)
+    xlsx = build_xlsx(model, result, response_body)
+    filename = f"gm_model_{gm_model_id}.xlsx"
+    return Response(
+        content=xlsx,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"content-disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# --- S7 wave 2: phase reorder + seed-from-template (opportunity-scoped) --
+
+
+class ReorderPhasesRequest(BaseModel):
+    ordered_phase_ids: list[uuid.UUID]
+
+
+@router.patch("/{opportunity_id}/phases/reorder")
+async def reorder_phases_endpoint(
+    opportunity_id: uuid.UUID,
+    body: ReorderPhasesRequest,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Reorder phases for the latest gm_model on this opportunity."""
+
+    await _load_opportunity(session, opportunity_id)
+    model = await latest_gm_model_for(session, opportunity_id)
+    if model is None:
+        raise HTTPException(status_code=404, detail="no gm_model for opportunity")
+
+    try:
+        phases = await reorder_phases(
+            session,
+            gm_model_id=model.id,
+            ordered_phase_ids=body.ordered_phase_ids,
+            actor_id=actor.id,
+        )
+    except DeliveryModelInputError as exc:
+        raise _bad_request(exc) from exc
+
+    return {
+        "phases": [
+            {"id": str(p.id), "name": p.name, "order": p.order} for p in phases
+        ]
+    }
+
+
+@router.post("/{opportunity_id}/from-template/{template_id}", status_code=201)
+async def seed_from_template_endpoint(
+    opportunity_id: uuid.UUID,
+    template_id: uuid.UUID,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Seed a fresh gm_model draft on the opportunity from a template."""
+
+    await _load_opportunity(session, opportunity_id)
+    try:
+        model = await seed_from_template(
+            session,
+            opportunity_id=opportunity_id,
+            template_id=template_id,
+            actor_id=actor.id,
+        )
+    except DeliveryModelInputError as exc:
+        raise _bad_request(exc) from exc
+
+    return redact_costs(
+        {"gm_model": serialize_gm_model(model)}, set(actor.groups)
+    )
+
+
 @router.get("/{opportunity_id}")
 async def get_latest_endpoint(
     opportunity_id: uuid.UUID,
@@ -244,37 +408,3 @@ async def list_versions_endpoint(
     return {"items": [summarize_gm_model(m) for m in models]}
 
 
-@router.get("/versions/{gm_model_id}/xlsx")
-async def export_version_endpoint(
-    gm_model_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
-    session: AsyncSession = Depends(get_session),
-) -> Response:
-    """Excel export. Numbers must match the compute response for the same
-    inputs (story AC: "download matches the GM sandbox numbers exactly")."""
-
-    try:
-        model = await load_gm_model(session, gm_model_id)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=404, detail="gm_model not found") from exc
-
-    from app.services.delivery_model import (
-        _extra_inputs_for_model,
-        _model_to_payload,
-    )
-
-    payload = _model_to_payload(model)
-    try:
-        result = compute_live(payload, extra_inputs=_extra_inputs_for_model(model))
-    except (DeliveryModelInputError, SandboxInputError) as exc:
-        raise _bad_request(exc) from exc
-    response_body = build_compute_response(result)
-    xlsx = build_xlsx(model, result, response_body)
-    filename = f"gm_model_{gm_model_id}.xlsx"
-    return Response(
-        content=xlsx,
-        media_type=(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ),
-        headers={"content-disposition": f'attachment; filename="{filename}"'},
-    )

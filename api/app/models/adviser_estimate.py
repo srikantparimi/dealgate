@@ -53,3 +53,11 @@ class AdviserEstimate(Base):
     label: Mapped[str] = mapped_column(
         String(255), nullable=False, default=DEFAULT_LABEL, server_default=DEFAULT_LABEL
     )
+    # Public web-research outcome ("ok" | "unavailable" | NULL for
+    # pre-feature rows). See migration 20260919_0022 for rationale.
+    research_status: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    # S7 wave 2: snapshot of the past-SOW + capability refs the LLM saw
+    # for this estimate. Stays nullable so pre-feature rows still load.
+    retrieved: Mapped[dict[str, Any] | None] = mapped_column(JsonB, nullable=True)

@@ -10,6 +10,7 @@ from app.routers import (
     agreements,
     approvals,
     audit,
+    capability_catalog,
     ceo_exception,
     clients,
     dashboards,
@@ -54,3 +55,4 @@ app.include_router(dashboards.router)
 app.include_router(forecast.router)
 app.include_router(actuals.router)
 app.include_router(admin_replay.router)
+app.include_router(capability_catalog.router)

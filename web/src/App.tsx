@@ -9,6 +9,7 @@ import { ApprovalPackageDetailPage } from "./pages/ApprovalPackageDetail";
 import { ApprovalQueuePage } from "./pages/ApprovalQueue";
 import { AuditPage } from "./pages/Audit";
 import { AuthCallback } from "./pages/AuthCallback";
+import { CapabilityCatalogPage } from "./pages/CapabilityCatalog";
 import { CEOExceptionBriefPage } from "./pages/CEOExceptionBrief";
 import { ClientDetailPage } from "./pages/ClientDetail";
 import { ClientListPage } from "./pages/ClientList";
@@ -16,6 +17,7 @@ import { ClientSowGmPage } from "./pages/ClientSowGm";
 import { DashboardPage } from "./pages/Dashboard";
 import { DealDetailPage } from "./pages/DealDetail";
 import { DealListPage } from "./pages/DealList";
+import { DeliveryModelTemplatesPage } from "./pages/DeliveryModelTemplates";
 import { GMSandboxPage } from "./pages/GMSandbox";
 import { LegacyImportPage } from "./pages/LegacyImport";
 import { LegacyReconciliationPage } from "./pages/LegacyReconciliation";
@@ -71,6 +73,12 @@ const RENEWAL_NAV_ROLES = new Set([
   "Finance",
   "SystemAdmin",
 ]);
+// S7 wave 2: Delivery Lead / SystemAdmin curate the capability catalog.
+// The API also lets Presales/Marketing/Sales read; the nav link surfaces
+// the curator entry point only.
+const CAPABILITY_NAV_ROLES = new Set(["Delivery", "SystemAdmin"]);
+const CAPABILITY_WRITE_ROLES = new Set(["Delivery", "SystemAdmin"]);
+const CAPABILITY_DELETE_ROLES = new Set(["SystemAdmin"]);
 
 function canSeeGmSandbox(groups: string[]): boolean {
   return groups.some((g) => GM_SANDBOX_ROLES.has(g));
@@ -123,6 +131,9 @@ function navForGroups(groups: string[]): NavItem[] {
   if (groups.some((g) => RENEWAL_NAV_ROLES.has(g))) {
     items.push({ to: "/renewals", label: "Renewals" });
   }
+  if (groups.some((g) => CAPABILITY_NAV_ROLES.has(g))) {
+    items.push({ to: "/admin/capabilities", label: "Capabilities" });
+  }
   if (groups.includes("SystemAdmin")) {
     // Client-side gate for the admin section; the API still enforces
     // `require_role("SystemAdmin")` so the real gate cannot be bypassed.
@@ -141,6 +152,14 @@ function AuthedShell({ children }: { children: React.ReactNode }) {
       {children}
     </AppShell>
   );
+}
+
+function CapabilityCatalogRoute() {
+  const { user } = useAuth();
+  const groups = user?.groups ?? [];
+  const canWrite = groups.some((g) => CAPABILITY_WRITE_ROLES.has(g));
+  const canDelete = groups.some((g) => CAPABILITY_DELETE_ROLES.has(g));
+  return <CapabilityCatalogPage canWrite={canWrite} canDelete={canDelete} />;
 }
 
 export function App() {
@@ -194,6 +213,14 @@ export function App() {
                     element={<ApprovalPackageDetailPage />}
                   />
                   <Route path="/renewals" element={<RenewalBoardPage />} />
+                  <Route
+                    path="/delivery-model/templates"
+                    element={<DeliveryModelTemplatesPage />}
+                  />
+                  <Route
+                    path="/admin/capabilities"
+                    element={<CapabilityCatalogRoute />}
+                  />
                 </Routes>
               </AuthedShell>
             </RequireAuth>

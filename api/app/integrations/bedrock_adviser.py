@@ -365,10 +365,33 @@ def _default_adapter() -> Adviser:
     return StubBedrock()
 
 
+def _invoke_draft(
+    adapter: Adviser,
+    inputs: dict[str, Any],
+    extra_kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Call ``adapter.draft(inputs, **extra)`` if the adapter accepts extra
+    kwargs; otherwise fall back to the single-arg contract.
+
+    Keeps adapters written against the old signature (StubBedrock) working
+    unchanged while letting the real Bedrock adapter opt into
+    ``public_research`` without a breaking API change.
+    """
+
+    if not extra_kwargs:
+        return adapter.draft(inputs)
+    try:
+        return adapter.draft(inputs, **extra_kwargs)  # type: ignore[call-arg]
+    except TypeError:
+        return adapter.draft(inputs)
+
+
 def propose_team(
     inputs: dict[str, Any],
     *,
     adapter: Adviser | None = None,
+    public_research: list[dict[str, Any]] | None = None,
+    retrieved: dict[str, Any] | None = None,
 ) -> ProposeResult:
     """Draft either a structured team or clarifying questions.
 
@@ -378,11 +401,32 @@ def propose_team(
       the "AI drafts, humans confirm" contract (rule 6).
     - A team with fewer than 3 roles fails validation and falls back to
       clarifying questions (acceptance test).
+
+    ``public_research`` is an optional list of ``{url, title, snippet}``
+    citations from :mod:`app.integrations.tavily`. The real Bedrock adapter
+    injects these into the system prompt so the LLM can ground its scope
+    interpretation in publicly-known facts about the client. The stub
+    ignores them so existing tests keep their canned output; the parameter
+    is still forwarded on adapters that opt in via a keyword argument.
+
+    ``retrieved`` is an optional dict with two lists — ``past_sows`` and
+    ``capabilities`` — populated by the pgvector retrieval pipeline
+    (:mod:`app.services.embeddings`). Same "opt-in via adapter kwarg"
+    contract: the stub ignores it; the real Bedrock adapter injects the
+    top matches into the system prompt so the LLM's team proposal is
+    grounded in what DealGate has actually delivered.
     """
 
     ad = adapter or _default_adapter()
+    # Forward extras to adapters that accept them. StubBedrock deliberately
+    # ignores unknown kwargs so tests keep their canned output.
+    draft_kwargs: dict[str, Any] = {}
+    if public_research is not None:
+        draft_kwargs["public_research"] = public_research
+    if retrieved is not None:
+        draft_kwargs["retrieved"] = retrieved
     try:
-        raw = ad.draft(inputs)
+        raw = _invoke_draft(ad, inputs, draft_kwargs)
     except Exception:
         return ClarifyingQuestions(
             questions=(

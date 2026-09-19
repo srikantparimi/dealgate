@@ -16,6 +16,7 @@ from app.main import app as main_app
 from app.models.notification import Notification, NotificationSetting
 from app.models.user import User
 from app.services.notifications import (
+    ACTIVE_CHANNELS,
     MAX_ATTEMPTS,
     NOTIFICATION_CHANNELS,
     STATUS_FAILED,
@@ -86,11 +87,18 @@ async def test_queue_notification_fans_out_default_channels(session, alice):
     )
     await session.commit()
 
+    # One row per enum channel is still written (schema + audit compat) but
+    # after S7 story B only ACTIVE_CHANNELS rows are pending; the rest are
+    # suppressed with "channel disabled" so the worker never touches them.
     assert {r.channel for r in rows} == set(NOTIFICATION_CHANNELS)
-    for r in rows:
-        assert r.status == STATUS_PENDING
-        assert r.attempts == 0
-        assert r.next_attempt_at is not None
+    by_channel = {r.channel: r for r in rows}
+    for ch in ACTIVE_CHANNELS:
+        assert by_channel[ch].status == STATUS_PENDING
+        assert by_channel[ch].attempts == 0
+        assert by_channel[ch].next_attempt_at is not None
+    for ch in set(NOTIFICATION_CHANNELS) - set(ACTIVE_CHANNELS):
+        assert by_channel[ch].status == STATUS_SUPPRESSED
+        assert by_channel[ch].last_error == "channel disabled"
     assert await verify_chain(session) is True
 
 
@@ -139,7 +147,9 @@ async def test_pending_returns_ready_rows(session, alice):
     await session.commit()
 
     rows = await pending_notifications(session)
-    assert len(rows) == len(NOTIFICATION_CHANNELS)
+    # After S7 story B only ACTIVE_CHANNELS rows land as PENDING; the
+    # Teams/Slack rows are SUPPRESSED and excluded from the worker feed.
+    assert len(rows) == len(ACTIVE_CHANNELS)
 
 
 async def test_mark_sent_updates_status(session, alice):

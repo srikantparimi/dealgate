@@ -42,6 +42,8 @@ from app.gm.types import (
     TemplateResult,
 )
 from app.models.gm_model import CostLine, GmModel, ResourceLine
+from app.models.gm_model_phase import GmModelPhase
+from app.models.gm_model_template import GmModelTemplate
 from app.services.gm_sandbox import (
     SandboxInputError,
     parse_engagement_type,
@@ -91,6 +93,10 @@ class ResourceLinePayload:
     hourly_bill_rate: Decimal
     hourly_cost: Optional[Decimal]
     validated_by: Optional[uuid.UUID]
+    # S7 wave 2: soft-link to a WBS phase by name during save. The service
+    # resolves ``phase_name`` -> the freshly-created gm_model_phase.id.
+    # NULL keeps the row in the Builder's "Ungrouped" bucket (legacy-safe).
+    phase_name: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +105,22 @@ class CostLinePayload:
     amount: Decimal
     note: Optional[str]
     location: str = "US"
+    phase_name: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class PhaseInput:
+    """One WBS phase for the save-time payload (S7 wave 2).
+
+    ``order`` is the display position — the service normalises it to a
+    dense 0..N sequence before persist so the UNIQUE(gm_model_id, order)
+    constraint holds even when the client sends sparse values.
+    """
+
+    name: str
+    order: int
+    sow_deliverable_ref: Optional[str] = None
+    description: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +132,11 @@ class GmModelPayload:
     warranty_days: Optional[int]
     resource_lines: list[ResourceLinePayload]
     cost_lines: list[CostLinePayload]
+    phases: list[PhaseInput] = None  # type: ignore[assignment]
+
+    def __post_init__(self):  # dataclass frozen shim
+        if self.phases is None:
+            object.__setattr__(self, "phases", [])
 
 
 # --- parsing helpers -------------------------------------------------------
@@ -164,6 +191,9 @@ def parse_resource_line(raw: Any, *, field: str) -> ResourceLinePayload:
     person_name = raw.get("person_name")
     if person_name is not None:
         person_name = str(person_name).strip() or None
+    phase_name = raw.get("phase_name")
+    if phase_name is not None:
+        phase_name = str(phase_name).strip() or None
     return ResourceLinePayload(
         role=str(raw.get("role", "")).strip(),
         seniority=str(raw.get("seniority", "")).strip(),
@@ -182,6 +212,7 @@ def parse_resource_line(raw: Any, *, field: str) -> ResourceLinePayload:
             raw.get("hourly_cost"), field=f"{field}.hourly_cost"
         ),
         validated_by=_to_optional_uuid(raw.get("validated_by"), field=f"{field}.validated_by"),
+        phase_name=phase_name,
     )
 
 
@@ -196,11 +227,36 @@ def parse_cost_line(raw: Any, *, field: str) -> CostLinePayload:
     location = raw.get("location", "US")
     if location not in _ALLOWED_LOCATIONS:
         raise DeliveryModelInputError(f"{field}.location must be 'US' or 'India'")
+    phase_name = raw.get("phase_name")
+    if phase_name is not None:
+        phase_name = str(phase_name).strip() or None
     return CostLinePayload(
         category=category,
         amount=_to_decimal(raw.get("amount", 0), field=f"{field}.amount"),
         note=(str(raw["note"]) if raw.get("note") else None),
         location=location,
+        phase_name=phase_name,
+    )
+
+
+def parse_phase(raw: Any, *, field: str) -> PhaseInput:
+    if not isinstance(raw, dict):
+        raise DeliveryModelInputError(f"{field} must be an object")
+    name = str(raw.get("name", "")).strip()
+    if not name:
+        raise DeliveryModelInputError(f"{field}.name is required")
+    try:
+        order = int(raw.get("order", 0))
+    except (TypeError, ValueError) as exc:
+        raise DeliveryModelInputError(f"{field}.order must be an integer") from exc
+    ref = raw.get("sow_deliverable_ref")
+    if ref is not None:
+        ref = str(ref).strip() or None
+    desc = raw.get("description")
+    if desc is not None:
+        desc = str(desc).strip() or None
+    return PhaseInput(
+        name=name, order=order, sow_deliverable_ref=ref, description=desc
     )
 
 
@@ -230,6 +286,11 @@ def parse_gm_model_payload(raw: Any) -> GmModelPayload:
         raise DeliveryModelInputError("cost_lines must be a list")
     costs = [parse_cost_line(c, field=f"cost_lines[{i}]") for i, c in enumerate(costs_raw)]
 
+    phases_raw = raw.get("phases") or []
+    if not isinstance(phases_raw, list):
+        raise DeliveryModelInputError("phases must be a list")
+    phases = [parse_phase(p, field=f"phases[{i}]") for i, p in enumerate(phases_raw)]
+
     return GmModelPayload(
         engagement_type=engagement_type,
         sow_version_id=_to_optional_uuid(raw.get("sow_version_id"), field="sow_version_id"),
@@ -242,6 +303,7 @@ def parse_gm_model_payload(raw: Any) -> GmModelPayload:
         warranty_days=(int(raw["warranty_days"]) if raw.get("warranty_days") is not None else None),
         resource_lines=resources,
         cost_lines=costs,
+        phases=phases,
     )
 
 
@@ -494,6 +556,7 @@ async def create_gm_model_version(
         warranty_days=payload.warranty_days,
         resource_lines=filled_lines,
         cost_lines=payload.cost_lines,
+        phases=payload.phases,
     )
 
     # Snapshot revenue components at save-time so the list view does not
@@ -523,6 +586,31 @@ async def create_gm_model_version(
     session.add(model)
     await session.flush()
 
+    # ---- WBS phases (S7 wave 2) ------------------------------------------
+    # Persist phases first so we can resolve resource/cost ``phase_name``
+    # -> the freshly-created gm_model_phase.id. Order is normalised to a
+    # dense 0..N sequence so the UNIQUE constraint holds even when the
+    # client sent sparse or duplicate order values.
+    phases_sorted = sorted(
+        filled_payload.phases, key=lambda p: (p.order, p.name)
+    )
+    phase_ids_by_name: dict[str, uuid.UUID] = {}
+    for pos, ph in enumerate(phases_sorted):
+        row = GmModelPhase(
+            id=uuid.uuid4(),
+            gm_model_id=model.id,
+            name=ph.name,
+            order=pos,
+            sow_deliverable_ref=ph.sow_deliverable_ref,
+            description=ph.description,
+        )
+        session.add(row)
+        # First occurrence wins if two phases share a name (unlikely, but
+        # keeps the lookup deterministic).
+        phase_ids_by_name.setdefault(ph.name, row.id)
+    if phases_sorted:
+        await session.flush()
+
     # Stamp created_at with a monotonic sub-millisecond offset per line so
     # ``resource_lines`` come back in insertion order regardless of clock
     # granularity (the ORM sorts by created_at + id in the relationship).
@@ -550,6 +638,7 @@ async def create_gm_model_version(
                 hourly_cost=r.hourly_cost,
                 validated_by=r.validated_by,
                 created_at=base_ts + timedelta(microseconds=offset),
+                phase_id=phase_ids_by_name.get(r.phase_name) if r.phase_name else None,
             )
         )
     for c in filled_payload.cost_lines:
@@ -561,6 +650,7 @@ async def create_gm_model_version(
                 amount=c.amount,
                 note=c.note,
                 location=c.location,
+                phase_id=phase_ids_by_name.get(c.phase_name) if c.phase_name else None,
             )
         )
 
@@ -579,6 +669,7 @@ async def create_gm_model_version(
             "engagement_type": filled_payload.engagement_type,
             "resource_line_count": len(filled_lines),
             "cost_line_count": len(filled_payload.cost_lines),
+            "phase_count": len(phases_sorted),
             "revenue_us": format(revenue_us, "f"),
             "revenue_india": format(revenue_india, "f"),
         },
@@ -607,6 +698,7 @@ async def load_gm_model(session: AsyncSession, gm_model_id: uuid.UUID) -> GmMode
         .options(
             selectinload(GmModel.resource_lines),
             selectinload(GmModel.cost_lines),
+            selectinload(GmModel.phases),
         )
         .where(GmModel.id == gm_model_id)
     )
@@ -621,6 +713,7 @@ async def latest_gm_model_for(
         .options(
             selectinload(GmModel.resource_lines),
             selectinload(GmModel.cost_lines),
+            selectinload(GmModel.phases),
         )
         .where(GmModel.opportunity_id == opportunity_id)
         .order_by(GmModel.created_at.desc(), GmModel.id.desc())
@@ -637,6 +730,7 @@ async def list_gm_models_for(
         .options(
             selectinload(GmModel.resource_lines),
             selectinload(GmModel.cost_lines),
+            selectinload(GmModel.phases),
         )
         .where(GmModel.opportunity_id == opportunity_id)
         .order_by(GmModel.created_at.desc(), GmModel.id.desc())
@@ -761,6 +855,7 @@ def serialize_resource_line(r: ResourceLine) -> dict:
         "hourly_bill_rate": _fmt(r.hourly_bill_rate),
         "hourly_cost": _fmt(r.hourly_cost),
         "validated_by": str(r.validated_by) if r.validated_by else None,
+        "phase_id": str(r.phase_id) if getattr(r, "phase_id", None) else None,
     }
 
 
@@ -771,6 +866,17 @@ def serialize_cost_line(c: CostLine) -> dict:
         "amount": _fmt(c.amount),
         "note": c.note,
         "location": c.location,
+        "phase_id": str(c.phase_id) if getattr(c, "phase_id", None) else None,
+    }
+
+
+def serialize_phase(p: GmModelPhase) -> dict:
+    return {
+        "id": str(p.id),
+        "name": p.name,
+        "order": p.order,
+        "sow_deliverable_ref": p.sow_deliverable_ref,
+        "description": p.description,
     }
 
 
@@ -838,6 +944,76 @@ def serialize_warnings(warnings: Iterable[ResourceWarning]) -> list[dict]:
     ]
 
 
+def _phase_summary(model: GmModel) -> list[dict]:
+    """Per-phase revenue + cost totals for the right-panel widget.
+
+    Sum revenue as ``bill_rate * hours * allocation`` (same shape as the
+    top-level snapshot); sum cost as ``hourly_cost * hours * allocation``
+    when a validated cost exists, otherwise ``0`` — the completeness
+    banner already flags missing costs so we don't double-warn here.
+    Non-labor cost_lines add to the same phase bucket.
+    Rows with ``phase_id == None`` roll up under "Ungrouped".
+    """
+
+    phases = getattr(model, "phases", []) or []
+    buckets: dict[str | None, dict[str, Any]] = {}
+    for p in phases:
+        buckets[str(p.id)] = {
+            "phase_id": str(p.id),
+            "name": p.name,
+            "order": p.order,
+            "revenue": Decimal("0"),
+            "cost": Decimal("0"),
+        }
+    # "Ungrouped" bucket for legacy rows / phase-less models.
+    UNGROUPED = "__ungrouped__"
+    buckets[UNGROUPED] = {
+        "phase_id": None,
+        "name": "Ungrouped",
+        "order": 10_000,
+        "revenue": Decimal("0"),
+        "cost": Decimal("0"),
+    }
+
+    for r in model.resource_lines:
+        key = str(r.phase_id) if getattr(r, "phase_id", None) else UNGROUPED
+        b = buckets.get(key)
+        if b is None:
+            continue
+        alloc = r.allocation_pct or Decimal("0")
+        hours = r.billable_hours or Decimal("0")
+        bill = r.hourly_bill_rate or Decimal("0")
+        b["revenue"] += bill * hours * alloc
+        if r.hourly_cost is not None:
+            b["cost"] += r.hourly_cost * hours * alloc
+
+    for c in model.cost_lines:
+        key = str(c.phase_id) if getattr(c, "phase_id", None) else UNGROUPED
+        b = buckets.get(key)
+        if b is None:
+            continue
+        b["cost"] += c.amount or Decimal("0")
+
+    # Drop the Ungrouped bucket when it has no rows and no phaseless costs.
+    if (
+        buckets[UNGROUPED]["revenue"] == 0
+        and buckets[UNGROUPED]["cost"] == 0
+        and any(getattr(r, "phase_id", None) for r in model.resource_lines)
+    ):
+        buckets.pop(UNGROUPED, None)
+
+    out = sorted(buckets.values(), key=lambda b: b["order"])
+    return [
+        {
+            "phase_id": b["phase_id"],
+            "name": b["name"],
+            "revenue": format(b["revenue"], "f"),
+            "cost": format(b["cost"], "f"),
+        }
+        for b in out
+    ]
+
+
 def serialize_gm_model(
     model: GmModel,
     *,
@@ -859,6 +1035,8 @@ def serialize_gm_model(
         "revenue_india": _fmt(model.revenue_india),
         "created_by": str(model.created_by) if model.created_by else None,
         "created_at": model.created_at.isoformat() if model.created_at else None,
+        "phases": [serialize_phase(p) for p in (getattr(model, "phases", []) or [])],
+        "phase_summary": _phase_summary(model),
         "resource_lines": [serialize_resource_line(r) for r in model.resource_lines],
         "cost_lines": [serialize_cost_line(c) for c in model.cost_lines],
         "completeness_issues": resource_completeness_issues(
@@ -984,12 +1162,424 @@ def build_xlsx(model: GmModel, result: TemplateResult, response: dict) -> bytes:
     return buf.getvalue()
 
 
+# --- S7 wave 2: reorder + templates ---------------------------------------
+
+
+async def reorder_phases(
+    session: AsyncSession,
+    *,
+    gm_model_id: uuid.UUID,
+    ordered_phase_ids: list[uuid.UUID],
+    actor_id: Optional[uuid.UUID],
+) -> list[GmModelPhase]:
+    """Rewrite the ``order`` column across an entire model's phase set.
+
+    Pass ``ordered_phase_ids`` in the desired display order — position 0
+    first. The service refuses to run if the list is not exactly the
+    same set as the model's current phases (protects against partial
+    reorders that would leave a phase orphaned at an old order).
+
+    Emits one ``gm_model.phases_reordered`` audit row in the same
+    transaction as the writes (CLAUDE.md rule 5).
+    """
+
+    existing = (
+        (
+            await session.execute(
+                select(GmModelPhase).where(GmModelPhase.gm_model_id == gm_model_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    existing_ids = {p.id for p in existing}
+    incoming = list(ordered_phase_ids)
+    if set(incoming) != existing_ids:
+        raise DeliveryModelInputError(
+            "ordered_phase_ids must be exactly the current phase set"
+        )
+    if len(set(incoming)) != len(incoming):
+        raise DeliveryModelInputError("ordered_phase_ids must not contain duplicates")
+
+    by_id = {p.id: p for p in existing}
+    before = [
+        {"id": str(p.id), "order": p.order}
+        for p in sorted(existing, key=lambda p: p.order)
+    ]
+
+    # Two-step swap: bump every row to (10_000 + new_position) first so
+    # we never collide with the UNIQUE(gm_model_id, order) constraint
+    # mid-way, then rewrite to the final dense 0..N sequence.
+    for new_pos, phase_id in enumerate(incoming):
+        by_id[phase_id].order = 10_000 + new_pos
+    await session.flush()
+    for new_pos, phase_id in enumerate(incoming):
+        by_id[phase_id].order = new_pos
+    await session.flush()
+
+    after = [
+        {"id": str(p_id), "order": pos}
+        for pos, p_id in enumerate(incoming)
+    ]
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="gm_model.phases_reordered",
+        entity="gm_model",
+        entity_id=str(gm_model_id),
+        before={"phases": before},
+        after={"phases": after},
+    )
+    await session.commit()
+    return sorted(existing, key=lambda p: p.order)
+
+
+def _build_template_json(model: GmModel) -> dict[str, Any]:
+    """Capture a persisted model as a reusable template shape.
+
+    Blueprint §7 rule: NO cost values. Resource lines carry
+    role/seniority/location/allocation + relative ``hours_billable``;
+    ``hourly_cost`` is intentionally omitted. Bill rate is preserved
+    so the Builder has a starting price on load — but Delivery is
+    expected to revise it against the current rate card.
+    """
+
+    phases_by_id = {p.id: p for p in (getattr(model, "phases", []) or [])}
+
+    return {
+        "engagement_type": model.engagement_type,
+        "delivery_pattern": model.delivery_pattern,
+        "contingency_pct": _fmt(model.contingency_pct),
+        "warranty_days": model.warranty_days,
+        "phases": [
+            {
+                "name": p.name,
+                "order": p.order,
+                "sow_deliverable_ref": p.sow_deliverable_ref,
+                "description": p.description,
+            }
+            for p in sorted(phases_by_id.values(), key=lambda p: p.order)
+        ],
+        "resource_lines": [
+            {
+                "phase_name": (
+                    phases_by_id[r.phase_id].name
+                    if getattr(r, "phase_id", None) and r.phase_id in phases_by_id
+                    else None
+                ),
+                "role": r.role,
+                "seniority": r.seniority,
+                "location": r.location,
+                "allocation_pct": _fmt(r.allocation_pct),
+                "hours_billable": _fmt(r.billable_hours),
+                "hourly_bill_rate": _fmt(r.hourly_bill_rate),
+                # NOTE: hourly_cost intentionally omitted (blueprint §7).
+            }
+            for r in model.resource_lines
+        ],
+        "cost_lines": [
+            {
+                "phase_name": (
+                    phases_by_id[c.phase_id].name
+                    if getattr(c, "phase_id", None) and c.phase_id in phases_by_id
+                    else None
+                ),
+                "category": c.category,
+                "amount": _fmt(c.amount),
+                "location": c.location,
+                "note": c.note,
+            }
+            for c in model.cost_lines
+        ],
+    }
+
+
+async def save_as_template(
+    session: AsyncSession,
+    *,
+    actor_id: Optional[uuid.UUID],
+    gm_model_id: uuid.UUID,
+    name: str,
+) -> GmModelTemplate:
+    """Persist ``gm_model_id``'s current shape as a reusable template.
+
+    Fails 422 when ``name`` is blank or already used (UNIQUE at the DB
+    level; we surface the friendlier error before the flush). Fails 404
+    when the source model does not exist.
+    """
+
+    name = (name or "").strip()
+    if not name:
+        raise DeliveryModelInputError("template name is required")
+
+    # Uniqueness pre-check — the DB UNIQUE index is the source of truth.
+    dupe = (
+        await session.execute(
+            select(GmModelTemplate).where(GmModelTemplate.name == name)
+        )
+    ).scalar_one_or_none()
+    if dupe is not None:
+        raise DeliveryModelInputError(f"template name {name!r} is already in use")
+
+    model = await load_gm_model(session, gm_model_id)
+    template_json = _build_template_json(model)
+
+    tpl = GmModelTemplate(
+        id=uuid.uuid4(),
+        name=name,
+        engagement_type=model.engagement_type,
+        created_by=actor_id,
+        template_json=template_json,
+        active=True,
+    )
+    session.add(tpl)
+    await session.flush()
+
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="gm_model_template.created",
+        entity="gm_model_template",
+        entity_id=str(tpl.id),
+        before=None,
+        after={
+            "name": name,
+            "engagement_type": model.engagement_type,
+            "source_gm_model_id": str(model.id),
+            "phase_count": len(template_json["phases"]),
+            "resource_line_count": len(template_json["resource_lines"]),
+            "cost_line_count": len(template_json["cost_lines"]),
+        },
+    )
+    await session.commit()
+    return tpl
+
+
+async def list_templates(
+    session: AsyncSession, *, engagement_type: Optional[str] = None
+) -> list[GmModelTemplate]:
+    """List active templates, optionally narrowed to one engagement type."""
+
+    stmt = select(GmModelTemplate).where(GmModelTemplate.active.is_(True))
+    if engagement_type:
+        stmt = stmt.where(GmModelTemplate.engagement_type == engagement_type)
+    stmt = stmt.order_by(GmModelTemplate.created_at.desc())
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def delete_template(
+    session: AsyncSession, *, template_id: uuid.UUID, actor_id: Optional[uuid.UUID]
+) -> None:
+    """Soft-delete: flip ``active=false`` and audit. Templates are never
+    hard-deleted so past ``seed_from_template`` audit rows remain
+    resolvable to a name."""
+
+    tpl = (
+        await session.execute(
+            select(GmModelTemplate).where(GmModelTemplate.id == template_id)
+        )
+    ).scalar_one_or_none()
+    if tpl is None:
+        raise DeliveryModelInputError("template not found")
+    if not tpl.active:
+        return
+
+    tpl.active = False
+    await session.flush()
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="gm_model_template.deleted",
+        entity="gm_model_template",
+        entity_id=str(tpl.id),
+        before={"active": True},
+        after={"active": False, "name": tpl.name},
+    )
+    await session.commit()
+
+
+async def seed_from_template(
+    session: AsyncSession,
+    *,
+    opportunity_id: uuid.UUID,
+    template_id: uuid.UUID,
+    actor_id: Optional[uuid.UUID],
+) -> GmModel:
+    """Create a fresh draft ``gm_model`` from a template.
+
+    The seeded model:
+      * copies the template's phases + resource_lines + cost_lines
+      * sets every resource_line.hourly_cost to NULL — the Builder will
+        pull the active rate card's base band when Delivery opens the
+        Builder (see :func:`create_gm_model_version` fallback)
+      * uses today's date for start/end (Delivery revises per SOW)
+
+    Emits one ``gm_model.seeded_from_template`` audit row.
+    """
+
+    tpl = (
+        await session.execute(
+            select(GmModelTemplate).where(GmModelTemplate.id == template_id)
+        )
+    ).scalar_one_or_none()
+    if tpl is None or not tpl.active:
+        raise DeliveryModelInputError("template not found")
+
+    tj = tpl.template_json or {}
+    # Default dates: today .. today+90d. Delivery will overwrite per line.
+    today = date.today()
+    from datetime import timedelta as _td
+
+    default_start = today
+    default_end = today + _td(days=90)
+
+    phase_inputs = [
+        PhaseInput(
+            name=str(p.get("name") or "Phase").strip() or "Phase",
+            order=int(p.get("order") or i),
+            sow_deliverable_ref=(p.get("sow_deliverable_ref") or None),
+            description=(p.get("description") or None),
+        )
+        for i, p in enumerate(tj.get("phases") or [])
+    ]
+
+    resource_inputs: list[ResourceLinePayload] = []
+    for r in tj.get("resource_lines") or []:
+        loc = r.get("location") if r.get("location") in _ALLOWED_LOCATIONS else "US"
+        resource_inputs.append(
+            ResourceLinePayload(
+                role=str(r.get("role") or ""),
+                seniority=str(r.get("seniority") or ""),
+                location=loc,
+                person_name=None,  # always "to hire" on seed
+                allocation_pct=Decimal(str(r.get("allocation_pct") or "1")),
+                start_date=default_start,
+                end_date=default_end,
+                hours_billable=Decimal(str(r.get("hours_billable") or "0")),
+                hourly_bill_rate=Decimal(str(r.get("hourly_bill_rate") or "0")),
+                # Template rule: cost is NEVER carried on a template. Leave
+                # NULL and let the rate-card fallback in
+                # ``create_gm_model_version`` populate on save.
+                hourly_cost=None,
+                validated_by=None,
+                phase_name=(r.get("phase_name") or None),
+            )
+        )
+
+    cost_inputs: list[CostLinePayload] = []
+    for c in tj.get("cost_lines") or []:
+        cat = c.get("category")
+        if cat not in _ALLOWED_COST_CATEGORIES:
+            continue
+        loc = c.get("location") if c.get("location") in _ALLOWED_LOCATIONS else "US"
+        cost_inputs.append(
+            CostLinePayload(
+                category=cat,
+                amount=Decimal(str(c.get("amount") or "0")),
+                note=(c.get("note") or None),
+                location=loc,
+                phase_name=(c.get("phase_name") or None),
+            )
+        )
+
+    engagement_type = tj.get("engagement_type") or tpl.engagement_type
+    payload = GmModelPayload(
+        engagement_type=engagement_type,
+        sow_version_id=None,
+        delivery_pattern=tj.get("delivery_pattern"),
+        contingency_pct=(
+            Decimal(str(tj["contingency_pct"]))
+            if tj.get("contingency_pct")
+            else None
+        ),
+        warranty_days=tj.get("warranty_days"),
+        resource_lines=resource_inputs,
+        cost_lines=cost_inputs,
+        phases=phase_inputs,
+    )
+
+    # Delegate to the immutable-version write path so the seeded model
+    # audits + hooks (change-voids-approval) fire identically to a save.
+    if not resource_inputs:
+        # ``create_gm_model_version`` requires at least one line; when a
+        # template has none we insert a phaseless placeholder row that
+        # Delivery will overwrite. Keeps the seed idempotent.
+        resource_inputs.append(
+            ResourceLinePayload(
+                role="TBD",
+                seniority="TBD",
+                location="US",
+                person_name=None,
+                allocation_pct=Decimal("1"),
+                start_date=default_start,
+                end_date=default_end,
+                hours_billable=Decimal("0"),
+                hourly_bill_rate=Decimal("0"),
+                hourly_cost=None,
+                validated_by=None,
+                phase_name=phase_inputs[0].name if phase_inputs else None,
+            )
+        )
+        payload = GmModelPayload(
+            engagement_type=engagement_type,
+            sow_version_id=None,
+            delivery_pattern=tj.get("delivery_pattern"),
+            contingency_pct=payload.contingency_pct,
+            warranty_days=payload.warranty_days,
+            resource_lines=resource_inputs,
+            cost_lines=cost_inputs,
+            phases=phase_inputs,
+        )
+
+    model = await create_gm_model_version(
+        session,
+        opportunity_id=opportunity_id,
+        actor_id=actor_id,
+        payload=payload,
+    )
+
+    # Extra audit hop naming the template — the create_gm_model_version
+    # call already emitted ``gm_model.created``; this row explains WHY
+    # (blueprint §12: audits should carry the reason where cheap).
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="gm_model.seeded_from_template",
+        entity="gm_model",
+        entity_id=str(model.id),
+        before=None,
+        after={
+            "opportunity_id": str(opportunity_id),
+            "template_id": str(tpl.id),
+            "template_name": tpl.name,
+        },
+    )
+    await session.commit()
+    return model
+
+
+def serialize_template(tpl: GmModelTemplate) -> dict:
+    return {
+        "id": str(tpl.id),
+        "name": tpl.name,
+        "engagement_type": tpl.engagement_type,
+        "created_by": str(tpl.created_by) if tpl.created_by else None,
+        "created_at": tpl.created_at.isoformat() if tpl.created_at else None,
+        "updated_at": tpl.updated_at.isoformat() if tpl.updated_at else None,
+        "active": bool(tpl.active),
+        "phase_count": len(tpl.template_json.get("phases") or []),
+        "resource_line_count": len(tpl.template_json.get("resource_lines") or []),
+        "cost_line_count": len(tpl.template_json.get("cost_lines") or []),
+    }
+
+
 __all__ = [
     "CostLinePayload",
     "DEFAULT_HR_CONFIG",
     "DeliveryModelInputError",
     "GmModelPayload",
     "HrConfig",
+    "PhaseInput",
     "ResourceLinePayload",
     "ResourceWarning",
     "build_compute_response",
@@ -997,17 +1587,25 @@ __all__ = [
     "capacity_conflicts",
     "compute_live",
     "create_gm_model_version",
+    "delete_template",
     "hr_lead_time_warnings",
     "latest_gm_model_for",
     "list_gm_models_for",
+    "list_templates",
     "load_gm_model",
     "parse_cost_line",
     "parse_gm_model_payload",
+    "parse_phase",
     "parse_resource_line",
+    "reorder_phases",
     "resource_completeness_issues",
+    "save_as_template",
+    "seed_from_template",
     "serialize_cost_line",
     "serialize_gm_model",
+    "serialize_phase",
     "serialize_resource_line",
+    "serialize_template",
     "serialize_warnings",
     "summarize_gm_model",
 ]

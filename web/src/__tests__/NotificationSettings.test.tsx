@@ -62,4 +62,34 @@ describe("NotificationSettings", () => {
       enabled: false,
     });
   });
+
+  it("renders only email + inapp columns even if the API leaks legacy channels", async () => {
+    // S7 story B: Teams/Slack are retired. If a stale API image returns
+    // them, the page must filter them out client-side.
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue({
+      categories: ["task_assigned"],
+      channels: ["email", "teams", "slack", "inapp"],
+      items: [
+        { category: "task_assigned", channel: "email", enabled: true },
+        { category: "task_assigned", channel: "teams", enabled: true },
+        { category: "task_assigned", channel: "slack", enabled: true },
+        { category: "task_assigned", channel: "inapp", enabled: true },
+      ],
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("task_assigned")).toBeInTheDocument();
+    });
+
+    // Only the active-channel toggles exist.
+    expect(screen.getByLabelText("task_assigned email")).toBeInTheDocument();
+    expect(screen.getByLabelText("task_assigned inapp")).toBeInTheDocument();
+    expect(screen.queryByLabelText("task_assigned teams")).toBeNull();
+    expect(screen.queryByLabelText("task_assigned slack")).toBeNull();
+
+    // Header row has exactly the two channel columns + the Category header.
+    const columnHeaders = screen.getAllByRole("columnheader");
+    const labels = columnHeaders.map((h) => h.textContent);
+    expect(labels).toEqual(["Category", "email", "inapp"]);
+  });
 });

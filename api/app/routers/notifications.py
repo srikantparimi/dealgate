@@ -19,8 +19,8 @@ from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.models.notification import Notification
 from app.services.notifications import (
+    ACTIVE_CHANNELS,
     NOTIFICATION_CATEGORIES,
-    NOTIFICATION_CHANNELS,
     STATUS_SUPPRESSED,
     get_settings_matrix,
     upsert_setting,
@@ -151,7 +151,7 @@ async def get_settings(
     return SettingsResponse(
         items=[SettingRow(**row) for row in matrix],
         categories=list(NOTIFICATION_CATEGORIES),
-        channels=list(NOTIFICATION_CHANNELS),
+        channels=list(ACTIVE_CHANNELS),
     )
 
 

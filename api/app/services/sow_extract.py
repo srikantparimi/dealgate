@@ -36,6 +36,7 @@ from app.integrations.bedrock_sow_extract import (
     ManualRequired,
     validate_extract,
 )
+from app.integrations.textract import TextractClient, TextractError
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
 
@@ -45,6 +46,16 @@ ALLOWED_EXTRACT_STATUSES: tuple[str, ...] = (
     "failed",
     "manual_required",
 )
+
+# A PDF with fewer than this many text chars per page is treated as
+# image-only / scanned and routed through Textract for OCR before the
+# Bedrock schema extract runs. Tuned against the "clean typeset SOW" corpus
+# in fixtures/ — real SOWs land north of 800 chars/page; anything below 40
+# is almost always a photocopy or scan.
+TEXT_DENSITY_MIN_CHARS_PER_PAGE = 40
+
+_EXTRACT_SOURCE_PDF = "pdf_text"
+_EXTRACT_SOURCE_TEXTRACT = "textract"
 
 
 class SowError(Exception):
@@ -231,12 +242,62 @@ async def create_sow_version(
     return _snapshot(version, opportunity_id)
 
 
+def _pdf_text_density(pdf_bytes: bytes) -> tuple[int, int]:
+    """Parse the PDF locally and return ``(total_chars, page_count)``.
+
+    Returns ``(0, 0)`` if the file cannot be parsed — the caller then
+    routes through Textract, which is more tolerant of malformed inputs.
+    Kept module-private because it is a heuristic input to the extract
+    branch, not a piece of the public API.
+    """
+
+    if not pdf_bytes:
+        return 0, 0
+    try:
+        from io import BytesIO
+
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(pdf_bytes))
+        pages = list(reader.pages)
+        total = 0
+        for page in pages:
+            try:
+                text = page.extract_text() or ""
+            except Exception:  # noqa: BLE001 — one bad page must not blow the run
+                text = ""
+            total += len(text)
+        return total, len(pages)
+    except Exception:  # noqa: BLE001 — malformed → fall through to Textract
+        return 0, 0
+
+
+def _needs_textract(pdf_bytes: bytes) -> bool:
+    """True when the PDF has fewer than ``TEXT_DENSITY_MIN_CHARS_PER_PAGE``
+    chars/page.
+
+    Zero-byte payloads (test-only shortcut) skip Textract — the stub
+    Bedrock in the S3-E5 suite passes ``b""`` and would otherwise trigger
+    a spurious OCR call.
+    """
+
+    if not pdf_bytes:
+        return False
+    total, pages = _pdf_text_density(pdf_bytes)
+    if pages == 0:
+        # Malformed / unreadable → try OCR; safer than fabricating a "no text"
+        # branch that runs Bedrock over an empty string.
+        return True
+    return (total / pages) < TEXT_DENSITY_MIN_CHARS_PER_PAGE
+
+
 async def run_extract(
     session: AsyncSession,
     *,
     sow_version_id: uuid.UUID,
     bedrock: BedrockSowExtract,
     file_bytes: bytes = b"",
+    textract: TextractClient | None = None,
 ) -> SowVersionState:
     """Invoke Bedrock and persist the validated extract or fall through to
     manual-entry mode when the model is unavailable.
@@ -244,40 +305,74 @@ async def run_extract(
     Idempotent-ish: if the version is already ``complete`` /
     ``manual_required`` the call re-runs and overwrites the status +
     fields (audit row still fires).
+
+    Textract fallback (build-guide §6.3): the service first parses the PDF
+    locally with pypdf and counts text chars/page. When the density is
+    below :data:`TEXT_DENSITY_MIN_CHARS_PER_PAGE` we hand the bytes to
+    Textract for OCR, then feed the recovered text to Bedrock in place of
+    the raw PDF. Textract failures land as
+    ``extract_status="manual_required"`` with reason ``"OCR unavailable"``
+    — CLAUDE.md rule 6, never fabricate.
+
+    The path chosen is recorded on
+    ``extracted_fields["metadata"]["extract_source"]`` (``pdf_text`` |
+    ``textract``) so the confirm screen and audit reader can tell OCR'd
+    fields apart from digital-text ones.
     """
 
     version = await _load_version(session, sow_version_id)
     opportunity_id = await _opportunity_id_for(session, version.sow_id)
 
+    extract_source = _EXTRACT_SOURCE_PDF
+    bedrock_input: bytes = file_bytes
+    ocr_error: str | None = None
+
+    if _needs_textract(file_bytes):
+        client = textract if textract is not None else TextractClient()
+        # Record the *intended* source now: if Textract raises, the version
+        # still carries ``extract_source="textract"`` so the audit reader
+        # can see the version was routed at OCR — the OCR just failed.
+        extract_source = _EXTRACT_SOURCE_TEXTRACT
+        try:
+            recovered = client.extract_text(file_bytes)
+            bedrock_input = recovered.encode("utf-8")
+        except TextractError as exc:
+            ocr_error = str(exc)
+
     result: ExtractedFields | ManualRequired
     error: str | None = None
-    try:
-        raw = bedrock.extract(file_bytes)
-        if isinstance(raw, ManualRequired):
-            result = raw
-        elif isinstance(raw, ExtractedFields):
-            # Re-validate through the schema so a stub that hand-crafts a
-            # payload cannot bypass the safety net.
-            result = validate_extract(
-                {
-                    "fields": raw.fields,
-                    "model": raw.model,
-                    "prompt_version": raw.prompt_version,
-                }
-            )
-        else:
-            raise ValueError(
-                f"bedrock returned {type(raw).__name__}, expected ExtractedFields|ManualRequired"
-            )
-    except Exception as exc:  # noqa: BLE001 — safety net for LLM misuse
-        error = str(exc)
-        result = ManualRequired(reason=f"validation failed: {error}")
+    if ocr_error is not None:
+        result = ManualRequired(reason="OCR unavailable")
+    else:
+        try:
+            raw = bedrock.extract(bedrock_input)
+            if isinstance(raw, ManualRequired):
+                result = raw
+            elif isinstance(raw, ExtractedFields):
+                # Re-validate through the schema so a stub that hand-crafts a
+                # payload cannot bypass the safety net.
+                result = validate_extract(
+                    {
+                        "fields": raw.fields,
+                        "model": raw.model,
+                        "prompt_version": raw.prompt_version,
+                    }
+                )
+            else:
+                raise ValueError(
+                    f"bedrock returned {type(raw).__name__}, expected ExtractedFields|ManualRequired"
+                )
+        except Exception as exc:  # noqa: BLE001 — safety net for LLM misuse
+            error = str(exc)
+            result = ManualRequired(reason=f"validation failed: {error}")
 
     before = {"extract_status": version.extract_status}
 
     if isinstance(result, ManualRequired):
         version.extract_status = "manual_required"
-        version.extracted_fields = _blank_manual_fields()
+        blank = _blank_manual_fields()
+        blank["metadata"] = {"extract_source": extract_source}
+        version.extracted_fields = blank
         version.extract_model = None
         version.extract_prompt_version = None
         version.engagement_type_suggested = None
@@ -285,10 +380,13 @@ async def run_extract(
         after: dict[str, Any] = {
             "extract_status": "manual_required",
             "reason": result.reason,
+            "extract_source": extract_source,
         }
     else:
         version.extract_status = "complete"
-        version.extracted_fields = result.fields
+        fields_out = dict(result.fields)
+        fields_out["metadata"] = {"extract_source": extract_source}
+        version.extracted_fields = fields_out
         version.extract_model = result.model
         version.extract_prompt_version = result.prompt_version
         suggested = result.fields.get("engagement_type_suggested", {}).get("value")
@@ -301,6 +399,7 @@ async def run_extract(
             "model": result.model,
             "prompt_version": result.prompt_version,
             "engagement_type_suggested": version.engagement_type_suggested,
+            "extract_source": extract_source,
         }
 
     await append_audit(
@@ -423,7 +522,37 @@ async def submit_sow(
             "confirmed_by": str(actor_id),
         },
     )
+
+    # S7 wave 2: enqueue the embed job on ``sow.confirmed``. Runs
+    # synchronously in dev/test; a production worker can wrap the same
+    # call in a background task without changing the service surface.
+    # Failures are logged-and-swallowed — the confirm itself must not
+    # block on a transient Bedrock outage.
+    await _enqueue_sow_embed(session, sow_version_id=version.id)
+
     return _snapshot(version, opportunity_id)
+
+
+async def _enqueue_sow_embed(
+    session: AsyncSession, *, sow_version_id: uuid.UUID
+) -> None:
+    """Fire-and-forget embed hook. Isolated so tests can monkeypatch."""
+
+    try:
+        from app.integrations.bedrock_embeddings import default_embedder
+        from app.services.embeddings import embed_sow_version
+
+        await embed_sow_version(
+            session,
+            sow_version_id=sow_version_id,
+            embedder=default_embedder(),
+        )
+    except Exception:  # noqa: BLE001 — never block confirm on the embed
+        import structlog
+
+        structlog.get_logger("sow_extract").warning(
+            "sow_embed_failed", sow_version_id=str(sow_version_id)
+        )
 
 
 async def load_version_state(

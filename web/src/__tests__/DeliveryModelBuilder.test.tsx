@@ -184,6 +184,181 @@ describe("DeliveryModelBuilder", () => {
     );
   });
 
+  // --- S7 wave 2: WBS phases + reusable templates -----------------------
+
+  it("renders the phases section and adds a phase via + Add phase", async () => {
+    render(<DeliveryModelBuilder opportunityId={OPP_ID} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("phases-section")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("phases-empty")).toBeInTheDocument();
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByTestId("add-phase-btn"));
+    await waitFor(() =>
+      expect(screen.getByTestId("phase-block-0")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("phase-name-0")).toHaveValue("Phase 1");
+    // Add second phase — the up/down buttons enable.
+    await user.click(screen.getByTestId("add-phase-btn"));
+    await waitFor(() =>
+      expect(screen.getByTestId("phase-block-1")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("phase-down-0")).not.toBeDisabled();
+    expect(screen.getByTestId("phase-up-1")).not.toBeDisabled();
+  });
+
+  it("reorders phases via arrow buttons (local swap)", async () => {
+    render(<DeliveryModelBuilder opportunityId={OPP_ID} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("phases-section")).toBeInTheDocument(),
+    );
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByTestId("add-phase-btn"));
+    await user.click(screen.getByTestId("add-phase-btn"));
+    // Rename the second one so we can identify the swap.
+    const secondName = screen.getByTestId("phase-name-1");
+    await user.clear(secondName);
+    await user.type(secondName, "Build");
+
+    await user.click(screen.getByTestId("phase-up-1"));
+    // After swap, position 0 should now be "Build".
+    await waitFor(() =>
+      expect(screen.getByTestId("phase-name-0")).toHaveValue("Build"),
+    );
+  });
+
+  it("Save as template opens the modal and posts on submit", async () => {
+    vi.spyOn(apiClient, "previewDeliveryModel").mockResolvedValue(
+      samplePreviewResponse(),
+    );
+    vi.spyOn(apiClient, "saveDeliveryModelVersion").mockResolvedValue(
+      sampleSaveResponse(),
+    );
+    const saveTpl = vi
+      .spyOn(apiClient, "saveDeliveryTemplate")
+      .mockResolvedValue({
+        template: {
+          id: "aaaa1111-1111-1111-1111-111111111111",
+          name: "Std FP",
+          engagement_type: "fixed_price",
+          created_by: null,
+          created_at: null,
+          updated_at: null,
+          active: true,
+          phase_count: 0,
+          resource_line_count: 0,
+          cost_line_count: 0,
+        },
+      });
+    render(<DeliveryModelBuilder opportunityId={OPP_ID} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("save-template-btn")).toBeInTheDocument(),
+    );
+    // Button starts disabled — no saved version yet.
+    expect(screen.getByTestId("save-template-btn")).toBeDisabled();
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    // Save first, then the template button enables.
+    await user.click(screen.getByTestId("add-us-btn"));
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+    });
+    await user.click(screen.getByTestId("save-btn"));
+    await waitFor(() =>
+      expect(screen.getByTestId("save-toast")).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("save-template-btn")).not.toBeDisabled(),
+    );
+
+    await user.click(screen.getByTestId("save-template-btn"));
+    await waitFor(() =>
+      expect(screen.getByTestId("save-template-modal")).toBeInTheDocument(),
+    );
+    const nameInput = screen.getByTestId("template-name-input");
+    await user.type(nameInput, "Std FP");
+    await user.click(screen.getByTestId("template-save-btn"));
+
+    await waitFor(() => expect(saveTpl).toHaveBeenCalled());
+    expect(saveTpl.mock.calls[0][0]).toEqual({
+      gm_model_id: NEW_MODEL_ID,
+      name: "Std FP",
+    });
+  });
+
+  it("Load template opens the picker and seeds on click", async () => {
+    const list = vi
+      .spyOn(apiClient, "listDeliveryTemplates")
+      .mockResolvedValue({
+        items: [
+          {
+            id: "bbbb2222-2222-2222-2222-222222222222",
+            name: "Discovery + Build",
+            engagement_type: "fixed_price",
+            created_by: null,
+            created_at: null,
+            updated_at: null,
+            active: true,
+            phase_count: 2,
+            resource_line_count: 3,
+            cost_line_count: 0,
+          },
+        ],
+      });
+    const seed = vi
+      .spyOn(apiClient, "seedDeliveryModelFromTemplate")
+      .mockResolvedValue({
+        gm_model: {
+          id: "cccc3333-3333-3333-3333-333333333333",
+          opportunity_id: OPP_ID,
+          sow_version_id: null,
+          engagement_type: "fixed_price",
+          delivery_pattern: null,
+          contingency_pct: null,
+          warranty_days: null,
+          revenue_us: "0",
+          revenue_india: "0",
+          created_by: null,
+          created_at: "2026-09-17T00:00:00Z",
+          phases: [
+            {
+              id: "p-1",
+              name: "Discovery",
+              order: 0,
+              sow_deliverable_ref: null,
+              description: null,
+            },
+          ],
+          phase_summary: [],
+          resource_lines: [],
+          cost_lines: [],
+          completeness_issues: [],
+        },
+      });
+    render(<DeliveryModelBuilder opportunityId={OPP_ID} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("load-template-btn")).toBeInTheDocument(),
+    );
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByTestId("load-template-btn"));
+    await waitFor(() => expect(list).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId("load-template-modal")).toBeInTheDocument(),
+    );
+
+    const useBtn = await screen.findByTestId(
+      `template-pick-bbbb2222-2222-2222-2222-222222222222`,
+    );
+    await user.click(useBtn);
+    await waitFor(() => expect(seed).toHaveBeenCalled());
+    // Phase from the seed response landed in the Builder.
+    await waitFor(() =>
+      expect(screen.getByTestId("phase-name-0")).toHaveValue("Discovery"),
+    );
+  });
+
   it("export button downloads the xlsx blob after a save", async () => {
     vi.spyOn(apiClient, "previewDeliveryModel").mockResolvedValue(samplePreviewResponse());
     vi.spyOn(apiClient, "saveDeliveryModelVersion").mockResolvedValue(
