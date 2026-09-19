@@ -1,0 +1,12 @@
+env         = "staging"
+region      = "us-east-2"
+image_tag   = "bootstrap"
+github_repo = "smartek21/officeapp-dealgate"
+
+# The dev apply already created the account-wide GitHub OIDC provider, so
+# staging reuses it via a data-source lookup. Leave false.
+create_github_oidc_provider = false
+
+# alert_email defaults to srikantp@smartek21.com; override here if a
+# different distribution list should own staging alerts.
+# alert_email = "dealgate-staging-alerts@smartek21.com"

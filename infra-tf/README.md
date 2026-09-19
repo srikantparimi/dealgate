@@ -65,18 +65,19 @@ not fight `terraform apply` from a laptop.
 the header comment in `backend.tf` to create the state bucket + lock table,
 uncomment the backend block, and run `terraform init -migrate-state`.
 
-## Adding staging / prod
+## Environments
 
-Two options — pick one, do not mix:
+| Env     | Root path                     | Prefix               | Notes                                              |
+| ------- | ----------------------------- | -------------------- | -------------------------------------------------- |
+| dev     | `infra-tf/`                   | `officeapp-dev-*`    | This directory. Original bootstrap root.           |
+| staging | `infra-tf/env/staging/`       | `officeapp-staging-*`| Per-env root; re-uses `../../modules/*`. See its README. |
+| prod    | TBD                           | `officeapp-prod-*`   | Deferred pending custom domain choice and a possible multi-account split (see ADR TODO). |
 
-1. **Workspaces** (share state bucket, one workspace per env):
-   ```
-   terraform workspace new staging
-   terraform apply -var env=staging -var-file=staging.tfvars
-   ```
-   Requires the S3 backend to be live so the workspaces live somewhere shared.
-2. **Per-env root** (`envs/staging/main.tf` re-uses `../../modules/*`) — cleaner
-   isolation and easy per-env state key. Preferred once prod exists.
+The per-env root pattern (`env/<name>/main.tf` referencing `../../modules/*`)
+won the coin flip over Terraform workspaces because separate state keys and
+`.tfvars` files are easier to reason about when only two of us are on the
+account. Dev stayed at the top of `infra-tf/` so its state file, `dev.tfvars`,
+and CI never had to move.
 
 ## Teardown
 
