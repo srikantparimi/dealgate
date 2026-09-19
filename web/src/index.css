@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * DealGate design tokens. Every value here mirrors
+ * `docs/design/DealGate_Design_Tokens.json`. Do not change one without the
+ * other — `src/__tests__/ui-v2/tokens.test.ts` fails when they drift.
+ */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --dg-canvas: #F5F4F8;
+  --dg-surface: #FFFFFF;
+  --dg-navigation: #FDFCFF;
+  --dg-text: #272337;
+  --dg-text-secondary: #746E82;
+  --dg-divider: #E9E5EF;
+  --dg-input-border: #8F819F;
+  --dg-primary: #7146CE;
+  --dg-on-primary: #FFFFFF;
+  --dg-primary-subtle: #EFE9FB;
+  --dg-success: #13765C;
+  --dg-success-surface: #E7F5EF;
+  --dg-warning: #9A5B0A;
+  --dg-warning-surface: #FFF4DF;
+  --dg-danger: #BD3446;
+  --dg-danger-surface: #FCEBEE;
+  --dg-focus: #4F46E5;
+  --dg-executive-banner: #242035;
+  --dg-executive-text: #FBFAFF;
+  --dg-executive-secondary: #C1B9D2;
+  --dg-hero-action: #D8F58C;
+  --dg-hero-action-text: #24301B;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --dg-canvas: #10101A;
+  --dg-surface: #1A1927;
+  --dg-navigation: #15131F;
+  --dg-text: #F2EFFF;
+  --dg-text-secondary: #BAB2CF;
+  --dg-divider: #383247;
+  --dg-input-border: #776B8C;
+  --dg-primary: #7957C2;
+  --dg-on-primary: #FFFFFF;
+  --dg-primary-subtle: #32264C;
+  --dg-success: #77D8B6;
+  --dg-success-surface: #163D33;
+  --dg-warning: #F2C071;
+  --dg-warning-surface: #3E301C;
+  --dg-danger: #FF9BAB;
+  --dg-danger-surface: #402331;
+  --dg-focus: #B7B1FF;
+  --dg-executive-banner: #242035;
+  --dg-executive-text: #FBFAFF;
+  --dg-executive-secondary: #C1B9D2;
+  --dg-hero-action: #D8F58C;
+  --dg-hero-action-text: #24301B;
+}
+
+/* Density preference on <html>. Comfortable is the default. Compact
+ * tightens table rows to 40px and reduces vertical padding on primitives. */
+[data-density="compact"] {
+  --dg-row-height: 40px;
+}
+:root {
+  --dg-row-height: 52px;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--dg-canvas);
+    color: var(--dg-text);
+    font-family:
+      "Inter Variable",
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      sans-serif;
+    font-feature-settings: "cv11" on;
+  }
+
+  body {
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Focus ring is a global rule: every interactive primitive uses it. */
+  :where(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--dg-focus);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Reduced-motion — respected on every primitive that opts into the
+   * `transition-motion` utility below. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Standard 150ms transition that reduced-motion silences automatically. */
+  .transition-motion {
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}

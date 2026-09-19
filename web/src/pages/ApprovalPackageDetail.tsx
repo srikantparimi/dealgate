@@ -25,6 +25,7 @@ const STATUS_TONE: Record<ApprovalPackageStatus, "ok" | "warn" | "block" | "neut
   pending_finance_legal: "warn",
   pending_ceo_exception: "block",
   ready_to_sign: "ok",
+  released: "ok",
   voided: "neutral",
   rejected: "block",
 };

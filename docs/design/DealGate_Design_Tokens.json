@@ -1,0 +1,133 @@
+{
+  "name": "DealGate",
+  "version": "2.0",
+  "status": "Design specification; validate in target application",
+  "colors": {
+    "light": {
+      "canvas": "#F5F4F8",
+      "surface": "#FFFFFF",
+      "navigation": "#FDFCFF",
+      "text": "#272337",
+      "textSecondary": "#746E82",
+      "divider": "#E9E5EF",
+      "inputBorder": "#8F819F",
+      "primary": "#7146CE",
+      "onPrimary": "#FFFFFF",
+      "primarySubtle": "#EFE9FB",
+      "success": "#13765C",
+      "successSurface": "#E7F5EF",
+      "warning": "#9A5B0A",
+      "warningSurface": "#FFF4DF",
+      "danger": "#BD3446",
+      "dangerSurface": "#FCEBEE",
+      "focus": "#4F46E5",
+      "executiveBanner": "#242035",
+      "executiveText": "#FBFAFF",
+      "executiveSecondary": "#C1B9D2",
+      "heroAction": "#D8F58C",
+      "heroActionText": "#24301B"
+    },
+    "dark": {
+      "canvas": "#10101A",
+      "surface": "#1A1927",
+      "navigation": "#15131F",
+      "text": "#F2EFFF",
+      "textSecondary": "#BAB2CF",
+      "divider": "#383247",
+      "inputBorder": "#776B8C",
+      "primary": "#7957C2",
+      "onPrimary": "#FFFFFF",
+      "primarySubtle": "#32264C",
+      "success": "#77D8B6",
+      "successSurface": "#163D33",
+      "warning": "#F2C071",
+      "warningSurface": "#3E301C",
+      "danger": "#FF9BAB",
+      "dangerSurface": "#402331",
+      "focus": "#B7B1FF",
+      "executiveBanner": "#242035",
+      "executiveText": "#FBFAFF",
+      "executiveSecondary": "#C1B9D2",
+      "heroAction": "#D8F58C",
+      "heroActionText": "#24301B"
+    }
+  },
+  "typography": {
+    "family": "Inter, ui-sans-serif, system-ui, sans-serif",
+    "body": {
+      "sizePx": 14,
+      "lineHeightPx": 22,
+      "weight": 400
+    },
+    "secondary": {
+      "sizePx": 12,
+      "lineHeightPx": 18,
+      "weight": 400
+    },
+    "sectionHeading": {
+      "sizePx": 16,
+      "lineHeightPx": 24,
+      "weight": 600
+    },
+    "pageHeading": {
+      "sizePx": 32,
+      "lineHeightPx": 38,
+      "weight": 600
+    },
+    "mobilePageHeading": {
+      "sizePx": 28,
+      "lineHeightPx": 34,
+      "weight": 600
+    },
+    "metric": {
+      "sizePx": 30,
+      "lineHeightPx": 36,
+      "weight": 600
+    },
+    "numericVariant": "tabular-nums"
+  },
+  "spacingPx": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32,
+    48
+  ],
+  "radiusPx": {
+    "control": 9,
+    "panel": 16,
+    "dialog": 18,
+    "hero": 20
+  },
+  "layout": {
+    "sidebarPx": 194,
+    "collapsedSidebarPx": 64,
+    "headerPx": 70,
+    "pagePaddingPx": 28,
+    "readingWidthMaxPx": 960,
+    "comfortableRowPx": 52,
+    "compactRowPx": 40,
+    "controlHeightPx": 40,
+    "touchTargetMinPx": 44,
+    "supportedMinWidthPx": 320
+  },
+  "motion": {
+    "durationMs": 150,
+    "respectReducedMotion": true
+  },
+  "marginPolicy": {
+    "usMinimum": "0.35",
+    "indiaMinimum": "0.50",
+    "mixedRule": "Evaluate each applicable geography independently",
+    "exceptionAuthority": "CEO; additional to Delivery, HR, Finance and Legal review",
+    "precision": "Decimal arithmetic; full precision for thresholds; rounding only for display"
+  },
+  "notes": [
+    "Decoration dividers are not control boundaries.",
+    "Contrast must be verified on actual text size and state.",
+    "Keep the existing supported application framework; bind these tokens to its theme."
+  ],
+  "direction": "Editorial executive workspace with explicit agreement and SOW governance"
+}

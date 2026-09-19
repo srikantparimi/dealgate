@@ -1803,6 +1803,7 @@ export type ApprovalPackageStatus =
   | "pending_finance_legal"
   | "pending_ceo_exception"
   | "ready_to_sign"
+  | "released"
   | "voided"
   | "rejected";
 
