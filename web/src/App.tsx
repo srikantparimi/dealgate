@@ -37,6 +37,12 @@ import { PipelinePage } from "./pages/v2/Pipeline";
 import { AgreementsRegisterPage } from "./pages/v2/AgreementsRegister";
 import { SignedHandoffPage } from "./pages/v2/SignedHandoff";
 import { RenewalsV2Page } from "./pages/v2/RenewalsV2";
+import { MyWorkPage } from "./pages/v2/MyWork";
+import { DiscoveryPage } from "./pages/v2/Discovery";
+import { MarginLabPage } from "./pages/v2/MarginLab";
+import { ProjectsActualsPage } from "./pages/v2/ProjectsActuals";
+import { ReportsPage } from "./pages/v2/Reports";
+import { SettingsShellPage } from "./pages/v2/SettingsShell";
 
 const CAPABILITY_WRITE_ROLES = new Set(["Delivery", "SystemAdmin"]);
 const CAPABILITY_DELETE_ROLES = new Set(["SystemAdmin"]);
@@ -135,27 +141,13 @@ export function App() {
                   <Route path="/handoffs" element={<SignedHandoffPage />} />
                   <Route path="/handoffs/:id" element={<SignedHandoffPage />} />
                   <Route path="/renewals-v2" element={<RenewalsV2Page />} />
-                  <Route path="/work" element={<Navigate to="/tasks" replace />} />
-                  <Route
-                    path="/discovery"
-                    element={<Navigate to="/adviser" replace />}
-                  />
-                  <Route
-                    path="/margin-lab"
-                    element={<Navigate to="/gm/sandbox" replace />}
-                  />
-                  <Route
-                    path="/projects"
-                    element={<Navigate to="/dashboard" replace />}
-                  />
-                  <Route
-                    path="/reports"
-                    element={<Navigate to="/dashboard" replace />}
-                  />
-                  <Route
-                    path="/settings"
-                    element={<Navigate to="/settings/notifications" replace />}
-                  />
+                  <Route path="/work" element={<MyWorkPage />} />
+                  <Route path="/discovery" element={<DiscoveryPage />} />
+                  <Route path="/margin-lab" element={<MarginLabPage />} />
+                  <Route path="/projects" element={<ProjectsActualsPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/settings" element={<SettingsShellPage />} />
+                  <Route path="/settings/:section" element={<SettingsShellPage />} />
                 </Routes>
               </AppShell>
             </RequireAuth>
