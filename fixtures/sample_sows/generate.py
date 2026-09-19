@@ -57,6 +57,20 @@ PDF_TITLES: dict[str, str] = {
     "06_below_floor.pdf": "Statement of Work — Strategic Seed Engagement",
 }
 
+# S10-02: the MSA fixture is a stand-alone 3-page document written into
+# this directory. It is not part of :data:`FIXTURES` (that dict is the
+# schema-validated SOW corpus). The bulk-import test uses this MSA to
+# prove the pipeline routes non-SOW agreements to the MSA handler.
+MSA_FIXTURE_NAME = "07_msa.pdf"
+MSA_FIXTURE_TITLE = "Master Services Agreement — Acme Corp"
+
+# S10-01: the résumé fixture is used by the SOW-upload doc-type reject
+# test. It is a one-page reportlab CV whose header trips the classifier
+# into ``resume`` at high confidence so the router returns 422 with no
+# DB side-effects.
+RESUME_FIXTURE_NAME = "99_resume.pdf"
+RESUME_FIXTURE_TITLE = "Curriculum Vitae — Jamie Ansari"
+
 
 # -------------------------------------------------------------------------
 # Page composers.
@@ -306,6 +320,134 @@ def _compose(name: str, fixture: dict[str, Any], out_path: Path) -> None:
     c.save()
 
 
+def _compose_msa(out_path: Path) -> None:
+    """Write the 3-page MSA fixture the S10-02 bulk-import test consumes.
+
+    The document-type classifier keys on the "MASTER SERVICES AGREEMENT"
+    header on page 1; the remaining pages carry the rate schedule + a
+    signatory block so the pipeline exercise looks like a real MSA.
+    """
+
+    c = canvas.Canvas(str(out_path), pagesize=LETTER, invariant=1)
+    c.setAuthor("DealGate fixture generator")
+    c.setTitle(MSA_FIXTURE_TITLE)
+    c.setCreator("DealGate fixture generator")
+    c.setSubject("Deterministic sample MSA for E2E fixtures")
+    c.setKeywords("dealgate msa fixture deterministic")
+
+    # Page 1 — header + preamble.
+    _header(c, MSA_FIXTURE_TITLE, 1)
+    y = 9.6 * inch
+    y = _paragraph(c, y, "MASTER SERVICES AGREEMENT", size=12)
+    y = _paragraph(
+        c,
+        y,
+        "This Master Services Agreement (the \"Agreement\") is entered into "
+        "between SmarTek21 LLC and the counter-party identified in the "
+        "signature block. Individual scopes of work will reference this "
+        "Agreement.",
+    )
+    y = _paragraph(c, y, "1. Term")
+    y = _paragraph(
+        c,
+        y,
+        "This Agreement is effective from 2026-10-01 and renews annually "
+        "unless either party provides 60 days' written notice of non-renewal.",
+    )
+    y = _paragraph(c, y, "2. Confidentiality")
+    y = _paragraph(
+        c,
+        y,
+        "Each party will hold in confidence the confidential information "
+        "of the other party for the term of this Agreement plus three years.",
+    )
+    c.showPage()
+
+    # Page 2 — rate schedule (the extractor reads this for MSA rate imports).
+    _header(c, MSA_FIXTURE_TITLE, 2)
+    y = 9.6 * inch
+    y = _paragraph(c, y, "Rate Schedule")
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(1.15 * inch, y, "Role")
+    c.drawString(3.0 * inch, y, "Seniority")
+    c.drawString(4.1 * inch, y, "Location")
+    c.drawString(5.4 * inch, y, "Bill rate ($/h)")
+    y -= 14
+    c.setFont("Helvetica", 9)
+    for role, sen, loc, rate in (
+        ("Engineer", "Mid", "US", "175"),
+        ("Engineer", "Senior", "US", "225"),
+        ("Engineer", "Mid", "India", "85"),
+        ("Architect", "Principal", "US", "300"),
+    ):
+        c.drawString(1.15 * inch, y, role)
+        c.drawString(3.0 * inch, y, sen)
+        c.drawString(4.1 * inch, y, loc)
+        c.drawString(5.4 * inch, y, rate)
+        y -= 12
+    c.showPage()
+
+    # Page 3 — signatories.
+    _header(c, MSA_FIXTURE_TITLE, 3)
+    y = 9.6 * inch
+    y = _paragraph(c, y, "Signatories")
+    y = _kv(c, y, "For SmarTek21 LLC", "Marco Lin, VP Delivery")
+    y = _kv(c, y, "For Acme Corp", "Priya Ravi, Chief Data Officer")
+    c.showPage()
+
+    c.save()
+
+
+def _compose_resume(out_path: Path) -> None:
+    """Write the 1-page résumé fixture the SOW-upload reject test consumes.
+
+    Deterministic bytes: the document-type classifier keys on
+    ``CURRICULUM VITAE`` + ``PROFESSIONAL EXPERIENCE`` headers so the
+    reject path returns 422 without side-effects.
+    """
+
+    c = canvas.Canvas(str(out_path), pagesize=LETTER, invariant=1)
+    c.setAuthor("DealGate fixture generator")
+    c.setTitle(RESUME_FIXTURE_TITLE)
+    c.setCreator("DealGate fixture generator")
+    c.setSubject("Deterministic sample résumé for doc-type reject tests")
+    c.setKeywords("dealgate resume fixture deterministic")
+
+    _header(c, RESUME_FIXTURE_TITLE, 1)
+    y = 9.6 * inch
+    y = _paragraph(c, y, "CURRICULUM VITAE", size=12)
+    y = _paragraph(
+        c,
+        y,
+        "Jamie Ansari — Data platform engineer. "
+        "jamie.ansari@example.com — +1 (555) 010-0142.",
+    )
+    y = _paragraph(c, y, "Professional experience")
+    y = _bulleted(
+        c,
+        y,
+        [
+            "Senior data engineer, Northwind Corp (2022 — present).",
+            "Data engineer, Contoso LLC (2019 — 2022).",
+            "Analyst, Fabrikam Inc (2016 — 2019).",
+        ],
+    )
+    y -= 4
+    y = _paragraph(c, y, "Education")
+    y = _bulleted(
+        c,
+        y,
+        [
+            "BSc Computer Science, University of Nowhere (2016).",
+        ],
+    )
+    y -= 4
+    y = _paragraph(c, y, "Skills")
+    y = _paragraph(c, y, "Python, SQL, dbt, Airflow, AWS.")
+    c.showPage()
+    c.save()
+
+
 def _validate_all() -> None:
     """Self-check: every fixture must pass ``validate_extract``."""
 
@@ -357,6 +499,13 @@ def main(argv: list[str] | None = None) -> int:
 
     for name, fixture in sorted(FIXTURES.items()):
         _compose(name, fixture, out_dir / name)
+
+    # S10-02: MSA fixture (separate from FIXTURES so the schema-focused
+    # tests in extraction_stubs don't try to classify it as a SOW).
+    _compose_msa(out_dir / MSA_FIXTURE_NAME)
+
+    # S10-01: résumé fixture for the SOW-upload doc-type reject test.
+    _compose_resume(out_dir / RESUME_FIXTURE_NAME)
 
     # Also emit a JSON export the TS e2e layer consumes.
     export_json(_HERE / "extraction_stubs.json")

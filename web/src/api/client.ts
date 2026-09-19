@@ -1167,6 +1167,153 @@ export function submitSowVersion(sowVersionId: UUID): Promise<SowVersion> {
   });
 }
 
+// --- SOW upload pipeline (S10-01) ------------------------------------------
+
+/**
+ * The status alphabet the router surfaces. Mirrors
+ * ``api/app/services/sow_upload_job_service.py``. ``duplicate`` is not
+ * a job status; it lives on :attr:`UploadSowResponse.duplicate`
+ * because the router short-circuits before touching a job.
+ */
+export type SowUploadJobStatus =
+  | "queued"
+  | "extracting"
+  | "classifying"
+  | "matching_client"
+  | "deriving_gm"
+  | "needs_pick"
+  | "done"
+  | "failed";
+
+export type SowUploadResolution =
+  | "matched"
+  | "needs_pick"
+  | "created"
+  | null;
+
+export interface SowUploadCandidate {
+  client_id: UUID;
+  name: string;
+  score?: number;
+  confidence?: string;
+  reason?: string;
+}
+
+export interface SowUploadNeedsPickCreateNew {
+  legal_name: string | null;
+  domain: string | null;
+  address_lines: string[] | null;
+}
+
+export interface SowUploadNeedsPickPayload {
+  signals?: {
+    legal_name?: string | null;
+    domain?: string | null;
+    aliases?: string[];
+    address_lines?: string[];
+  };
+  candidates?: SowUploadCandidate[];
+  create_new?: SowUploadNeedsPickCreateNew;
+  extract?: Record<string, unknown> | null;
+}
+
+export interface SowUploadJobResponse {
+  id: UUID;
+  status: SowUploadJobStatus;
+  resolution: SowUploadResolution;
+  error: string | null;
+  opportunity_id: UUID | null;
+  sow_version_id: UUID | null;
+  file_hash: string;
+  s3_key: string | null;
+  needs_pick: SowUploadNeedsPickPayload | null;
+}
+
+export interface UploadSowResponse {
+  job_id: UUID;
+  status: SowUploadJobStatus;
+  resolution: SowUploadResolution;
+  opportunity_id: UUID | null;
+  sow_version_id: UUID | null;
+  duplicate: boolean;
+  needs_pick: SowUploadNeedsPickPayload | null;
+}
+
+export interface SowUploadRejected422 {
+  detected_type: string;
+  message: string;
+}
+
+/**
+ * Multipart upload of a SOW file. Returns 200 on success (including
+ * ``duplicate=true`` when the same bytes were seen before), or throws
+ * an :class:`ApiError` with status 422 whose ``detail`` conforms to
+ * :interface:`SowUploadRejected422` when the doc-type gate rejects
+ * the file (résumé, invoice, …).
+ */
+export async function uploadSow(input: {
+  file: File;
+  clientHint?: string;
+}): Promise<UploadSowResponse> {
+  const form = new FormData();
+  form.append("file", input.file);
+  if (input.clientHint) form.append("client_hint", input.clientHint);
+  const res = await fetch(`${BASE_URL}/sows/upload`, {
+    method: "POST",
+    headers: { ...(await authHeaders()) },
+    body: form,
+  });
+  const text = await res.text();
+  const body = text ? safeJson(text) : null;
+  if (!res.ok) {
+    const detail =
+      body && typeof body === "object" && "detail" in body
+        ? (body as { detail: unknown }).detail
+        : null;
+    const message =
+      typeof detail === "string"
+        ? detail
+        : detail && typeof detail === "object" && "message" in detail
+          ? String((detail as { message: unknown }).message)
+          : `API error ${res.status}`;
+    throw new ApiError(res.status, body, message);
+  }
+  return body as UploadSowResponse;
+}
+
+/** Poll one job. Cheap read — safe to call every 1500ms with an AbortController. */
+export function getSowJob(jobId: UUID): Promise<SowUploadJobResponse> {
+  return request<SowUploadJobResponse>(`/sows/jobs/${jobId}`);
+}
+
+/**
+ * Resume a paused job with the reviewer's picker choice.
+ *
+ * Exactly one of ``client_id`` or ``create_new`` must be present. The
+ * API returns 422 if both or neither are supplied; the client-side
+ * union mirrors that invariant.
+ */
+export type SowJobPickBody =
+  | { client_id: UUID; create_new?: never }
+  | {
+      client_id?: never;
+      create_new: {
+        legal_name: string;
+        domain?: string | null;
+        address_lines?: string[] | null;
+      };
+    };
+
+export function pickSowJobClient(
+  jobId: UUID,
+  body: SowJobPickBody,
+): Promise<SowUploadJobResponse> {
+  return request<SowUploadJobResponse>(`/sows/jobs/${jobId}/pick`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // --- SOW confirmation package (S9 Wave 1/2) --------------------------------
 
 /**
@@ -2707,6 +2854,159 @@ export function getActualGm(
   return request<ActualGmResponse>(
     `/actuals/gm-model/${gmModelId}?${qs}`,
   );
+}
+
+// --- Bulk SOW import (S10-02) ---------------------------------------------
+
+/**
+ * One batch envelope + queue of imported files. The pipeline that
+ * drives each file is the *same* code path a single upload uses
+ * (`services/sow_upload_pipeline.apply_pipeline`) — bulk is a second
+ * entry, not a parallel implementation.
+ *
+ * Legacy imports always land with `governance_status =
+ * 'legacy_not_evidenced'` on their `sow_version`; the UI surfaces this
+ * with a "Legacy" chip on every record surface.
+ */
+export type BulkImportBatchStatus = "processing" | "completed" | "failed";
+
+export type BulkImportFileStatus =
+  | "queued"
+  | "extracting"
+  | "classifying"
+  | "matching_client"
+  | "deriving_gm"
+  | "needs_review"
+  | "imported"
+  | "rejected"
+  | "duplicate";
+
+export interface BulkImportBatchSummary {
+  id: UUID;
+  run_by: UUID;
+  status: BulkImportBatchStatus | string;
+  file_count: number;
+  queued_count: number;
+  imported_count: number;
+  rejected_count: number;
+  duplicate_count: number;
+  needs_review_count: number;
+  note: string | null;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export interface BulkImportFileRow {
+  id: UUID;
+  batch_id: UUID;
+  filename: string;
+  size_bytes: number;
+  sha256: string;
+  detected_type: string | null;
+  status: BulkImportFileStatus | string;
+  matched_client_id: UUID | null;
+  matched_confidence: string | null;
+  opportunity_id: UUID | null;
+  sow_version_id: UUID | null;
+  duplicate_of: UUID | null;
+  warnings: unknown[];
+  errors: unknown[];
+  needs_you: boolean;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export interface BulkImportFilesResponse {
+  items: BulkImportFileRow[];
+}
+
+export interface BulkImportStartResponse {
+  batch_id: UUID;
+  file_count: number;
+}
+
+export async function startBulkImport(
+  files: File[],
+): Promise<BulkImportStartResponse> {
+  if (files.length === 0) {
+    throw new ApiError(400, null, "at least one file is required");
+  }
+  const form = new FormData();
+  for (const f of files) form.append("files", f, f.name);
+  const res = await fetch(`${BASE_URL}/admin/bulk-imports/sows`, {
+    method: "POST",
+    headers: { ...(await authHeaders()) },
+    body: form,
+  });
+  const text = await res.text();
+  const body = text ? safeJson(text) : null;
+  if (!res.ok) {
+    const message =
+      body && typeof body === "object" && "detail" in body
+        ? String((body as { detail: unknown }).detail)
+        : `API error ${res.status}`;
+    throw new ApiError(res.status, body, message);
+  }
+  return body as BulkImportStartResponse;
+}
+
+export function getBulkImportBatch(
+  batchId: UUID,
+): Promise<BulkImportBatchSummary> {
+  return request<BulkImportBatchSummary>(
+    `/admin/bulk-imports/${batchId}`,
+  );
+}
+
+export function getBulkImportFiles(
+  batchId: UUID,
+): Promise<BulkImportFilesResponse> {
+  return request<BulkImportFilesResponse>(
+    `/admin/bulk-imports/${batchId}/files`,
+  );
+}
+
+export async function downloadBulkImportLog(batchId: UUID): Promise<Blob> {
+  const res = await fetch(
+    `${BASE_URL}/admin/bulk-imports/${batchId}/log.csv`,
+    { method: "GET", headers: { ...(await authHeaders()) } },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    const body = text ? safeJson(text) : null;
+    const message =
+      body && typeof body === "object" && "detail" in body
+        ? String((body as { detail: unknown }).detail)
+        : `API error ${res.status}`;
+    throw new ApiError(res.status, body, message);
+  }
+  return await res.blob();
+}
+
+export async function rerunBulkImport(
+  batchId: UUID,
+  files: File[] = [],
+): Promise<BulkImportBatchSummary> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f, f.name);
+  const res = await fetch(
+    `${BASE_URL}/admin/bulk-imports/${batchId}/rerun`,
+    {
+      method: "POST",
+      headers: { ...(await authHeaders()) },
+      body: form,
+    },
+  );
+  const text = await res.text();
+  const body = text ? safeJson(text) : null;
+  if (!res.ok) {
+    const message =
+      body && typeof body === "object" && "detail" in body
+        ? String((body as { detail: unknown }).detail)
+        : `API error ${res.status}`;
+    throw new ApiError(res.status, body, message);
+  }
+  return body as BulkImportBatchSummary;
 }
 
 // --- Admin replay (S6) -----------------------------------------------------

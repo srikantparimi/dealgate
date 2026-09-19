@@ -1,10 +1,14 @@
 /**
- * FloorBar — v2.1 spec `components.floorBar`.
+ * FloorBar — DealGate v2.1 prototype (lines 147–152).
  *
  * A 10 px track spanning 0 – 60 %. The floor is a text-colored 2 px line
- * with the label above it. The fill is `success` at or above the floor,
- * `danger` below. The trailing chip reads "Fails by 7.2 pts" or "Passes
- * by 4.3 pts" so the gap to policy is visible in one glance.
+ * that overshoots the track by 4 px at the top and bottom (per prototype
+ * `.floorbar .mark`), with the label positioned above the line via
+ * `.mark::after` translate.
+ *
+ * The fill is `success` at or above the floor, `danger` below. A trailing
+ * chip reads "Fails by 7.2 pts" or "Passes by 4.3 pts" so the gap to
+ * policy is visible in one glance.
  *
  * `value` and `floor` are Decimal strings — no floats in this codebase.
  * Parsing happens inside the primitive for display; arithmetic remains
@@ -25,12 +29,10 @@ export interface FloorBarProps
   label?: string;
   /** Set to `false` to hide the trailing "Fails/Passes by N pts" chip. */
   showChip?: boolean;
+  /** Set to `false` to hide the "0%" / "60%" scale labels either side. */
+  showScale?: boolean;
 }
 
-/**
- * Coerce a Decimal string to a percentage number for display only.
- * Accepts both fraction (0.278) and percentage (27.8) forms.
- */
 function toPct(s: string): number {
   const n = Number(s);
   if (!Number.isFinite(n)) return 0;
@@ -48,6 +50,7 @@ export function FloorBar({
   floor,
   label,
   showChip = true,
+  showScale = true,
   className,
   ...rest
 }: FloorBarProps) {
@@ -65,13 +68,16 @@ export function FloorBar({
 
   return (
     <div
-      className={cn("flex flex-col gap-2", className)}
+      className={cn("grid grid-cols-[auto_1fr_auto] items-center gap-[10px] text-[13px]", className)}
       role="group"
       aria-label={accessibleLabel}
       {...rest}
     >
+      {showScale ? (
+        <span className="tnum text-text-secondary">0%</span>
+      ) : null}
       <div
-        className="relative h-[10px] w-full rounded-avatar bg-surface-sunken"
+        className="relative h-[10px] w-full overflow-visible rounded-avatar bg-surface-sunken"
         role="meter"
         aria-valuemin={0}
         aria-valuemax={SCALE_MAX}
@@ -86,43 +92,45 @@ export function FloorBar({
           style={{ width: `${fillWidthPct}%` }}
           data-testid="floorbar-fill"
         />
+        {/* 2px mark line with 4px overshoot at top and bottom per prototype. */}
         <div
-          className="absolute top-[-6px] bottom-[-6px] w-[2px] bg-text"
+          className="absolute -top-1 -bottom-1 w-[2px] bg-text"
           style={{ left: `${floorLeftPct}%` }}
           data-testid="floorbar-marker"
           aria-hidden
         />
+        {/* Label sits 16px above the mark line, centered on it. */}
         <span
-          className="absolute -top-5 -translate-x-1/2 whitespace-nowrap text-[11px] font-medium text-text tnum"
+          className="absolute -top-4 -translate-x-1/2 whitespace-nowrap text-[10px] text-text-muted tnum"
           style={{ left: `${floorLeftPct}%` }}
         >
           {floorPct.toFixed(0)}% floor
         </span>
       </div>
-      <div className="flex items-center justify-between text-secondary text-text-secondary">
-        <span className="tnum">0%</span>
-        {showChip ? (
+      {showScale ? (
+        <span className="tnum text-text-secondary">{SCALE_MAX}%</span>
+      ) : null}
+      {showChip ? (
+        <span
+          className={cn(
+            "col-span-3 mt-1 inline-flex items-center gap-[6px] rounded-chip",
+            "h-[22px] px-2 text-[12px] font-medium tnum w-max",
+            pass
+              ? "bg-success-surface text-success"
+              : "bg-danger-surface text-danger",
+          )}
+          data-testid="floorbar-chip"
+        >
           <span
+            aria-hidden
             className={cn(
-              "inline-flex items-center gap-[6px] rounded-chip border h-[22px] px-2 text-[12px] font-medium tnum",
-              pass
-                ? "bg-success-surface text-success border-success/20"
-                : "bg-danger-surface text-danger border-danger/20",
+              "inline-block h-[6px] w-[6px] rounded-avatar",
+              pass ? "bg-success" : "bg-danger",
             )}
-            data-testid="floorbar-chip"
-          >
-            <span
-              aria-hidden
-              className={cn(
-                "inline-block h-[6px] w-[6px] rounded-avatar",
-                pass ? "bg-success" : "bg-danger",
-              )}
-            />
-            {pass ? "Passes by" : "Fails by"} {Math.abs(gap).toFixed(1)} pts
-          </span>
-        ) : null}
-        <span className="tnum">{SCALE_MAX}%</span>
-      </div>
+          />
+          {pass ? "Passes by" : "Fails by"} {Math.abs(gap).toFixed(1)} pts
+        </span>
+      ) : null}
     </div>
   );
 }

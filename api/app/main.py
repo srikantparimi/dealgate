@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.routers import (
     actuals,
+    admin_bulk_imports,
     admin_function_owners,
     admin_policy,
     admin_rate_cards,
@@ -28,6 +29,7 @@ from app.routers import (
     renewals,
     signed_sow,
     sow,
+    sows_upload,
     tasks,
 )
 
@@ -47,6 +49,7 @@ app.include_router(admin_rate_cards.router)
 app.include_router(admin_policy.router)
 app.include_router(gm.router)
 app.include_router(sow.router)
+app.include_router(sows_upload.router)
 app.include_router(delivery_model.router)
 app.include_router(adviser.router)
 app.include_router(legacy.router)
@@ -59,4 +62,5 @@ app.include_router(forecast.router)
 app.include_router(actuals.router)
 app.include_router(admin_replay.router)
 app.include_router(admin_function_owners.router)
+app.include_router(admin_bulk_imports.router)
 app.include_router(capability_catalog.router)

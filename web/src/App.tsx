@@ -43,6 +43,8 @@ import { MarginLabPage } from "./pages/v2/MarginLab";
 import { ProjectsActualsPage } from "./pages/v2/ProjectsActuals";
 import { ReportsPage } from "./pages/v2/Reports";
 import { SettingsShellPage } from "./pages/v2/SettingsShell";
+import { BulkSowImportPage } from "./pages/v2/BulkSowImport";
+import { NeedsReviewQueuePage } from "./pages/v2/NeedsReviewQueue";
 
 const CAPABILITY_WRITE_ROLES = new Set(["Delivery", "SystemAdmin"]);
 const CAPABILITY_DELETE_ROLES = new Set(["SystemAdmin"]);
@@ -147,7 +149,15 @@ export function App() {
                   <Route path="/projects" element={<ProjectsActualsPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/settings" element={<SettingsShellPage />} />
+                  <Route
+                    path="/settings/data-imports/sows"
+                    element={<BulkSowImportPage />}
+                  />
                   <Route path="/settings/:section" element={<SettingsShellPage />} />
+                  <Route
+                    path="/work/needs-review"
+                    element={<NeedsReviewQueuePage />}
+                  />
                 </Routes>
               </AppShell>
             </RequireAuth>

@@ -1,32 +1,41 @@
 /**
- * Priority signals — spec §5 item 2.
+ * Priority signals — DealGate v2.1 prototype (lines 194–200, 360–373).
  *
- * Three clickable regions (one CEO exception, one MSA awaiting signature,
- * one approaching renewal). Each card is one big anchor so an assistive
- * technology reader hears the whole card as a single destination.
+ * Three clickable `.sig` cards laid out on a three-column grid. Each
+ * card has:
+ *   - Left icon tile (36×36) tinted `bad / warn / prog`.
+ *   - Title row combining a bold heading and an inline StatusBadge.
+ *   - Description paragraph (14px, text-2).
+ *   - Meta row with owner / age / version bits (12px, text-3).
  *
- * The parent decides which signals to hydrate; missing signals render an
- * honest empty card that still points at the right module (spec §4).
+ * Whole card is one anchor so screen readers hear a single destination.
  */
 
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "../../../lib/cn";
 import { StatusBadge, type StatusTone } from "../../../ui-v2/StatusBadge";
 
 export interface PrioritySignal {
   id: string;
   kind: "ceo_exception" | "msa_signature" | "renewal";
+  /** Bold heading (e.g. "Northstar Health · CEO exception"). */
   title: string;
-  client: string;
+  /** Optional secondary line used only when title needs a client anchor. */
+  client?: string;
+  /** Description paragraph (spec §5). */
   reason: string;
   owner?: string | null;
   deadline?: string | null;
+  version?: string | null;
   href: string;
   statusLabel: string;
   statusTone: StatusTone;
+  /** Icon rendered inside the left tile. */
   icon?: LucideIcon;
+  /** Tint for the icon tile — `bad | warn | prog`. */
+  iconTone?: "bad" | "warn" | "prog";
   testId?: string;
 }
 
@@ -35,15 +44,26 @@ export interface PrioritySignalsProps {
   emptyMessage?: ReactNode;
 }
 
+const ICON_TILE_CLASSES: Record<"bad" | "warn" | "prog", string> = {
+  bad: "bg-danger-surface text-danger",
+  warn: "bg-warning-surface text-warning",
+  prog: "bg-primary-subtle text-primaryText",
+};
+
+function iconToneForStatus(tone: StatusTone): "bad" | "warn" | "prog" {
+  if (tone === "danger") return "bad";
+  if (tone === "warning" || tone === "warn") return "warn";
+  return "prog";
+}
+
 export function PrioritySignals({ signals, emptyMessage }: PrioritySignalsProps) {
   if (signals.length === 0) {
     return (
       <section aria-label="Priority signals">
-        <h2 className="text-section text-text mb-3">Priority signals</h2>
         <div
           role="status"
           className={cn(
-            "rounded-panel border border-dashed border-divider bg-surface p-6",
+            "rounded-card border border-dashed border-border bg-surface p-6",
             "text-body text-text-secondary",
           )}
         >
@@ -55,49 +75,58 @@ export function PrioritySignals({ signals, emptyMessage }: PrioritySignalsProps)
 
   return (
     <section aria-label="Priority signals">
-      <h2 className="text-section text-text mb-3">Priority signals</h2>
-      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {signals.map((s) => (
-          <li key={s.id}>
-            <Link
-              to={s.href}
-              data-testid={s.testId ?? `signal-${s.kind}`}
-              aria-label={`${s.title} — ${s.client}. ${s.reason}`}
-              className={cn(
-                "group flex h-full flex-col gap-3 rounded-panel border border-divider bg-surface p-4",
-                "transition-motion hover:border-primary/40 hover:shadow-menu",
-                "focus-visible:outline-focus",
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-secondary uppercase tracking-wide text-text-secondary">
-                    {s.title}
-                  </p>
-                  <p className="mt-1 text-section text-text truncate">
-                    {s.client}
-                  </p>
+      <ul
+        className={cn(
+          "grid gap-3",
+          "md:grid-cols-2 lg:grid-cols-3",
+        )}
+      >
+        {signals.map((s) => {
+          const Icon = s.icon;
+          const iconTone = s.iconTone ?? iconToneForStatus(s.statusTone);
+          return (
+            <li key={s.id}>
+              <Link
+                to={s.href}
+                data-testid={s.testId ?? `signal-${s.kind}`}
+                aria-label={`${s.title}. ${s.reason}`}
+                className={cn(
+                  "grid grid-cols-[auto_1fr] gap-3 rounded-card border border-border",
+                  "bg-surface p-4",
+                  "transition-motion hover:border-borderStrong",
+                  "focus-visible:outline-focus",
+                  "text-text",
+                )}
+              >
+                <div
+                  aria-hidden
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-[8px]",
+                    ICON_TILE_CLASSES[iconTone],
+                  )}
+                >
+                  {Icon ? <Icon className="h-[18px] w-[18px]" /> : null}
                 </div>
-                <StatusBadge
-                  tone={s.statusTone}
-                  label={s.statusLabel}
-                  icon={s.icon}
-                />
-              </div>
-              <p className="text-body text-text-secondary line-clamp-2">
-                {s.reason}
-              </p>
-              <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-secondary text-text-secondary">
-                {s.owner ? <span>Owner: {s.owner}</span> : null}
-                {s.deadline ? <span>Due: {s.deadline}</span> : null}
-                <span className="ml-auto inline-flex items-center gap-1 text-primary group-hover:underline">
-                  Open
-                  <ArrowRight className="h-3 w-3" aria-hidden />
-                </span>
-              </div>
-            </Link>
-          </li>
-        ))}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-body font-semibold text-text">
+                      {s.title}
+                    </p>
+                    <StatusBadge tone={s.statusTone} label={s.statusLabel} />
+                  </div>
+                  <p className="mt-1 text-secondary text-text-secondary">
+                    {s.reason}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-text-muted">
+                    {s.owner ? <span>Owner: {s.owner}</span> : null}
+                    {s.deadline ? <span>{s.deadline}</span> : null}
+                    {s.version ? <span>{s.version}</span> : null}
+                  </div>
+                </div>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

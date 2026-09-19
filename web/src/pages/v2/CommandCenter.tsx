@@ -94,27 +94,6 @@ function formatCount(n: number | null | undefined): string | null {
   return new Intl.NumberFormat("en-US").format(n);
 }
 
-function formatPercent(value: string | null | undefined): string | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  return `${(n * 100).toFixed(1)}%`;
-}
-
-function formatVariance(
-  approved: string | null | undefined,
-  forecast: string | null | undefined,
-): string | null {
-  if (approved === null || approved === undefined || approved === "") return null;
-  if (forecast === null || forecast === undefined || forecast === "") return null;
-  const a = Number(approved);
-  const f = Number(forecast);
-  if (!Number.isFinite(a) || !Number.isFinite(f)) return null;
-  const delta = f - a;
-  const sign = delta > 0 ? "+" : "";
-  return `${sign}${(delta * 100).toFixed(1)} pts`;
-}
-
 // -----------------------------------------------------------------------------
 // Async loader — every module is independent so a failure in one keeps the
 // others live (spec §4 state copy: "Errors in one module never hide healthy
@@ -202,7 +181,7 @@ function bannerMetrics(
   return [
     {
       id: "pipeline_value",
-      label: "Pipeline value",
+      label: "Open pipeline, proposed value",
       value: pipelineValue,
       href: "/pipeline",
       description: isCeo ? "Uncontracted proposed" : "CEO view required",
@@ -220,6 +199,7 @@ function bannerMetrics(
       value: formatCount(agreementGaps),
       href: "/agreements",
       description: "NDA or MSA not executed",
+      alert: (agreementGaps ?? 0) > 0,
     },
     {
       id: "ceo_pending",
@@ -227,6 +207,7 @@ function bannerMetrics(
       value: formatCount(ceoPending),
       href: "/sows",
       description: "Awaiting exception decision",
+      alert: (ceoPending ?? 0) > 0,
     },
   ];
 }
@@ -242,15 +223,15 @@ function firstPrioritySignals(data: CommandData): PrioritySignal[] {
       id: `ceo-${exc.id}`,
       kind: "ceo_exception",
       title: "CEO exception",
-      client: "Package awaiting your decision",
       reason: exc.has_rationale
         ? "Rationale drafted. Ready for a decision."
         : "Below-floor package needs a rationale.",
-      deadline: exc.drafted_at ? exc.drafted_at.slice(0, 10) : null,
+      deadline: exc.drafted_at ? `Drafted ${exc.drafted_at.slice(0, 10)}` : null,
       href: `/sows/${exc.package_id}/exception`,
       statusLabel: exc.has_rationale ? "Ready" : "Draft rationale",
-      statusTone: exc.has_rationale ? "warn" : "danger",
+      statusTone: exc.has_rationale ? "warning" : "danger",
       icon: AlertTriangle,
+      iconTone: "bad",
       testId: "signal-ceo-exception",
     });
   } else {
@@ -261,13 +242,13 @@ function firstPrioritySignals(data: CommandData): PrioritySignal[] {
         id: `ceo-${pkg.id}`,
         kind: "ceo_exception",
         title: "CEO exception",
-        client: "Package pending CEO",
         reason: "Below-floor package awaiting a decision.",
-        deadline: pkg.submitted_at ? pkg.submitted_at.slice(0, 10) : null,
+        deadline: pkg.submitted_at ? `Submitted ${pkg.submitted_at.slice(0, 10)}` : null,
         href: `/sows/${pkg.id}/exception`,
         statusLabel: "Awaiting decision",
-        statusTone: "warn",
+        statusTone: "warning",
         icon: AlertTriangle,
+        iconTone: "bad",
         testId: "signal-ceo-exception",
       });
     }
@@ -280,20 +261,20 @@ function firstPrioritySignals(data: CommandData): PrioritySignal[] {
     out.push({
       id: `msa-${pendingMsa.id}`,
       kind: "msa_signature",
-      title: "MSA signature",
-      client: pendingMsa.next_action ?? "MSA sent for signature",
+      title: "MSA awaiting signature",
       reason:
         pendingMsa.next_action ??
         "Sent to the client for signature. Follow up if quiet.",
       owner: pendingMsa.owner_email,
-      deadline: pendingMsa.due_date,
+      deadline: pendingMsa.due_date ? `Due ${pendingMsa.due_date}` : null,
       href: `/agreements`,
       statusLabel:
         pendingMsa.state === "partially_signed"
           ? "Partially signed"
           : "Awaiting signature",
-      statusTone: "warn",
+      statusTone: "warning",
       icon: FileSignature,
+      iconTone: "warn",
       testId: "signal-msa",
     });
   }
@@ -305,20 +286,18 @@ function firstPrioritySignals(data: CommandData): PrioritySignal[] {
     out.push({
       id: `renewal-${nextRenewal.id}`,
       kind: "renewal",
-      title: "Approaching renewal",
-      client: nextRenewal.hubspot_deal_id ?? "Open renewal",
+      title: "Renewal review",
       reason:
         nextRenewal.days_until_end <= 0
           ? "Term has ended. Confirm outcome now."
           : `Term ends in ${nextRenewal.days_until_end} day(s).`,
-      deadline: nextRenewal.term_end,
+      deadline: nextRenewal.term_end ? `Ends ${nextRenewal.term_end}` : null,
       href: `/renewals-v2`,
       statusLabel:
-        nextRenewal.days_until_end <= 14
-          ? "Due soon"
-          : "On watch",
-      statusTone: nextRenewal.days_until_end <= 14 ? "danger" : "warn",
+        nextRenewal.days_until_end <= 14 ? "Due soon" : "On watch",
+      statusTone: nextRenewal.days_until_end <= 14 ? "danger" : "progress",
       icon: CalendarClock,
+      iconTone: nextRenewal.days_until_end <= 14 ? "bad" : "prog",
       testId: "signal-renewal",
     });
   }
@@ -405,6 +384,20 @@ function readinessRows(data: CommandData): ReadinessRow[] {
 
 function packageToCard(pkg: ApprovalPackage, deals: DealRow[]): ApprovalCard {
   const deal = deals.find((d) => d.id === pkg.opportunity_id) ?? null;
+  const ageMs = pkg.submitted_at
+    ? Date.now() - new Date(pkg.submitted_at).getTime()
+    : null;
+  const ageDays =
+    ageMs != null && !Number.isNaN(ageMs)
+      ? Math.max(0, Math.floor(ageMs / (1000 * 60 * 60 * 24)))
+      : null;
+  const stripe = pkg.floors?.requires_ceo
+    ? "blocked"
+    : pkg.status === "pending_finance_legal"
+      ? "at-risk"
+      : pkg.status === "pending_delivery_hr"
+        ? "in-progress"
+        : null;
   return {
     id: pkg.id,
     href: `/sows/${pkg.id}`,
@@ -417,11 +410,13 @@ function packageToCard(pkg: ApprovalPackage, deals: DealRow[]): ApprovalCard {
     margin: null,
     marginOutcome: pkg.floors?.requires_ceo ? "fail" : undefined,
     ndaLabel: "See client",
-    ndaTone: "primarySubtle",
+    ndaTone: "progress",
     msaLabel: "See client",
-    msaTone: "primarySubtle",
+    msaTone: "progress",
     markers: packageMarkers(pkg),
     owner: null,
+    ageDays,
+    stripe,
     nextAction:
       pkg.status === "pending_delivery_hr"
         ? "Delivery + HR review"
@@ -459,39 +454,56 @@ function approvalLanes(data: CommandData): ApprovalLane[] {
 function economicsRows(
   finance: FinanceDashboard | null,
 ): EconomicsRow[] {
-  const us = finance?.gm_by_geography.US.gm ?? null;
-  const india = finance?.gm_by_geography.India.gm ?? null;
-  const approvedGp =
-    finance?.approved_vs_forecast_vs_actual.approved_gp ?? null;
-  const forecastGp =
-    finance?.approved_vs_forecast_vs_actual.forecast_gp ?? null;
-
-  return [
-    {
-      geography: "US",
-      approvedMargin: formatPercent(us),
-      forecastMargin: formatPercent(us),
-      variance: formatVariance(us, us),
-      floor: "35.0%",
-      outcome: us === null ? "unavailable" : undefined,
-    },
-    {
-      geography: "India",
-      approvedMargin: formatPercent(india),
-      forecastMargin: formatPercent(india),
-      variance: formatVariance(india, india),
-      floor: "50.0%",
-      outcome: india === null ? "unavailable" : undefined,
-    },
-    {
-      geography: "Blended",
-      approvedMargin: formatPercent(approvedGp),
-      forecastMargin: formatPercent(forecastGp),
-      variance: formatVariance(approvedGp, forecastGp),
+  if (!finance) return [];
+  const items: EconomicsRow[] = [];
+  const asPct = (v: string | number | null | undefined) => {
+    if (v == null || v === "") return null;
+    const n = typeof v === "number" ? v : Number(v);
+    if (!Number.isFinite(n)) return null;
+    return n <= 1 ? n * 100 : n;
+  };
+  const perSow = finance.gm_by_sow ?? [];
+  for (const row of perSow.slice(0, 6)) {
+    const gm = row.gm_blended ?? row.gm_us ?? row.gm_india;
+    // The dashboard exposes one GM figure per SOW; use it as both approved
+    // and forecast so the two-bar layout stays readable when the API does
+    // not distinguish. Floor derives from the geography split.
+    const floor =
+      row.gm_us != null && row.gm_india == null
+        ? 35
+        : row.gm_india != null && row.gm_us == null
+          ? 50
+          : row.gm_us != null && row.gm_india != null
+            ? 40
+            : null;
+    const geo: "US" | "India" | "Mixed" =
+      row.gm_us != null && row.gm_india != null
+        ? "Mixed"
+        : row.gm_india != null
+          ? "India"
+          : "US";
+    items.push({
+      name: row.hubspot_deal_id ?? row.opportunity_id.slice(-6),
+      approved: asPct(gm),
+      forecast: asPct(gm),
+      floor,
+      geography: geo,
+    });
+  }
+  if (items.length === 0) {
+    const approvedGp =
+      finance.approved_vs_forecast_vs_actual.approved_gp ?? null;
+    const forecastGp =
+      finance.approved_vs_forecast_vs_actual.forecast_gp ?? null;
+    items.push({
+      name: "Portfolio",
+      approved: asPct(approvedGp),
+      forecast: asPct(forecastGp),
       floor: null,
-      outcome: approvedGp === null ? "unavailable" : undefined,
-    },
-  ];
+      geography: null,
+    });
+  }
+  return items;
 }
 
 // -----------------------------------------------------------------------------
@@ -632,13 +644,27 @@ export function CommandCenterPage() {
     />
   ) : null;
 
+  const eyebrow = data
+    ? `${data.fetchedAt.toLocaleDateString(undefined, {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      })} · Data as of ${data.fetchedAt.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`
+    : undefined;
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <ExecutiveBanner
+        eyebrow={eyebrow}
         metrics={metrics}
         freshness={freshness}
         actionHref="/sows"
         actionLabel="Open approval pipeline"
+        secondaryLabel="Pipeline readiness"
+        secondaryHref="/pipeline"
         subtitle={
           isCeo
             ? "Every open commitment across pipeline, contracts and delivery."
@@ -654,22 +680,22 @@ export function CommandCenterPage() {
       <PipelineReadinessTable
         rows={rows}
         caption="First 10 pipeline clients"
+        moreLabel="All clients →"
+        moreHref="/pipeline"
       />
 
-      <ApprovalPreview lanes={lanes} viewAllHref="/sows" />
+      <ApprovalPreview
+        lanes={lanes}
+        viewAllHref="/sows"
+        caption="3 of 6 stages shown"
+      />
 
       {isCeo || data?.finance ? (
         <DeliveryEconomics
           rows={economics}
-          signedValue={null}
-          openPipeline={
-            isCeo ? formatMoney(data?.ceo?.pipeline_value ?? null) : null
-          }
-          recognisedRevenue={formatMoney(
-            data?.finance?.approved_vs_forecast_vs_actual.actual_gp ?? null,
-          )}
-          drillHref="/dashboard"
-          basis="Approved vs forecast on active signed SOWs. Recognised revenue is finance actuals. US floor 35%, India floor 50%."
+          caption="Active signed SOWs · approved vs forecast GM"
+          drillLabel="Delivery & actuals →"
+          drillHref="/projects"
         />
       ) : null}
     </div>

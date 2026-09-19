@@ -26,12 +26,13 @@ import {
 } from "../../api/client";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
-import { Metric } from "../../ui-v2/Metric";
 import { RecordHeader } from "../../ui-v2/RecordHeader";
 import { StatusBadge } from "../../ui-v2/StatusBadge";
+import { cardStripeClass, type CardStripeVariant } from "../../ui-v2/CardStripe";
 import { Button } from "../../ui-v2/primitives/button";
 import { Input } from "../../ui-v2/primitives/input";
 import { Label } from "../../ui-v2/primitives/label";
+import { cn } from "../../lib/cn";
 import { GeographyFloorBars } from "./ceo-exception/GeographyFloorBars";
 import { GeographyTable } from "./ceo-exception/GeographyTable";
 import { PackageGates } from "./ceo-exception/PackageGates";
@@ -308,17 +309,17 @@ export function CEOExceptionDecisionPage() {
         status={
           <>
             <StatusBadge
-              tone={brief.gm.us.passes ? "ok" : "danger"}
+              tone={brief.gm.us.passes ? "success" : "danger"}
               label={`US ${brief.gm.us.passes ? "passes" : "below floor"}`}
             />
             <StatusBadge
-              tone={brief.gm.india.passes ? "ok" : "danger"}
+              tone={brief.gm.india.passes ? "success" : "danger"}
               label={`India ${brief.gm.india.passes ? "passes" : "below floor"}`}
             />
             {savedDecision ? (
-              <StatusBadge tone="ok" label={`Decision: ${savedDecision}`} />
+              <StatusBadge tone="success" label={`Decision: ${savedDecision}`} />
             ) : (
-              <StatusBadge tone="warn" label="Awaiting decision" />
+              <StatusBadge tone="warning" label="Awaiting CEO · 2 days" />
             )}
           </>
         }
@@ -332,22 +333,42 @@ export function CEOExceptionDecisionPage() {
         </p>
       ) : null}
 
+      {/* Four metric cards; the fourth carries stripe-bad + bad-color value
+       * per prototype line 473. */}
       <section
         aria-label="Top metrics"
-        className="grid gap-3 sm:grid-cols-5"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
       >
-        <Metric label="Proposed revenue" value={proposedRevenue ?? "Unavailable"} />
-        <Metric label="Eligible cost" value={eligibleCost ?? "Unavailable"} />
-        <Metric label="Expected profit" value={expectedProfit ?? "Unavailable"} />
-        <Metric label="Combined GM" value={combinedGm ?? "Unavailable"} />
-        <Metric label="Price gap" value={priceGap ?? "Unavailable"} />
+        <MetricCard
+          label="Proposed revenue"
+          value={proposedRevenue ?? "Unavailable"}
+          hint="Fixed price · package terms"
+        />
+        <MetricCard
+          label="Eligible delivery cost"
+          value={eligibleCost ?? "Unavailable"}
+          hint="HR-validated · rate card"
+        />
+        <MetricCard
+          label="Gross profit · combined GM"
+          value={expectedProfit ?? "Unavailable"}
+          suffix={combinedGm ?? undefined}
+          hint="Informational; components govern"
+        />
+        <MetricCard
+          label="Price increase to reach policy"
+          value={priceGap ?? "Unavailable"}
+          hint="Or price shortfall at current price"
+          stripe="blocked"
+          valueTone="danger"
+        />
       </section>
 
-      <GeographyFloorBars brief={brief} />
       <GeographyTable brief={brief} />
+      <GeographyFloorBars brief={brief} />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-4" style={{ maxWidth: "960px" }}>
+      <div className="grid gap-6 twoColumnCollapse:grid-cols-[minmax(0,1.6fr)_minmax(300px,1fr)] items-start">
+        <div className="space-y-4">
           <TextSection title="Project outcome & scope" body={brief.scope} />
           <TextSection
             title="Why the exception"
@@ -398,31 +419,71 @@ export function CEOExceptionDecisionPage() {
           />
         </div>
 
-        <aside className="lg:col-span-1">
-          <div className="sticky top-6 space-y-4">
-            <DecisionState savedDecision={savedDecision} />
+        <aside>
+          <div
+            className={cn(
+              "sticky top-[80px] flex flex-col gap-[14px]",
+              "rounded-card border border-border bg-surface p-5",
+            )}
+            aria-label="Decision"
+            data-testid="ceo-decision-panel"
+          >
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.06em] font-semibold text-text-secondary">
+                Decision
+              </div>
+              <div className="mt-1 text-body font-semibold text-text">
+                CEO
+              </div>
+              <div className="mt-1 text-[12px] text-text-secondary">
+                Approvable versions: SOW v{pkg?.sow_version_id.slice(-6) ?? "—"}
+                {" · "}GM v{pkg?.gm_model_id.slice(-6) ?? "—"}.
+              </div>
+            </div>
 
             <ApprovablePackages brief={brief} />
 
-            <section
-              aria-label="Rationale"
-              className="rounded-panel border border-divider bg-surface p-4"
-            >
-              <h2 className="text-section text-text mb-3">Rationale</h2>
-              <Label htmlFor="rationale">Business rationale</Label>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.06em] font-semibold text-text-secondary mb-2">
+                Conditions
+              </div>
+              <ConditionsEditor
+                conditions={conditions}
+                onChange={setConditions}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="valid-until">Approval valid until</Label>
+              <Input
+                id="valid-until"
+                type="date"
+                value={validUntil}
+                onChange={(e) => setValidUntil(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.06em] font-semibold text-text-secondary mb-2">
+                Rationale (required)
+              </div>
               <textarea
                 id="rationale"
                 data-testid="ceo-rationale-input"
-                className="mt-1 w-full min-h-[8rem] rounded-control border border-input-border bg-surface p-2 text-body text-text focus-visible:outline-focus"
+                className={cn(
+                  "w-full min-h-[72px] rounded-control border border-input-border",
+                  "bg-surface px-[10px] py-2 text-body text-text",
+                  "focus-visible:outline-focus resize-y",
+                )}
                 value={rationale}
                 onChange={(e) => {
                   setRationale(e.target.value);
                   setRationaleSaved(false);
                 }}
-                placeholder="Why this exception is warranted. Full sentence, ending in a period."
+                placeholder="Why this exception is acceptable, in your words."
               />
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <p className="text-secondary text-text-secondary">
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-[12px] text-text-secondary">
                   {rationaleSaved
                     ? "Rationale saved."
                     : isSentence(rationale)
@@ -439,98 +500,82 @@ export function CEOExceptionDecisionPage() {
                   Save rationale
                 </Button>
               </div>
-            </section>
+            </div>
 
-            <section
-              aria-label="Decision"
-              data-testid="ceo-decision-panel"
-              className="rounded-panel border border-divider bg-surface p-4 space-y-3"
-            >
-              <h2 className="text-section text-text">Decision actions</h2>
-              <fieldset className="space-y-2">
-                <legend className="text-secondary text-text-secondary uppercase">
-                  Choose action
-                </legend>
-                {(
-                  [
-                    ["approve", "Approve exception"],
-                    ["approve_conditions", "Approve with conditions"],
-                    ["request_changes", "Request changes"],
-                    ["decline", "Decline"],
-                  ] as const
-                ).map(([m, label]) => (
-                  <label
-                    key={m}
-                    className="flex items-center gap-2 text-body text-text"
-                  >
-                    <input
-                      type="radio"
-                      name="decision-mode"
-                      value={m}
-                      checked={mode === m}
-                      onChange={() => setMode(m)}
-                    />
-                    {label}
-                  </label>
-                ))}
-              </fieldset>
-
-              {mode === "approve_conditions" ? (
-                <div className="space-y-2">
-                  <Label>Conditions</Label>
-                  <ConditionsEditor
-                    conditions={conditions}
-                    onChange={setConditions}
+            <fieldset className="grid gap-2">
+              <legend className="sr-only">Decision mode</legend>
+              {(
+                [
+                  ["approve_conditions", "Approve with conditions", "primary" as const],
+                  ["approve", "Approve exception", "secondary" as const],
+                  ["request_changes", "Request changes", "secondary" as const],
+                  ["decline", "Decline", "destructive" as const],
+                ] as const
+              ).map(([m, label]) => (
+                <label
+                  key={m}
+                  className={cn(
+                    "inline-flex cursor-pointer items-center gap-2",
+                    "rounded-control border border-borderStrong bg-surface",
+                    "px-[14px] h-9 text-body font-medium transition-motion",
+                    m === "decline" && "text-danger",
+                    mode === m && "border-primary bg-primary-subtle text-primaryText",
+                    mode === m && m === "decline" && "border-danger bg-danger-surface text-danger",
+                  )}
+                >
+                  <input
+                    className="sr-only"
+                    type="radio"
+                    name="decision-mode"
+                    value={m}
+                    checked={mode === m}
+                    onChange={() => setMode(m)}
                   />
-                </div>
-              ) : null}
+                  {label}
+                </label>
+              ))}
+            </fieldset>
 
-              <div>
-                <Label htmlFor="valid-until">Approval valid until</Label>
-                <Input
-                  id="valid-until"
-                  type="date"
-                  value={validUntil}
-                  onChange={(e) => setValidUntil(e.target.value)}
-                />
-              </div>
+            {saveError ? (
+              <p className="text-secondary text-danger">{saveError}</p>
+            ) : null}
 
-              {saveError ? (
-                <p className="text-secondary text-danger">{saveError}</p>
-              ) : null}
+            <Button
+              type="button"
+              data-testid="ceo-decision-submit"
+              disabled={!canSubmit}
+              onClick={submit}
+              variant={mode === "decline" ? "destructive" : "primary"}
+              title={
+                !canSubmit
+                  ? !rationaleReady
+                    ? "Save a full-sentence rationale before recording a decision."
+                    : mode === "approve_conditions" && !conditionsReady
+                      ? "Every condition needs an owner, due date and evidence."
+                      : undefined
+                  : undefined
+              }
+            >
+              {mode === "decline"
+                ? "Record decline"
+                : mode === "request_changes"
+                  ? "Send back for changes"
+                  : mode === "approve_conditions"
+                    ? "Approve with conditions"
+                    : "Approve exception"}
+            </Button>
+            {!canSubmit ? (
+              <p className="text-[12px] text-text-secondary">
+                {!rationaleReady
+                  ? "A saved, full-sentence rationale is required before any decision."
+                  : "Complete the conditions to enable submission."}
+              </p>
+            ) : null}
 
-              <Button
-                type="button"
-                data-testid="ceo-decision-submit"
-                disabled={!canSubmit}
-                onClick={submit}
-                variant={mode === "decline" ? "destructive" : "primary"}
-                title={
-                  !canSubmit
-                    ? !rationaleReady
-                      ? "Save a full-sentence rationale before recording a decision."
-                      : mode === "approve_conditions" && !conditionsReady
-                        ? "Every condition needs an owner, due date and evidence."
-                        : undefined
-                    : undefined
-                }
-              >
-                {mode === "decline"
-                  ? "Record decline"
-                  : mode === "request_changes"
-                    ? "Send back for changes"
-                    : mode === "approve_conditions"
-                      ? "Approve with conditions"
-                      : "Approve exception"}
-              </Button>
-              {!canSubmit ? (
-                <p className="text-secondary text-text-secondary">
-                  {!rationaleReady
-                    ? "A saved, full-sentence rationale is required before any decision."
-                    : "Complete the conditions to enable submission."}
-                </p>
-              ) : null}
-            </section>
+            <p className="text-[12px] text-text-muted">
+              Every decision records your identity, time, versions and rationale.
+              It cannot waive Legal or staffing requirements.
+            </p>
           </div>
         </aside>
       </div>
@@ -538,24 +583,46 @@ export function CEOExceptionDecisionPage() {
   );
 }
 
-function DecisionState({
-  savedDecision,
+function MetricCard({
+  label,
+  value,
+  hint,
+  suffix,
+  stripe,
+  valueTone = "default",
 }: {
-  savedDecision: CeoDecision | null;
+  label: string;
+  value: string;
+  hint?: string;
+  suffix?: string;
+  stripe?: CardStripeVariant;
+  valueTone?: "default" | "danger";
 }) {
   return (
-    <section
-      aria-label="Decision state"
-      className="rounded-panel border border-divider bg-surface p-4"
-      data-testid="decision-state"
-    >
-      <h2 className="text-section text-text mb-2">Decision state</h2>
-      {savedDecision ? (
-        <StatusBadge tone="ok" label={`Recorded: ${savedDecision}`} />
-      ) : (
-        <StatusBadge tone="warning" label="Awaiting your decision" />
+    <div
+      className={cn(
+        "flex flex-col gap-1 rounded-card border border-border bg-surface p-5",
+        cardStripeClass(stripe),
       )}
-    </section>
+    >
+      <span className="text-[12px] text-text-secondary">{label}</span>
+      <span
+        className={cn(
+          "text-metric tnum",
+          valueTone === "danger" ? "text-danger" : "text-text",
+        )}
+      >
+        {value}
+        {suffix ? (
+          <span className="ml-2 text-[16px] font-medium text-text-secondary">
+            {suffix}
+          </span>
+        ) : null}
+      </span>
+      {hint ? (
+        <span className="text-[11px] text-text-muted">{hint}</span>
+      ) : null}
+    </div>
   );
 }
 

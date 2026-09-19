@@ -112,6 +112,15 @@ function NewImportPanel() {
         href="/legacy/import"
       />
       <ImporterCard
+        title="Bulk SOW import (pipeline)"
+        description={
+          "Drop live SOW PDFs (or a ZIP). Every file runs through the same " +
+          "SOW-first pipeline as a single upload; records land as Legacy " +
+          "until a reviewer clears them from the needs-review queue."
+        }
+        href="/settings/data-imports/sows"
+      />
+      <ImporterCard
         title="Actuals CSV"
         description={
           "Recognised revenue + realised cost by resource line, per month. " +

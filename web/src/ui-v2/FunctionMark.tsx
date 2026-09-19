@@ -1,13 +1,14 @@
 /**
- * FunctionMark — v2.1 spec `components.functionMark`.
+ * FunctionMark — DealGate v2.1 prototype (lines 212–216).
  *
  * A 22 × 18 chip carrying one of the four function letters (Delivery /
  * HR / Finance / Legal) and one of four states:
- *   - pending  (grey, not yet reached)
+ *   - pending  (grey, not yet reached; keeps a 1px border to stay visible)
  *   - progress (violet, currently reviewing)
  *   - ok       (green, approved)
  *   - bad      (red, rejected)
  *
+ * The colored states have no border (per prototype `border-color:transparent`).
  * The mark row is always followed by "n/4 reviews" text — see the
  * `FunctionMarkRow` helper below.
  */
@@ -26,10 +27,10 @@ const FUNCTION_LABEL: Record<FunctionLetter, string> = {
 };
 
 const STATE_CLASSES: Record<FunctionState, string> = {
-  pending: "bg-surface-sunken text-text-secondary border-border",
-  progress: "bg-primary-subtle text-primaryText border-primary/30",
-  ok: "bg-success-surface text-success border-success/30",
-  bad: "bg-danger-surface text-danger border-danger/30",
+  pending: "bg-surface-sunken text-text-muted border border-border",
+  progress: "bg-primary-subtle text-primaryText border border-transparent",
+  ok: "bg-success-surface text-success border border-transparent",
+  bad: "bg-danger-surface text-danger border border-transparent",
 };
 
 const STATE_LABEL: Record<FunctionState, string> = {
@@ -54,8 +55,8 @@ export function FunctionMark({
     <span
       aria-label={`${FUNCTION_LABEL[letter]} ${STATE_LABEL[state]}`}
       className={cn(
-        "inline-flex items-center justify-center border rounded-chip",
-        "font-semibold text-[11px] leading-none",
+        "inline-flex items-center justify-center rounded-chip",
+        "font-bold text-[10px] leading-none",
         "w-[22px] h-[18px]",
         STATE_CLASSES[state],
         className,
@@ -88,14 +89,14 @@ export function FunctionMarkRow({
     letter: l,
     state: (states[l] ?? "pending") as FunctionState,
   }));
-  const okCount =
-    count ?? resolved.filter((r) => r.state === "ok").length;
+  const okCount = count ?? resolved.filter((r) => r.state === "ok").length;
   return (
     <div
       className={cn(
-        "flex items-center gap-2 text-secondary text-text-secondary",
+        "flex items-center gap-2 text-[12px] text-text-muted",
         className,
       )}
+      title="Delivery · HR · Finance · Legal"
       {...rest}
     >
       <div className="flex items-center gap-1">

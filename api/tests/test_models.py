@@ -56,11 +56,23 @@ async def test_client_legal_entity_agreement_chain(session):
 
 
 async def test_opportunity_hubspot_id_unique(session):
+    """S10-01: uniqueness is enforced by a **partial** index — NULLs may
+    repeat (SOW-upload opportunities have no HubSpot side), non-NULLs
+    must not."""
+
     session.add(Opportunity(hubspot_deal_id="H-1"))
     await session.commit()
     session.add(Opportunity(hubspot_deal_id="H-1"))
     with pytest.raises(IntegrityError):
         await session.commit()
+
+
+async def test_opportunity_allows_multiple_null_hubspot_ids(session):
+    """S10-01: two SOW-upload opportunities (hubspot_deal_id=NULL) coexist."""
+
+    session.add(Opportunity(hubspot_deal_id=None, source="sow_upload"))
+    session.add(Opportunity(hubspot_deal_id=None, source="sow_upload"))
+    await session.commit()
 
 
 async def test_task_defaults(session):

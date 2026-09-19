@@ -148,9 +148,19 @@ export function SowApprovalsPage() {
         title="SOW approvals"
         subtitle="Six-lane lifecycle · gates enforced server-side"
         actions={
-          <Button asChild variant="primary">
-            <a href="/sows/new">New SOW</a>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="secondary">
+              <a
+                href="/settings/data-imports/sows"
+                data-testid="import-legacy-sows"
+              >
+                Import legacy SOWs
+              </a>
+            </Button>
+            <Button asChild variant="primary">
+              <a href="/sows/new">New SOW</a>
+            </Button>
+          </div>
         }
       />
 
@@ -262,15 +272,23 @@ function LaneColumn({ lane, packages, agreements }: LaneColumnProps) {
     <section
       aria-label={lane.title}
       data-testid={`lane-${lane.id}`}
-      className="flex min-h-[16rem] flex-col gap-2 rounded-panel bg-canvas p-3"
+      className={cn(
+        "flex min-w-0 min-h-[16rem] flex-col gap-2 rounded-[10px]",
+        "bg-surface-sunken p-[10px]",
+      )}
     >
-      <header className="flex items-baseline justify-between gap-2">
-        <div>
-          <h2 className="text-section text-text">{lane.title}</h2>
-          <p className="text-secondary text-text-secondary">{lane.subtitle}</p>
+      <header className="flex items-center justify-between gap-2 px-1">
+        <div className="min-w-0">
+          <h2 className="text-[12px] font-semibold text-text-secondary truncate">
+            {lane.title}
+          </h2>
+          <p className="text-[11px] text-text-muted truncate">{lane.subtitle}</p>
         </div>
         <span
-          className="rounded-[6px] bg-surface px-2 py-[2px] text-secondary font-medium text-text tnum"
+          className={cn(
+            "shrink-0 rounded-[4px] border border-border bg-surface",
+            "px-[6px] text-[11px] font-medium text-text-secondary tnum",
+          )}
           aria-label={`${packages.length} packages`}
         >
           {packages.length}
@@ -280,9 +298,12 @@ function LaneColumn({ lane, packages, agreements }: LaneColumnProps) {
         {packages.length === 0 ? (
           <div
             role="status"
-            className="rounded-panel border border-dashed border-divider bg-surface p-4 text-center text-secondary text-text-secondary"
+            className={cn(
+              "rounded-[8px] border border-dashed border-borderStrong bg-surface",
+              "p-4 text-center text-[12px] text-text-muted",
+            )}
           >
-            No packages here right now.
+            Nothing at this gate
           </div>
         ) : (
           packages.map((pkg) => (

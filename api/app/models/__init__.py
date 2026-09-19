@@ -11,6 +11,7 @@ from app.models.audit import AuditEvent
 from app.models.capability import CapabilityCatalog
 from app.models.ceo_exception import CeoDelegate, CeoException
 from app.models.client import Agreement, Client, LegalEntity
+from app.models.client_alias import ClientAlias
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
 from app.models.embedding import SowEmbedding
 from app.models.forecast import ForecastPeriod
@@ -25,6 +26,7 @@ from app.models.rate_card import RateCardRow, RateCardVersion
 from app.models.renewal import Renewal
 from app.models.signed_sow import SignedSowUpload
 from app.models.sow import Sow, SowVersion
+from app.models.sow_upload_job import SowUploadJob
 from app.models.task import Task
 from app.models.user import User
 
@@ -52,6 +54,7 @@ __all__ = [
     "CeoDelegate",
     "CeoException",
     "Client",
+    "ClientAlias",
     "ClientRateCard",
     "ClientRateCardRow",
     "CostLine",
@@ -75,6 +78,7 @@ __all__ = [
     "SignedSowUpload",
     "Sow",
     "SowEmbedding",
+    "SowUploadJob",
     "SowVersion",
     "Task",
     "User",

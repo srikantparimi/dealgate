@@ -1,10 +1,10 @@
 /**
- * Pipeline-client readiness table — spec §5 item 3 (+ §7 column order).
+ * Pipeline-client readiness table — DealGate v2.1 prototype (lines 375–381,
+ * 536).
  *
- * Columns: client & owner · commercial stage · NDA · MSA · SOW gate /
- * package versions · next client action. NDA and MSA are separate,
- * always-clickable StatusBadges that open the underlying agreement — the
- * spec explicitly forbids a combined "Contracts" checkbox.
+ * Columns: Client · owner · Stage · NDA · MSA · SOW gate · Next client
+ * action. Table wrapper is a `.card`; the table itself uses 13px cells,
+ * 36px header row, 44px body row (via `--row` density variable).
  */
 
 import { Link } from "react-router-dom";
@@ -44,14 +44,17 @@ export interface PipelineReadinessTableProps {
   rows: ReadinessRow[];
   emptyMessage?: ReactNode;
   caption?: ReactNode;
+  title?: string;
+  moreLabel?: string;
+  moreHref?: string;
 }
 
 function agreementCellNode(cell: AgreementCell | null, kind: string) {
   if (!cell) {
     return (
       <StatusBadge
-        tone="warn"
-        label={`${kind}: Missing`}
+        tone="warning"
+        label="Missing"
         aria-label={`${kind} missing`}
       />
     );
@@ -60,7 +63,7 @@ function agreementCellNode(cell: AgreementCell | null, kind: string) {
     <Link
       to={cell.href}
       aria-label={`${kind} ${cell.label}`}
-      className="inline-block focus-visible:outline-focus rounded-[6px]"
+      className="inline-block focus-visible:outline-focus rounded-[4px]"
     >
       <StatusBadge tone={cell.tone} label={cell.label} icon={cell.icon} />
     </Link>
@@ -71,32 +74,46 @@ export function PipelineReadinessTable({
   rows,
   emptyMessage,
   caption,
+  title = "Pipeline client readiness",
+  moreLabel,
+  moreHref,
 }: PipelineReadinessTableProps) {
   return (
-    <section aria-label="Pipeline client readiness">
-      <div className="mb-3 flex items-end justify-between gap-3">
-        <h2 className="text-section text-text">Pipeline client readiness</h2>
+    <section
+      aria-label={title}
+      className="rounded-card border border-border bg-surface"
+    >
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-5 pt-4">
+        <h2 className="text-section font-semibold text-text">{title}</h2>
         {caption ? (
-          <span className="text-secondary text-text-secondary">{caption}</span>
+          <span className="text-[12px] text-text-muted">{caption}</span>
         ) : null}
-      </div>
-      <div className="overflow-x-auto rounded-panel border border-divider bg-surface">
+        {moreLabel && moreHref ? (
+          <Link
+            to={moreHref}
+            className="ml-auto text-[13px] text-primaryText hover:underline focus-visible:outline-focus"
+          >
+            {moreLabel}
+          </Link>
+        ) : null}
+      </header>
+      <div className="overflow-x-auto p-2">
         {rows.length === 0 ? (
           <div
             role="status"
-            className="p-6 text-body text-text-secondary text-center"
+            className="p-6 text-center text-body text-text-secondary"
           >
             {emptyMessage ?? "No pipeline clients found."}
           </div>
         ) : (
-          <table className="min-w-full text-body">
-            <thead className="border-b border-divider bg-canvas/60">
+          <table className="w-full border-collapse text-[13px] leading-[1.4]">
+            <thead>
               <tr>
-                <Th>Client &amp; owner</Th>
-                <Th>Commercial stage</Th>
+                <Th>Client &middot; owner</Th>
+                <Th>Stage</Th>
                 <Th>NDA</Th>
                 <Th>MSA</Th>
-                <Th>SOW gate / package</Th>
+                <Th>SOW gate</Th>
                 <Th>Next client action</Th>
               </tr>
             </thead>
@@ -104,55 +121,42 @@ export function PipelineReadinessTable({
               {rows.map((r) => (
                 <tr
                   key={r.id}
-                  className="border-b border-divider last:border-0 hover:bg-canvas/40"
+                  className="border-b border-border last:border-b-0 transition-motion hover:bg-surface-sunken"
                 >
-                  <td className="px-3 py-3 align-top">
+                  <Td>
                     <Link
                       to={r.clientHref}
-                      className="text-body text-text font-medium hover:text-primary focus-visible:outline-focus"
+                      className="font-medium text-text hover:text-primaryText hover:underline focus-visible:outline-focus"
                     >
                       {r.clientName}
                     </Link>
-                    <div className="text-secondary text-text-secondary">
+                    <div className="text-[12px] text-text-secondary">
                       {r.ownerName ?? "Unassigned"}
                     </div>
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <span className="text-body text-text">
-                      {r.commercialStage ?? "Unknown"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    {agreementCellNode(r.nda, "NDA")}
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    {agreementCellNode(r.msa, "MSA")}
-                  </td>
-                  <td className="px-3 py-3 align-top">
+                  </Td>
+                  <Td>{r.commercialStage ?? "Unknown"}</Td>
+                  <Td>{agreementCellNode(r.nda, "NDA")}</Td>
+                  <Td>{agreementCellNode(r.msa, "MSA")}</Td>
+                  <Td>
                     {r.sowGate ? (
                       <Link
                         to={r.sowGate.href}
-                        className="inline-block focus-visible:outline-focus rounded-[6px]"
+                        className="inline-block focus-visible:outline-focus rounded-[4px]"
                         aria-label={`SOW gate ${r.sowGate.label}`}
                       >
-                        <StatusBadge
-                          tone={r.sowGate.tone}
-                          label={r.sowGate.label}
-                        />
+                        <StatusBadge tone={r.sowGate.tone} label={r.sowGate.label} />
                       </Link>
                     ) : (
-                      <span className="text-secondary text-text-secondary">
-                        No SOW yet
-                      </span>
+                      <span className="text-text-secondary">No SOW yet</span>
                     )}
                     {r.packageVersion ? (
-                      <div className="mt-1 text-secondary text-text-secondary">
+                      <div className="mt-1 text-[12px] text-text-muted">
                         {r.packageVersion}
                       </div>
                     ) : null}
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <div className="text-body text-text">
+                  </Td>
+                  <Td>
+                    <div className="text-text">
                       {r.nextAction.text ?? (
                         <span className="text-text-secondary">
                           No action recorded
@@ -160,11 +164,11 @@ export function PipelineReadinessTable({
                       )}
                     </div>
                     {r.nextAction.date ? (
-                      <div className="text-secondary text-text-secondary tnum">
+                      <div className="text-[12px] text-text-muted tnum">
                         Due {r.nextAction.date}
                       </div>
                     ) : null}
-                  </td>
+                  </Td>
                 </tr>
               ))}
             </tbody>
@@ -180,11 +184,25 @@ function Th({ children }: { children: ReactNode }) {
     <th
       scope="col"
       className={cn(
-        "px-3 py-2 text-left text-secondary uppercase tracking-wide",
-        "text-text-secondary font-medium",
+        "h-[36px] border-b border-border px-3 text-left",
+        "text-[11px] uppercase tracking-[0.05em] font-semibold",
+        "text-text-secondary whitespace-nowrap",
       )}
     >
       {children}
     </th>
+  );
+}
+
+function Td({ children }: { children: ReactNode }) {
+  return (
+    <td
+      className={cn(
+        "px-3 align-middle border-b border-border",
+        "h-[var(--dg-row-height)]",
+      )}
+    >
+      {children}
+    </td>
   );
 }

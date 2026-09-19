@@ -1,29 +1,32 @@
 /**
- * SOW studio — Sprint 9 Wave 2 rewrite.
+ * SOW studio — Sprint 9 Wave 2 rewrite, with the S10-01 upload chain
+ * wired into it.
  *
  * The studio is now a **confirmation screen**, not a five-step wizard
  * (spec: `docs/sow-first-principles.md`, CLAUDE.md rule 10). The URL
  * `/sows/new` still opens the studio, but its meaning is now:
  *
- *   - No opportunity id → a compact upload panel (client + file).
- *   - Opportunity id present (via `?opportunityId=X`) → the derived
- *     package: extracted fields with provenance, auto-classified
- *     engagement, auto-staffed grid, computed floors, proposed
- *     approvers and the `needs_you` list.
+ *   - No opportunity id and no job id → the compact upload panel
+ *     (single file input). Submitting it kicks off the upload pipeline.
+ *   - Job id (via `?jobId=X`) → the pipeline progress card + picker.
+ *   - Opportunity id (via `?opportunityId=X`) → the derived
+ *     confirmation package.
  *
  * "A blank form on open is a defect." Every visible input on the
- * confirmation view is pre-populated from the API payload. If a value
- * is genuinely missing it renders in the "What's still needed"
- * section with a jump link — never as an empty input on load.
+ * confirmation view is pre-populated from the API payload.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import {
+  ApiError,
   getSowConfirmation,
   submitSowConfirmation,
+  uploadSow,
   type EngagementType,
   type SowConfirmationPayload,
+  type SowUploadJobResponse,
+  type SowUploadRejected422,
   type UUID,
 } from "../../api/client";
 import { PageHeader } from "../../ui-v2/PageHeader";
@@ -31,6 +34,8 @@ import { ErrorState } from "../../ui-v2/ErrorState";
 import { StatusBadge } from "../../ui-v2/StatusBadge";
 import { Button } from "../../ui-v2/primitives/button";
 import { UploadPanel } from "./sow-studio/confirmation/UploadPanel";
+import { PipelineProgress } from "./sow-studio/upload/PipelineProgress";
+import { ClientPickerModal } from "./sow-studio/upload/ClientPickerModal";
 import { SourceSection } from "./sow-studio/confirmation/SourceSection";
 import { ScopeSection } from "./sow-studio/confirmation/ScopeSection";
 import { RateCardSection } from "./sow-studio/confirmation/RateCardSection";
@@ -48,23 +53,50 @@ export function SowStudioPage() {
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
   const opportunityId = params.get("opportunityId");
+  const jobId = params.get("jobId");
 
-  if (!opportunityId) {
+  const setJobId = useCallback(
+    (id: string) => {
+      const next = new URLSearchParams(params);
+      next.set("jobId", id);
+      next.delete("opportunityId");
+      setParams(next, { replace: true });
+    },
+    [params, setParams],
+  );
+
+  const goToConfirmation = useCallback(
+    (oppId: string) => {
+      const next = new URLSearchParams(params);
+      next.set("opportunityId", oppId);
+      next.delete("jobId");
+      setParams(next, { replace: true });
+    },
+    [params, setParams],
+  );
+
+  const clearUploadState = useCallback(() => {
+    const next = new URLSearchParams(params);
+    next.delete("jobId");
+    next.delete("opportunityId");
+    setParams(next, { replace: true });
+  }, [params, setParams]);
+
+  if (opportunityId) {
     return (
-      <UploadFlow
-        onCreated={(id) => {
-          const next = new URLSearchParams(params);
-          next.set("opportunityId", id);
-          setParams(next, { replace: true });
-        }}
+      <ConfirmationFlow
+        opportunityId={opportunityId as UUID}
+        onSubmittedNavigate={(id) => nav(`/sows/${id}/approvals`)}
       />
     );
   }
 
   return (
-    <ConfirmationFlow
-      opportunityId={opportunityId as UUID}
-      onSubmittedNavigate={(id) => nav(`/sows/${id}/approvals`)}
+    <UploadFlow
+      jobId={jobId}
+      onJobStarted={setJobId}
+      onDone={goToConfirmation}
+      onReset={clearUploadState}
     />
   );
 }
@@ -73,39 +105,94 @@ export function SowStudioPage() {
 /* Upload flow                                                                */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Compact upload panel wired for the "no opportunity id yet" case.
- *
- * Production wiring: the real path chains `getSowUploadUrl` → PUT to S3
- * → `createSowVersion` → extract worker → confirmation load. Those
- * endpoints already exist and are typed in `api/client.ts`; wiring the
- * full chain requires an opportunity picker that the studio does not
- * yet own. Until that lands, `onSubmit` surfaces an honest banner and
- * preserves the panel state so the reviewer can retry.
- */
-function UploadFlow({ onCreated }: { onCreated: (id: UUID) => void }) {
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface UploadFlowProps {
+  jobId: string | null;
+  onJobStarted: (jobId: string) => void;
+  onDone: (opportunityId: string) => void;
+  onReset: () => void;
+}
 
-  async function handleSubmit(): Promise<void> {
-    setSubmitting(true);
-    setError(null);
-    try {
-      // TODO(agent-XX-follow-up): call getSowUploadUrl → PUT →
-      // createSowVersion → poll for extract complete → onCreated(opp).
-      // The confirmation-first UI is fully live; the upload → extract
-      // chain lands once the opportunity resolver is decided.
-      throw new Error(
-        "Upload → extract chain is not wired yet. Follow-up story: SOW upload router.",
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setSubmitting(false);
-    }
-    // Reference `onCreated` so it stays a real prop (TS: noUnusedLocals).
-    void onCreated;
-  }
+/**
+ * The single-file upload path per S10-01. Handles three phases in one
+ * component:
+ *
+ *   1. No job yet → :class:`UploadPanel` collects the file.
+ *   2. Job in flight → :class:`PipelineProgress` polls status.
+ *   3. Status `needs_pick` → :class:`ClientPickerModal` overlays.
+ *
+ * Non-SOW 422 responses surface as a red banner + "Upload a different
+ * file" button; no DB rows are created (the API guarantees this).
+ */
+function UploadFlow({
+  jobId,
+  onJobStarted,
+  onDone,
+  onReset,
+}: UploadFlowProps) {
+  const [submitting, setSubmitting] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [rejected, setRejected] = useState<SowUploadRejected422 | null>(null);
+  const [needsPickJob, setNeedsPickJob] =
+    useState<SowUploadJobResponse | null>(null);
+
+  const handleUpload = useCallback(
+    async ({ file }: { file: File }) => {
+      setSubmitting(true);
+      setUploadError(null);
+      setRejected(null);
+      try {
+        const res = await uploadSow({ file });
+        if (res.duplicate && res.opportunity_id) {
+          // Dupe with a fully-resolved opportunity → jump straight to
+          // confirmation so the reviewer sees the derived package.
+          onDone(res.opportunity_id);
+          return;
+        }
+        onJobStarted(res.job_id);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 422) {
+          const detail = e.detail as { detail?: SowUploadRejected422 } | null;
+          const payload = detail?.detail ?? null;
+          if (payload && payload.detected_type) {
+            setRejected(payload);
+            return;
+          }
+        }
+        setUploadError(e instanceof Error ? e.message : "Upload failed");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [onDone, onJobStarted],
+  );
+
+  const handleNeedsPick = useCallback((job: SowUploadJobResponse) => {
+    setNeedsPickJob(job);
+  }, []);
+
+  const handleDone = useCallback(
+    (job: SowUploadJobResponse) => {
+      if (job.opportunity_id) {
+        onDone(job.opportunity_id);
+      }
+    },
+    [onDone],
+  );
+
+  const handlePicked = useCallback(
+    (job: SowUploadJobResponse) => {
+      setNeedsPickJob(null);
+      if (job.status === "done" && job.opportunity_id) {
+        onDone(job.opportunity_id);
+      }
+    },
+    [onDone],
+  );
+
+  const handleRetry = useCallback(() => {
+    setNeedsPickJob(null);
+    onReset();
+  }, [onReset]);
 
   return (
     <div className="space-y-4">
@@ -116,11 +203,54 @@ function UploadFlow({ onCreated }: { onCreated: (id: UUID) => void }) {
           <StatusBadge tone="progress" label="Upload → confirmation" />
         }
       />
-      <UploadPanel
-        onSubmit={handleSubmit}
-        submitting={submitting}
-        error={error}
-      />
+
+      {rejected ? (
+        <div
+          role="alert"
+          className="rounded-panel border border-danger/40 bg-danger-surface p-4 text-danger"
+          data-testid="upload-rejected-banner"
+        >
+          <p className="text-body">{rejected.message}</p>
+          <Button
+            type="button"
+            variant="ghost"
+            className="mt-2"
+            onClick={() => {
+              setRejected(null);
+              onReset();
+            }}
+            data-testid="upload-rejected-retry"
+          >
+            Upload a different file
+          </Button>
+        </div>
+      ) : null}
+
+      {jobId ? (
+        <>
+          <PipelineProgress
+            jobId={jobId}
+            onNeedsPick={handleNeedsPick}
+            onDone={handleDone}
+            onRetry={handleRetry}
+          />
+          {needsPickJob && needsPickJob.needs_pick ? (
+            <ClientPickerModal
+              open
+              jobId={jobId}
+              needsPick={needsPickJob.needs_pick}
+              onPicked={handlePicked}
+              onCancel={handleRetry}
+            />
+          ) : null}
+        </>
+      ) : (
+        <UploadPanel
+          onSubmit={handleUpload}
+          submitting={submitting}
+          error={uploadError}
+        />
+      )}
     </div>
   );
 }

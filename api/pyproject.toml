@@ -25,6 +25,10 @@ dependencies = [
   "pypdf>=4.3",
   # boto3: Textract client is sync; only imported by the extract path.
   "boto3>=1.34",
+  # rapidfuzz: fuzzy string ratio for `services/client_resolver`
+  # (S10-01). C++ backed, deterministic; used only in the resolver so a
+  # future ratchet to a smarter matcher stays local.
+  "rapidfuzz>=3.9",
 ]
 
 [project.optional-dependencies]

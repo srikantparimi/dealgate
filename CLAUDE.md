@@ -27,6 +27,13 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     or a calculation. **A blank form on open is a defect.** Pre-filled is
     the default state; screens confirm what the system decided, they do not
     ask a person to type it. See `docs/sow-first-principles.md`.
+11. **No "not wired" throwers.** If a control is visible on any screen it
+    works end-to-end against the deployed backend, or the control is deleted.
+    CI greps for `not wired`, `TODO: stub`, `Not implemented`, `Follow-up
+    story` and equivalents and fails the build. Words like "sizable but the
+    right shape", "the right approach is", "pilot" and "prototype" in code
+    or PR text are the same defect in a different form. Build the path or
+    delete the button.
 
 ## Where things live
 

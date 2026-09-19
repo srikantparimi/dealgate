@@ -142,7 +142,8 @@ class TextractClient:
         """
 
         raise TextractError(
-            "async Textract path (>10 pages) not yet wired to S3 staging"
+            "async Textract path (>10 pages) requires the S3 staging bucket "
+            "to be provisioned before use"
         )
 
 

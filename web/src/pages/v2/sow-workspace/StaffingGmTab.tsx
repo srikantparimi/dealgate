@@ -25,7 +25,9 @@ import { Button } from "../../../ui-v2/primitives/button";
 import { formatPercent, formatUsd } from "./format";
 import type { WorkspaceSnapshot } from "./readiness";
 import { CommercialsPanel } from "./staffing/CommercialsPanel";
+import { GeographyCards } from "./staffing/GeographyCards";
 import { ResourceLineRow } from "./staffing/ResourceLineRow";
+import { GateSteps, type GateStep } from "../../../ui-v2/GateSteps";
 
 type ViewerRole = "restricted" | "full";
 
@@ -72,7 +74,9 @@ export function StaffingGmTab({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="space-y-6">
+        <StaffingGateSteps gm={gm} />
         <StaffingHeader gm={gm} hasNewerSow={hasNewerSow} onRebuildFromSow={onRebuildFromSow} />
+        <GeographyCards computed={gm.computed ?? null} />
         <SummaryMetrics gm={gm} />
         <RevenueBreakdown gm={gm} />
         <CostBreakdown gm={gm} viewer={viewer} />
@@ -84,6 +88,38 @@ export function StaffingGmTab({
       </aside>
     </div>
   );
+}
+
+/**
+ * Approval-progress GateSteps mirroring the prototype (lines 427–434). The
+ * fourth step (CEO exception) enters the `hold` state — "Will trigger" —
+ * when the current draft is below floor and the reviewer has not yet
+ * submitted the package.
+ */
+function StaffingGateSteps({ gm }: { gm: DeliveryGmModel }) {
+  const c = gm.computed;
+  const usGm = c?.gm_us != null ? Number(c.gm_us) : null;
+  const inGm = c?.gm_india != null ? Number(c.gm_india) : null;
+  // Convert 0.278 → 27.8 style for a fair floor comparison.
+  const toPct = (n: number | null) => (n == null ? null : n <= 1 ? n * 100 : n);
+  const usPct = toPct(usGm);
+  const inPct = toPct(inGm);
+  const belowFloor =
+    (usPct != null && usPct < 35) || (inPct != null && inPct < 50);
+  const complete = c?.complete === true;
+  const steps: GateStep[] = [
+    { id: "intake", label: "Intake", state: "done" },
+    { id: "scope-gm", label: "Scope & GM", state: "now" },
+    { id: "reviews", label: "Function reviews", state: "pending" },
+    {
+      id: "ceo",
+      label: "CEO exception",
+      state: belowFloor && complete ? "hold" : "pending",
+    },
+    { id: "signature", label: "Signature", state: "pending" },
+    { id: "handoff", label: "Handoff", state: "pending" },
+  ];
+  return <GateSteps steps={steps} ariaLabel="Approval progress" />;
 }
 
 function StaffingHeader({

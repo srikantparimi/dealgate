@@ -1,9 +1,16 @@
 /**
- * SowPackageCard — a single card in the six-lane board (spec §13.1).
+ * SowPackageCard — DealGate v2.1 prototype (lines 204–216, 546–557).
  *
- * Never draggable. Server enforces gate transitions. The card is
- * clickable (opens `/sows/:opportunity_id`) but individual status
- * chips act as their own links to the linked agreement records.
+ * Card layout:
+ *   - Header row: bold client, right-aligned value.
+ *   - Description row: engagement type / short summary.
+ *   - GM chip (ok / warn / bad / neutral) with the outcome text.
+ *   - NDA + MSA chip pair with muted "NDA" / "MSA" labels.
+ *   - FunctionMark row (D / H / F / L, 22×18) followed by "n/4 reviews".
+ *   - Left stripe per state (bad / warn / prog).
+ *   - Owner + next-action + age foot.
+ *
+ * Never draggable. Server enforces gate transitions.
  */
 import { Link } from "react-router-dom";
 import type {
@@ -12,16 +19,12 @@ import type {
   ApprovalPackage,
 } from "../../../api/client";
 import { StatusBadge, type StatusTone } from "../../../ui-v2/StatusBadge";
+import {
+  FunctionMarkRow,
+  type FunctionState,
+} from "../../../ui-v2/FunctionMark";
+import { cardStripeClass, type CardStripeVariant } from "../../../ui-v2/CardStripe";
 import { cn } from "../../../lib/cn";
-
-const FUNCTION_LABELS: Record<ApprovalFunction, string> = {
-  delivery: "D",
-  hr: "H",
-  finance: "F",
-  legal: "L",
-};
-
-const FUNCTIONS: ApprovalFunction[] = ["delivery", "hr", "finance", "legal"];
 
 function ageInDays(iso: string | null): number | null {
   if (!iso) return null;
@@ -30,23 +33,9 @@ function ageInDays(iso: string | null): number | null {
   return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
 }
 
-function decisionTone(decision: string | undefined): StatusTone {
-  if (decision === "approve") return "ok";
-  if (decision === "reject") return "danger";
-  if (decision === "request_changes") return "warn";
-  return "neutral";
-}
-
-function decisionShortLabel(decision: string | undefined): string {
-  if (decision === "approve") return "approved";
-  if (decision === "reject") return "rejected";
-  if (decision === "request_changes") return "changes";
-  return "pending";
-}
-
 function agreementTone(state: string | undefined): StatusTone {
-  if (!state) return "warn";
-  if (state === "executed") return "ok";
+  if (!state) return "warning";
+  if (state === "executed") return "success";
   if (
     state === "expired" ||
     state === "terminated" ||
@@ -54,19 +43,23 @@ function agreementTone(state: string | undefined): StatusTone {
   ) {
     return "danger";
   }
-  if (state === "missing") return "warn";
-  return "primarySubtle";
+  if (state === "missing") return "warning";
+  return "progress";
 }
 
 function agreementShort(state: string | undefined): string {
-  if (!state) return "missing";
+  if (!state) return "Missing";
+  if (state === "executed") return "OK";
   return state.replace(/_/g, " ");
 }
 
-/**
- * Money formatting is display-only. Never do math here; the amount
- * comes off the server as a Decimal string.
- */
+function decisionState(decision: string | undefined): FunctionState {
+  if (decision === "approve") return "ok";
+  if (decision === "reject") return "bad";
+  if (decision === "request_changes") return "progress";
+  return "pending";
+}
+
 function formatMoney(amount: string | null | undefined, currency = "USD") {
   if (amount === null || amount === undefined || amount === "") return null;
   try {
@@ -78,6 +71,14 @@ function formatMoney(amount: string | null | undefined, currency = "USD") {
   } catch {
     return `$${amount}`;
   }
+}
+
+function pkgStripe(pkg: ApprovalPackage): CardStripeVariant {
+  if (pkg.status === "voided" || pkg.status === "rejected") return "blocked";
+  if (pkg.floors?.requires_ceo) return "blocked";
+  if (pkg.status === "pending_finance_legal") return "at-risk";
+  if (pkg.status === "pending_delivery_hr") return "in-progress";
+  return null;
 }
 
 export interface CardMeta {
@@ -94,6 +95,13 @@ export interface CardMeta {
   ndaAgreement?: AgreementRow | null;
   msaAgreement?: AgreementRow | null;
   dueDate?: string | null;
+  /**
+   * S10-02: sow_version.governance_status. When it is
+   * ``legacy_not_evidenced`` the card renders a neutral "Legacy" chip
+   * so reviewers instantly see the record was imported, not signed
+   * through the pipeline. Other values render nothing.
+   */
+  governanceStatus?: string | null;
 }
 
 export interface PackageCardProps {
@@ -103,116 +111,98 @@ export interface PackageCardProps {
   href: string;
 }
 
+const FUNCTIONS: ApprovalFunction[] = ["delivery", "hr", "finance", "legal"];
+
 export function PackageCard({ pkg, meta, href }: PackageCardProps) {
   const age = ageInDays(pkg.submitted_at);
   const value = formatMoney(meta.proposedValue, meta.currency ?? "USD");
-  const belowFloor =
-    pkg.floors && !pkg.floors.us_pass && !pkg.floors.india_pass;
-  const mixedFloor =
-    pkg.floors &&
-    (pkg.floors.us_pass !== pkg.floors.india_pass || pkg.floors.requires_ceo);
+  const belowFloor = pkg.floors?.requires_ceo === true;
+  const gmTone: StatusTone = meta.marginPct
+    ? belowFloor
+      ? "danger"
+      : "success"
+    : "neutral";
+  const gmLabel = meta.marginPct
+    ? `${meta.marginPct}${belowFloor ? " · below floor" : ""}`
+    : meta.completeness ?? "GM pending";
+
+  const states: Partial<Record<"D" | "H" | "F" | "L", FunctionState>> = {};
+  const LETTER: Record<ApprovalFunction, "D" | "H" | "F" | "L"> = {
+    delivery: "D",
+    hr: "H",
+    finance: "F",
+    legal: "L",
+  };
+  for (const fn of FUNCTIONS) {
+    const dec = pkg.approvals.find((a) => a.function === fn);
+    states[LETTER[fn]] = decisionState(dec?.decision);
+  }
 
   return (
-    <article
-      className={cn(
-        "flex flex-col gap-3 rounded-panel border border-divider bg-surface p-3",
-        "text-body text-text transition-motion",
-        "hover:border-primary/40 focus-within:border-primary/60",
-      )}
+    <Link
+      to={href}
       data-testid={`sow-card-${pkg.id}`}
+      className={cn(
+        "flex flex-col gap-[6px] rounded-[8px] border border-border bg-surface",
+        "px-3 py-[10px] text-[13px] text-text",
+        "transition-motion hover:border-borderStrong",
+        "focus-visible:outline-focus",
+        cardStripeClass(pkgStripe(pkg)),
+      )}
     >
-      <header className="flex items-start justify-between gap-2">
-        <div className="min-w-0 space-y-1">
-          <p className="text-secondary text-text-secondary uppercase tracking-wide">
-            {(meta.engagementType ?? "engagement").replace(/_/g, " ")}
-          </p>
-          <Link
-            to={href}
-            className="block truncate text-body font-medium text-text hover:text-primary focus-visible:outline-focus"
-          >
-            {meta.sowName ?? "Untitled SOW"}
-          </Link>
-          <p className="truncate text-secondary text-text-secondary">
-            {meta.clientName ?? "Client TBD"}
-          </p>
-        </div>
-        <div className="shrink-0 text-right text-secondary text-text-secondary">
-          {age !== null ? <div>{age}d in stage</div> : <div>New</div>}
-          {meta.dueDate ? <div>Due {meta.dueDate}</div> : null}
-        </div>
-      </header>
-
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-section text-text tnum">
-          {value ?? "Value TBC"}
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-semibold text-text truncate">
+          {meta.clientName ?? meta.sowName ?? "Untitled SOW"}
         </span>
-        <span
-          className={cn(
-            "text-secondary tnum",
-            belowFloor ? "text-danger" : "text-text-secondary",
-          )}
-        >
-          {meta.marginPct ? `${meta.marginPct} GM` : "GM pending"}
-          {meta.completeness ? ` · ${meta.completeness}` : ""}
-        </span>
+        {value ? (
+          <span className="tnum text-[12px] text-text-secondary">{value}</span>
+        ) : null}
       </div>
+      {meta.sowName || meta.engagementType ? (
+        <div className="text-[12px] text-text-secondary truncate">
+          {[meta.sowName, meta.engagementType]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap gap-1">
-        <StatusBadge
-          tone={agreementTone(meta.ndaAgreement?.state)}
-          label={`NDA ${agreementShort(meta.ndaAgreement?.state)}`}
-          className="text-secondary"
-        />
-        <StatusBadge
-          tone={agreementTone(meta.msaAgreement?.state)}
-          label={`MSA ${agreementShort(meta.msaAgreement?.state)}`}
-          className="text-secondary"
-        />
-        {mixedFloor ? (
-          <StatusBadge tone="warn" label="CEO route" />
+      <div className="flex flex-wrap items-center gap-[4px]">
+        <StatusBadge tone={gmTone} label={gmLabel} />
+        {meta.governanceStatus === "legacy_not_evidenced" ? (
+          <StatusBadge
+            tone="neutral"
+            label="Legacy"
+            data-testid="legacy-chip"
+          />
         ) : null}
       </div>
 
-      <div
-        className="flex items-center gap-1"
-        aria-label="Functional review status"
-      >
-        {FUNCTIONS.map((fn) => {
-          const decision = pkg.approvals.find((a) => a.function === fn);
-          const tone = decisionTone(decision?.decision);
-          const label = decisionShortLabel(decision?.decision);
-          return (
-            <span
-              key={fn}
-              title={`${fn}: ${label}`}
-              aria-label={`${fn} ${label}`}
-              className={cn(
-                "inline-flex h-5 w-5 items-center justify-center rounded-[6px]",
-                "text-secondary font-medium",
-                tone === "ok" && "bg-success-surface text-success",
-                tone === "warn" && "bg-warning-surface text-warning",
-                tone === "danger" && "bg-danger-surface text-danger",
-                tone === "neutral" && "bg-divider text-text-secondary",
-                tone === "primarySubtle" && "bg-primary-subtle text-primary",
-              )}
-            >
-              {FUNCTION_LABELS[fn]}
-            </span>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-[4px]">
+        <span className="text-[11px] text-text-muted">NDA</span>
+        <StatusBadge
+          tone={agreementTone(meta.ndaAgreement?.state)}
+          label={agreementShort(meta.ndaAgreement?.state)}
+        />
+        <span className="text-[11px] text-text-muted ml-1">MSA</span>
+        <StatusBadge
+          tone={agreementTone(meta.msaAgreement?.state)}
+          label={agreementShort(meta.msaAgreement?.state)}
+        />
       </div>
 
-      <footer className="flex items-center justify-between gap-2 border-t border-divider pt-2">
-        <span
-          className="truncate text-secondary text-text-secondary"
-          title={meta.ownerEmail ?? undefined}
-        >
-          {meta.ownerName ?? meta.ownerEmail ?? "Owner unassigned"}
-        </span>
-        <span className="truncate text-secondary text-text">
+      <FunctionMarkRow states={states} />
+
+      <div className="mt-1 flex items-center justify-between text-[12px] text-text-muted">
+        <span className="truncate">
+          {meta.ownerName ?? meta.ownerEmail
+            ? `${meta.ownerName ?? meta.ownerEmail} · `
+            : ""}
           {meta.nextAction ?? "Awaiting next reviewer"}
         </span>
-      </footer>
-    </article>
+        {age !== null ? (
+          <span className="tnum shrink-0">{age}d</span>
+        ) : null}
+      </div>
+    </Link>
   );
 }

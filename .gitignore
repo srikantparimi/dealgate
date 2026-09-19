@@ -45,3 +45,4 @@ web/tsconfig.tsbuildinfo
 # Editor
 .vscode/
 .idea/
+api/dev.db

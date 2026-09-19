@@ -194,7 +194,7 @@ describe("CommandCenterPage", () => {
     stubEverything();
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Pipeline value/i)).toBeInTheDocument();
+      expect(screen.getByText(/Open pipeline/i)).toBeInTheDocument();
     });
     expect(
       screen.getByText(/SOW packages in progress/i),
@@ -275,7 +275,7 @@ describe("CommandCenterPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("delivery economics surfaces US and India floor labels", async () => {
+  it("delivery economics surfaces the approved / forecast / floor legend", async () => {
     stubEverything();
     renderPage();
     await waitFor(() => {
@@ -283,10 +283,11 @@ describe("CommandCenterPage", () => {
         screen.getByRole("region", { name: /Delivery economics/i }),
       ).toBeInTheDocument();
     });
-    // "US floor" appears both in the row label and the basis footnote —
-    // use *AllByText so the test just asserts the labels exist.
-    expect(screen.getAllByText(/US floor/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/India floor/i).length).toBeGreaterThan(0);
+    // The prototype legend labels the three series so the eye can decode
+    // the two bars + floor line without hovering.
+    expect(screen.getByText(/Approved GM/i)).toBeInTheDocument();
+    expect(screen.getByText(/Forecast final GM/i)).toBeInTheDocument();
+    expect(screen.getByText(/Policy floor/i)).toBeInTheDocument();
   });
 
   it("renders skeletons while the page is loading", () => {
@@ -336,10 +337,10 @@ describe("CommandCenterPage", () => {
     stubEverything();
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Pipeline value/i)).toBeInTheDocument();
+      expect(screen.getByText(/Open pipeline/i)).toBeInTheDocument();
     });
     // Metric value degrades honestly.
-    const pipelineTile = screen.getByText(/Pipeline value/i).closest("a");
+    const pipelineTile = screen.getByText(/Open pipeline/i).closest("a");
     expect(pipelineTile?.textContent ?? "").toMatch(/Unavailable/);
     expect(ceoSpy).not.toHaveBeenCalled();
   });
