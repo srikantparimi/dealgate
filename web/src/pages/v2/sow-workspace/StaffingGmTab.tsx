@@ -1,80 +1,129 @@
+/**
+ * S9 — Staffing & GM tab.
+ *
+ * Opens pre-populated from the auto-staffed `gm_model` returned by the
+ * SOW-confirmation flow. Editing a resource line **is the review** —
+ * there is no separate "enter delivery model" wizard. Every derived
+ * value carries a provenance chip (CLAUDE.md rule 10). A `Rebuild from
+ * SOW` affordance appears when a newer SOW version is available.
+ *
+ * All numbers are Decimal strings owned by the server. This file does
+ * no business math (CLAUDE.md rule 2). Editing a row flips the row's
+ * provenance to `manual` — the server records the audit event.
+ */
+import { useMemo } from "react";
+import { RefreshCw } from "lucide-react";
 import type {
-  DeliveryCostLineRow,
   DeliveryGmModel,
   DeliveryResourceLineRow,
 } from "../../../api/client";
-import { MarginCell } from "../../../ui-v2/MarginCell";
+import { EmptyState } from "../../../ui-v2/EmptyState";
 import { Metric } from "../../../ui-v2/Metric";
 import { MoneyCell } from "../../../ui-v2/MoneyCell";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
+import { Button } from "../../../ui-v2/primitives/button";
 import { formatPercent, formatUsd } from "./format";
 import type { WorkspaceSnapshot } from "./readiness";
-
-/**
- * Staffing & GM tab (spec §9). Displays the approved / current / scenario
- * pickers, the summary metrics, independent US + India tests, and the
- * staffing grid. Never computes anything — every number was rendered by
- * the server-owned engine and passed in as a Decimal string.
- */
+import { CommercialsPanel } from "./staffing/CommercialsPanel";
+import { ResourceLineRow } from "./staffing/ResourceLineRow";
 
 type ViewerRole = "restricted" | "full";
+
+export interface StaffingGmTabProps {
+  snap: WorkspaceSnapshot;
+  viewer?: ViewerRole;
+  /** Fired when the reviewer edits a row inline. When absent the row
+   * renders without an Edit affordance (read-only surface). */
+  onSaveRow?: (
+    id: string,
+    patch: Partial<DeliveryResourceLineRow>,
+  ) => void | Promise<void>;
+  /** Fired when the reviewer asks the server to re-run auto-staffing
+   * because a newer SOW version exists. */
+  onRebuildFromSow?: () => void | Promise<void>;
+}
 
 export function StaffingGmTab({
   snap,
   viewer = "full",
-}: {
-  snap: WorkspaceSnapshot;
-  viewer?: ViewerRole;
-}) {
+  onSaveRow,
+  onRebuildFromSow,
+}: StaffingGmTabProps) {
   const gm = snap.gmModel;
   if (!gm) {
     return (
-      <div className="rounded-panel border border-divider bg-surface p-4 text-body text-text-secondary">
-        No delivery model yet. Build one from the GM sandbox or a template.
-      </div>
+      <EmptyState
+        title="No delivery model yet"
+        description="Upload the SOW and the auto-staffing pipeline will populate this tab. This page never presents a blank grid."
+        action={
+          onRebuildFromSow ? (
+            <Button type="button" onClick={onRebuildFromSow}>
+              <RefreshCw className="h-4 w-4" aria-hidden /> Build from SOW
+            </Button>
+          ) : undefined
+        }
+      />
     );
   }
-  const computed = gm.computed ?? null;
+  const hasNewerSow =
+    gm.latest_sow_version_id != null &&
+    gm.latest_sow_version_id !== gm.sow_version_id;
 
   return (
-    <div className="space-y-6">
-      <VersionSelector gm={gm} />
-      <SummaryMetrics gm={gm} />
-      <FloorTests computed={computed} />
-      <RevenueBreakdown gm={gm} />
-      <CostBreakdown gm={gm} viewer={viewer} />
-      <StaffingGrid gm={gm} viewer={viewer} />
-      <PolicyFootnote gm={gm} />
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="space-y-6">
+        <StaffingHeader gm={gm} hasNewerSow={hasNewerSow} onRebuildFromSow={onRebuildFromSow} />
+        <SummaryMetrics gm={gm} />
+        <RevenueBreakdown gm={gm} />
+        <CostBreakdown gm={gm} viewer={viewer} />
+        <StaffingGrid gm={gm} viewer={viewer} onSaveRow={onSaveRow} />
+        <PolicyFootnote gm={gm} />
+      </div>
+      <aside className="space-y-4">
+        <CommercialsPanel computed={gm.computed ?? null} />
+      </aside>
     </div>
   );
 }
 
-function VersionSelector({ gm }: { gm: DeliveryGmModel }) {
+function StaffingHeader({
+  gm,
+  hasNewerSow,
+  onRebuildFromSow,
+}: {
+  gm: DeliveryGmModel;
+  hasNewerSow: boolean;
+  onRebuildFromSow?: () => void | Promise<void>;
+}) {
   return (
     <section
-      aria-label="Version selector"
+      aria-label="Staffing header"
       className="flex flex-wrap items-center gap-3 rounded-panel border border-divider bg-surface p-4"
     >
-      <div className="flex flex-col">
-        <span className="text-secondary uppercase tracking-wide text-text-secondary">
-          Approved baseline
-        </span>
-        <span className="text-body text-text">—</span>
+      <div>
+        <p className="text-secondary uppercase tracking-wide text-text-secondary">
+          Auto-derived staffing plan
+        </p>
+        <p className="text-body text-text">
+          GM version <span className="tnum">{gm.id.slice(-8)}</span> ·
+          {gm.resource_lines.length} resource line
+          {gm.resource_lines.length === 1 ? "" : "s"}
+        </p>
       </div>
-      <div className="flex flex-col">
-        <span className="text-secondary uppercase tracking-wide text-text-secondary">
-          Current draft
-        </span>
-        <span className="text-body text-text">{gm.id.slice(-8)}</span>
-      </div>
-      <div className="flex flex-col">
-        <span className="text-secondary uppercase tracking-wide text-text-secondary">
-          Scenarios
-        </span>
-        <span className="text-body text-text-secondary">None saved</span>
-      </div>
-      <div className="ml-auto flex items-center gap-2 text-secondary text-text-secondary">
-        Compare available in Studio.
+      <div className="ml-auto flex items-center gap-2">
+        {hasNewerSow ? (
+          <StatusBadge tone="warning" label="Newer SOW extraction available" />
+        ) : null}
+        {onRebuildFromSow ? (
+          <Button
+            type="button"
+            variant={hasNewerSow ? "primary" : "secondary"}
+            onClick={onRebuildFromSow}
+            data-testid="staffing-rebuild-from-sow"
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden /> Rebuild from SOW
+          </Button>
+        ) : null}
       </div>
     </section>
   );
@@ -101,10 +150,7 @@ function SummaryMetrics({ gm }: { gm: DeliveryGmModel }) {
   const gmBlended = formatPercent(c?.gm_blended ?? null);
 
   return (
-    <section
-      aria-label="Commercial totals"
-      className="grid gap-3 sm:grid-cols-4"
-    >
+    <section aria-label="Commercial totals" className="grid gap-3 sm:grid-cols-4">
       <Metric label="Revenue" value={revenue ?? "Unavailable"} />
       <Metric label="Delivery cost" value={cost ?? "Unavailable"} />
       <Metric label="Gross profit" value={profit ?? "Unavailable"} />
@@ -113,95 +159,22 @@ function SummaryMetrics({ gm }: { gm: DeliveryGmModel }) {
   );
 }
 
-function FloorTests({
-  computed,
-}: {
-  computed: DeliveryGmModel["computed"] | null;
-}) {
-  const policy = computed?.policy;
-  const rows: Array<{
-    location: string;
-    gm: string | null;
-    floor: string | null;
-    pass: boolean | null;
-  }> = [
-    {
-      location: "US",
-      gm: computed?.gm_us ?? null,
-      floor: policy?.us_floor ?? null,
-      pass: policy?.us_pass ?? null,
-    },
-    {
-      location: "India",
-      gm: computed?.gm_india ?? null,
-      floor: policy?.india_floor ?? null,
-      pass: policy?.india_pass ?? null,
-    },
-  ];
-
-  return (
-    <section
-      aria-label="Floor tests"
-      className="rounded-panel border border-divider bg-surface p-4"
-    >
-      <h2 className="text-section text-text mb-3">Floor tests</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-body">
-          <thead>
-            <tr className="text-left text-text-secondary text-secondary uppercase">
-              <th className="py-2 pr-4">Geography</th>
-              <th className="py-2 pr-4 text-right">Achieved GM</th>
-              <th className="py-2 pr-4 text-right">Required floor</th>
-              <th className="py-2 pr-4">Outcome</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.location} className="border-t border-divider">
-                <td className="py-2 pr-4 text-text">{r.location}</td>
-                <td className="py-2 pr-4">
-                  <MarginCell
-                    value={formatPercent(r.gm) ?? undefined}
-                    outcome={
-                      r.pass == null
-                        ? "unavailable"
-                        : r.pass
-                          ? "pass"
-                          : "fail"
-                    }
-                  />
-                </td>
-                <td className="py-2 pr-4">
-                  <MoneyCell value={formatPercent(r.floor) ?? undefined} />
-                </td>
-                <td className="py-2 pr-4">
-                  {r.pass == null ? (
-                    <StatusBadge tone="neutral" label="Not tested" />
-                  ) : r.pass ? (
-                    <StatusBadge tone="ok" label="Pass" />
-                  ) : (
-                    <StatusBadge tone="danger" label="Below floor" />
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 function RevenueBreakdown({ gm }: { gm: DeliveryGmModel }) {
-  const sections = [
-    { key: "fixed_fee", label: "Fixed fee" },
-    { key: "milestones", label: "Milestones" },
-    { key: "tandm", label: "Time & materials" },
-    { key: "recurring", label: "Recurring" },
-    { key: "one_time", label: "One-time" },
-    { key: "discounts", label: "Discounts" },
-    { key: "credits", label: "Credits" },
-  ];
+  const sections = useMemo(
+    () => [
+      {
+        key: "fixed_fee",
+        label: "Fixed fee",
+        value: gm.revenue_us ?? null,
+      },
+      { key: "milestones", label: "Milestones", value: null as string | null },
+      { key: "tandm", label: "Time & materials", value: null as string | null },
+      { key: "recurring", label: "Recurring", value: null as string | null },
+      { key: "one_time", label: "One-time", value: null as string | null },
+      { key: "discounts", label: "Discounts", value: null as string | null },
+    ],
+    [gm.revenue_us],
+  );
   return (
     <section
       aria-label="Revenue breakdown"
@@ -219,13 +192,7 @@ function RevenueBreakdown({ gm }: { gm: DeliveryGmModel }) {
             className="flex items-center justify-between rounded-control border border-divider p-3"
           >
             <span className="text-body text-text">{s.label}</span>
-            <MoneyCell
-              value={
-                s.key === "fixed_fee"
-                  ? (formatUsd(gm.revenue_us ?? null) ?? undefined)
-                  : undefined
-              }
-            />
+            <MoneyCell value={formatUsd(s.value) ?? undefined} />
           </div>
         ))}
       </div>
@@ -265,11 +232,7 @@ function CostBreakdown({
       <div className="flex items-center justify-between">
         <h2 className="text-section text-text">Cost breakdown</h2>
         {viewer === "restricted" ? (
-          <StatusBadge
-            tone="neutral"
-            label="Aggregated view"
-            icon={undefined}
-          />
+          <StatusBadge tone="neutral" label="Aggregated view" />
         ) : null}
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -280,9 +243,7 @@ function CostBreakdown({
           >
             <span className="text-body text-text">{s.label}</span>
             <MoneyCell
-              value={
-                s.value != null ? (formatUsd(String(s.value)) ?? undefined) : undefined
-              }
+              value={s.value != null ? (formatUsd(String(s.value)) ?? undefined) : undefined}
             />
           </div>
         ))}
@@ -294,33 +255,37 @@ function CostBreakdown({
 function StaffingGrid({
   gm,
   viewer,
+  onSaveRow,
 }: {
   gm: DeliveryGmModel;
   viewer: ViewerRole;
+  onSaveRow?: StaffingGmTabProps["onSaveRow"];
 }) {
   const rows = gm.resource_lines;
   if (rows.length === 0) {
     return (
-      <section
-        aria-label="Staffing grid"
-        className="rounded-panel border border-divider bg-surface p-4 text-body text-text-secondary"
-      >
-        No resource lines on this version.
-      </section>
+      <EmptyState
+        title="Auto-staffing produced no resource lines"
+        description="This is rare — usually the SOW is silent on staffing. Use Rebuild from SOW after uploading a corrected extraction, or add lines manually with a written justification."
+      />
     );
   }
+  const toHire = rows.filter((r) => r.person_name == null).length;
   return (
     <section
       aria-label="Staffing grid"
       className="rounded-panel border border-divider bg-surface p-4"
     >
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-section text-text">Staffing</h2>
-        <span className="text-secondary text-text-secondary">
-          {viewer === "restricted"
-            ? "Employee compensation hidden"
-            : "Loaded cost visible"}
-        </span>
+        <div>
+          <h2 className="text-section text-text">Staffing grid</h2>
+          <p className="text-secondary text-text-secondary">
+            {rows.length} resource lines · {toHire} to hire ·{" "}
+            {viewer === "restricted"
+              ? "employee compensation hidden"
+              : "loaded cost visible"}
+          </p>
+        </div>
       </div>
       <div
         role="region"
@@ -331,109 +296,32 @@ function StaffingGrid({
           <thead>
             <tr className="text-left text-text-secondary text-secondary uppercase">
               <th className="py-2 pr-3">Role</th>
+              <th className="py-2 pr-3">Seniority</th>
               <th className="py-2 pr-3">Location</th>
-              <th className="py-2 pr-3">Grade</th>
-              <th className="py-2 pr-3">Resource</th>
-              <th className="py-2 pr-3">Start</th>
-              <th className="py-2 pr-3">End</th>
-              <th className="py-2 pr-3 text-right">Alloc</th>
-              <th className="py-2 pr-3 text-right">Hours</th>
               <th className="py-2 pr-3 text-right">Bill rate</th>
+              <th className="py-2 pr-3 text-right">Hours</th>
               <th className="py-2 pr-3 text-right">
-                {viewer === "restricted" ? "Cost band" : "Loaded cost"}
+                {viewer === "restricted" ? "Cost band" : "Cost"}
               </th>
               <th className="py-2 pr-3 text-right">Revenue</th>
-              <th className="py-2 pr-3 text-right">Cost</th>
               <th className="py-2 pr-3 text-right">GM</th>
+              <th className="py-2 pr-3">Provenance</th>
+              <th className="py-2 pr-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <StaffingRow key={row.id} row={row} viewer={viewer} />
+              <ResourceLineRow
+                key={row.id}
+                row={row}
+                viewer={viewer}
+                onSave={onSaveRow}
+              />
             ))}
           </tbody>
         </table>
       </div>
     </section>
-  );
-}
-
-function StaffingRow({
-  row,
-  viewer,
-}: {
-  row: DeliveryResourceLineRow;
-  viewer: ViewerRole;
-}) {
-  const hours = Number(row.hours_billable);
-  const bill = Number(row.hourly_bill_rate);
-  const cost = row.hourly_cost != null ? Number(row.hourly_cost) : null;
-  const alloc = Number(row.allocation_pct);
-  const revenue = Number.isFinite(hours * bill) ? hours * bill : null;
-  const costTotal =
-    cost != null && Number.isFinite(hours * cost) ? hours * cost : null;
-  const gmValue =
-    revenue != null && costTotal != null && revenue > 0
-      ? (revenue - costTotal) / revenue
-      : null;
-  return (
-    <tr className="border-t border-divider">
-      <td className="py-2 pr-3 text-text">{row.role}</td>
-      <td className="py-2 pr-3 text-text">{row.location}</td>
-      <td className="py-2 pr-3 text-text">{row.seniority}</td>
-      <td className="py-2 pr-3 text-text">
-        {row.person_name ?? (
-          <span className="text-text-secondary italic">TBD</span>
-        )}
-      </td>
-      <td className="py-2 pr-3 text-text">{row.start_date}</td>
-      <td className="py-2 pr-3 text-text">{row.end_date}</td>
-      <td className="py-2 pr-3">
-        <span className="tnum block text-right">
-          {Number.isFinite(alloc) ? `${(alloc * 100).toFixed(0)}%` : "—"}
-        </span>
-      </td>
-      <td className="py-2 pr-3">
-        <MoneyCell value={String(hours.toFixed(1))} />
-      </td>
-      <td className="py-2 pr-3">
-        <MoneyCell value={formatUsd(String(bill)) ?? undefined} />
-      </td>
-      <td className="py-2 pr-3">
-        <MoneyCell
-          value={
-            viewer === "restricted"
-              ? undefined
-              : cost != null
-                ? (formatUsd(String(cost)) ?? undefined)
-                : undefined
-          }
-          unavailableLabel={
-            viewer === "restricted" ? "Restricted" : "Unavailable"
-          }
-        />
-      </td>
-      <td className="py-2 pr-3">
-        <MoneyCell
-          value={revenue != null ? (formatUsd(String(revenue)) ?? undefined) : undefined}
-        />
-      </td>
-      <td className="py-2 pr-3">
-        <MoneyCell
-          value={
-            costTotal != null
-              ? (formatUsd(String(costTotal)) ?? undefined)
-              : undefined
-          }
-        />
-      </td>
-      <td className="py-2 pr-3">
-        <MarginCell
-          value={gmValue != null ? `${(gmValue * 100).toFixed(1)}%` : undefined}
-          outcome={gmValue == null ? "unavailable" : undefined}
-        />
-      </td>
-    </tr>
   );
 }
 
@@ -450,10 +338,4 @@ function PolicyFootnote({ gm }: { gm: DeliveryGmModel }) {
       </p>
     </section>
   );
-}
-
-// The row helper is only exported for `costLineTotal` in the cost-line
-// sub-section but kept private otherwise.
-export function costLineTotal(lines: DeliveryCostLineRow[]): number {
-  return lines.reduce((sum, l) => sum + Number(l.amount || 0), 0);
 }

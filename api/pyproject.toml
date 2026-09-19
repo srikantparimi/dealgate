@@ -35,6 +35,9 @@ dev = [
   "mypy>=1.11",
   "hypothesis>=6.112",
   "aiosqlite>=0.20",
+  # Deterministic PDF builder for the fixture SOWs under
+  # `fixtures/sample_sows/`. Only used by dev + CI, never at runtime.
+  "reportlab>=4.2",
 ]
 
 [tool.pytest.ini_options]

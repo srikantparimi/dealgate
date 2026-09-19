@@ -1167,6 +1167,171 @@ export function submitSowVersion(sowVersionId: UUID): Promise<SowVersion> {
   });
 }
 
+// --- SOW confirmation package (S9 Wave 1/2) --------------------------------
+
+/**
+ * Per-field provenance envelope (CLAUDE.md rule 10). Every value the
+ * confirmation page renders carries one so the human can see what the
+ * system decided and why. `manual` badges must be highlighted in the UI
+ * per the sow-first spec.
+ */
+export type SowProvenance =
+  | "extracted"
+  | "looked_up"
+  | "calculated"
+  | "defaulted"
+  | "manual";
+
+export type SowFieldConfirmStatus =
+  | "unconfirmed"
+  | "confirmed"
+  | "disputed";
+
+export interface SowProvenanceEntry {
+  value: unknown;
+  provenance: SowProvenance;
+  page_ref?: number | null;
+  source_id?: string | null;
+  confidence?: number | null;
+  warning?: string | null;
+  status?: SowFieldConfirmStatus;
+}
+
+/**
+ * Top-2 engagement type candidates from the classifier. When
+ * `auto_confirm` is true the UI shows a chip with a small "change"
+ * affordance; otherwise it renders a two-candidate chooser.
+ */
+export interface SowConfirmationEngagementCandidate {
+  type: EngagementType;
+  confidence: number;
+}
+
+export interface SowConfirmationEngagement {
+  primary: SowConfirmationEngagementCandidate;
+  secondary: SowConfirmationEngagementCandidate | null;
+  rule_matched: string | null;
+  auto_confirm: boolean;
+}
+
+export interface SowConfirmationStaffingLine {
+  role: string;
+  seniority: string;
+  location: "US" | "India" | string;
+  allocation_pct: DecimalStr;
+  hours_billable: DecimalStr;
+  hourly_bill_rate: DecimalStr;
+  provenance: SowProvenance;
+  source_id: string | null;
+  warning: string | null;
+  start_date: ISODate | null;
+  end_date: ISODate | null;
+}
+
+export interface SowConfirmationStaffing {
+  lines: SowConfirmationStaffingLine[];
+  notes: string[];
+  warnings: string[];
+  sources: string[];
+}
+
+export interface SowConfirmationGmModel {
+  id: UUID;
+  engagement_type: EngagementType | string;
+  revenue_us: DecimalStr | null;
+  revenue_india: DecimalStr | null;
+  resource_line_count: number;
+}
+
+/**
+ * The floor block mirrors the sandbox / delivery-model shape but adds
+ * pre-computed component values so the browser never has to do math
+ * (spec §21, CLAUDE.md rule 2).
+ */
+export interface SowConfirmationFloors {
+  us_pass: boolean;
+  india_pass: boolean;
+  requires_ceo: boolean;
+  failing: string[];
+  gm_us?: DecimalStr | null;
+  gm_india?: DecimalStr | null;
+  gm_blended?: DecimalStr | null;
+  reason?: string;
+  error?: string;
+}
+
+export type SowConfirmationApproverFunction =
+  | "delivery"
+  | "hr"
+  | "finance"
+  | "legal";
+
+export interface SowConfirmationApprover {
+  user_id: UUID | null;
+  source: string;
+  business_unit: string | null;
+}
+
+export interface SowConfirmationProjectedTask {
+  kind: string;
+  due: ISODate | string | null;
+  owner_role: string;
+}
+
+export interface SowConfirmationNeedsYou {
+  field: string;
+  reason: string;
+}
+
+export interface SowConfirmationCeoGate {
+  will_trigger: boolean;
+  brief?: Record<string, unknown> | null;
+}
+
+export interface SowConfirmationSowVersion {
+  id: UUID;
+  extracted_fields: Record<string, SowProvenanceEntry | unknown> | null;
+  extract_status: SowExtractStatus;
+  engagement_type_suggested: string | null;
+}
+
+export interface SowConfirmationPayload {
+  sow_version: SowConfirmationSowVersion;
+  engagement: SowConfirmationEngagement;
+  staffing: SowConfirmationStaffing;
+  gm_model: SowConfirmationGmModel | null;
+  floors: SowConfirmationFloors;
+  approvers: Record<SowConfirmationApproverFunction, SowConfirmationApprover>;
+  projected_tasks: SowConfirmationProjectedTask[];
+  needs_you: SowConfirmationNeedsYou[];
+  ceo_gate: SowConfirmationCeoGate;
+}
+
+/**
+ * Fetch the derived confirmation payload for one opportunity. Idempotent —
+ * the server reuses the auto-GM row for the SOW version if one exists.
+ */
+export function getSowConfirmation(
+  opportunityId: UUID,
+): Promise<SowConfirmationPayload> {
+  return request<SowConfirmationPayload>(
+    `/sow/${opportunityId}/confirmation`,
+  );
+}
+
+/**
+ * Commit the confirmation — transitions the opportunity to
+ * ``SOWDraft.confirmed`` and returns the frozen payload. Idempotent.
+ */
+export function submitSowConfirmation(
+  opportunityId: UUID,
+): Promise<SowConfirmationPayload> {
+  return request<SowConfirmationPayload>(
+    `/sow/${opportunityId}/confirmation/submit`,
+    { method: "POST" },
+  );
+}
+
 // --- Delivery Model Builder (S3 E6) ---------------------------------------
 
 /** Same location alphabet as the rate card + GM sandbox. */
@@ -1182,6 +1347,41 @@ export type DeliveryCostCategory =
   | "travel"
   | "subcontractor"
   | "other";
+
+/**
+ * S9 — provenance kind for every derived field on the SOW-first pipeline
+ * (docs/sow-first-principles.md, CLAUDE.md rule 10). `manual` means a
+ * human overrode the derivation; every other kind names where the value
+ * came from.
+ */
+export type ProvenanceKind =
+  | "extracted"
+  | "looked_up"
+  | "calculated"
+  | "defaulted"
+  | "manual";
+
+/**
+ * S9 — provenance metadata attached to a derived resource line. Optional
+ * so existing callers keep working; new SOW-confirmation output attaches
+ * this to every row.
+ */
+export interface DeliveryLineProvenance {
+  provenance: ProvenanceKind;
+  /** Human-readable label for the source (e.g. "SOW p.4 §Resources"). */
+  source_label?: string | null;
+  /** Foreign key to the source record (e.g. past-SOW id, capability
+   *  catalog row) so the UI can render a link chip. */
+  source_id?: string | null;
+  /** Page ref for extracted values. */
+  page_ref?: number | null;
+  /** Extractor confidence in [0, 1]. */
+  confidence?: number | null;
+  /** Non-blocking amber warning (e.g. "estimated from past SOW"). */
+  warning?: string | null;
+  /** Where the bill rate came from: client card / SOW override / fallback. */
+  bill_rate_source?: "client_card" | "sow_override" | "fallback" | null;
+}
 
 /**
  * A row in the resource grid. All money / percent fields are strings so the
@@ -1204,6 +1404,8 @@ export interface DeliveryResourceLineInput {
   /** S7 wave 2 — WBS phase name join key at save time. Null keeps the
    * row in the Builder's "Ungrouped" bucket. */
   phase_name?: string | null;
+  /** S9 — SOW-first provenance stamp (may be absent on legacy rows). */
+  provenance_meta?: DeliveryLineProvenance | null;
 }
 
 export interface DeliveryCostLineInput {
@@ -1212,6 +1414,7 @@ export interface DeliveryCostLineInput {
   location: DeliveryLocation;
   note?: string | null;
   phase_name?: string | null;
+  provenance_meta?: DeliveryLineProvenance | null;
 }
 
 export interface DeliveryResourceLineRow extends DeliveryResourceLineInput {
@@ -1316,6 +1519,11 @@ export interface DeliveryGmModel {
   cost_lines: DeliveryCostLineRow[];
   completeness_issues: string[];
   computed?: DeliveryComputedResult;
+  /** S9 — id of the newest SOW version, if the auto-staffing pipeline
+   * has a fresher extraction than `sow_version_id`. When set and
+   * distinct from `sow_version_id`, the workspace shows the "Rebuild
+   * from SOW" affordance. */
+  latest_sow_version_id?: UUID | null;
 }
 
 export interface DeliveryModelVersionSummary {

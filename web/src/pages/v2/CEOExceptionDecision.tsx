@@ -1,3 +1,16 @@
+/**
+ * S9 — CEO exception decision page.
+ *
+ * Renders the `brief_json` that the SOW-first pipeline pre-drafts when
+ * the auto-GM run predicts a below-floor package. Nothing is blank on
+ * open. Rationale is the only field a human writes (CLAUDE.md rule 10,
+ * sow-first-principles §6). Every final decision requires a rationale
+ * of at least one sentence; conditional approval also requires every
+ * condition to carry owner + due + evidence + blocking scope.
+ *
+ * Never re-computes GM. The floor bars, gap chips and geography table
+ * display Decimal strings the server already computed.
+ */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -19,7 +32,9 @@ import { StatusBadge } from "../../ui-v2/StatusBadge";
 import { Button } from "../../ui-v2/primitives/button";
 import { Input } from "../../ui-v2/primitives/input";
 import { Label } from "../../ui-v2/primitives/label";
+import { GeographyFloorBars } from "./ceo-exception/GeographyFloorBars";
 import { GeographyTable } from "./ceo-exception/GeographyTable";
+import { PackageGates } from "./ceo-exception/PackageGates";
 import {
   ConditionsEditor,
   allConditionsComplete,
@@ -31,19 +46,24 @@ import {
   formatPpGap,
 } from "./ceo-exception/format";
 
-type DecisionMode = "approve" | "approve_conditions" | "request_changes" | "decline";
+type DecisionMode =
+  | "approve"
+  | "approve_conditions"
+  | "request_changes"
+  | "decline";
 
-/**
- * CEO exception decision page (spec §14). Explains the project first,
- * then asks for a decision. Not a tab — dedicated route with its own
- * sticky action column.
- */
+/** Very light "is this at least one sentence" gate: >= 12 non-space chars
+ *  and ending in `.`, `!`, `?` or `…`. Keeps the assertion in one place. */
+export function isSentence(text: string): boolean {
+  const t = text.trim();
+  if (t.replace(/\s/g, "").length < 12) return false;
+  return /[.!?…]\s*$/.test(t);
+}
+
 export function CEOExceptionDecisionPage() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
 
-  // We land on `/sows/:sowId/exception` — resolve the pending exception
-  // for this SOW's approval package.
   const [exception, setException] = useState<CeoException | null>(null);
   const [pkg, setPkg] = useState<ApprovalPackage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,8 +87,6 @@ export function CEOExceptionDecisionPage() {
     (async () => {
       try {
         const list = await listCeoExceptions("all");
-        // The exception is keyed by package id; we cannot filter by SOW id
-        // server-side today so pick the newest without a decision.
         const pending = list.items.find((e) => e.decision === null);
         if (!pending) {
           if (!cancelled) {
@@ -133,6 +151,19 @@ export function CEOExceptionDecisionPage() {
       ),
     [brief],
   );
+  const expectedProfit = useMemo(() => {
+    if (!brief) return null;
+    const rev =
+      brief.revenue.blended != null
+        ? Number(brief.revenue.blended)
+        : Number(brief.revenue.us ?? 0) + Number(brief.revenue.india ?? 0);
+    const cost =
+      brief.cost.blended != null
+        ? Number(brief.cost.blended)
+        : Number(brief.cost.us ?? 0) + Number(brief.cost.india ?? 0);
+    const p = rev - cost;
+    return Number.isFinite(p) ? formatUsd(String(p)) : null;
+  }, [brief]);
   const combinedGm = useMemo(
     () => formatPercent(brief?.gm.blended.value ?? null),
     [brief],
@@ -163,13 +194,14 @@ export function CEOExceptionDecisionPage() {
   };
 
   const conditionsReady = allConditionsComplete(conditions);
-  const requiresRationale = mode !== "request_changes";
+  // Rationale required for *every* final decision — the CEO cannot
+  // walk away without stating why (sow-first-principles §6).
+  const rationaleReady = isSentence(rationale) && rationaleSaved;
   const canSubmit =
     !!exception &&
     !busy &&
-    (requiresRationale ? rationaleSaved && rationale.trim().length > 0 : true) &&
-    (mode !== "approve_conditions" || conditionsReady) &&
-    (mode !== "decline" || rationale.trim().length > 0);
+    rationaleReady &&
+    (mode !== "approve_conditions" || conditionsReady);
 
   const submit = async () => {
     if (!exception) return;
@@ -187,7 +219,7 @@ export function CEOExceptionDecisionPage() {
           ? conditions
               .map(
                 (c) =>
-                  `${c.text} — owner: ${c.owner}, due: ${c.due}, evidence: ${c.evidence}`,
+                  `${c.text} — owner: ${c.owner}, due: ${c.due}, evidence: ${c.evidence}, blocks: ${blockingSummary(c)}`,
               )
               .join("\n")
           : null;
@@ -292,6 +324,8 @@ export function CEOExceptionDecisionPage() {
         }
       />
 
+      <PackageGates pkg={pkg} exception={exception} />
+
       {degraded.length > 0 ? (
         <p className="text-secondary text-warning">
           Degraded: {degraded.join(", ")}
@@ -300,14 +334,16 @@ export function CEOExceptionDecisionPage() {
 
       <section
         aria-label="Top metrics"
-        className="grid gap-3 sm:grid-cols-4"
+        className="grid gap-3 sm:grid-cols-5"
       >
         <Metric label="Proposed revenue" value={proposedRevenue ?? "Unavailable"} />
         <Metric label="Eligible cost" value={eligibleCost ?? "Unavailable"} />
+        <Metric label="Expected profit" value={expectedProfit ?? "Unavailable"} />
         <Metric label="Combined GM" value={combinedGm ?? "Unavailable"} />
-        <Metric label="Price gap to policy" value={priceGap ?? "Unavailable"} />
+        <Metric label="Price gap" value={priceGap ?? "Unavailable"} />
       </section>
 
+      <GeographyFloorBars brief={brief} />
       <GeographyTable brief={brief} />
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -325,30 +361,49 @@ export function CEOExceptionDecisionPage() {
             title="Client constraints & future value"
             body={brief.client.context}
           />
+          <TextSection
+            title="Contracted vs speculative future value"
+            body={
+              brief.team_summary ||
+              "Not summarised. Contracted revenue is the base rate; speculative future value is not credited."
+            }
+          />
           <BulletSection
             title="Alternatives considered"
             items={brief.alternatives}
           />
           <TextSection
-            title="Delivery feasibility"
+            title="Delivery feasibility (Delivery / HR)"
             body={brief.delivery_recommendation}
+          />
+          <TextSection
+            title="Finance & Legal recommendation"
+            body={brief.finance_recommendation}
           />
           <TextSection
             title="Downside sensitivity & recovery"
             body={
               brief.gross_profit_shortfall_usd
-                ? `Gross profit shortfall vs floor: ${formatUsd(brief.gross_profit_shortfall_usd)}.`
+                ? `Gross profit shortfall vs floor: ${formatUsd(brief.gross_profit_shortfall_usd)}. Owner: engagement account team. Trigger: monthly forecast review.`
                 : "No shortfall figure supplied."
             }
           />
           <BulletSection
             title="Evidence links"
-            items={brief.sources.map((s, i) => String((s as { title?: string }).title ?? `Source ${i + 1}`))}
+            items={brief.sources.map((s, i) =>
+              String(
+                (s as { title?: string }).title ?? `Source ${i + 1}`,
+              ),
+            )}
           />
         </div>
 
         <aside className="lg:col-span-1">
           <div className="sticky top-6 space-y-4">
+            <DecisionState savedDecision={savedDecision} />
+
+            <ApprovablePackages brief={brief} />
+
             <section
               aria-label="Rationale"
               className="rounded-panel border border-divider bg-surface p-4"
@@ -364,19 +419,21 @@ export function CEOExceptionDecisionPage() {
                   setRationale(e.target.value);
                   setRationaleSaved(false);
                 }}
-                placeholder="Why this exception is warranted."
+                placeholder="Why this exception is warranted. Full sentence, ending in a period."
               />
               <div className="mt-3 flex items-center justify-between gap-2">
                 <p className="text-secondary text-text-secondary">
                   {rationaleSaved
                     ? "Rationale saved."
-                    : "Save the rationale before approving."}
+                    : isSentence(rationale)
+                      ? "Save the rationale before recording a decision."
+                      : "Rationale must be at least one full sentence."}
                 </p>
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
-                  disabled={busy || rationale.trim() === ""}
+                  disabled={busy || !isSentence(rationale)}
                   onClick={saveRationale}
                 >
                   Save rationale
@@ -389,7 +446,7 @@ export function CEOExceptionDecisionPage() {
               data-testid="ceo-decision-panel"
               className="rounded-panel border border-divider bg-surface p-4 space-y-3"
             >
-              <h2 className="text-section text-text">Decision</h2>
+              <h2 className="text-section text-text">Decision actions</h2>
               <fieldset className="space-y-2">
                 <legend className="text-secondary text-text-secondary uppercase">
                   Choose action
@@ -450,11 +507,11 @@ export function CEOExceptionDecisionPage() {
                 variant={mode === "decline" ? "destructive" : "primary"}
                 title={
                   !canSubmit
-                    ? mode === "decline"
-                      ? "A decline reason is required."
+                    ? !rationaleReady
+                      ? "Save a full-sentence rationale before recording a decision."
                       : mode === "approve_conditions" && !conditionsReady
-                        ? "Every condition needs an owner and due date."
-                        : "Save a rationale before approving."
+                        ? "Every condition needs an owner, due date and evidence."
+                        : undefined
                     : undefined
                 }
               >
@@ -466,9 +523,11 @@ export function CEOExceptionDecisionPage() {
                       ? "Approve with conditions"
                       : "Approve exception"}
               </Button>
-              {!canSubmit && mode === "approve" ? (
+              {!canSubmit ? (
                 <p className="text-secondary text-text-secondary">
-                  A saved rationale is required before you can approve.
+                  {!rationaleReady
+                    ? "A saved, full-sentence rationale is required before any decision."
+                    : "Complete the conditions to enable submission."}
                 </p>
               ) : null}
             </section>
@@ -477,6 +536,70 @@ export function CEOExceptionDecisionPage() {
       </div>
     </div>
   );
+}
+
+function DecisionState({
+  savedDecision,
+}: {
+  savedDecision: CeoDecision | null;
+}) {
+  return (
+    <section
+      aria-label="Decision state"
+      className="rounded-panel border border-divider bg-surface p-4"
+      data-testid="decision-state"
+    >
+      <h2 className="text-section text-text mb-2">Decision state</h2>
+      {savedDecision ? (
+        <StatusBadge tone="ok" label={`Recorded: ${savedDecision}`} />
+      ) : (
+        <StatusBadge tone="warning" label="Awaiting your decision" />
+      )}
+    </section>
+  );
+}
+
+function ApprovablePackages({
+  brief,
+}: {
+  brief: { price_uplift: { us: string | null; india: string | null } };
+}) {
+  const rows: Array<{ label: string; value: string | null }> = [
+    { label: "US uplift to reach floor", value: brief.price_uplift.us },
+    { label: "India uplift to reach floor", value: brief.price_uplift.india },
+  ];
+  return (
+    <section
+      aria-label="Approvable package versions"
+      className="rounded-panel border border-divider bg-surface p-4"
+      data-testid="approvable-packages"
+    >
+      <h2 className="text-section text-text mb-2">
+        Approvable package versions
+      </h2>
+      <p className="text-secondary text-text-secondary mb-2">
+        Minimum price uplifts required to remove the exception:
+      </p>
+      <dl className="grid grid-cols-2 gap-2 text-secondary">
+        {rows.map((r) => (
+          <div key={r.label} className="rounded-control border border-divider p-2">
+            <dt className="text-text-secondary uppercase">{r.label}</dt>
+            <dd className="tnum text-text">
+              {r.value != null ? formatUsd(r.value) : "—"}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function blockingSummary(c: Condition): string {
+  const parts: string[] = [];
+  if (c.blocksSignature) parts.push("signature");
+  if (c.blocksDelivery) parts.push("delivery");
+  if (c.blocksMilestones) parts.push("milestones");
+  return parts.length ? parts.join(" + ") : "none";
 }
 
 function TextSection({ title, body }: { title: string; body: string }) {

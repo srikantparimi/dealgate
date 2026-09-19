@@ -1,0 +1,653 @@
+{
+  "01_staff_aug_us.pdf": {
+    "aux": {
+      "primary_location": "US",
+      "resource_table": [
+        {
+          "hourly_rate": "225",
+          "hours": "480",
+          "location": "US",
+          "person_name": "Consultant A",
+          "role": "Senior Data Engineer",
+          "seniority": "Senior"
+        },
+        {
+          "hourly_rate": "225",
+          "hours": "480",
+          "location": "US",
+          "person_name": "Consultant B",
+          "role": "Senior Data Engineer",
+          "seniority": "Senior"
+        },
+        {
+          "hourly_rate": "150",
+          "hours": "480",
+          "location": "US",
+          "person_name": "Consultant C",
+          "role": "Data Analyst",
+          "seniority": "Mid"
+        }
+      ]
+    },
+    "expected_engagement_type": "staff_aug",
+    "expected_rule": "rule.multiple_named_roles",
+    "fields": {
+      "acceptance_criteria": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "Client program lead sign-off on weekly timesheet."
+      },
+      "assumptions": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "Client provides laptop images and VPN access day 1."
+      },
+      "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "hourly"
+      },
+      "currency": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "USD"
+      },
+      "deliverables": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": [
+          "Sprint reports",
+          "Weekly status decks",
+          "Runbook updates"
+        ]
+      },
+      "engagement_type_suggested": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "staff_aug"
+      },
+      "exclusions": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "Travel unless pre-approved in writing."
+      },
+      "milestones": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": []
+      },
+      "notice_date": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-12-01"
+      },
+      "price": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "324000.00"
+      },
+      "scope_summary": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Provide three named consultants (2 Senior Data Engineers, 1 Data Analyst) on the client's Data Platform team, full-time, remote from US."
+      },
+      "signatories": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "name": "Jordan Miles",
+            "role": "Client program lead"
+          },
+          {
+            "name": "Sam Rivera",
+            "role": "Delivery lead"
+          }
+        ]
+      },
+      "term_end": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-12-31"
+      },
+      "term_start": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-10-01"
+      }
+    }
+  },
+  "02_managed_service_india.pdf": {
+    "aux": {
+      "coverage_hours": "168",
+      "fte_hours_per_week": "40",
+      "monthly_fee": "18000",
+      "primary_location": "India",
+      "primary_role": "Support Engineer",
+      "primary_seniority": "Mid"
+    },
+    "expected_engagement_type": "managed_service",
+    "expected_rule": "rule.monthly_fee_plus_sla",
+    "fields": {
+      "acceptance_criteria": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "Monthly SLA report accepted by client operations."
+      },
+      "assumptions": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "Client provides observability dashboards and PagerDuty rota."
+      },
+      "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "monthly_fee"
+      },
+      "currency": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "USD"
+      },
+      "deliverables": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": [
+          "Monthly SLA report",
+          "Runbook maintenance",
+          "On-call rota"
+        ]
+      },
+      "engagement_type_suggested": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "managed_service"
+      },
+      "exclusions": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "New feature build outside of runbook fixes."
+      },
+      "milestones": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": []
+      },
+      "notice_date": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2027-07-31"
+      },
+      "price": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "216000.00"
+      },
+      "scope_summary": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "24x7 managed service for the client's data pipelines. 168 hours of weekly coverage across three shifts, minimum 3 FTEs delivered from India. SLA: P1 response under 15 minutes, restore under 4 hours."
+      },
+      "signatories": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "name": "Priya Ravi",
+            "role": "Client operations lead"
+          },
+          {
+            "name": "Marco Lin",
+            "role": "Managed services lead"
+          }
+        ]
+      },
+      "term_end": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2027-09-30"
+      },
+      "term_start": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-10-01"
+      }
+    }
+  },
+  "03_fixed_price_mixed.pdf": {
+    "aux": {
+      "primary_location": "US"
+    },
+    "expected_engagement_type": "fixed_price",
+    "expected_rule": "rule.fixed_price_deliverables",
+    "fields": {
+      "acceptance_criteria": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "UAT sign-off by client sponsor per milestone."
+      },
+      "assumptions": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "Client provides AWS account and IAM access day 1."
+      },
+      "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "fixed_price"
+      },
+      "currency": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "USD"
+      },
+      "deliverables": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": [
+          "Discovery report",
+          "Target architecture",
+          "Data model",
+          "Ingestion pipelines",
+          "Cutover plan",
+          "Runbook"
+        ]
+      },
+      "engagement_type_suggested": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "fixed_price"
+      },
+      "exclusions": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "Third-party tool licences."
+      },
+      "milestones": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "date": "2026-10-31",
+            "name": "Discovery"
+          },
+          {
+            "date": "2026-11-30",
+            "name": "Design"
+          },
+          {
+            "date": "2027-01-31",
+            "name": "Build"
+          },
+          {
+            "date": "2027-03-15",
+            "name": "Cutover"
+          }
+        ]
+      },
+      "notice_date": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2027-01-31"
+      },
+      "price": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "250000.00"
+      },
+      "scope_summary": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Fixed-price data platform modernisation delivered by a mixed US + India team. Six deliverables spanning discovery, design, build, and cutover."
+      },
+      "signatories": {
+        "page_ref": 7,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "name": "Alex Chen",
+            "role": "Client sponsor"
+          },
+          {
+            "name": "Riya Patel",
+            "role": "Delivery lead"
+          }
+        ]
+      },
+      "term_end": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2027-03-31"
+      },
+      "term_start": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-10-01"
+      }
+    }
+  },
+  "04_assessment_4week.pdf": {
+    "aux": {
+      "primary_location": "US"
+    },
+    "expected_engagement_type": "assessment",
+    "expected_rule": "rule.assessment_short_term",
+    "fields": {
+      "acceptance_criteria": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "Client sponsor signs off on the final recommendations report."
+      },
+      "assumptions": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "Client leadership available for three 2-hour workshops."
+      },
+      "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "fixed_price"
+      },
+      "currency": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "USD"
+      },
+      "deliverables": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": [
+          "Workshop 1 notes",
+          "Workshop 2 notes",
+          "Workshop 3 notes",
+          "Recommendations report"
+        ]
+      },
+      "engagement_type_suggested": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "assessment"
+      },
+      "exclusions": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "Implementation work; separate SOW."
+      },
+      "milestones": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "date": "2026-10-05",
+            "name": "Kickoff"
+          },
+          {
+            "date": "2026-10-26",
+            "name": "Findings review"
+          },
+          {
+            "date": "2026-11-02",
+            "name": "Final report"
+          }
+        ]
+      },
+      "notice_date": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-10-26"
+      },
+      "price": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "40000.00"
+      },
+      "scope_summary": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Four-week data platform assessment. Three workshops with the client's data leadership, US resources, deliverable is a written recommendations report."
+      },
+      "signatories": {
+        "page_ref": 7,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "name": "Dana Whitaker",
+            "role": "Client sponsor"
+          },
+          {
+            "name": "Nikhil Rao",
+            "role": "Assessment lead"
+          }
+        ]
+      },
+      "term_end": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-11-02"
+      },
+      "term_start": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-10-05"
+      }
+    }
+  },
+  "05_tm_capped.pdf": {
+    "aux": {
+      "primary_location": "US",
+      "resource_table": [
+        {
+          "hourly_rate": "225",
+          "hours": "600",
+          "location": "US",
+          "role": "Consultant",
+          "seniority": "Senior"
+        },
+        {
+          "hourly_rate": "175",
+          "hours": "400",
+          "location": "US",
+          "role": "Consultant",
+          "seniority": "Mid"
+        }
+      ]
+    },
+    "expected_engagement_type": "tm",
+    "expected_rule": "rule.time_and_materials",
+    "fields": {
+      "acceptance_criteria": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "Client program manager approves weekly timesheets."
+      },
+      "assumptions": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "T&M cap is not to exceed; hours logged in client system."
+      },
+      "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "time_and_materials"
+      },
+      "currency": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "USD"
+      },
+      "deliverables": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": [
+          "Weekly timesheets",
+          "Sprint demos",
+          "Sprint reports"
+        ]
+      },
+      "engagement_type_suggested": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "tm"
+      },
+      "exclusions": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": "Anything outside the agreed sprint scope."
+      },
+      "milestones": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": []
+      },
+      "notice_date": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2027-01-31"
+      },
+      "price": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "150000.00"
+      },
+      "scope_summary": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Time and materials engagement not to exceed USD 150,000. US resources, rates listed below. Client approves timesheets weekly."
+      },
+      "signatories": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "name": "Casey Morgan",
+            "role": "Client program manager"
+          },
+          {
+            "name": "Ivy Rhodes",
+            "role": "T&M delivery lead"
+          }
+        ]
+      },
+      "term_end": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2027-03-31"
+      },
+      "term_start": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-10-01"
+      }
+    }
+  },
+  "06_below_floor.pdf": {
+    "aux": {
+      "primary_location": "US"
+    },
+    "expected_engagement_type": "fixed_price",
+    "expected_rule": "rule.fixed_price_deliverables",
+    "fields": {
+      "acceptance_criteria": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "Cutover acceptance test signed by client sponsor."
+      },
+      "assumptions": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "Discounted rates reflect a strategic seed engagement; renegotiated at renewal per policy."
+      },
+      "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "fixed_price"
+      },
+      "currency": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "USD"
+      },
+      "deliverables": {
+        "page_ref": 4,
+        "status": "unconfirmed",
+        "value": [
+          "Discovery",
+          "Build increment 1",
+          "Build increment 2",
+          "Cutover"
+        ]
+      },
+      "engagement_type_suggested": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "fixed_price"
+      },
+      "exclusions": {
+        "page_ref": 6,
+        "status": "unconfirmed",
+        "value": "Any change requests outside the four deliverables."
+      },
+      "milestones": {
+        "page_ref": 5,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "date": "2026-10-31",
+            "name": "Discovery"
+          },
+          {
+            "date": "2026-12-31",
+            "name": "Build 1"
+          },
+          {
+            "date": "2027-02-15",
+            "name": "Build 2"
+          },
+          {
+            "date": "2027-03-15",
+            "name": "Cutover"
+          }
+        ]
+      },
+      "notice_date": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2027-01-31"
+      },
+      "price": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "145000.00"
+      },
+      "scope_summary": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Mixed fixed-fee engagement. Below-floor pricing for both US and India components \u2014 will trigger a CEO exception."
+      },
+      "signatories": {
+        "page_ref": 7,
+        "status": "unconfirmed",
+        "value": [
+          {
+            "name": "Robin Vance",
+            "role": "Client sponsor"
+          },
+          {
+            "name": "Sunil Iyer",
+            "role": "Delivery lead"
+          }
+        ]
+      },
+      "term_end": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2027-03-31"
+      },
+      "term_start": {
+        "page_ref": 3,
+        "status": "unconfirmed",
+        "value": "2026-10-01"
+      }
+    }
+  }
+}

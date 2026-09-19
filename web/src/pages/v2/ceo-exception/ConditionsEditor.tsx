@@ -146,12 +146,18 @@ function ConditionRow({
           />
         </div>
         <div>
-          <Label htmlFor={`evidence-${condition.id}`}>Evidence</Label>
+          <Label htmlFor={`evidence-${condition.id}`}>
+            Evidence{" "}
+            {condition.evidence.trim() === "" ? (
+              <span className="text-danger">*</span>
+            ) : null}
+          </Label>
           <Input
             id={`evidence-${condition.id}`}
             value={condition.evidence}
             onChange={(e) => onUpdate({ evidence: e.target.value })}
             placeholder="Document / link required"
+            aria-invalid={condition.evidence.trim() === ""}
           />
         </div>
       </div>
@@ -182,10 +188,13 @@ function ConditionRow({
   );
 }
 
-/** True when every condition has an owner + due date. */
+/** True when every condition has an owner + due date + evidence. */
 export function allConditionsComplete(conditions: Condition[]): boolean {
   if (conditions.length === 0) return false;
   return conditions.every(
-    (c) => c.owner.trim() !== "" && c.due.trim() !== "",
+    (c) =>
+      c.owner.trim() !== "" &&
+      c.due.trim() !== "" &&
+      c.evidence.trim() !== "",
   );
 }

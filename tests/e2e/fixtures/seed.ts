@@ -8,6 +8,12 @@
  */
 import type { Page } from "@playwright/test";
 import { apiFetch, emailFor, type Role } from "./api";
+import {
+  loadStubMap,
+  pdfPathFor,
+  stubFor,
+  type FixtureName,
+} from "./sow_extraction_stubs";
 
 /** Random suffix so parallel runs (or reruns) don't collide on unique keys. */
 export function rand(prefix = ""): string {
@@ -263,4 +269,171 @@ export async function decidePackage(
     decision,
     reason,
   });
+}
+
+/** ---------- Fixture SOW seeding (S9 wave 2) ---------------------------- */
+
+/**
+ * Seed one of the six canonical fixture SOWs
+ * (`fixtures/sample_sows/*.pdf`) and preload the SOW version with the
+ * canonical extraction stub that `fixtures/sample_sows/extraction_stubs.py`
+ * defines.
+ *
+ * The E2E backend does not (yet) expose an "override extract" hook, so
+ * this helper drives the same public contract the human path uses:
+ *
+ *   1. Register a new SOW version through the normal upload path
+ *      (`seedSowVersion` — the API stub S3 flow accepts a synthetic
+ *      key when `S3_STUB=1`, which the e2e workflow sets).
+ *   2. For every field in the stub map, PATCH the field so the
+ *      SOW version carries the canonical value. `confirm_field` also
+ *      flips the field to `confirmed`, which is exactly what the
+ *      confirmation endpoint needs to compute a full package.
+ *   3. Best-effort seed the auxiliary hints (`resource_table`,
+ *      `monthly_fee`, `coverage_hours`, …) via
+ *      `POST /admin/test/seed-sow-fields` when the dev endpoint is
+ *      available; when it is not, the confirmation endpoint still
+ *      renders (the classifier degrades to a lower-confidence Bedrock
+ *      candidate for that fixture only).
+ *
+ * The pytest at `fixtures/sample_sows/test_extraction_stubs.py` is what
+ * guarantees the stub map matches the classifier + schema — the E2E
+ * layer here trusts that check has already run.
+ */
+export interface SeededFixtureSow {
+  sowVersionId: string;
+  fixture: FixtureName;
+  auxSeeded: boolean;
+  pdfPath: string;
+  expectedEngagementType: string;
+}
+
+export async function seedFixtureSow(
+  opportunityId: string,
+  fixture: FixtureName,
+  ownerRole: Role = "Sales",
+): Promise<SeededFixtureSow> {
+  const stub = stubFor(fixture);
+  const version = await seedSowVersion(opportunityId, ownerRole);
+
+  // 1. Replace each stubbed field via the public PATCH endpoint.
+  for (const [name, entry] of Object.entries(stub.fields)) {
+    await apiFetch(
+      ownerRole,
+      "PATCH",
+      `/sow/versions/${version.id}/fields/${name}`,
+      { value: entry.value },
+    );
+  }
+
+  // 2. Best-effort aux seeding for the classifier + auto-staff hints.
+  // `resource_table`, `monthly_fee`, `coverage_hours`, `primary_location`
+  // are read by `engagement_classifier._extract_features` and
+  // `auto_staffing._build_from_resource_table`. There is no public
+  // PATCH for these yet, so we call an admin/test hook and shrug it
+  // off (404 → auxSeeded=false).
+  const auxRes = await apiFetch<{ ok: true }>(
+    "SystemAdmin",
+    "POST",
+    `/admin/test/seed-sow-fields`,
+    {
+      sow_version_id: version.id,
+      fields: stub.aux,
+    },
+    { allowNon2xx: true },
+  );
+  const auxSeeded = auxRes.status === 200 || auxRes.status === 201;
+
+  return {
+    sowVersionId: version.id,
+    fixture,
+    auxSeeded,
+    pdfPath: pdfPathFor(fixture),
+    expectedEngagementType: stub.expected_engagement_type,
+  };
+}
+
+/**
+ * Seed a client whose rate card is deliberately absent so the
+ * confirmation endpoint surfaces the "no client rate card" inline
+ * request + the loud fallback warning (`docs/sow-first-principles.md`
+ * step 3 + design rule 7).
+ *
+ * The default seed path already creates a client without a rate card;
+ * this helper is the explicit, self-documenting entry point specs
+ * should reach for.
+ */
+export async function seedClientRateCardMissing(opts: {
+  clientName?: string;
+  ownerEmail?: string;
+} = {}): Promise<{
+  clientId: string;
+  legalEntityId: string;
+  opportunityId: string;
+  cardMissing: true;
+}> {
+  const seeded = await seedClientWithDeal(opts);
+  // Assert (once) that the client indeed has no active rate card. If a
+  // future migration flips the default, this helper stays honest by
+  // failing loudly.
+  const card = await apiFetch<{ card: unknown | null; has_fallback: boolean }>(
+    "SystemAdmin",
+    "GET",
+    `/clients/${seeded.client.id}/rate-card`,
+    undefined,
+    { allowNon2xx: true },
+  );
+  if (card.status === 200 && card.json?.card !== null) {
+    throw new Error(
+      `seedClientRateCardMissing: expected no active card, got ${JSON.stringify(card.json)}`,
+    );
+  }
+  return {
+    clientId: seeded.client.id,
+    legalEntityId: seeded.client.legal_entity_id,
+    opportunityId: seeded.opportunityId,
+    cardMissing: true,
+  };
+}
+
+/** Publish a minimal client rate card so the "missing card" warning
+ * clears after the user (or a spec) resolves the inline request. */
+export async function publishClientRateCard(
+  clientId: string,
+): Promise<{ id: string | null }> {
+  const res = await apiFetch<{ card: { id: string } | null }>(
+    "Finance",
+    "POST",
+    `/clients/${clientId}/rate-card`,
+    {
+      effective_from: "2025-01-01",
+      notes: "seed",
+      source: "manual",
+      rows: [
+        {
+          role: "Consultant",
+          seniority: "Senior",
+          location: "US",
+          bill_rate: "225.00",
+          currency: "USD",
+          unit: "hourly",
+        },
+        {
+          role: "Consultant",
+          seniority: "Mid",
+          location: "India",
+          bill_rate: "85.00",
+          currency: "USD",
+          unit: "hourly",
+        },
+      ],
+    },
+    { allowNon2xx: true },
+  );
+  return { id: res.json?.card?.id ?? null };
+}
+
+/** Convenience re-exports so specs can `import { fixtureNames } from "../fixtures/seed"`. */
+export function fixtureNames(): FixtureName[] {
+  return Object.keys(loadStubMap()) as FixtureName[];
 }
