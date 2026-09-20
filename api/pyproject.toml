@@ -39,6 +39,12 @@ dev = [
   "mypy>=1.11",
   "hypothesis>=6.112",
   "aiosqlite>=0.20",
+  # asyncpg: `test_audit_hardening` opens its own async engine against
+  # Postgres to prove the append-only trigger rejects UPDATE and DELETE. It
+  # was previously never exercised — the suite skipped without
+  # DEALGATE_POSTGRES_URL — so the missing driver went unnoticed until CI
+  # gained a Postgres service and un-skipped it.
+  "asyncpg>=0.29",
   # Deterministic PDF builder for the fixture SOWs under
   # `fixtures/sample_sows/`. Only used by dev + CI, never at runtime.
   "reportlab>=4.2",
