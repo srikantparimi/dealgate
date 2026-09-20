@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "workings": "rev 20,000,000 INR * 0.012 = 240000 USD; cost 3000h * 3000 INR = 9,000,000 INR * 0.012 = 108000 USD; gm = 132000/240000 = 0.55",
+  "currency_in": "INR",
+  "fx_rate": "0.012",
+  "fx_as_of": "2026-09-01",
+  "revenue_total": "240000.00",
+  "cost_total": "108000.00",
+  "gm_us": null,
+  "gm_india": "0.55",
+  "gm_blended": "0.55",
+  "us_pass": null,
+  "india_pass": true,
+  "requires_ceo": false,
+  "note": "The rate is stored on the GM version. A live rate at render time would make the same SOW show a different margin tomorrow."
+}

@@ -9,7 +9,6 @@ to know the expected GM, not the worst case.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import Optional
 
 from app.gm.templates._common import roll_up

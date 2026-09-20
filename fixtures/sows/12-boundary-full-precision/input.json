@@ -1,0 +1,29 @@
+{
+  "name": "Floor boundaries at full precision",
+  "engagement_type": "fixed_price",
+  "currency": "USD",
+  "contract_price": "200000",
+  "revenue_allocation": {
+    "basis": "recorded",
+    "US": "100000",
+    "India": "100000"
+  },
+  "resource_lines": [
+    {
+      "role": "Engineer",
+      "seniority": "Senior",
+      "location": "US",
+      "hours": "650",
+      "cost_rate": "100",
+      "utilization": "1"
+    },
+    {
+      "role": "Engineer",
+      "seniority": "Mid",
+      "location": "India",
+      "hours": "50001",
+      "cost_rate": "1",
+      "utilization": "1"
+    }
+  ]
+}

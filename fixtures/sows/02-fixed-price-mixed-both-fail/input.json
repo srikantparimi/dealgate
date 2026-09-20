@@ -1,0 +1,29 @@
+{
+  "name": "Mixed-geography fixed fee, recorded allocation, both floors fail",
+  "engagement_type": "fixed_price",
+  "currency": "USD",
+  "contract_price": "145000",
+  "revenue_allocation": {
+    "basis": "recorded",
+    "US": "90000",
+    "India": "55000"
+  },
+  "resource_lines": [
+    {
+      "role": "Engineer",
+      "seniority": "Senior",
+      "location": "US",
+      "hours": "650",
+      "cost_rate": "100",
+      "utilization": "1"
+    },
+    {
+      "role": "Engineer",
+      "seniority": "Mid",
+      "location": "India",
+      "hours": "1000",
+      "cost_rate": "30",
+      "utilization": "1"
+    }
+  ]
+}

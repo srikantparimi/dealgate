@@ -1,0 +1,22 @@
+{
+  "name": "INR-denominated SOW converted at Finance's stored rate",
+  "engagement_type": "fixed_price",
+  "currency": "INR",
+  "fx": {
+    "to": "USD",
+    "rate": "0.012",
+    "as_of": "2026-09-01",
+    "source": "finance_published"
+  },
+  "contract_price": "20000000",
+  "resource_lines": [
+    {
+      "role": "Engineer",
+      "seniority": "Senior",
+      "location": "India",
+      "hours": "3000",
+      "cost_rate": "3000",
+      "utilization": "1"
+    }
+  ]
+}

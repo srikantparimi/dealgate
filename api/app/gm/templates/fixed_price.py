@@ -15,8 +15,6 @@ Allocation:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal
-from typing import Optional
 
 from app.gm.templates._common import build_result, roll_up
 from app.gm.types import CostLine, Money, ResourceLine, TemplateResult

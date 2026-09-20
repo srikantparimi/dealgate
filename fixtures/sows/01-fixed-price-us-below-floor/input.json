@@ -1,0 +1,24 @@
+{
+  "name": "Fixed price, US only, below the 35% floor",
+  "engagement_type": "fixed_price",
+  "currency": "USD",
+  "contract_price": "50000",
+  "resource_lines": [
+    {
+      "role": "Analyst",
+      "seniority": "Mid",
+      "location": "US",
+      "hours": "80",
+      "cost_rate": "120",
+      "utilization": "1"
+    },
+    {
+      "role": "Architect",
+      "seniority": "Principal",
+      "location": "US",
+      "hours": "160",
+      "cost_rate": "220",
+      "utilization": "1"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "workings": "forecast 1400*140 = 196000, below the 200000 cap so revenue is the forecast; cost = 1400*85 = 119000; gm = 77000/196000 = 0.392857...",
+  "revenue_total": "196000",
+  "cost_total": "119000",
+  "not_to_exceed": "200000",
+  "revenue_at_cap": "200000",
+  "gm_us": "0.3928571428571428571428571429",
+  "gm_india": null,
+  "gm_blended": "0.3928571428571428571428571429",
+  "us_pass": true,
+  "india_pass": null,
+  "requires_ceo": false,
+  "note": "Booking the cap as revenue would have reported 0.405 and overstated the margin."
+}

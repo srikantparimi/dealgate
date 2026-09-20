@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "workings": "rev = 18000*12 = 216000; cost = 9500*12 = 114000; gm = 102000/216000 = 0.47222...",
+  "revenue_total": "216000",
+  "cost_total": "114000",
+  "gm_us": null,
+  "gm_india": "0.4722222222222222222222222222",
+  "gm_blended": "0.4722222222222222222222222222",
+  "us_pass": null,
+  "india_pass": false,
+  "shortfall_pts_india": "0.0277777777777777777777777778",
+  "min_price_india": "228000.00",
+  "requires_ceo": true
+}

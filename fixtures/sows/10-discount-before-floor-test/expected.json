@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "workings": "discount = 200000*0.10 = 20000; revenue = 180000; cost = 1000*115 = 115000; gm = 65000/180000 = 0.361111...",
+  "list_price": "200000",
+  "discount_total": "20000.00",
+  "revenue_total": "180000.00",
+  "cost_total": "115000",
+  "gm_us": "0.3611111111111111111111111111",
+  "gm_india": null,
+  "gm_blended": "0.3611111111111111111111111111",
+  "us_pass": true,
+  "india_pass": null,
+  "requires_ceo": false,
+  "note": "Testing the 200000 list price would have reported 0.425 and passed on money we never charged."
+}

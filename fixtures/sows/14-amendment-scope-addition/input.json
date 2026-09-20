@@ -1,0 +1,25 @@
+{
+  "name": "Amendment adding $40k of scope at a lower rate",
+  "engagement_type": "staff_aug",
+  "currency": "USD",
+  "amends": "03-staff-aug-us-two-resources",
+  "base": {
+    "revenue_total": "300000",
+    "cost_total": "190000"
+  },
+  "addition": {
+    "revenue": "40000",
+    "resource_lines": [
+      {
+        "role": "Engineer",
+        "seniority": "Mid",
+        "location": "US",
+        "billable_hours": "400",
+        "paid_hours": "400",
+        "bill_rate": "100",
+        "cost_rate": "85",
+        "utilization": "1"
+      }
+    ]
+  }
+}

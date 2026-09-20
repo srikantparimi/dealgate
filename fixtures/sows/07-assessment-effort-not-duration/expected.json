@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "workings": "labour = 2*96*140 = 26880; direct = 2400+1600+3200 = 7200; cost = 34080; gm = (38000-34080)/38000 = 3920/38000 = 0.103157...",
+  "revenue_total": "38000",
+  "cost_total": "34080",
+  "gm_us": "0.1031578947368421052631578947",
+  "gm_india": null,
+  "gm_blended": "0.1031578947368421052631578947",
+  "us_pass": false,
+  "india_pass": null,
+  "requires_ceo": true,
+  "note": "Scaling cost from the 4-week duration (4*40h*2 people) would have given 320 hours instead of 192 and a materially different answer."
+}

@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "workings": "billable 1040-120 = 920; rev = 920*150 = 138000; cost = 1040*95 = 98800 (paid, not billable); gm = 39200/138000 = 0.28405...",
+  "revenue_total": "138000",
+  "cost_total": "98800",
+  "gm_us": "0.2840579710144927536231884058",
+  "gm_india": null,
+  "gm_blended": "0.2840579710144927536231884058",
+  "us_pass": false,
+  "india_pass": null,
+  "requires_ceo": true,
+  "note": "Assuming billable == paid would have reported 0.36666 and passed."
+}

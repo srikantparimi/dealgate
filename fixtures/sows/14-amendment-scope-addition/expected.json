@@ -1,0 +1,25 @@
+{
+  "status": "ok",
+  "workings": "delta (40000-34000)/40000 = 6000/40000 = 0.15; amended whole (340000-224000)/340000 = 116000/340000 = 0.341176...",
+  "delta": {
+    "revenue_total": "40000",
+    "cost_total": "34000",
+    "gm": "0.15",
+    "pass": false
+  },
+  "amended_whole": {
+    "revenue_total": "340000",
+    "cost_total": "224000",
+    "gm": "0.3411764705882352941176470588",
+    "pass": false
+  },
+  "revenue_total": "340000",
+  "cost_total": "224000",
+  "gm_us": "0.3411764705882352941176470588",
+  "gm_india": null,
+  "gm_blended": "0.3411764705882352941176470588",
+  "us_pass": false,
+  "india_pass": null,
+  "requires_ceo": true,
+  "note": "The base passed at 0.36667. The amendment drags the amended whole under the floor, and the delta on its own is far under it \u2014 reporting only the whole would understate how bad the addition is. The prior approval stays historical; this is a new package."
+}

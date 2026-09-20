@@ -1,0 +1,17 @@
+{
+  "name": "T&M with a not-to-exceed cap above forecast",
+  "engagement_type": "tm",
+  "currency": "USD",
+  "not_to_exceed": "200000",
+  "resource_lines": [
+    {
+      "role": "Engineer",
+      "seniority": "Senior",
+      "location": "US",
+      "forecast_hours": "1400",
+      "bill_rate": "140",
+      "cost_rate": "85",
+      "utilization": "1"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "workings": "rev = 2*1000*150 = 300000; cost = 2*1000*95 = 190000; gm = 110000/300000 = 0.36666...",
+  "revenue_total": "300000",
+  "cost_total": "190000",
+  "gm_us": "0.3666666666666666666666666667",
+  "gm_india": null,
+  "gm_blended": "0.3666666666666666666666666667",
+  "us_pass": true,
+  "india_pass": null,
+  "requires_ceo": false
+}

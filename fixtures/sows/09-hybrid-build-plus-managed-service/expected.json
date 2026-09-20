@@ -1,0 +1,31 @@
+{
+  "status": "ok",
+  "workings": "build (120000-55000)/120000 = 0.541666...; run (96000-50400)/96000 = 0.475; combined (216000-105400)/216000 = 0.512037... (informational)",
+  "components": [
+    {
+      "id": "build",
+      "revenue_total": "120000",
+      "cost_total": "55000",
+      "gm": "0.5416666666666666666666666667",
+      "location": "US",
+      "pass": true
+    },
+    {
+      "id": "run",
+      "revenue_total": "96000",
+      "cost_total": "50400",
+      "gm": "0.475",
+      "location": "India",
+      "pass": false
+    }
+  ],
+  "revenue_total": "216000",
+  "cost_total": "105400",
+  "gm_us": "0.5416666666666666666666666667",
+  "gm_india": "0.475",
+  "gm_blended": "0.5120370370370370370370370370",
+  "us_pass": true,
+  "india_pass": false,
+  "requires_ceo": true,
+  "note": "Combined 0.512 passes nothing on its own \u2014 the India component fails its own floor, and forcing one template over the whole document would have hidden that."
+}

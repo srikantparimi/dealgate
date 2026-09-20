@@ -1,0 +1,33 @@
+{
+  "name": "One SOW containing a fixed build and a 12-month managed service",
+  "engagement_type": "hybrid",
+  "currency": "USD",
+  "components": [
+    {
+      "id": "build",
+      "engagement_type": "fixed_price",
+      "contract_price": "120000",
+      "resource_lines": [
+        {
+          "role": "Engineer",
+          "seniority": "Senior",
+          "location": "US",
+          "hours": "500",
+          "cost_rate": "110",
+          "utilization": "1"
+        }
+      ]
+    },
+    {
+      "id": "run",
+      "engagement_type": "managed_service",
+      "term_months": "12",
+      "monthly_fee": {
+        "India": "8000"
+      },
+      "monthly_team_cost": {
+        "India": "4200"
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "10% discount clause, applied before the margin test",
+  "engagement_type": "fixed_price",
+  "currency": "USD",
+  "contract_price": "200000",
+  "discounts": [
+    {
+      "label": "Volume discount",
+      "pct": "0.10"
+    }
+  ],
+  "resource_lines": [
+    {
+      "role": "Engineer",
+      "seniority": "Senior",
+      "location": "US",
+      "hours": "1000",
+      "cost_rate": "115",
+      "utilization": "1"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "status": "rejected",
+  "workings": "Rejected at the document check. The GM engine is never reached.",
+  "resume": {
+    "detected_type": "resume",
+    "http_status": 422,
+    "rows_created": 0
+  },
+  "malformed": {
+    "detected_type": "unreadable",
+    "http_status": 422,
+    "rows_created": 0
+  },
+  "note": "Nothing is created: no opportunity, no SOW version, no GM model. An unreadable file says so rather than claiming it is not a SOW."
+}

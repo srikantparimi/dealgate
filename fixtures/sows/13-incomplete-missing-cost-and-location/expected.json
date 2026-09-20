@@ -1,0 +1,27 @@
+{
+  "status": "incomplete",
+  "workings": "No arithmetic is performed. A margin computed over a line with no cost would silently treat that person as free.",
+  "missing": [
+    {
+      "line": 0,
+      "role": "Architect",
+      "field": "cost_rate",
+      "reason": "no cost rate \u2014 the line cannot be costed"
+    },
+    {
+      "line": 1,
+      "role": "Engineer",
+      "field": "location",
+      "reason": "no location \u2014 the line cannot be assigned to a floor"
+    }
+  ],
+  "revenue_total": "90000",
+  "cost_total": null,
+  "gm_us": null,
+  "gm_india": null,
+  "gm_blended": null,
+  "us_pass": null,
+  "india_pass": null,
+  "requires_ceo": null,
+  "note": "Missing cost must never be read as zero cost: that inflates the margin and passes a floor the engagement would fail."
+}

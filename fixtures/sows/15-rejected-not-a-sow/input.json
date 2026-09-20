@@ -1,0 +1,14 @@
+{
+  "name": "A resume and a malformed PDF",
+  "documents": [
+    {
+      "file": "99_resume.pdf",
+      "expect": "resume"
+    },
+    {
+      "file": "<malformed>",
+      "bytes_are": "PK\\x03\\x04 truncated",
+      "expect": "unreadable"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "name": "One line with no cost rate, one with no location",
+  "engagement_type": "fixed_price",
+  "currency": "USD",
+  "contract_price": "90000",
+  "resource_lines": [
+    {
+      "role": "Architect",
+      "seniority": "Principal",
+      "location": "US",
+      "hours": "200",
+      "cost_rate": null,
+      "utilization": "1"
+    },
+    {
+      "role": "Engineer",
+      "seniority": "Senior",
+      "location": null,
+      "hours": "400",
+      "cost_rate": "95",
+      "utilization": "1"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "Staff augmentation, two US resources, passes",
+  "engagement_type": "staff_aug",
+  "currency": "USD",
+  "resource_lines": [
+    {
+      "role": "Engineer",
+      "seniority": "Senior",
+      "location": "US",
+      "billable_hours": "1000",
+      "paid_hours": "1000",
+      "bill_rate": "150",
+      "cost_rate": "95",
+      "utilization": "1"
+    },
+    {
+      "role": "Engineer",
+      "seniority": "Senior",
+      "location": "US",
+      "billable_hours": "1000",
+      "paid_hours": "1000",
+      "bill_rate": "150",
+      "cost_rate": "95",
+      "utilization": "1"
+    }
+  ]
+}

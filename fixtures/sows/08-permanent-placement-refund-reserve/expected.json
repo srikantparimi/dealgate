@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "workings": "reserve = 25000*0.20 = 5000; cost = 6000+5000 = 11000; gm = (25000-11000)/25000 = 14000/25000 = 0.56",
+  "revenue_total": "25000",
+  "cost_total": "11000.00",
+  "refund_reserve": "5000.00",
+  "gm_us": "0.56",
+  "gm_india": null,
+  "gm_blended": "0.56",
+  "us_pass": true,
+  "india_pass": null,
+  "requires_ceo": false,
+  "note": "No hours anywhere \u2014 treating this as staff aug would divide by zero hours."
+}

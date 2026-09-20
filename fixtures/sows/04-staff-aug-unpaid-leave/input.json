@@ -1,0 +1,18 @@
+{
+  "name": "Single resource with a 3-week unpaid-leave clause",
+  "engagement_type": "staff_aug",
+  "currency": "USD",
+  "note": "Billable hours drop by the leave; paid cost does not.",
+  "resource_lines": [
+    {
+      "role": "Consultant",
+      "seniority": "Senior",
+      "location": "US",
+      "billable_hours": "920",
+      "paid_hours": "1040",
+      "bill_rate": "150",
+      "cost_rate": "95",
+      "utilization": "1"
+    }
+  ]
+}

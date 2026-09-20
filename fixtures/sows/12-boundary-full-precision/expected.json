@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "workings": "US (100000-65000)/100000 = 0.35 exactly -> passes (>=). India (100000-50001)/100000 = 0.49999 -> fails 0.50 by 0.00001. Rounding either to 2dp would make both read 35.00% and 50.00%.",
+  "revenue_total": "200000",
+  "cost_total": "115001",
+  "gm_us": "0.35",
+  "gm_india": "0.49999",
+  "gm_blended": "0.424995",
+  "us_pass": true,
+  "india_pass": false,
+  "requires_ceo": true,
+  "note": "The floor test must compare unrounded Decimals. 35.000% passes; 34.9999% does not."
+}

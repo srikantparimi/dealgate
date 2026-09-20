@@ -1,0 +1,12 @@
+{
+  "name": "Permanent placement with a 90-day refund guarantee",
+  "engagement_type": "permanent_placement",
+  "currency": "USD",
+  "placement_fee": "25000",
+  "recruiting_cost": "6000",
+  "refund_guarantee": {
+    "days": "90",
+    "reserve_pct": "0.20"
+  },
+  "location": "US"
+}

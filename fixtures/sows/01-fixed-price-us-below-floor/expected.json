@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "workings": "cost = 80*120 + 160*220 = 9600 + 35200 = 44800; gm = (50000-44800)/50000 = 5200/50000 = 0.104",
+  "revenue_total": "50000",
+  "cost_total": "44800",
+  "gm_us": "0.104",
+  "gm_india": null,
+  "gm_blended": "0.104",
+  "us_pass": false,
+  "india_pass": null,
+  "shortfall_pts_us": "0.246",
+  "min_price_us": "68923.08",
+  "requires_ceo": true
+}

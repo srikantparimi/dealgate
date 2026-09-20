@@ -1,0 +1,42 @@
+{
+  "name": "4-week assessment costed from actual effort plus direct costs",
+  "engagement_type": "assessment",
+  "currency": "USD",
+  "contract_price": "38000",
+  "elapsed_weeks": "4",
+  "resource_lines": [
+    {
+      "role": "Consultant",
+      "seniority": "Senior",
+      "location": "US",
+      "hours": "96",
+      "cost_rate": "140",
+      "utilization": "1"
+    },
+    {
+      "role": "Analyst",
+      "seniority": "Mid",
+      "location": "US",
+      "hours": "96",
+      "cost_rate": "140",
+      "utilization": "1"
+    }
+  ],
+  "direct_costs": [
+    {
+      "label": "Preparation",
+      "amount": "2400",
+      "location": "US"
+    },
+    {
+      "label": "Reporting",
+      "amount": "1600",
+      "location": "US"
+    },
+    {
+      "label": "Travel",
+      "amount": "3200",
+      "location": "US"
+    }
+  ]
+}

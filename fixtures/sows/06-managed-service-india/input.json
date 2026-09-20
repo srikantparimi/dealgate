@@ -1,0 +1,12 @@
+{
+  "name": "Managed service in India, 12 months, just under the 50% floor",
+  "engagement_type": "managed_service",
+  "currency": "USD",
+  "term_months": "12",
+  "monthly_fee": {
+    "India": "18000"
+  },
+  "monthly_team_cost": {
+    "India": "9500"
+  }
+}
