@@ -355,6 +355,11 @@ async def _persist_sow_version(
         session.add(sow_row)
         await session.flush()
 
+    # Number the version. The model default is 1, which is right for the
+    # first one and a unique-index collision for every one after it — the
+    # ordinal has to be computed against what is already stored.
+    from app.services.sow_lifecycle import reserve_version_no
+
     version = SowVersion(
         id=uuid.uuid4(),
         sow_id=sow_row.id,
@@ -363,6 +368,7 @@ async def _persist_sow_version(
         file_hash=file_hash,
         extract_status="complete" if extracted_fields else "manual_required",
         extracted_fields=_wrap_extract_for_storage(extracted_fields),
+        version_no=await reserve_version_no(session, sow_row.id),
     )
     if hasattr(version, "governance_status"):
         setattr(

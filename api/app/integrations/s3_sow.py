@@ -159,6 +159,17 @@ class SowS3:
         )
         return s3_key
 
+    def delete_object(self, s3_key: str) -> None:
+        """Remove a stored object.
+
+        Only ever called after the database transaction that removed the
+        row has committed. S3 is not transactional with the database, so an
+        orphaned object is a janitorial problem while a rolled-back delete
+        with a missing file would be a correctness one.
+        """
+
+        self._client_or_new().delete_object(Bucket=self._bucket, Key=s3_key)
+
     def build_key(
         self,
         filename: str,
@@ -226,6 +237,10 @@ class StubS3(SowS3):
         self.upload_calls: list[tuple[uuid.UUID, str, str]] = []
         self.download_calls: list[str] = []
         self.put_calls: list[tuple[str, int, str]] = []
+        self.deleted_keys: list[str] = []
+
+    def delete_object(self, s3_key: str) -> None:
+        self.deleted_keys.append(s3_key)
 
     def put_object(self, s3_key: str, body: bytes, content_type: str) -> str:
         if content_type not in _ALLOWED_CONTENT_TYPES:

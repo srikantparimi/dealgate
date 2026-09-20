@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -32,6 +32,13 @@ class Sow(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # Monotonic version counter (S10-06). MAX(version_no) is not enough:
+    # delete the highest version and MAX drops, so the next upload reuses that
+    # number and two different documents end up sharing a version label in the
+    # audit trail. This only ever goes up.
+    version_counter: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
 
 
@@ -64,3 +71,39 @@ class SowVersion(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     engagement_type_suggested: Mapped[str | None] = mapped_column(String(64))
     engagement_type_confirmed: Mapped[str | None] = mapped_column(String(64))
+
+    # --- lifecycle (S10-06) ------------------------------------------------
+    #
+    # `execution_state` and `governance_status` were previously bolted onto
+    # this class at import time by `app/models/import_batch.py`, "without
+    # editing the file agent P owns". That made `SowVersion.execution_state`
+    # exist only if `import_batch` happened to have been imported first — a
+    # hidden ordering dependency, and invisible to anyone reading this file.
+    # They are ordinary columns; they belong here. The monkey-patch is
+    # idempotent (it checks `hasattr` first), so declaring them makes it a
+    # no-op rather than a conflict.
+    execution_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="draft", server_default="draft"
+    )
+    governance_status: Mapped[str | None] = mapped_column(String(48))
+
+    # Versions are numbered per Sow, starting at 1. Without this a "v2" could
+    # only be inferred from upload order, which is not stable once a version
+    # is deleted.
+    version_no: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    # Set on the older version when a revision replaces it, so the chain of
+    # what-replaced-what is explicit rather than reconstructed from dates.
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("sow_version.id")
+    )
+    # Soft discard, for a version that has already been through approval and
+    # therefore cannot be deleted (CLAUDE.md rule 4 — approval records are
+    # immutable). A discarded version leaves every board and list but its row
+    # and its file survive.
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discarded_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("user.id")
+    )
+    discard_reason: Mapped[str | None] = mapped_column(String(500))

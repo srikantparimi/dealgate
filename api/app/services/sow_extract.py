@@ -232,6 +232,24 @@ def _to_provenance_fields(
     return out
 
 
+def to_provenance_fields(
+    extracted: dict[str, dict[str, Any]],
+    *,
+    model: str,
+    prompt_version: str,
+) -> dict[str, dict[str, Any]]:
+    """Public alias for :func:`_to_provenance_fields`.
+
+    The revision endpoint needs the same extract-to-provenance mapping the
+    original upload uses; re-implementing it there would be the surest way to
+    let the two drift apart.
+    """
+
+    return _to_provenance_fields(
+        extracted, model=model, prompt_version=prompt_version
+    )
+
+
 # --- public API -----------------------------------------------------------
 
 

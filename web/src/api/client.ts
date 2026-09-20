@@ -1826,6 +1826,79 @@ export interface StaffingSheetRowError {
   message: string;
 }
 
+/** One row in a SOW's version history. */
+export interface SowVersionRow {
+  id: UUID;
+  version_no: number;
+  uploaded_at: string | null;
+  extract_status: string;
+  execution_state: string;
+  is_current: boolean;
+  superseded_by: UUID | null;
+  discarded_at: string | null;
+  discard_reason: string | null;
+  file_name: string | null;
+  ever_submitted: boolean;
+  /** Computed server-side so the delete/discard rule lives in one place. */
+  can_delete: boolean;
+  can_discard: boolean;
+}
+
+export interface SowVersionList {
+  sow_id: UUID | null;
+  versions: SowVersionRow[];
+}
+
+export function listSowVersions(opportunityId: UUID): Promise<SowVersionList> {
+  return request<SowVersionList>(`/sows/${opportunityId}/versions`);
+}
+
+/**
+ * Upload a corrected SOW as the next version.
+ *
+ * Attaches to the existing SOW — no new opportunity, no client picker. The
+ * caller has said which SOW this revises, so none of that has to be inferred
+ * from the document. The previous version is superseded, not edited.
+ */
+export async function createSowRevision(
+  opportunityId: UUID,
+  file: File,
+): Promise<{ sow_version_id: UUID; version_no: number; supersedes: UUID | null }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}/sows/${opportunityId}/versions`, {
+    method: "POST",
+    headers: { ...(await authHeaders()) },
+    body: form,
+  });
+  const text = await res.text();
+  const body = text ? safeJson(text) : null;
+  if (!res.ok) throw new ApiError(res.status, body, errorMessage(body, res.status));
+  return body as { sow_version_id: UUID; version_no: number; supersedes: UUID | null };
+}
+
+/** Hard delete. Only valid before the version has been submitted. */
+export function deleteSowVersion(
+  sowVersionId: UUID,
+  reason?: string,
+): Promise<{ deleted: boolean }> {
+  const q = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  return request<{ deleted: boolean }>(`/sows/versions/${sowVersionId}${q}`, {
+    method: "DELETE",
+  });
+}
+
+/** Soft discard, for a version that has already been through approval. */
+export function discardSowVersion(
+  sowVersionId: UUID,
+  reason: string,
+): Promise<{ sow_version_id: UUID; discarded_at: string | null }> {
+  return request(`/sows/versions/${sowVersionId}/discard`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
 /** URL of the blank staffing sheet. Opened directly so the browser downloads it. */
 export function staffingTemplateUrl(): string {
   return `${BASE_URL}/sows/staffing-template.xlsx`;

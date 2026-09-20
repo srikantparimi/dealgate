@@ -2,6 +2,7 @@ import type { AgreementRow } from "../../../api/client";
 import { EmptyState } from "../../../ui-v2/EmptyState";
 import { StatusBadge, type StatusTone } from "../../../ui-v2/StatusBadge";
 import type { WorkspaceSnapshot } from "./readiness";
+import { SowVersionHistory } from "./SowVersionHistory";
 
 const STATE_TONE: Record<AgreementRow["state"], StatusTone> = {
   missing: "warn",
@@ -16,6 +17,13 @@ const STATE_TONE: Record<AgreementRow["state"], StatusTone> = {
   superseded: "neutral",
 };
 
+/**
+ * Documents: the mother documents and the SOW.
+ *
+ * MSA and NDA are per legal entity, long-lived, and carry their own state
+ * machine — the table below. A SOW belongs to one engagement and is revised
+ * during negotiation, so it gets a version chain instead, rendered under it.
+ */
 export function DocumentsTab({ snap }: { snap: WorkspaceSnapshot }) {
   const rows = [
     ...snap.agreements.map((a) => ({
@@ -82,6 +90,10 @@ export function DocumentsTab({ snap }: { snap: WorkspaceSnapshot }) {
           </tbody>
         </table>
       </div>
+
+      {snap.deal?.id ? (
+        <SowVersionHistory opportunityId={snap.deal.id} />
+      ) : null}
     </section>
   );
 }
