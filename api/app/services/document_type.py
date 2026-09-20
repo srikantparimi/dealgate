@@ -22,9 +22,15 @@ pipeline start; anything else is rejected 422.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from io import BytesIO
 from typing import Protocol
 
+from app.services.document_text import (
+    DocumentText,
+    UnreadableDocument,
+    extract_document_text,
+    is_low_density,
+    pages_text,
+)
 
 DocType = str  # "sow" | "msa" | "nda" | "resume" | "invoice" | "other"
 
@@ -120,31 +126,10 @@ class _NullBedrock:
 # --- text density + preview -----------------------------------------------
 
 
-def _pdf_pages_text(file_bytes: bytes) -> list[str]:
-    """Return per-page text. Empty list when pypdf cannot parse."""
+def _text_density_low(doc: DocumentText) -> bool:
+    """Delegates to the shared seam — kept as a name the tests can reach."""
 
-    if not file_bytes:
-        return []
-    try:
-        from pypdf import PdfReader
-
-        reader = PdfReader(BytesIO(file_bytes))
-        pages: list[str] = []
-        for page in reader.pages:
-            try:
-                pages.append(page.extract_text() or "")
-            except Exception:  # noqa: BLE001 — one bad page mustn't kill the run
-                pages.append("")
-        return pages
-    except Exception:  # noqa: BLE001
-        return []
-
-
-def _text_density_low(pages: list[str]) -> bool:
-    if not pages:
-        return True
-    total = sum(len(p) for p in pages)
-    return (total / len(pages)) < _TEXT_DENSITY_MIN_CHARS_PER_PAGE
+    return is_low_density(doc)
 
 
 def _top_lines(pages: list[str]) -> tuple[list[str], int]:
@@ -223,18 +208,25 @@ def classify_from_lines(
 def classify_document(
     file_bytes: bytes,
     *,
+    content_type: str | None = None,
     bedrock: DocumentTypeBedrock | None = None,
 ) -> DocumentTypeResult:
-    """Classify a PDF's high-level type.
+    """Classify an uploaded document's high-level type (PDF or DOCX).
 
     Order of operations:
 
     1. If the file is empty, return ``other`` at zero confidence — a
        zero-byte upload is never a real document.
-    2. Parse pages via pypdf. If parseable and dense enough, run the
-       keyword rules on the first 100 header lines.
+    2. Read the text through :mod:`app.services.document_text`, which
+       handles PDF and DOCX alike. If it is dense enough, run the keyword
+       rules on the first 100 header lines.
     3. If the rules produce a decisive winner, return it. Otherwise ask
        Bedrock with a text preview.
+
+    Raises :class:`UnreadableDocument` when the bytes are neither a PDF nor a
+    DOCX we can parse. That is deliberately *not* swallowed into
+    ``other``: "we could not open this file" and "this is not a SOW" are
+    different problems and deserve different messages to the user.
     """
 
     if not file_bytes:
@@ -242,10 +234,10 @@ def classify_document(
             type="other", confidence=0.0, page_ref=None, source="empty"
         )
 
-    pages = _pdf_pages_text(file_bytes)
-    lines, landing_page = _top_lines(pages)
+    doc = extract_document_text(file_bytes, content_type)
+    lines, landing_page = _top_lines(pages_text(doc))
 
-    density_low = _text_density_low(pages)
+    density_low = _text_density_low(doc)
     rules_hit = classify_from_lines(lines, landing_page=landing_page)
 
     if rules_hit is not None and rules_hit.confidence >= 0.7:
@@ -269,6 +261,7 @@ __all__ = [
     "DocType",
     "DocumentTypeBedrock",
     "DocumentTypeResult",
+    "UnreadableDocument",
     "classify_document",
     "classify_from_lines",
 ]

@@ -47,6 +47,16 @@
         "status": "unconfirmed",
         "value": "hourly"
       },
+      "client_domain": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "contoso.example.com"
+      },
+      "client_legal_name": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Contoso Data Services, LLC"
+      },
       "currency": {
         "page_ref": 2,
         "status": "unconfirmed",
@@ -144,6 +154,16 @@
         "status": "unconfirmed",
         "value": "monthly_fee"
       },
+      "client_domain": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "fabrikam.example.com"
+      },
+      "client_legal_name": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Fabrikam Operations Pvt Ltd"
+      },
       "currency": {
         "page_ref": 2,
         "status": "unconfirmed",
@@ -235,6 +255,16 @@
         "page_ref": 2,
         "status": "unconfirmed",
         "value": "fixed_price"
+      },
+      "client_domain": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "northwind.example.com"
+      },
+      "client_legal_name": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Northwind Traders, Inc."
       },
       "currency": {
         "page_ref": 2,
@@ -347,6 +377,16 @@
         "page_ref": 2,
         "status": "unconfirmed",
         "value": "fixed_price"
+      },
+      "client_domain": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "adventure-works.example.com"
+      },
+      "client_legal_name": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Adventure Works Group"
       },
       "currency": {
         "page_ref": 2,
@@ -470,6 +510,16 @@
         "status": "unconfirmed",
         "value": "time_and_materials"
       },
+      "client_domain": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "tailspin.example.com"
+      },
+      "client_legal_name": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Tailspin Toys, LLC"
+      },
       "currency": {
         "page_ref": 2,
         "status": "unconfirmed",
@@ -561,6 +611,16 @@
         "page_ref": 2,
         "status": "unconfirmed",
         "value": "fixed_price"
+      },
+      "client_domain": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "wingtip.example.com"
+      },
+      "client_legal_name": {
+        "page_ref": 1,
+        "status": "unconfirmed",
+        "value": "Wingtip Financial, Inc."
       },
       "currency": {
         "page_ref": 2,

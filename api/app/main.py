@@ -1,4 +1,10 @@
-from fastapi import FastAPI
+import logging
+import os
+import uuid
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
 from app.routers import (
     actuals,
@@ -33,7 +39,89 @@ from app.routers import (
     tasks,
 )
 
+log = logging.getLogger("dealgate.api")
+
 app = FastAPI(title="DealGate API", version="0.0.1")
+
+
+def _debug_detail() -> bool:
+    """Include the exception text in the response body outside production."""
+
+    return os.environ.get("DEALGATE_ENV", "local") in ("local", "test", "dev")
+
+
+@app.exception_handler(ProgrammingError)
+@app.exception_handler(OperationalError)
+async def _schema_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """A database schema or connectivity fault.
+
+    This is the class of failure that produced "API error 500" with no
+    explanation: a migration had not been applied, so the first query in the
+    handler raised and Starlette returned a bare plain-text body with no JSON
+    `detail` for the browser to show. 503 is the honest code — the service
+    cannot serve the request, and it is not the caller's fault.
+    """
+
+    correlation_id = str(uuid.uuid4())
+    log.exception(
+        "database error", extra={"correlation_id": correlation_id, "path": request.url.path}
+    )
+    detail: dict[str, object] = {
+        "message": (
+            "The service could not reach the database in the expected shape. "
+            "This usually means a pending migration."
+        ),
+        "correlation_id": correlation_id,
+        "error_type": type(exc).__name__,
+    }
+    if _debug_detail():
+        detail["error"] = str(exc)
+    return JSONResponse(status_code=503, content={"detail": detail})
+
+
+@app.exception_handler(IntegrityError)
+async def _integrity_error_handler(
+    request: Request, exc: IntegrityError
+) -> JSONResponse:
+    correlation_id = str(uuid.uuid4())
+    log.warning(
+        "integrity error",
+        extra={"correlation_id": correlation_id, "path": request.url.path},
+    )
+    detail: dict[str, object] = {
+        "message": "That change conflicts with a record that already exists.",
+        "correlation_id": correlation_id,
+        "error_type": "IntegrityError",
+    }
+    if _debug_detail():
+        detail["error"] = str(exc)
+    return JSONResponse(status_code=409, content={"detail": detail})
+
+
+@app.exception_handler(Exception)
+async def _unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Last resort. Changes the envelope, never the outcome.
+
+    A 500 is still a 500 and the full traceback is still logged — the only
+    thing this removes is Starlette's bare-text body, which the browser client
+    could not extract a message from. The correlation id is what ties the red
+    banner a user reports to the line in CloudWatch.
+    """
+
+    correlation_id = str(uuid.uuid4())
+    log.exception(
+        "unhandled exception",
+        extra={"correlation_id": correlation_id, "path": request.url.path},
+    )
+    detail: dict[str, object] = {
+        "message": "Something went wrong on our side.",
+        "correlation_id": correlation_id,
+        "error_type": type(exc).__name__,
+    }
+    if _debug_detail():
+        detail["error"] = str(exc)
+    return JSONResponse(status_code=500, content={"detail": detail})
+
 app.include_router(health.router)
 app.include_router(me.router)
 app.include_router(hubspot.router)

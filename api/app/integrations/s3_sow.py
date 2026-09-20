@@ -15,13 +15,11 @@ byte cap directly without a POST policy; we therefore enforce the cap at
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import os
+from typing import Any
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from urllib.parse import quote
 
 import structlog
 
@@ -89,97 +87,31 @@ def _build_s3_key(opportunity_id: uuid.UUID, filename: str, content_type: str) -
     return f"sow/{opportunity_id}/{stamp}-{nonce}-{safe_name}.{ext}"
 
 
-# --- SigV4 URL signing (mirrors s3_evidence) -----------------------------
+# --- AWS client ----------------------------------------------------------
+#
+# The hand-rolled SigV4 signer that used to live here is gone, along with
+# `_aws_credentials()`, which read AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+# from the environment and fell back to the literals "AKIAEXAMPLE" /
+# "SECRETEXAMPLE". ECS Fargate task roles do not set those variables — they
+# publish credentials on the container credentials endpoint — so in the
+# deployed container every signature was built from the placeholder key. That
+# turns "no credentials" into "signature mismatch", which is a strictly worse
+# error to debug. boto3's default provider chain handles the task role, a
+# local profile and CI env vars without a branch.
 
 
-def _sign(key: bytes, msg: str) -> bytes:
-    return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
+def _client() -> Any:
+    import boto3
+    from botocore.config import Config
 
-
-def _signing_key(secret: str, date_stamp: str, region: str, service: str) -> bytes:
-    k_date = _sign(("AWS4" + secret).encode("utf-8"), date_stamp)
-    k_region = _sign(k_date, region)
-    k_service = _sign(k_region, service)
-    return _sign(k_service, "aws4_request")
-
-
-def _presign(
-    *,
-    method: str,
-    bucket: str,
-    key: str,
-    region: str,
-    access_key: str,
-    secret_key: str,
-    session_token: str | None,
-    ttl_seconds: int,
-    signed_headers: dict[str, str],
-) -> str:
-    host = f"{bucket}.s3.{region}.amazonaws.com"
-    now = _now()
-    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
-    date_stamp = now.strftime("%Y%m%d")
-    credential = f"{access_key}/{date_stamp}/{region}/s3/aws4_request"
-
-    header_names = sorted({"host", *[h.lower() for h in signed_headers]})
-    signed_header_list = ";".join(header_names)
-
-    canonical_query_parts = [
-        ("X-Amz-Algorithm", "AWS4-HMAC-SHA256"),
-        ("X-Amz-Credential", credential),
-        ("X-Amz-Date", amz_date),
-        ("X-Amz-Expires", str(ttl_seconds)),
-        ("X-Amz-SignedHeaders", signed_header_list),
-    ]
-    if session_token:
-        canonical_query_parts.append(("X-Amz-Security-Token", session_token))
-    canonical_query_parts.sort(key=lambda p: p[0])
-    canonical_query = "&".join(
-        f"{quote(k, safe='-_.~')}={quote(v, safe='-_.~')}"
-        for k, v in canonical_query_parts
+    return boto3.client(
+        "s3",
+        region_name=_region(),
+        config=Config(
+            signature_version="s3v4",
+            retries={"max_attempts": 3, "mode": "standard"},
+        ),
     )
-
-    headers_lower = {"host": host, **{k.lower(): v for k, v in signed_headers.items()}}
-    canonical_headers = "".join(
-        f"{name}:{headers_lower[name].strip()}\n" for name in header_names
-    )
-
-    canonical_uri = "/" + quote(key, safe="/-_.~")
-    payload_hash = "UNSIGNED-PAYLOAD"
-    canonical_request = "\n".join(
-        [
-            method,
-            canonical_uri,
-            canonical_query,
-            canonical_headers,
-            signed_header_list,
-            payload_hash,
-        ]
-    )
-
-    string_to_sign = "\n".join(
-        [
-            "AWS4-HMAC-SHA256",
-            amz_date,
-            f"{date_stamp}/{region}/s3/aws4_request",
-            hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
-        ]
-    )
-    signing_key = _signing_key(secret_key, date_stamp, region, "s3")
-    signature = hmac.new(
-        signing_key, string_to_sign.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
-
-    return (
-        f"https://{host}{canonical_uri}?{canonical_query}&X-Amz-Signature={signature}"
-    )
-
-
-def _aws_credentials() -> tuple[str, str, str | None]:
-    access = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE")
-    secret = os.environ.get("AWS_SECRET_ACCESS_KEY", "SECRETEXAMPLE")
-    token = os.environ.get("AWS_SESSION_TOKEN")
-    return access, secret, token
 
 
 # --- Public interface ---------------------------------------------------
@@ -191,6 +123,58 @@ class SowS3:
     def __init__(self, bucket: str | None = None, region: str | None = None) -> None:
         self._bucket = bucket or _bucket_name()
         self._region = region or _region()
+        if self._bucket.endswith("-000000000000"):
+            # `_bucket_name()` fell through to its placeholder account id,
+            # which means neither SOW_BUCKET nor AWS_ACCOUNT_ID is set. Fail
+            # here with the reason rather than 404-ing against a bucket that
+            # was never going to exist.
+            raise RuntimeError(
+                "SOW_BUCKET is not set and AWS_ACCOUNT_ID is unavailable — "
+                "cannot resolve the SOW bucket name"
+            )
+
+    def put_object(self, s3_key: str, body: bytes, content_type: str) -> str:
+        """Upload bytes directly and return the key.
+
+        Server-side uploads do not need a pre-signed URL: presigning exists so
+        a *third party* (the browser) can upload without our credentials. Here
+        the API already holds the bytes, so signing a URL and then PUTting to
+        it from the same process is a pointless network round-trip and a
+        second signing implementation to keep correct.
+
+        Synchronous — callers on the event loop wrap this in a thread.
+        """
+
+        if content_type not in _ALLOWED_CONTENT_TYPES:
+            raise UnsupportedContentType(
+                f"content_type must be one of {sorted(_ALLOWED_CONTENT_TYPES)}"
+            )
+        if len(body) > MAX_SOW_BYTES:
+            raise FileTooLarge(f"file exceeds {MAX_SOW_BYTES} bytes")
+        self._client_or_new().put_object(
+            Bucket=self._bucket,
+            Key=s3_key,
+            Body=body,
+            ContentType=content_type,
+        )
+        return s3_key
+
+    def build_key(
+        self,
+        filename: str,
+        content_type: str,
+        opportunity_id: uuid.UUID | None = None,
+    ) -> str:
+        """Key for a file that may not have an opportunity yet.
+
+        The SOW-first flow uploads before the opportunity exists, so the key
+        is namespaced by a fresh uuid in that case.
+        """
+
+        return _build_s3_key(opportunity_id or uuid.uuid4(), filename, content_type)
+
+    def _client_or_new(self) -> Any:
+        return _client()
 
     def generate_upload_url(
         self,
@@ -203,17 +187,14 @@ class SowS3:
                 f"content_type must be one of {sorted(_ALLOWED_CONTENT_TYPES)}"
             )
         key = _build_s3_key(opportunity_id, filename, content_type)
-        access, secret, token = _aws_credentials()
-        url = _presign(
-            method="PUT",
-            bucket=self._bucket,
-            key=key,
-            region=self._region,
-            access_key=access,
-            secret_key=secret,
-            session_token=token,
-            ttl_seconds=_URL_TTL_SECONDS,
-            signed_headers={"content-type": content_type},
+        url = self._client_or_new().generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": self._bucket,
+                "Key": key,
+                "ContentType": content_type,
+            },
+            ExpiresIn=_URL_TTL_SECONDS,
         )
         return UploadUrl(
             url=url,
@@ -224,17 +205,10 @@ class SowS3:
         )
 
     def generate_download_url(self, s3_key: str) -> str:
-        access, secret, token = _aws_credentials()
-        return _presign(
-            method="GET",
-            bucket=self._bucket,
-            key=s3_key,
-            region=self._region,
-            access_key=access,
-            secret_key=secret,
-            session_token=token,
-            ttl_seconds=_URL_TTL_SECONDS,
-            signed_headers={},
+        return self._client_or_new().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self._bucket, "Key": s3_key},
+            ExpiresIn=_URL_TTL_SECONDS,
         )
 
 
@@ -251,6 +225,17 @@ class StubS3(SowS3):
         self._region = "us-east-1"
         self.upload_calls: list[tuple[uuid.UUID, str, str]] = []
         self.download_calls: list[str] = []
+        self.put_calls: list[tuple[str, int, str]] = []
+
+    def put_object(self, s3_key: str, body: bytes, content_type: str) -> str:
+        if content_type not in _ALLOWED_CONTENT_TYPES:
+            raise UnsupportedContentType(
+                f"content_type must be one of {sorted(_ALLOWED_CONTENT_TYPES)}"
+            )
+        if len(body) > MAX_SOW_BYTES:
+            raise FileTooLarge(f"file exceeds {MAX_SOW_BYTES} bytes")
+        self.put_calls.append((s3_key, len(body), content_type))
+        return s3_key
 
     def generate_upload_url(
         self,
@@ -279,8 +264,17 @@ class StubS3(SowS3):
 
 
 def get_sow_s3() -> SowS3:
-    """FastAPI dependency. Override with :class:`StubS3` in tests."""
+    """FastAPI dependency. Override with :class:`StubS3` in tests.
 
+    ``S3_STUB=1`` selects the stub. That variable was already exported by
+    ``.github/workflows/e2e.yml`` but read by nothing, so the e2e job believed
+    it was running offline while the code reached for real S3.
+    """
+
+    if os.environ.get("S3_STUB") == "1":
+        return StubS3()
+    if os.environ.get("DEALGATE_ENV") in ("local", "test"):
+        return StubS3()
     return SowS3()
 
 

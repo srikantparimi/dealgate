@@ -271,7 +271,11 @@ async def test_non_document_type_is_rejected(session):
     """A non-SOW/MSA/NDA payload is rejected without creating any rows."""
 
     actor = await _seed_actor(session)
-    # A tiny non-PDF payload the classifier will land as ``other``.
+    # Bytes that are not a document at all. These land as ``unreadable``
+    # rather than ``other``: we could not open the file, which is a different
+    # (and more actionable) answer than "we read it and it is not a SOW".
+    # The readable-but-not-a-SOW case is covered by the résumé fixture in
+    # tests/test_sow_upload_router.py.
     payload = b"not a pdf"
     result = await apply_pipeline(
         session,
@@ -280,7 +284,8 @@ async def test_non_document_type_is_rejected(session):
         source="bulk_import",
     )
     assert result.outcome == PipelineOutcome.REJECTED
-    assert result.detected_type == "other"
+    assert result.detected_type == "unreadable"
+    assert result.errors  # carries the reason the file could not be opened
 
     assert not list((await session.execute(select(SowVersion))).scalars())
     assert not list((await session.execute(select(Opportunity))).scalars())

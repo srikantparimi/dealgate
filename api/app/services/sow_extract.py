@@ -29,9 +29,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
+from app.services.document_text import (
+    DocumentText,
+    UnreadableDocument,
+    extract_document_text,
+    is_low_density,
+    text_document_from_string,
+)
 from app.integrations.bedrock_sow_extract import (
-    EXTRACT_MODEL,
-    EXTRACT_PROMPT_VERSION,
     EXTRACTED_FIELDS,
     BedrockSowExtract,
     ExtractedFields,
@@ -276,36 +281,6 @@ async def create_sow_version(
     return _snapshot(version, opportunity_id)
 
 
-def _pdf_text_density(pdf_bytes: bytes) -> tuple[int, int]:
-    """Parse the PDF locally and return ``(total_chars, page_count)``.
-
-    Returns ``(0, 0)`` if the file cannot be parsed — the caller then
-    routes through Textract, which is more tolerant of malformed inputs.
-    Kept module-private because it is a heuristic input to the extract
-    branch, not a piece of the public API.
-    """
-
-    if not pdf_bytes:
-        return 0, 0
-    try:
-        from io import BytesIO
-
-        from pypdf import PdfReader
-
-        reader = PdfReader(BytesIO(pdf_bytes))
-        pages = list(reader.pages)
-        total = 0
-        for page in pages:
-            try:
-                text = page.extract_text() or ""
-            except Exception:  # noqa: BLE001 — one bad page must not blow the run
-                text = ""
-            total += len(text)
-        return total, len(pages)
-    except Exception:  # noqa: BLE001 — malformed → fall through to Textract
-        return 0, 0
-
-
 def _needs_textract(pdf_bytes: bytes) -> bool:
     """True when the PDF has fewer than ``TEXT_DENSITY_MIN_CHARS_PER_PAGE``
     chars/page.
@@ -317,12 +292,17 @@ def _needs_textract(pdf_bytes: bytes) -> bool:
 
     if not pdf_bytes:
         return False
-    total, pages = _pdf_text_density(pdf_bytes)
-    if pages == 0:
-        # Malformed / unreadable → try OCR; safer than fabricating a "no text"
-        # branch that runs Bedrock over an empty string.
+    try:
+        doc = extract_document_text(pdf_bytes)
+    except UnreadableDocument:
+        # Unparseable → try OCR; safer than running Bedrock over an empty
+        # string. Textract will give its own error if it cannot read it.
         return True
-    return (total / pages) < TEXT_DENSITY_MIN_CHARS_PER_PAGE
+    if doc.kind != "pdf":
+        # DOCX carries a real text layer or none at all — Textract does not
+        # accept Word files, so OCR is never the answer for one.
+        return False
+    return is_low_density(doc)
 
 
 async def run_extract(
@@ -358,7 +338,7 @@ async def run_extract(
     opportunity_id = await _opportunity_id_for(session, version.sow_id)
 
     extract_source = _EXTRACT_SOURCE_PDF
-    bedrock_input: bytes = file_bytes
+    text_doc: DocumentText | None = None
     ocr_error: str | None = None
 
     if _needs_textract(file_bytes):
@@ -369,17 +349,28 @@ async def run_extract(
         extract_source = _EXTRACT_SOURCE_TEXTRACT
         try:
             recovered = client.extract_text(file_bytes)
-            bedrock_input = recovered.encode("utf-8")
+            text_doc = text_document_from_string(recovered)
         except TextractError as exc:
             ocr_error = str(exc)
+    elif not file_bytes:
+        # Documented test-only shortcut (see `_needs_textract`): a zero-byte
+        # payload means "no real document, just exercise the extractor".
+        # Production is unaffected — the real caller returns ManualRequired
+        # for an empty document rather than inventing fields.
+        text_doc = text_document_from_string("")
+    else:
+        try:
+            text_doc = extract_document_text(file_bytes)
+        except UnreadableDocument as exc:
+            ocr_error = f"could not read document: {exc.reason}"
 
     result: ExtractedFields | ManualRequired
     error: str | None = None
-    if ocr_error is not None:
-        result = ManualRequired(reason="OCR unavailable")
+    if ocr_error is not None or text_doc is None:
+        result = ManualRequired(reason=ocr_error or "OCR unavailable")
     else:
         try:
-            raw = bedrock.extract(bedrock_input)
+            raw = bedrock.extract(text_doc)
             if isinstance(raw, ManualRequired):
                 result = raw
             elif isinstance(raw, ExtractedFields):

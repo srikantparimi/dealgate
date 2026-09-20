@@ -124,8 +124,29 @@ guess. Each question names the sprint it blocks.
 
 ## Blocks Sprint 3
 
-- [x] **Bedrock (Claude) model access for SOW extraction (S3-E5).** Story
-  s3-e5 depends on Claude via Bedrock in the dev account and region.
+- [x] **Bedrock (Claude) model access for SOW extraction — RESOLVED S10-04,
+  2026-09-20.** The extractor is live. Two findings worth recording:
+
+  1. **Every Anthropic model in this account is INFERENCE_PROFILE-only.** The
+     bare foundation-model id returns `ValidationException: Invocation of
+     model ID ... with on-demand throughput isn't supported`. The working id
+     is the cross-region inference profile, `us.anthropic.claude-opus-5`.
+     Configurable via `SOW_EXTRACT_MODEL_ID`.
+  2. **This deployment rejects `output_config.format` and `strict: true`**
+     (`Extra inputs are not permitted`). Schema is enforced by forced tool use
+     (`tool_choice: {"type": "tool"}`), with `validate_extract()` as the gate
+     that decides what may be persisted — which is the rule-6-correct
+     arrangement anyway: the schema check lives in our code.
+
+  IAM: the task role needs `bedrock:InvokeModel` on the inference-profile ARN
+  **and** on the foundation-model ARN in all three regions the `us.` profile
+  routes across (us-east-1, us-east-2, us-west-2). Granted on
+  `officeapp-dev-api-task`, which previously had no policies at all.
+
+  Original question follows.
+
+- [x] **(original) Bedrock (Claude) model access for SOW extraction (S3-E5).**
+  Story s3-e5 depends on Claude via Bedrock in the dev account and region.
   Verified 2026-09-17 via `aws bedrock list-foundation-models --region us-east-2
   --by-provider anthropic` — 13 Anthropic models listed, including
   `anthropic.claude-sonnet-4-20250514-v1:0`. The extract module

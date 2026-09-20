@@ -17,6 +17,26 @@ jobs:
     defaults:
       run:
         working-directory: api
+    # pgvector image, not plain postgres:16 — migration 20260919_0023 does
+    # `CREATE EXTENSION vector`, which the stock image cannot satisfy.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dealgate_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Gates the Postgres-only suites: migration parity and audit hardening.
+      # Without this they skip, and schema drift stays invisible — which is
+      # how a missing migration reached production while 708 tests were green.
+      DEALGATE_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/dealgate_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,6 +46,12 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: pytest
+      # The fixture stubs are validated against the live extract schema but
+      # live outside `testpaths`, so `pytest` in api/ never ran them. Adding a
+      # required field to EXTRACTED_FIELDS silently broke all six until this
+      # ran by hand.
+      - run: pytest ../fixtures/sample_sows
+        working-directory: api
 
   web:
     runs-on: ubuntu-latest
@@ -38,7 +64,12 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: web/package.json
-      - run: npm install
+          # package-lock.json exists; keying the cache on package.json meant
+          # the lockfile was neither cached nor enforced.
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
       - run: npm run typecheck
+      # The 258 vitest specs had never run in CI — the job did typecheck and
+      # build only, so a passing build said nothing about the components.
+      - run: npx vitest run
       - run: npm run build

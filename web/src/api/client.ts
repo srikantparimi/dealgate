@@ -132,13 +132,41 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const text = await res.text();
   const body = text ? safeJson(text) : null;
   if (!res.ok) {
-    const message =
-      body && typeof body === "object" && "detail" in body
-        ? String((body as { detail: unknown }).detail)
-        : `API error ${res.status}`;
-    throw new ApiError(res.status, body, message);
+    throw new ApiError(res.status, body, errorMessage(body, res.status));
   }
   return body as T;
+}
+
+/**
+ * Pull a human message out of an error body.
+ *
+ * FastAPI's `detail` is a string for a plain HTTPException but an object for
+ * a structured one — and the API's global handlers return
+ * `{detail: {message, correlation_id, error_type}}`. `String(detail)` on
+ * those renders the literal text "[object Object]", so the object shapes are
+ * unwrapped here.
+ *
+ * The final fallback, `API error <status>`, only appears when the response
+ * carried no JSON at all — a proxy error page, or an unhandled exception
+ * before the handlers were in place. That is the message this whole change
+ * set exists to stop people seeing.
+ */
+export function errorMessage(body: unknown, status: number): string {
+  if (body && typeof body === "object" && "detail" in body) {
+    const detail = (body as { detail: unknown }).detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (detail && typeof detail === "object") {
+      const d = detail as Record<string, unknown>;
+      const message = d.message ?? d.msg;
+      if (typeof message === "string" && message.trim()) {
+        return typeof d.correlation_id === "string"
+          ? `${message} (ref ${d.correlation_id.slice(0, 8)})`
+          : message;
+      }
+    }
+  }
+  if (typeof body === "string" && body.trim()) return body;
+  return `API error ${status}`;
 }
 
 function safeJson(text: string): unknown {
@@ -1266,17 +1294,7 @@ export async function uploadSow(input: {
   const text = await res.text();
   const body = text ? safeJson(text) : null;
   if (!res.ok) {
-    const detail =
-      body && typeof body === "object" && "detail" in body
-        ? (body as { detail: unknown }).detail
-        : null;
-    const message =
-      typeof detail === "string"
-        ? detail
-        : detail && typeof detail === "object" && "message" in detail
-          ? String((detail as { message: unknown }).message)
-          : `API error ${res.status}`;
-    throw new ApiError(res.status, body, message);
+    throw new ApiError(res.status, body, errorMessage(body, res.status));
   }
   return body as UploadSowResponse;
 }

@@ -27,13 +27,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import AuthUser, current_user, require_role
+from app.auth import AuthUser, require_role
 from app.db import get_session
 from app.integrations.bedrock_sow_extract import (
     BedrockSowExtract,
     get_bedrock_sow,
 )
 from app.integrations.s3_sow import SowS3, get_sow_s3
+from app.services.user_provisioning import ensure_user
 from app.services.sow_upload_job_service import (
     RejectedDocumentType,
     UploadPipelineError,
@@ -192,8 +193,21 @@ async def upload_sow(
 
     # Duplicate short-circuit — the pipeline handles this internally too,
     # but running it here means the router never touches S3 for a dupe.
+    #
+    # This is the query that produced the bare "API error 500": when
+    # migration 0028 had not been applied, `sow_upload_job` did not exist and
+    # the raw ProgrammingError escaped every handler, so Starlette returned a
+    # plain-text body the browser client could not read a message from. It
+    # still runs before the try (the try's handlers are for pipeline
+    # outcomes, not database faults); the schema-fault handler registered in
+    # `app.main` is what now turns it into a 503 that says what happened.
+    #
+    # A `failed` job is deliberately not treated as a duplicate. `file_hash`
+    # is UNIQUE, so returning the dead row here would mean a file that failed
+    # once — a transient S3 or Bedrock outage, say — could never be uploaded
+    # again. `start_upload` reuses and resets that row instead.
     existing = await find_by_hash(session, __sha256(file_bytes))
-    if existing is not None:
+    if existing is not None and existing.status != "failed":
         await session.commit()
         return UploadResponse(
             job_id=existing.id,
@@ -205,10 +219,18 @@ async def upload_sow(
             needs_pick=existing.needs_pick_payload,
         )
 
+    # Guarantee a `user` row exists before anything references it.
+    # `sow_upload_job.uploader_id` is a NOT NULL FK, and an SSO principal who
+    # was never invited through the admin console has no row — so without this
+    # the very first upload by a new user is an IntegrityError.
+    # Use the returned row's id: `ensure_user` may adopt a row an admin
+    # pre-created under a different uuid.
+    db_user = await ensure_user(session, user)
+
     try:
         job = await start_upload(
             session,
-            uploader_id=user.id,
+            uploader_id=db_user.id,
             file_bytes=file_bytes,
             filename=file.filename,
             content_type=content_type,
@@ -217,16 +239,12 @@ async def upload_sow(
             bedrock_sow=bedrock,
         )
     except RejectedDocumentType as exc:
-        # No DB rows created — safe to bail without a commit.
+        # No DB rows created — safe to bail without a commit. The message
+        # comes from the exception so an unreadable file says so, rather than
+        # claiming it is not a SOW.
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "detected_type": exc.detected_type,
-                "message": (
-                    f"This file does not look like a SOW. Detected: "
-                    f"{exc.detected_type}."
-                ),
-            },
+            detail={"detected_type": exc.detected_type, "message": exc.message},
         ) from exc
     except UploadPipelineError as exc:
         # Job row exists in `failed` — commit so the caller can poll it.

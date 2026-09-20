@@ -157,8 +157,13 @@ async def test_image_only_pdf_routes_through_textract_then_bedrock(
     assert state.extract_status == "complete"
     # Textract was called once with the raw PDF bytes.
     assert len(textract.calls) == 1
-    # Bedrock received the *recovered* text (as utf-8 bytes), not the raw PDF.
-    assert bedrock.calls == [len(recovered.encode("utf-8"))]
+    # Bedrock received the *recovered* text as a parsed document, not the raw
+    # PDF bytes. StubBedrock records the block count; the recovered text is one
+    # paragraph, so one block.
+    expected_blocks = len(
+        [c for c in recovered.split("\n\n") if c.strip()]
+    )
+    assert bedrock.calls == [expected_blocks]
     metadata = state.extracted_fields.get("metadata")
     assert metadata is not None
     assert metadata["extract_source"] == "textract"

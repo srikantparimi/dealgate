@@ -104,6 +104,22 @@ resource "aws_db_instance" "this" {
   tags = {
     Name = "${var.name_prefix}-db"
   }
+
+  # S10 guard — the hazard described above is live, not theoretical. The dev
+  # instance was created against the AWS-managed `aws/rds` key while
+  # `module.kms` is absent from the local state, so a plain `terraform apply`
+  # proposes a `kms_key_id` change, which is a ForceNew. With
+  # `deletion_protection = false` and `skip_final_snapshot = true` that is a
+  # silent, unrecoverable delete of the database.
+  #
+  # `prevent_destroy` turns that into a hard error instead of data loss.
+  # `ignore_changes = [kms_key_id]` stops the replacement being proposed at
+  # all. To re-key deliberately, follow the snapshot/restore runbook above and
+  # remove these two lines for that apply only.
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [kms_key_id]
+  }
 }
 
 # Write the composed DSN into the pre-created secret so the API just reads

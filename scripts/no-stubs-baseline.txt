@@ -1,0 +1,23 @@
+# CLAUDE.md rule 11 baseline — KNOWN, TRACKED stub debt.
+#
+# Each line is a path that currently contains forbidden stub language. They
+# are recorded here so the guard still fails on anything NEW, instead of
+# being weakened to accommodate them. This list should only ever shrink.
+#
+# Added 2026-09-20 (S10-04) when the pattern list was widened to catch the
+# Bedrock SOW extractor stub, which had shipped to production returning
+# ManualRequired for every upload. Widening the patterns surfaced these.
+#
+# What each one actually means for a user today:
+#
+#   bedrock_ceo_brief.py  — the CEO exception brief is not model-drafted; the
+#                           gate and the human rationale work, the pre-draft
+#                           does not.
+#   msa_import.py         — MSA rate-schedule extraction is not implemented;
+#                           client rate cards must be entered by hand.
+#   MyTasks.tsx           — legacy task reassign takes a pasted user id, with
+#                           no picker. Superseded by /work (MyWork V2).
+#
+api/app/integrations/bedrock_ceo_brief.py
+api/app/services/msa_import.py
+web/src/pages/MyTasks.tsx

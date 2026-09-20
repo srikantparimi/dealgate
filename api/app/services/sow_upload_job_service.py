@@ -25,11 +25,12 @@ The public surface is small on purpose:
 
 from __future__ import annotations
 
+import functools
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
+import anyio
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,17 +38,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import append_audit
 from app.integrations.bedrock_sow_extract import (
     BedrockSowExtract,
-    ExtractedFields,
-    ManualRequired,
     StubBedrock,
     validate_extract,
 )
-from app.integrations.s3_sow import SowS3, StubS3
+from app.integrations.s3_sow import FileTooLarge, SowS3, UnsupportedContentType
 from app.models.client import Client, LegalEntity
 from app.models.client_alias import ClientAlias
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
 from app.models.sow_upload_job import SowUploadJob
+from app.services.document_text import UnreadableDocument
 from app.services.document_type import (
     ALLOWED_START_TYPES,
     classify_document,
@@ -66,11 +66,23 @@ class UploadPipelineError(Exception):
 
 
 class RejectedDocumentType(UploadPipelineError):
-    """Non-SOW document detected — the router maps this to HTTP 422."""
+    """Document we will not start a pipeline for — the router maps this to 422.
 
-    def __init__(self, detected_type: str, confidence: float) -> None:
+    Two distinct cases share this type, and ``message`` is what keeps them
+    apart for the user: we read the file and it is not a SOW, or we could not
+    open the file at all. Telling someone "this does not look like a SOW"
+    when the real problem is a corrupt upload sends them hunting for the
+    wrong thing.
+    """
+
+    def __init__(
+        self, detected_type: str, confidence: float, message: str | None = None
+    ) -> None:
         self.detected_type = detected_type
         self.confidence = confidence
+        self.message = message or (
+            f"This file does not look like a SOW. Detected: {detected_type}."
+        )
         super().__init__(
             f"file classified as {detected_type!r} at confidence {confidence:.2f}"
         )
@@ -162,27 +174,6 @@ async def _transition(
 # --- S3 upload ------------------------------------------------------------
 
 
-def _put_via_presigned(
-    signed_url: str,
-    file_bytes: bytes,
-    content_type: str,
-    required_headers: dict[str, str] | None,
-) -> None:
-    """PUT bytes to a pre-signed URL. Short-circuits for stub URLs."""
-
-    if signed_url.startswith("https://stub-sows.local/") or "stub=1" in signed_url:
-        return
-    headers = {"Content-Type": content_type}
-    if required_headers:
-        headers.update(required_headers)
-    with httpx.Client(timeout=30.0) as c:
-        resp = c.put(signed_url, content=file_bytes, headers=headers)
-    if resp.status_code >= 400:
-        raise UploadPipelineError(
-            f"S3 PUT failed: HTTP {resp.status_code} — {resp.text[:200]}"
-        )
-
-
 def _upload_to_s3(
     s3: SowS3,
     *,
@@ -190,18 +181,21 @@ def _upload_to_s3(
     filename: str,
     content_type: str,
 ) -> str:
-    """Issue a signed URL, PUT the bytes, return the ``s3_key``.
+    """Upload the bytes and return the ``s3_key``.
 
-    ``StubS3`` returns a fake URL and records the call; we honour that
-    by not attempting the network round-trip. In prod the SigV4 URL is
-    hit with :mod:`httpx` (already an API dep — no new runtime cost).
+    Was: presign a URL, then PUT to it with a blocking ``httpx.Client`` from
+    inside an ``async def`` — a round-trip to sign a URL for ourselves, and up
+    to 30 seconds of stalled event loop when S3 was slow. Now a direct
+    ``put_object``. Synchronous; the caller runs it in a worker thread.
     """
 
-    signed = s3.generate_upload_url(uuid.uuid4(), filename, content_type)
-    _put_via_presigned(
-        signed.url, file_bytes, content_type, signed.required_headers
-    )
-    return signed.s3_key
+    key = s3.build_key(filename, content_type)
+    try:
+        return s3.put_object(key, file_bytes, content_type)
+    except (UnsupportedContentType, FileTooLarge) as exc:
+        raise UploadPipelineError(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — surfaced to the caller as a job failure
+        raise UploadPipelineError(f"S3 upload failed: {exc}") from exc
 
 
 # --- resolution → SowVersion glue ----------------------------------------
@@ -496,14 +490,32 @@ async def start_upload(
 
     file_hash = sha256_hex(file_bytes)
 
-    # Hash-first dedupe against previously uploaded jobs.
+    # Hash-first dedupe against previously uploaded jobs. A terminal failure
+    # is not a duplicate: `file_hash` is UNIQUE, so without this branch one
+    # failed attempt would make those exact bytes permanently un-uploadable.
+    # Reuse the row (it keeps the audit trail attached) and run again.
     existing = await find_by_hash(session, file_hash)
+    retry_job: SowUploadJob | None = None
     if existing is not None:
-        return existing
+        if existing.status != "failed":
+            return existing
+        retry_job = existing
 
     # Doc-type gate — we probe before creating a job row so a résumé
     # rejection leaves no trace beyond the 422 response body.
-    doc = classify_document(file_bytes)
+    try:
+        doc = classify_document(file_bytes, content_type=content_type)
+    except UnreadableDocument as exc:
+        # Accepted MIME type, unreadable bytes. 422 with the real reason —
+        # never a 500, and never the misleading "not a SOW" message.
+        raise RejectedDocumentType(
+            "unreadable",
+            0.0,
+            message=(
+                f"We could not read this file. {exc.reason.capitalize()}. "
+                "Please upload a PDF or a .docx Word document."
+            ),
+        ) from exc
     if doc.type not in ALLOWED_START_TYPES:
         raise RejectedDocumentType(doc.type, doc.confidence)
 
@@ -513,16 +525,24 @@ async def start_upload(
     # never has to lazy-load a server-default value from within a sync
     # Pydantic path (SQLite/aiosqlite doesn't support that).
     now = datetime.now(UTC)
-    job = SowUploadJob(
-        id=uuid.uuid4(),
-        uploader_id=uploader_id,
-        s3_key=None,
-        file_hash=file_hash,
-        status="queued",
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(job)
+    if retry_job is not None:
+        job = retry_job
+        job.status = "queued"
+        job.error = None
+        job.resolution = None
+        job.needs_pick_payload = None
+        job.updated_at = now
+    else:
+        job = SowUploadJob(
+            id=uuid.uuid4(),
+            uploader_id=uploader_id,
+            s3_key=None,
+            file_hash=file_hash,
+            status="queued",
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(job)
     await session.flush()
     await _emit(
         session,
@@ -539,8 +559,14 @@ async def start_upload(
 
     # Real S3 PUT.
     try:
-        s3_key = _upload_to_s3(
-            s3, file_bytes=file_bytes, filename=filename, content_type=content_type
+        s3_key = await anyio.to_thread.run_sync(
+            functools.partial(
+                _upload_to_s3,
+                s3,
+                file_bytes=file_bytes,
+                filename=filename,
+                content_type=content_type,
+            )
         )
     except UploadPipelineError as exc:
         await _transition(
@@ -566,6 +592,7 @@ async def start_upload(
         file_bytes=file_bytes,
         uploader_id=uploader_id,
         source="sow_upload",
+        content_type=content_type,
         bedrock=bedrock_caller,
     )
 

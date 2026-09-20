@@ -61,25 +61,39 @@ def _local_env(monkeypatch):
 
 
 class _StubBedrockWithClient(StubBedrock):
-    """Extract stub that plants a specific legal name into signatories."""
+    """Extract stub that reports a specific client legal name.
+
+    Sets both the first-class ``client_legal_name`` field (which
+    ``_client_signals`` now prefers) and the signatories block (its
+    fallback), so this fixture exercises the real precedence order.
+    """
 
     def __init__(self, client_legal_name: str) -> None:
         super().__init__()
         self.client_legal_name = client_legal_name
 
-    def extract(self, file_bytes: bytes) -> ExtractedFields:
-        result = super().extract(file_bytes)
+    def extract(self, doc) -> ExtractedFields:
+        result = super().extract(doc)
         assert isinstance(result, ExtractedFields)
         fields = dict(result.fields)
-        # Overwrite the signatories block so `_client_signals` in the
-        # shared pipeline grabs a deterministic legal name.
+        domain = f"{self.client_legal_name.lower().replace(' ', '')}.example"
+        fields["client_legal_name"] = {
+            "value": self.client_legal_name,
+            "page_ref": 1,
+            "status": "unconfirmed",
+        }
+        fields["client_domain"] = {
+            "value": domain,
+            "page_ref": 1,
+            "status": "unconfirmed",
+        }
         fields["signatories"] = {
             "value": [
                 {
                     "client_legal_name": self.client_legal_name,
                     "name": "J. Doe",
                     "role": "Client sponsor",
-                    "email": f"j.doe@{self.client_legal_name.lower().replace(' ', '')}.example",
+                    "email": f"j.doe@{domain}",
                 },
                 {"name": "A. Roe", "role": "Delivery lead"},
             ],
@@ -400,3 +414,130 @@ async def test_pick_requires_client_id_or_create_new(
             json={},
         )
     assert empty.status_code == 422, empty.text
+
+
+# --- Word documents -------------------------------------------------------
+#
+# The story (docs/backlog/s10-sow-upload.md:21) specifies "the PDF or DOCX",
+# the router allowlists the DOCX MIME type and the UI advertises
+# accept=".docx" — but nothing could read a Word file, and there was no test
+# in either direction. A real Word SOW uploaded to the deployed app came back
+# as "This file does not look like a SOW."
+
+DOCX_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
+
+
+async def test_upload_docx_runs_the_full_pipeline(app_with_deps, session):
+    """DOCX → job runs to done, exactly like a PDF."""
+
+    client_name = "Contoso Data Services, LLC"
+    await _seed_client(session, client_name)
+    _override_bedrock(client_name)
+
+    docx = _load_pdf("08_assessment_fixed_fee.docx")
+    async with _client(app_with_deps) as c:
+        r = await c.post(
+            "/sows/upload",
+            headers={"X-Test-User": OWNER_EMAIL},
+            files={"file": ("sow.docx", docx, DOCX_CONTENT_TYPE)},
+        )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "done", body
+    assert body["opportunity_id"]
+    assert body["sow_version_id"]
+
+    opp = (
+        await session.execute(
+            select(Opportunity).where(
+                Opportunity.id == uuid.UUID(body["opportunity_id"])
+            )
+        )
+    ).scalar_one()
+    assert opp.source == "sow_upload"
+
+
+async def test_docx_is_classified_as_a_sow_by_the_rules(app_with_deps, session):
+    """The keyword rules read the Word body, so no model call is needed to
+    decide the document type."""
+
+    from app.services.document_type import classify_document
+
+    result = classify_document(
+        _load_pdf("08_assessment_fixed_fee.docx"), content_type=DOCX_CONTENT_TYPE
+    )
+    assert result.type == "sow"
+    assert result.source == "rules"
+    assert result.confidence >= 0.9
+
+
+async def test_unreadable_file_says_so_rather_than_blaming_the_content(
+    app_with_deps, session
+):
+    """An allowlisted MIME type with unreadable bytes is a 422 that names the
+    real problem — not "this does not look like a SOW", which sends the user
+    hunting for the wrong thing, and not a 500."""
+
+    async with _client(app_with_deps) as c:
+        r = await c.post(
+            "/sows/upload",
+            headers={"X-Test-User": OWNER_EMAIL},
+            files={"file": ("sow.docx", b"PK\x03\x04 corrupt", DOCX_CONTENT_TYPE)},
+        )
+
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert detail["detected_type"] == "unreadable"
+    assert "could not read" in detail["message"].lower()
+
+
+async def test_failed_job_does_not_poison_the_file_hash(app_with_deps, session):
+    """`file_hash` is UNIQUE, so a job left in `failed` used to make those
+    exact bytes permanently un-uploadable: every retry returned the dead job
+    with duplicate=true. A retry must be able to succeed."""
+
+    from app.models.sow_upload_job import SowUploadJob
+    from app.services.sow_upload_job_service import find_by_hash, sha256_hex
+
+    client_name = "Contoso Data Services, LLC"
+    await _seed_client(session, client_name)
+    _override_bedrock(client_name)
+    docx = _load_pdf("08_assessment_fixed_fee.docx")
+
+    async with _client(app_with_deps) as c:
+        first = await c.post(
+            "/sows/upload",
+            headers={"X-Test-User": OWNER_EMAIL},
+            files={"file": ("sow.docx", docx, DOCX_CONTENT_TYPE)},
+        )
+    assert first.status_code == 200
+
+    # Force the job into the terminal failure state, as a transient S3 or
+    # Bedrock outage would.
+    job = await find_by_hash(session, sha256_hex(docx))
+    assert job is not None
+    job.status = "failed"
+    job.error = "simulated transient failure"
+    await session.commit()
+
+    async with _client(app_with_deps) as c:
+        retry = await c.post(
+            "/sows/upload",
+            headers={"X-Test-User": OWNER_EMAIL},
+            files={"file": ("sow.docx", docx, DOCX_CONTENT_TYPE)},
+        )
+
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["duplicate"] is False
+    assert retry.json()["status"] == "done"
+
+    # The row was reused, not duplicated — the unique constraint holds.
+    rows = (
+        await session.execute(
+            select(SowUploadJob).where(SowUploadJob.file_hash == sha256_hex(docx))
+        )
+    ).scalars().all()
+    assert len(rows) == 1

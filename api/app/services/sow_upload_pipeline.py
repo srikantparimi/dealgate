@@ -21,6 +21,8 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
+
+import anyio
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -49,6 +51,11 @@ from app.services.delivery_model import (
     parse_resource_line,
 )
 from app.services.auto_staffing import lines_to_payload_dicts
+from app.services.document_text import (
+    DocumentText,
+    UnreadableDocument,
+    extract_document_text,
+)
 from app.services.document_type import (
     ALLOWED_START_TYPES,
     DocumentTypeResult,
@@ -114,8 +121,10 @@ async def find_sow_by_hash(
     ).scalar_one_or_none()
 
 
-def _classify_type(file_bytes: bytes) -> DocumentTypeResult:
-    return classify_document(file_bytes)
+def _classify_type(
+    file_bytes: bytes, content_type: str | None = None
+) -> DocumentTypeResult:
+    return classify_document(file_bytes, content_type=content_type)
 
 
 @dataclass
@@ -131,7 +140,7 @@ class _ExtractOutcome:
 
 
 async def _run_extract(
-    file_bytes: bytes, *, bedrock: BedrockSowExtract | None = None
+    text_doc: DocumentText, *, bedrock: BedrockSowExtract | None = None
 ) -> _ExtractOutcome:
     """Run Bedrock extract; return the payload + provenance metadata.
 
@@ -142,7 +151,9 @@ async def _run_extract(
 
     caller = bedrock if bedrock is not None else StubBedrock()
     try:
-        raw = caller.extract(file_bytes)
+        # boto3 is synchronous; keep it off the event loop so one slow
+        # extraction cannot stall every other request on the worker.
+        raw = await anyio.to_thread.run_sync(caller.extract, text_doc)
     except Exception as exc:  # noqa: BLE001 — never crash the batch
         return _ExtractOutcome(None, None, None, f"extract crashed: {exc}")
     if isinstance(raw, ManualRequired):
@@ -171,11 +182,23 @@ def _client_signals(fields: dict[str, Any]) -> dict[str, Any]:
     extracted-field envelope."""
 
     scope = str(value_of(fields.get("scope_summary")) or "")
-    # Signatory blob often carries the client legal name — the SOW's
-    # counter-signatory row.
     signatories = value_of(fields.get("signatories")) or []
-    legal_name = None
-    domain = None
+
+    # The extractor now reads the client's legal entity straight from the
+    # parties clause (`client_legal_name`, added in S10-04). Prefer it.
+    #
+    # Deriving the name from `signatories` alone — as this did before — fails
+    # on any SOW without a signature block, which is most drafts. The result
+    # was a client picker with an empty "Legal name" field for the user to
+    # type into: a CLAUDE.md rule 10 defect ("a blank form on open is a
+    # defect"). The signatory and scope paths stay as fallbacks.
+    legal_name = value_of(fields.get("client_legal_name")) or None
+    if legal_name is not None:
+        legal_name = str(legal_name).strip() or None
+    domain = value_of(fields.get("client_domain")) or None
+    if domain is not None:
+        domain = str(domain).strip().lower() or None
+
     address_lines: list[str] = []
     if isinstance(signatories, list):
         for row in signatories:
@@ -538,6 +561,7 @@ async def apply_pipeline(
     file_bytes: bytes,
     uploader_id: uuid.UUID,
     source: str,
+    content_type: str | None = None,
     bedrock: BedrockSowExtract | None = None,
 ) -> PipelineResult:
     """Drive one SOW/MSA/NDA file through the full derive chain.
@@ -587,8 +611,23 @@ async def apply_pipeline(
             opportunity_id=opp_id,
         )
 
-    # 2. Document-type gate.
-    doc = _classify_type(file_bytes)
+    # 2. Read the text once — both the type gate and the extractor use it.
+    #    A file we cannot open is REJECTED, not raised: bulk import must
+    #    never crash the batch over one bad file. `detected_type` is
+    #    "unreadable" (not "other") so the caller can tell "we could not open
+    #    this" apart from "this is not a SOW" and say so to the user.
+    try:
+        text_doc = extract_document_text(file_bytes, content_type)
+    except UnreadableDocument as exc:
+        return PipelineResult(
+            outcome=PipelineOutcome.REJECTED,
+            sha256=file_hash,
+            detected_type="unreadable",
+            errors=[exc.reason],
+        )
+
+    # 3. Document-type gate.
+    doc = _classify_type(file_bytes, content_type)
     if doc.type not in ALLOWED_START_TYPES:
         return PipelineResult(
             outcome=PipelineOutcome.REJECTED,
@@ -611,7 +650,7 @@ async def apply_pipeline(
         )
 
     # 4. SOW path: extract.
-    ex = await _run_extract(file_bytes, bedrock=bedrock)
+    ex = await _run_extract(text_doc, bedrock=bedrock)
     fields = ex.fields
     warnings: list[str] = []
     if ex.error is not None:
@@ -662,6 +701,18 @@ async def apply_pipeline(
     opportunity = await _ensure_opportunity(
         session, client_id=client_id, owner_id=uploader_id, source=source
     )
+    # Record what a `page_ref` on this version actually refers to. A PDF's
+    # refs are page numbers; a Word file has no pages, so its refs are body
+    # block ordinals. Storing the unit means the confirm screen can cite
+    # provenance truthfully instead of labelling every ref "p." — and it is
+    # the one piece of context a reader needs to verify a field against the
+    # source document.
+    if fields is not None:
+        metadata = dict(fields.get("metadata") or {})
+        metadata["ref_unit"] = text_doc.ref_unit
+        metadata["document_kind"] = text_doc.kind
+        fields = {**fields, "metadata": metadata}
+
     sow_version = await _persist_sow_version(
         session,
         opportunity=opportunity,

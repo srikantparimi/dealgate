@@ -19,24 +19,70 @@ Contract (build-guide §6.3):
   service marks the version ``extract_status="manual_required"`` and the
   confirm screen switches to a full manual-entry form.
 
-The real Bedrock call is deferred to a later story — for Sprint 3 wave 1
-this module exposes the interface and a deterministic :class:`StubBedrock`
-that returns a canned :class:`ExtractedFields`. That keeps the API and UI
-end-to-end testable while infra flips the Bedrock model-access flag.
+S10-04: the real Bedrock call is live. It takes the *text* of the document
+(via :mod:`app.services.document_text`), not raw bytes — the model cannot read
+a PDF container, and routing through the text seam is what lets a Word SOW
+work at all.
+
+Schema enforcement is by **forced tool use**. This Bedrock deployment rejects
+both ``output_config.format`` and ``strict: true`` with a ValidationException,
+so ``tool_choice: {"type": "tool"}`` is the mechanism that guarantees a
+structurally valid payload. :func:`validate_extract` is still the gate that
+decides what may be persisted — the schema check lives in our code, which is
+what rule 6 actually asks for.
+
+Model access failures return :class:`ManualRequired`, never a fabricated
+payload and never a 500.
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-EXTRACT_PROMPT_VERSION = "sow-v1"
-EXTRACT_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+from app.services.document_text import DocumentText, numbered_prompt_text
+
+log = logging.getLogger(__name__)
+
+# Bumped from sow-v1: the prompt is materially different (numbered blocks,
+# explicit placeholder handling) and the version is persisted on every
+# sow_version for audit attribution.
+EXTRACT_PROMPT_VERSION = "sow-v2"
+
+# Every Anthropic model in this account is INFERENCE_PROFILE-only, so the
+# bare foundation-model id ("anthropic.claude-opus-5") returns a
+# ValidationException: "Invocation of model ID ... with on-demand throughput
+# isn't supported." The `us.` prefix is the cross-region inference profile and
+# is the id that actually works. Verified against us-east-2 on 2026-09-19.
+EXTRACT_MODEL = "us.anthropic.claude-opus-5"
+
+# Read at call time, not import time, so tests can monkeypatch the env.
+def _model_id() -> str:
+    return os.environ.get("SOW_EXTRACT_MODEL_ID") or EXTRACT_MODEL
+
+
+def _max_tokens() -> int:
+    return int(os.environ.get("SOW_EXTRACT_MAX_TOKENS", "8000"))
+
+
+def _timeout_s() -> int:
+    return int(os.environ.get("SOW_EXTRACT_TIMEOUT_S", "120"))
 
 # The field list is the union of build-guide §6.3 plus the
 # ``engagement_type_suggested`` field the story calls out separately.
 EXTRACTED_FIELDS: tuple[str, ...] = (
+    # Client identity. Added in S10-04: `_client_signals` previously derived
+    # the client name only from `signatories`, so a SOW with no signature
+    # block (common in a draft) produced a picker with an empty "Legal name"
+    # box for the user to type into — a CLAUDE.md rule 10 defect ("a blank
+    # form on open is a defect"). The parties clause names the client in
+    # essentially every SOW; extract it directly.
+    "client_legal_name",
+    "client_domain",
     "scope_summary",
     "price",
     "currency",
@@ -137,18 +183,176 @@ def validate_extract(payload: dict[str, Any]) -> ExtractedFields:
     )
 
 
-class BedrockSowExtract:
-    """Real Bedrock caller — Sprint 3 wave 2 fills in the API call.
+_SYSTEM_PROMPT = """You extract commercial terms from a Statement of Work.
 
-    Sprint 3 wave 1 ships the interface + :class:`StubBedrock`. The real
-    caller is deferred to the story that flips the Bedrock model-access
-    flag in the dev account (see :file:`docs/questions.md`).
+The document is given to you as numbered blocks. Each block starts with its
+number in double brackets, like [[12]].
+
+Rules you must follow exactly:
+
+1. For every field, `page_ref` is the number of the block the value came from.
+   Never guess a block number. If you cannot point at a block, the field is
+   disputed.
+2. Copy values exactly as they appear. Never invent, compute, convert, sum,
+   re-date or round a number, amount, date or name. If the document says
+   "$50,000.00", emit "$50,000.00" — do not emit 50000.
+3. A bracketed placeholder such as [End Date], [Agreement Date], [X] or a
+   blank line is NOT a value. Emit value=null and status="disputed", with
+   page_ref pointing at the block where you checked.
+4. If a field genuinely is not in the document, emit value=null and
+   status="disputed". Do not fill it from your general knowledge.
+5. status is "unconfirmed" when you found a real value, "disputed" when the
+   value is missing, placeholder, or contradicted elsewhere in the document.
+6. client_legal_name is the CLIENT's legal entity, not the supplier
+   (SmarTek21). It is usually in the opening parties clause.
+
+Return your answer by calling the emit_sow_extract tool. Every field must be
+present."""
+
+
+def _tool_schema() -> dict[str, Any]:
+    """JSON schema for the forced tool call.
+
+    `value` is intentionally untyped — a field can be a string, a number, a
+    list of deliverables or a list of milestone objects — while `page_ref`
+    and `status` are pinned. :func:`validate_extract` re-checks all three
+    before anything is persisted.
     """
 
-    def extract(self, file_bytes: bytes) -> ExtractedFields | ManualRequired:
-        # Placeholder: real invoke_model call lands in the wave 2 story.
-        # For now the safe answer is "manual" — never fabricate output.
-        return ManualRequired(reason="bedrock caller not yet implemented")
+    entry = {
+        "type": "object",
+        "properties": {
+            "value": {
+                "description": "The value exactly as written, or null if absent."
+            },
+            "page_ref": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Block number the value came from.",
+            },
+            "status": {"type": "string", "enum": ["unconfirmed", "disputed"]},
+        },
+        "required": ["value", "page_ref", "status"],
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "fields": {
+                "type": "object",
+                "properties": {name: entry for name in EXTRACTED_FIELDS},
+                "required": list(EXTRACTED_FIELDS),
+            }
+        },
+        "required": ["fields"],
+    }
+
+
+class BedrockSowExtract:
+    """Real Bedrock caller (S10-04).
+
+    Synchronous by design — ``boto3`` has no async client. Async callers wrap
+    this in ``anyio.to_thread.run_sync`` so a slow extraction never blocks the
+    event loop.
+
+    Every failure mode returns :class:`ManualRequired` rather than raising:
+    the confirm screen can always fall back to manual entry, but it can never
+    recover from a fabricated payload.
+    """
+
+    def __init__(self, *, client: Any | None = None) -> None:
+        self._client = client
+
+    def _runtime(self) -> Any:
+        if self._client is not None:
+            return self._client
+        import boto3
+        from botocore.config import Config
+
+        return boto3.client(
+            "bedrock-runtime",
+            region_name=os.environ.get("AWS_REGION", "us-east-2"),
+            config=Config(
+                read_timeout=_timeout_s(),
+                connect_timeout=10,
+                retries={"max_attempts": 2, "mode": "standard"},
+            ),
+        )
+
+    def extract(self, doc: DocumentText) -> ExtractedFields | ManualRequired:
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        text = numbered_prompt_text(doc)
+        if not text.strip():
+            return ManualRequired(reason="document has no readable text")
+
+        model_id = _model_id()
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": _max_tokens(),
+            "system": _SYSTEM_PROMPT,
+            "tools": [
+                {
+                    "name": "emit_sow_extract",
+                    "description": "Emit the extracted SOW fields.",
+                    "input_schema": _tool_schema(),
+                }
+            ],
+            "tool_choice": {"type": "tool", "name": "emit_sow_extract"},
+            "messages": [{"role": "user", "content": [{"type": "text", "text": text}]}],
+        }
+
+        try:
+            resp = self._runtime().invoke_model(
+                modelId=model_id, body=json.dumps(body)
+            )
+            payload = json.loads(resp["body"].read())
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "Unknown")
+            if code in ("AccessDeniedException", "UnrecognizedClientException"):
+                return ManualRequired(reason="bedrock model access not enabled")
+            if code == "ValidationException":
+                # Almost always a bad model id — surface it, do not retry.
+                log.error("bedrock rejected extract request: %s", exc)
+                return ManualRequired(reason=f"bedrock rejected the request: {code}")
+            if code in (
+                "ThrottlingException",
+                "ModelTimeoutException",
+                "ServiceUnavailableException",
+                "ModelNotReadyException",
+            ):
+                return ManualRequired(reason="bedrock temporarily unavailable")
+            log.exception("bedrock extract failed")
+            return ManualRequired(reason=f"bedrock error: {code}")
+        except (BotoCoreError, TimeoutError) as exc:
+            log.warning("bedrock extract transport failure: %s", exc)
+            return ManualRequired(reason="bedrock unreachable")
+        except json.JSONDecodeError:
+            return ManualRequired(reason="bedrock returned a non-JSON body")
+
+        tool_use = next(
+            (
+                b
+                for b in payload.get("content", [])
+                if b.get("type") == "tool_use" and b.get("name") == "emit_sow_extract"
+            ),
+            None,
+        )
+        if tool_use is None:
+            stop = payload.get("stop_reason")
+            return ManualRequired(reason=f"model returned no extract (stop={stop})")
+
+        try:
+            return validate_extract(
+                {
+                    "fields": tool_use.get("input", {}).get("fields", {}),
+                    "model": model_id,
+                    "prompt_version": EXTRACT_PROMPT_VERSION,
+                }
+            )
+        except ValueError as exc:
+            # Schema gate rejected it — better a manual form than bad data.
+            log.warning("extract failed schema validation: %s", exc)
+            return ManualRequired(reason=f"extract failed validation: {exc}")
 
 
 class StubBedrock(BedrockSowExtract):
@@ -165,11 +369,21 @@ class StubBedrock(BedrockSowExtract):
         self.unavailable = unavailable
         self.calls: list[int] = []
 
-    def extract(self, file_bytes: bytes) -> ExtractedFields | ManualRequired:
-        self.calls.append(len(file_bytes))
+    def extract(self, doc: DocumentText) -> ExtractedFields | ManualRequired:
+        self.calls.append(len(doc.blocks))
         if self.unavailable:
             return ManualRequired(reason="bedrock model access not enabled")
         canned: dict[str, dict[str, Any]] = {
+            "client_legal_name": {
+                "value": "Northwind Trading Co., LLC",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
+            "client_domain": {
+                "value": "northwind.example.com",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
             "scope_summary": {
                 "value": "Modernise loan-origination platform onto AWS.",
                 "page_ref": 1,
@@ -249,8 +463,18 @@ class StubBedrock(BedrockSowExtract):
 
 
 def get_bedrock_sow() -> BedrockSowExtract:
-    """FastAPI dependency. Override with :class:`StubBedrock` in tests."""
+    """FastAPI dependency. Override with :class:`StubBedrock` in tests.
 
+    ``SOW_EXTRACT_STUB=1`` selects the deterministic stub. That env var was
+    already set by ``.github/workflows/e2e.yml`` but read by nothing, so the
+    e2e suite believed it was running offline while the code reached for the
+    real client. The check is at call time so ``monkeypatch.setenv`` works.
+    """
+
+    if os.environ.get("SOW_EXTRACT_STUB") == "1":
+        return StubBedrock()
+    if os.environ.get("DEALGATE_ENV") in ("local", "test"):
+        return StubBedrock()
     return BedrockSowExtract()
 
 

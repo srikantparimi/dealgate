@@ -7,14 +7,14 @@ reaches the service (rule 6 — never persist raw model output).
 
 Two adapters are shipped:
 
-- :class:`BedrockClassifier` — real Bedrock caller stub (returns "unavailable").
+- :class:`BedrockClassifier` — the classifier Protocol callers depend on.
 - :class:`StubBedrockClassifier` — deterministic canned scores for tests.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 
 ENGAGEMENT_TYPES: tuple[str, ...] = (
@@ -69,13 +69,23 @@ def validate_candidates(raw: Any) -> list[Candidate]:
     return out
 
 
-class BedrockClassifier:
-    """Real Bedrock caller — stubbed until model access is enabled."""
+class BedrockClassifier(Protocol):
+    """The classifier interface the services depend on.
+
+    This used to be a concrete class whose only method raised
+    ``RuntimeError``. Nothing ever instantiated it — every caller defaults to
+    :class:`StubBedrockClassifier` — so it was dead code with a live landmine
+    in it, waiting for the first person to construct the "real" class.
+
+    A Protocol says what it always meant: callers depend on the shape, and
+    the implementation is supplied. Engagement classification is rules-first
+    by design (``services/engagement_classifier``); the rules decide, and a
+    model implementation can be slotted in behind this interface when one is
+    wanted.
+    """
 
     def classify(self, extracted_fields: dict[str, Any]) -> list[Candidate]:
-        # Deferred to the story that enables Bedrock model access. Until
-        # then the service falls back to the top rule candidate.
-        raise RuntimeError("bedrock classifier not yet implemented")
+        ...
 
 
 class StubBedrockClassifier(BedrockClassifier):

@@ -41,6 +41,16 @@ FIXTURES: dict[str, dict[str, Any]] = {
     "01_staff_aug_us.pdf": {
         # Schema fields — validated by `validate_extract`.
         "fields": {
+            "client_legal_name": {
+                "value": "Contoso Data Services, LLC",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
+            "client_domain": {
+                "value": "contoso.example.com",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
             "scope_summary": {
                 "value": (
                     "Provide three named consultants (2 Senior Data Engineers, "
@@ -137,6 +147,16 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "02_managed_service_india.pdf": {
         "fields": {
+            "client_legal_name": {
+                "value": "Fabrikam Operations Pvt Ltd",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
+            "client_domain": {
+                "value": "fabrikam.example.com",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
             "scope_summary": {
                 "value": (
                     "24x7 managed service for the client's data pipelines. "
@@ -209,6 +229,16 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "03_fixed_price_mixed.pdf": {
         "fields": {
+            "client_legal_name": {
+                "value": "Northwind Traders, Inc.",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
+            "client_domain": {
+                "value": "northwind.example.com",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
             "scope_summary": {
                 "value": (
                     "Fixed-price data platform modernisation delivered by a "
@@ -287,6 +317,16 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "04_assessment_4week.pdf": {
         "fields": {
+            "client_legal_name": {
+                "value": "Adventure Works Group",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
+            "client_domain": {
+                "value": "adventure-works.example.com",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
             "scope_summary": {
                 "value": (
                     "Four-week data platform assessment. Three workshops with "
@@ -365,6 +405,16 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "05_tm_capped.pdf": {
         "fields": {
+            "client_legal_name": {
+                "value": "Tailspin Toys, LLC",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
+            "client_domain": {
+                "value": "tailspin.example.com",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
             "scope_summary": {
                 "value": (
                     "Time and materials engagement not to exceed USD 150,000. "
@@ -447,6 +497,16 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "06_below_floor.pdf": {
         "fields": {
+            "client_legal_name": {
+                "value": "Wingtip Financial, Inc.",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
+            "client_domain": {
+                "value": "wingtip.example.com",
+                "page_ref": 1,
+                "status": "unconfirmed",
+            },
             "scope_summary": {
                 "value": (
                     "Mixed fixed-fee engagement. Below-floor pricing for both "
