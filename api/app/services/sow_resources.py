@@ -156,8 +156,21 @@ async def current_resources(
                     "utilization_pct": format(
                         (r.allocation_pct or Decimal("1")) * 100, "f"
                     ),
-                    "hours_billable": format(r.billable_hours, "f"),
-                    "hourly_bill_rate": format(r.hourly_bill_rate, "f"),
+                    # `format(None, "f")` raises TypeError, which would
+                    # take the whole resources tab down for one bad row.
+                    # These columns are NOT NULL in the model, but the row
+                    # below already guards its own nullable columns and the
+                    # asymmetry is not worth the risk.
+                    "hours_billable": (
+                        format(r.billable_hours, "f")
+                        if r.billable_hours is not None
+                        else "0"
+                    ),
+                    "hourly_bill_rate": (
+                        format(r.hourly_bill_rate, "f")
+                        if r.hourly_bill_rate is not None
+                        else "0"
+                    ),
                     "hourly_cost": (
                         format(r.hourly_loaded_cost, "f")
                         if r.hourly_loaded_cost is not None

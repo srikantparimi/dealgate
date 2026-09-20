@@ -58,7 +58,7 @@ def upgrade() -> None:
 
     # Backfill: nothing to do here. Existing dev opportunities keep
     # client_id NULL. The worker will populate on the next webhook and a
-    # follow-up story adds a NOT NULL migration once every row is linked.
+    # a NOT NULL migration becomes possible once every row is linked.
     _ = dialect  # kept for future dialect-specific tweaks; silences lint.
 
 

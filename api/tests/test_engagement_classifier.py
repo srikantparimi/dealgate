@@ -217,3 +217,54 @@ def test_threshold_reads_env(monkeypatch):
 
     # We can't easily re-import for the test, but the variable is public.
     assert ec.CLASSIFIER_CONFIDENCE_THRESHOLD > 0.0
+
+
+def test_prose_basis_is_recognised_when_no_normalised_value_exists():
+    """Versions extracted before `billing_basis_normalized` shipped have only
+    the verbatim wording, and re-extracting to fix the engagement type is not
+    something a reviewer should have to do.
+
+    This is the real stored value from a SOW that was being offered as
+    "fixed_price 55% / tm 35%, pick one" when the document says fixed fee
+    outright.
+    """
+
+    fields = {
+        "billing_basis": _wrap(
+            'a fixed fee of $50,000.00 for this engagement (the “Fixed Fee”). '
+            "The Fixed Fee excludes taxes, travel, and expenses."
+        ),
+        "deliverables": _wrap(
+            "Executive briefing; Complete use case inventory; Prioritization matrix"
+        ),
+        "milestones": _wrap("Onsite Discovery | Aug 25-27 2026 | Wrap-Up | Aug 28"),
+    }
+    result = classify(fields)
+    assert result.primary.type == "fixed_price"
+    assert result.rule_matched == "rule.fixed_price_deliverables"
+    # Auto-confirmed, so the reviewer is not asked to pick something the
+    # document already states.
+    assert result.auto_confirm is True
+
+
+def test_a_capped_tm_is_not_a_fixed_fee():
+    """Order matters. A capped T&M contract often uses the words "fixed fee"
+    for the cap, but the cap is the operative term — billing still follows
+    hours."""
+
+    fields = {
+        "billing_basis": _wrap("T&M with fees not to exceed a fixed fee cap of $80,000"),
+        "deliverables": _wrap("Sprint reports; Runbook"),
+    }
+    assert classify(fields).primary.type == "tm"
+
+
+def test_the_normalised_value_wins_over_the_prose():
+    """The model read the whole document; the phrase match is only a net."""
+
+    fields = {
+        "billing_basis": _wrap("monthly retainer of $10,000"),
+        "billing_basis_normalized": _wrap("time_and_materials"),
+        "deliverables": _wrap("a; b"),
+    }
+    assert classify(fields).primary.type == "tm"

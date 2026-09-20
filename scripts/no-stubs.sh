@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT="${1:-.}"
 
 HITS=$(
-  grep -rEn \
+  grep -rEin \
     --include='*.py' \
     --include='*.ts' \
     --include='*.tsx' \

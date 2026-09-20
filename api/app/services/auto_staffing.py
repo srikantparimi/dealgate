@@ -43,6 +43,10 @@ class StaffingLine:
     hours_billable: Decimal
     hourly_bill_rate: Decimal
     provenance: str
+    # Loaded cost per hour. The number that decides the margin on a fixed
+    # fee, where revenue is the agreed price and only cost varies. None
+    # until a cost band resolves or someone enters it on the line.
+    hourly_cost: Decimal | None = None
     start_date: date | None = None
     end_date: date | None = None
     source_id: str | None = None
@@ -56,6 +60,9 @@ class StaffingLine:
             "allocation_pct": format(self.allocation_pct, "f"),
             "hours_billable": format(self.hours_billable, "f"),
             "hourly_bill_rate": format(self.hourly_bill_rate, "f"),
+            "hourly_cost": (
+                format(self.hourly_cost, "f") if self.hourly_cost is not None else None
+            ),
             "provenance": self.provenance,
             "source_id": self.source_id,
             "warning": self.warning,

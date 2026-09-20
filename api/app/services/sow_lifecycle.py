@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.models.approval import ApprovalPackage
+from app.models.gm_model import GmModel
 from app.models.sow import Sow, SowVersion
 
 __all__ = [
@@ -41,7 +42,9 @@ __all__ = [
     "SowLifecycleError",
     "VersionSummary",
     "discard_version",
+    "DraftSowSummary",
     "delete_version",
+    "draft_sows",
     "list_versions",
     "open_sows_for_client",
     "reserve_version_no",
@@ -415,3 +418,109 @@ async def _has_signed_sow(session: AsyncSession, opportunity_id: uuid.UUID) -> b
         )
     ).scalar_one_or_none()
     return row is not None
+
+
+# --- finding work in progress (S10-10) ------------------------------------
+
+
+@dataclass
+class DraftSowSummary:
+    opportunity_id: uuid.UUID
+    sow_version_id: uuid.UUID | None
+    client_id: uuid.UUID | None
+    client_name: str | None
+    title: str | None
+    governance_status: str
+    uploaded_at: datetime | None
+    uploaded_by: uuid.UUID | None
+    extract_status: str | None
+    has_gm: bool
+    has_package: bool
+
+
+async def draft_sows(
+    session: AsyncSession,
+    *,
+    uploader_id: uuid.UUID | None = None,
+    limit: int = 100,
+) -> list[DraftSowSummary]:
+    """SOWs that are started but not yet submitted for approval.
+
+    This did not exist, and its absence is why a refresh looked like data
+    loss. The `sow_upload_job`, the `Opportunity`, the `SowVersion` and the
+    extracted fields were all safely stored — there was simply no screen that
+    would ever show them again, and no way to recover the opportunity id. The
+    SOW board lists approval packages, so a SOW that had not reached one was
+    invisible in every lane, including "Draft intake". The only route back was
+    browser history.
+
+    ``uploader_id`` narrows to one person's work; leaders pass None to see
+    everything, matching the visibility rule the upload router already uses.
+    """
+
+    from app.models.client import Client
+    from app.models.opportunity import Opportunity
+
+    stmt = (
+        select(Opportunity, Sow, SowVersion, Client)
+        .join(Sow, Sow.opportunity_id == Opportunity.id, isouter=True)
+        .join(
+            SowVersion,
+            (SowVersion.sow_id == Sow.id)
+            & SowVersion.discarded_at.is_(None)
+            & SowVersion.superseded_by.is_(None),
+            isouter=True,
+        )
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
+        .where(Opportunity.source.in_(("sow_upload", "bulk_import")))
+        .order_by(Opportunity.created_at.desc())
+        .limit(limit)
+    )
+    rows = list((await session.execute(stmt)).all())
+
+    out: list[DraftSowSummary] = []
+    for opp, _sow, version, client in rows:
+        if uploader_id is not None and opp.owner_id != uploader_id:
+            continue
+        has_package = (
+            await session.execute(
+                select(ApprovalPackage.id)
+                .where(ApprovalPackage.opportunity_id == opp.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
+        # Already submitted → it is on the approvals board, not a draft.
+        if has_package:
+            continue
+
+        title = None
+        if version is not None:
+            fields = version.extracted_fields or {}
+            scope = fields.get("scope_summary")
+            if isinstance(scope, dict):
+                raw = scope.get("value")
+                if isinstance(raw, str) and raw.strip():
+                    title = raw.strip()[:120]
+
+        has_gm = (
+            await session.execute(
+                select(GmModel.id).where(GmModel.opportunity_id == opp.id).limit(1)
+            )
+        ).scalar_one_or_none() is not None
+
+        out.append(
+            DraftSowSummary(
+                opportunity_id=opp.id,
+                sow_version_id=version.id if version else None,
+                client_id=opp.client_id,
+                client_name=client.name if client else None,
+                title=title,
+                governance_status=opp.governance_status,
+                uploaded_at=version.uploaded_at if version else opp.created_at,
+                uploaded_by=opp.owner_id,
+                extract_status=version.extract_status if version else None,
+                has_gm=has_gm,
+                has_package=has_package,
+            )
+        )
+    return out

@@ -91,7 +91,7 @@ async def list_estimates_endpoint(
     elif owner in ("all", "*"):
         # Any governance-role reader may see the org's estimates. Fine-grained
         # scoping (e.g. Marketing sees only Marketing drafts) lands in a
-        # follow-up story if the leadership asks for it.
+        # if the leadership asks for it.
         owner_id = None
     else:
         try:

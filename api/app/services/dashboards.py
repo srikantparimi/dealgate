@@ -69,14 +69,22 @@ def _line_cost_us(line: ResourceLine) -> Decimal:
     if line.location != "US":
         return _ZERO
     cost = line.hourly_cost or _ZERO
-    return line.billable_hours * cost * (line.allocation_pct or _ZERO)
+    # Guard hours the same way as allocation. Both are NOT NULL in the model,
+    # but only one was guarded, and a None here is a TypeError that takes out
+    # the CEO, Finance and client dashboards at once.
+    hours = line.billable_hours or _ZERO
+    return hours * cost * (line.allocation_pct or _ZERO)
 
 
 def _line_cost_india(line: ResourceLine) -> Decimal:
     if line.location != "India":
         return _ZERO
     cost = line.hourly_cost or _ZERO
-    return line.billable_hours * cost * (line.allocation_pct or _ZERO)
+    # Guard hours the same way as allocation. Both are NOT NULL in the model,
+    # but only one was guarded, and a None here is a TypeError that takes out
+    # the CEO, Finance and client dashboards at once.
+    hours = line.billable_hours or _ZERO
+    return hours * cost * (line.allocation_pct or _ZERO)
 
 
 def _model_totals(model: GmModel) -> dict[str, Decimal]:

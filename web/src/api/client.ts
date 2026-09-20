@@ -1843,6 +1843,32 @@ export interface StaffingSheetRowError {
   message: string;
 }
 
+/** A SOW started but not yet submitted for approval. */
+export interface DraftSowRow {
+  opportunity_id: UUID;
+  sow_version_id: UUID | null;
+  client_id: UUID | null;
+  client_name: string | null;
+  title: string | null;
+  governance_status: string;
+  uploaded_at: string | null;
+  extract_status: string | null;
+  has_gm: boolean;
+  /** Where to pick this SOW up — the staffing gate, or the confirm screen. */
+  resume_href: string;
+}
+
+/**
+ * SOWs in progress.
+ *
+ * Nothing in the product listed these. The approvals board shows approval
+ * packages, so a SOW that had not reached one was invisible in every lane,
+ * and a refresh looked exactly like data loss.
+ */
+export function listDraftSows(mine = true): Promise<{ drafts: DraftSowRow[] }> {
+  return request<{ drafts: DraftSowRow[] }>(`/sows/drafts?mine=${mine}`);
+}
+
 /** A resource as the API returns it — utilization is a percentage here. */
 export interface SowResourceRow {
   role: string;

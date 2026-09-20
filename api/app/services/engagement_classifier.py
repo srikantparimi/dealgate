@@ -100,8 +100,11 @@ def _extract_features(extracted: dict[str, Any]) -> dict[str, Any]:
         )
         or "not to exceed" in scope,
         "term_months": _term_months(extracted),
-        "billing_basis_normalized": value_of(
-            extracted.get("billing_basis_normalized")
+        # The model's normalised answer, or — for a version extracted before
+        # that field existed — the basis recognised in the verbatim wording.
+        "billing_basis_normalized": (
+            value_of(extracted.get("billing_basis_normalized"))
+            or _basis_from_prose(value_of(extracted.get("billing_basis")))
         ),
         # What the model concluded the engagement is, having read the whole
         # document. Used when no structural rule fires — a normalised answer
@@ -183,6 +186,54 @@ _TYPE_ALIASES: dict[str, str] = {
     "assessment": "assessment",
     "permanent_placement": "permanent_placement",
 }
+
+
+# Phrases that identify a billing basis when no normalised value is present.
+#
+# The model normalises now, but versions extracted before that shipped have
+# only the verbatim wording, and re-extracting an existing version is not
+# something a reviewer should have to do to get their engagement type right.
+# This is a safety net under the model, not a replacement for it: it matches
+# phrases as they are actually written rather than comparing a sentence to an
+# enum literal, which is what never worked.
+_BASIS_PHRASES: tuple[tuple[str, str], ...] = (
+    ("not to exceed", "not_to_exceed"),
+    ("not-to-exceed", "not_to_exceed"),
+    ("time and materials", "time_and_materials"),
+    ("time & materials", "time_and_materials"),
+    ("t&m", "time_and_materials"),
+    ("fixed fee", "fixed_price"),
+    ("fixed-fee", "fixed_price"),
+    ("fixed price", "fixed_price"),
+    ("firm fixed", "fixed_price"),
+    ("lump sum", "fixed_price"),
+    ("placement fee", "placement_fee"),
+    ("recruitment fee", "placement_fee"),
+    ("monthly fee", "monthly_fee"),
+    ("per month", "monthly_fee"),
+    ("monthly retainer", "monthly_fee"),
+    ("per hour", "hourly"),
+    ("hourly rate", "hourly"),
+    ("per day", "daily"),
+    ("day rate", "daily"),
+)
+
+
+def _basis_from_prose(text: str | None) -> str | None:
+    """Recognise a billing basis in the wording a SOW actually uses.
+
+    Order matters: "not to exceed" is checked before "fixed fee" because a
+    capped T&M contract often mentions both, and the cap is the operative
+    term.
+    """
+
+    if not isinstance(text, str) or not text.strip():
+        return None
+    lowered = text.lower()
+    for phrase, basis in _BASIS_PHRASES:
+        if phrase in lowered:
+            return basis
+    return None
 
 
 def _canonical_type(value: str) -> str | None:

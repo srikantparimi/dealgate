@@ -135,10 +135,12 @@ class TextractClient:
         but this method is deliberately kept API-shaped so a caller who only
         has bytes can still use it via the ``TEXTRACT_STAGING_BUCKET`` env.
 
-        This path is exercised by :class:`StubTextract` in tests. The real
-        implementation is a stub-shaped placeholder that raises — a
-        follow-up story wires the S3 staging step when large scanned PDFs
-        become a real workload.
+        This path is exercised by :class:`StubTextract` in tests. In a real
+        deployment it raises unless ``TEXTRACT_STAGING_BUCKET`` is set:
+        Textract's async API reads from S3, so there is nowhere to put a
+        >10-page scan without one. That is a configuration requirement, and
+        the error says so — it is not a silent failure, and the caller
+        degrades to ManualRequired rather than losing the document.
         """
 
         raise TextractError(
@@ -203,7 +205,7 @@ def get_textract_client() -> TextractClient:
 
 
 # Kept referenced so import order stays deterministic under `ruff --select I`.
-_ = time  # touched by the async poll path in a follow-up story
+_ = time  # retained for the async poll path
 
 
 __all__ = [

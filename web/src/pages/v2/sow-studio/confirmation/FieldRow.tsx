@@ -68,6 +68,11 @@ export function FieldRow({
 
   return (
     <div
+      id={`field-row-${fieldKey}`}
+      // A real `id`, not only a test hook: "Jump to field" in the
+      // "What's still needed" list is an anchor href, and it was targeting
+      // `data-testid` values — which are not anchor targets, so every jump
+      // was a no-op and the list looked broken.
       data-testid={`field-row-${fieldKey}`}
       data-populated={populated ? "true" : "false"}
       className={cn(

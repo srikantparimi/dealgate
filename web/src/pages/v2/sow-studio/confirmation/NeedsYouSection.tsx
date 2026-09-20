@@ -22,9 +22,20 @@ const EMPTY_COPY =
  * scroll to. Falls back to the containing section so the reviewer at
  * least lands on the right block.
  */
+/**
+ * Anchor for a gap.
+ *
+ * Gaps that are not editable rows land on the section that owns them:
+ * `staffing[0].hourly_bill_rate` has no row of its own, and a
+ * `#field-row-staffing[0].hourly_bill_rate` href is not even a valid
+ * fragment — the brackets make it an invalid selector. Sending it to the
+ * staffing section at least puts the reviewer where the fix is.
+ */
 function targetFor(field: string): string {
   if (field === "engagement_type") return "engagement-chooser";
-  if (field === "staffing") return "section-staffing";
+  if (field.startsWith("staffing") || field === "gm_model") {
+    return "section-staffing";
+  }
   if (field === "rate_card") return "section-ratecard";
   return `field-row-${field}`;
 }

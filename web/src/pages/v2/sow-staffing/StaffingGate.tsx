@@ -26,6 +26,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   getSowConfirmation,
+  getSowResources,
   importStaffingSheet,
   previewDeliveryModel,
   saveDeliveryModelVersion,
@@ -171,6 +172,41 @@ export function StaffingGatePage(props: StaffingGateProps) {
     props.engagementType ?? "fixed_price",
   );
   const [totalPrice, setTotalPrice] = useState<string | null>(null);
+
+  // Hydrate from whatever is already saved.
+  //
+  // The grid used to start as one blank row every time, with no attempt to
+  // read the server. A refresh, a mis-click or a token re-auth threw away
+  // every role, hour and rate the reviewer had typed — and a blank form on
+  // open is a rule-10 defect besides.
+  useEffect(() => {
+    if (!opportunityId) return;
+    let cancelled = false;
+    getSowResources(opportunityId)
+      .then((state) => {
+        if (cancelled || state.resources.length === 0) return;
+        setRows(
+          state.resources.map((r) => ({
+            role: r.role,
+            seniority: r.seniority,
+            location: r.location,
+            allocation_pct: r.utilization_pct,
+            hours_billable: r.hours_billable,
+            hourly_bill_rate: r.hourly_bill_rate,
+            hourly_cost: r.hourly_cost ?? "",
+            start_date: r.start_date ?? "",
+            end_date: r.end_date ?? "",
+            origin: "manual" as const,
+          })),
+        );
+      })
+      .catch(() => {
+        /* nothing saved yet, or unreachable — the empty grid still works */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [opportunityId]);
 
   useEffect(() => {
     if (!opportunityId) return;

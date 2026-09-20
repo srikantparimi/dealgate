@@ -81,7 +81,12 @@ function toPortfolioRow(d: DealRow): PortfolioRow {
         ? { label: "Active", tone: "ok" }
         : d.governance_status === "rejected"
           ? { label: "Blocked", tone: "danger" }
-          : { label: d.governance_status.replace(/_/g, " "), tone: "warn" },
+          : {
+          // Unguarded .replace() throws during useMemo, which blows past
+          // the page ErrorState and hits whatever boundary is above it.
+          label: (d.governance_status ?? "unknown").replace(/_/g, " "),
+          tone: "warn",
+        },
     nextReview: d.next_client_date,
   };
 }

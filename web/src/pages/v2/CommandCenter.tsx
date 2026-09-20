@@ -115,14 +115,34 @@ interface CommandData {
   fetchedAt: Date;
 }
 
-async function safe<T>(p: Promise<T>): Promise<T | null> {
+/**
+ * Fetch one module, and never let it take the page down.
+ *
+ * This used to re-throw anything that was not a 403. Since all ten calls run
+ * inside one `Promise.all`, a single failing endpoint rejected the lot and
+ * the whole command centre rendered an error — which is exactly what
+ * happened when `GET /deals` started 500ing on SOW-first opportunities: one
+ * broken list blanked a board of nine healthy ones.
+ *
+ * This file's own header promises "errors in one module never hide healthy
+ * ones". It does now. A module that fails contributes null, the rest render,
+ * and `failures` carries what went wrong so the page can say so instead of
+ * pretending everything is fine.
+ */
+async function safe<T>(
+  p: Promise<T>,
+  label: string,
+  failures: string[],
+): Promise<T | null> {
   try {
     return await p;
   } catch (err) {
-    // A 403 on a role-only endpoint is expected — degrade silently. Any
-    // other failure surfaces via the caller's `error` state.
+    // A 403 on a role-only endpoint is expected — degrade silently.
     if (err instanceof ApiError && err.status === 403) return null;
-    throw err;
+    failures.push(
+      `${label}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
   }
 }
 
@@ -541,11 +561,16 @@ export function CommandCenterPage() {
   const [data, setData] = useState<CommandData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
+  const [partialFailures, setPartialFailures] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      // Collected per load, not module-level: a shared array would leak
+      // stale failures across reloads.
+      const failures: string[] = [];
+
       const [
         ceo,
         sales,
@@ -561,16 +586,32 @@ export function CommandCenterPage() {
         // Never call /dashboards/ceo from a non-CEO/SysAdmin role
         // (agent brief). Roles without access get null and the CEO-only
         // widgets degrade to "Unavailable" or hide.
-        isCeo ? safe(getCeoDashboard()) : Promise.resolve(null),
-        !isCeo ? safe(getSalesDashboard()) : Promise.resolve(null),
-        safe(getFinanceDashboard()),
-        safe(getDeals({ size: 25 })),
-        safe(listClients({ size: 25 })),
-        safe(listAgreements()),
-        safe(listRenewals({ status: "open", size: 25 })),
-        safe(listApprovalPackages({ status: "pending_delivery_hr", size: 10 })),
-        safe(listApprovalPackages({ status: "pending_finance_legal", size: 10 })),
-        safe(listApprovalPackages({ status: "pending_ceo_exception", size: 10 })),
+        isCeo
+          ? safe(getCeoDashboard(), "CEO dashboard", failures)
+          : Promise.resolve(null),
+        !isCeo
+          ? safe(getSalesDashboard(), "Sales dashboard", failures)
+          : Promise.resolve(null),
+        safe(getFinanceDashboard(), "Finance dashboard", failures),
+        safe(getDeals({ size: 25 }), "Pipeline", failures),
+        safe(listClients({ size: 25 }), "Clients", failures),
+        safe(listAgreements(), "Agreements", failures),
+        safe(listRenewals({ status: "open", size: 25 }), "Renewals", failures),
+        safe(
+          listApprovalPackages({ status: "pending_delivery_hr", size: 10 }),
+          "Delivery/HR approvals",
+          failures,
+        ),
+        safe(
+          listApprovalPackages({ status: "pending_finance_legal", size: 10 }),
+          "Finance/Legal approvals",
+          failures,
+        ),
+        safe(
+          listApprovalPackages({ status: "pending_ceo_exception", size: 10 }),
+          "CEO exceptions",
+          failures,
+        ),
       ]);
 
       setData({
@@ -586,6 +627,10 @@ export function CommandCenterPage() {
         approvalsCeo: pkgCeo?.items ?? [],
         fetchedAt: new Date(),
       });
+      // A module that failed no longer blanks the board, but it must not
+      // pass silently either — a stale-looking number with no explanation is
+      // worse than a visible gap.
+      setPartialFailures(failures);
     } catch (err) {
       setError(err);
     } finally {
@@ -637,11 +682,32 @@ export function CommandCenterPage() {
   }
 
   const freshness = data ? (
-    <SourceFreshness
-      source="DealGate governance"
-      asOf={data.fetchedAt.toLocaleString()}
-      basis="Server-computed. Missing values render as Unavailable."
-    />
+    <div className="space-y-2">
+      <SourceFreshness
+        source="DealGate governance"
+        asOf={data.fetchedAt.toLocaleString()}
+        basis="Server-computed. Missing values render as Unavailable."
+      />
+      {/* One failing module no longer blanks the board — but it must not
+       * pass silently either. A section rendering empty with no explanation
+       * reads as "nothing to do here", which is the opposite of the truth. */}
+      {partialFailures.length > 0 ? (
+        <div
+          className="rounded-md border border-warning/40 bg-warning/5 p-2 text-secondary"
+          data-testid="partial-failures"
+        >
+          <p className="font-medium">
+            {partialFailures.length} section(s) could not be loaded — the rest
+            of this page is current.
+          </p>
+          <ul className="text-text-secondary">
+            {partialFailures.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   ) : null;
 
   const eyebrow = data

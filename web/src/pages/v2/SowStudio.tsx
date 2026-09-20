@@ -20,6 +20,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import {
   ApiError,
+  confirmSowField,
   getSowConfirmation,
   submitSowConfirmation,
   uploadSow,
@@ -297,6 +298,61 @@ function UploadFlow({
 /* Confirmation flow                                                          */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Display key on this screen → the extracted field it writes to.
+ *
+ * Only rows that map to a real extracted field are editable. `client_entity`
+ * is a resolved client record, `sow_title` is derived from the client and
+ * scope, and `file` is a stored object — PATCHing any of them would 422 with
+ * "unknown field", so they are absent here on purpose and the row renders
+ * read-only rather than offering an edit that cannot work.
+ */
+const EDITABLE_FIELD_KEYS: Record<string, string> = {
+  price: "price",
+  currency: "currency",
+  term_start: "term_start",
+  term_end: "term_end",
+  notice_date: "notice_date",
+  billing_basis: "billing_basis",
+  deliverables: "deliverables",
+  milestones: "milestones",
+  acceptance_criteria: "acceptance_criteria",
+  assumptions: "assumptions",
+  exclusions: "exclusions",
+  signatories: "signatories",
+  scope_summary: "scope_summary",
+  client_legal_name: "client_legal_name",
+  client_domain: "client_domain",
+  engagement_type: "engagement_type_suggested",
+};
+
+/** Fields the extractor stores as a list, not a string. */
+const LIST_FIELDS = new Set([
+  "deliverables",
+  "milestones",
+  "signatories",
+  "assumptions",
+  "exclusions",
+]);
+
+/**
+ * Turn an edited display string back into a list.
+ *
+ * The row renders a list joined with ", ", so writing the edited string
+ * straight back would replace a list of four deliverables with one sentence
+ * — and `FieldPatch.value` is typed `Any` server-side, so nothing would
+ * reject it. Splits on the separators these fields actually use.
+ */
+export function splitList(raw: string): string[] {
+  const text = raw.trim();
+  if (!text) return [];
+  const sep = [";", "|"].find((c) => text.includes(c)) ?? ",";
+  return text
+    .split(sep)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function ConfirmationFlow({
   opportunityId,
   onSubmittedNavigate,
@@ -309,6 +365,9 @@ function ConfirmationFlow({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+
+  const sowVersionId = payload?.sow_version.id ?? null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -333,61 +392,111 @@ function ConfirmationFlow({
   );
 
   /**
-   * When the user overrides a value the row flips to `manual`. We do
-   * this optimistically in the local copy so the provenance chip
-   * updates the moment the user hits save. A follow-up story will
-   * persist the change via `PATCH /sow/versions/:id/fields/:name`
-   * which already exists (see `confirmSowField` in api/client.ts).
+   * Persist an override.
+   *
+   * This used to be `setState` and nothing else — the row flipped to
+   * `manual`, the value changed on screen, and the reviewer had every reason
+   * to think it had saved. It had not: a reload re-read the untouched
+   * database row and every edit was gone. That is what "not able to edit"
+   * meant.
+   *
+   * Three things the naive wiring would have got wrong, so they are handled
+   * here rather than discovered in production:
+   *
+   * - Three of the rows on this screen are not extracted fields. `client
+   *   entity` is a resolved client record, `sow title` is derived, `file` is
+   *   a stored object. PATCHing them by their display key would 422 with
+   *   "unknown field". Only rows that map to a real extracted field are
+   *   editable; `EDITABLE_FIELD_KEYS` is that map.
+   * - List-valued fields (deliverables, milestones, signatories) render as
+   *   a joined string. Writing that string back would replace a list with a
+   *   sentence and corrupt the type for every downstream reader, so they are
+   *   split back into a list on the way out.
+   * - The optimistic update stays, because the round-trip is slow enough to
+   *   feel broken without it — but the server response is authoritative, so
+   *   the payload is reloaded after, and a failure surfaces instead of
+   *   leaving a lie on screen.
    */
   const handleOverride = useCallback(
     (fieldKey: string, newValue: string) => {
+      const target = EDITABLE_FIELD_KEYS[fieldKey];
+      if (!target) {
+        setOverrideError(
+          `"${fieldKey}" is derived from other records and cannot be edited here.`,
+        );
+        return;
+      }
+      const value = LIST_FIELDS.has(target) ? splitList(newValue) : newValue;
+
+      // Optimistic, then reconciled against the server.
       setPayload((prev) => {
         if (!prev) return prev;
         const fields = {
           ...(prev.sow_version.extracted_fields ?? {}),
         } as Record<string, unknown>;
-        fields[fieldKey] = {
-          value: newValue,
+        fields[target] = {
+          value,
           provenance: "manual",
           status: "confirmed",
         };
-        // The blank-row → manual-with-value flip may resolve a
-        // `needs_you` entry; drop it from the list optimistically.
-        const filtered = prev.needs_you.filter(
-          (n) => n.field !== fieldKey || newValue === "",
-        );
         return {
           ...prev,
-          sow_version: {
-            ...prev.sow_version,
-            extracted_fields: fields,
-          },
-          needs_you: filtered,
+          sow_version: { ...prev.sow_version, extracted_fields: fields },
+          needs_you: prev.needs_you.filter(
+            (n) => n.field !== target || newValue === "",
+          ),
         };
       });
+
+      setOverrideError(null);
+      void confirmSowField(sowVersionId as UUID, target as never, value)
+        .then(() => load())
+        .catch((e: unknown) => {
+          setOverrideError(
+            e instanceof Error ? e.message : "could not save that change",
+          );
+          // Put the real values back rather than leaving the optimistic
+          // edit standing as if it had saved.
+          void load();
+        });
     },
-    [],
+    [sowVersionId, load],
   );
 
-  const handleEngagementPick = useCallback((_type: EngagementType) => {
-    setPayload((prev) => {
-      if (!prev) return prev;
-      // The chosen type overrides the classifier's ambiguity — flip
-      // engagement to auto_confirm so the chooser hides and the chip
-      // renders. Confidence is 1.0 because the human picked.
-      return {
-        ...prev,
-        engagement: {
-          ...prev.engagement,
-          primary: { type: _type, confidence: 1 },
-          secondary: null,
-          auto_confirm: true,
-          rule_matched: "manual_pick",
-        },
-        needs_you: prev.needs_you.filter((n) => n.field !== "engagement_type"),
-      };
-    });
-  }, []);
+  const handleEngagementPick = useCallback(
+    (type: EngagementType) => {
+      setPayload((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          engagement: {
+            ...prev.engagement,
+            primary: { type, confidence: 1 },
+            secondary: null,
+            auto_confirm: true,
+            rule_matched: "manual_pick",
+          },
+          needs_you: prev.needs_you.filter((n) => n.field !== "engagement_type"),
+        };
+      });
+      // The pick is a decision about the record, not a view preference — it
+      // has to outlive the page. `engagement_type_suggested` is the stored
+      // field; confirm_field also stamps `engagement_type_confirmed`.
+      void confirmSowField(
+        sowVersionId as UUID,
+        "engagement_type_suggested" as never,
+        type,
+      )
+        .then(() => load())
+        .catch((e: unknown) => {
+          setOverrideError(
+            e instanceof Error ? e.message : "could not save the engagement type",
+          );
+          void load();
+        });
+    },
+    [sowVersionId, load],
+  );
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -472,6 +581,11 @@ function ConfirmationFlow({
         onOverrideField={handleOverride}
         onChooseEngagement={handleEngagementPick}
       />
+      {overrideError ? (
+        <p className="text-secondary text-danger" data-testid="override-error">
+          {overrideError}
+        </p>
+      ) : null}
       <ScopeSection payload={payload} onOverrideField={handleOverride} />
       <RateCardSection payload={payload} />
       <StaffingGmSection payload={payload} />

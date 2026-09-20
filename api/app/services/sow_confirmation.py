@@ -194,15 +194,46 @@ def _compute_floors(model: GmModel | None) -> dict[str, Any]:
             _model_to_payload(model), extra_inputs=_extra_inputs_for_model(model)
         )
     except (DeliveryModelInputError, SandboxInputError) as exc:
+        # A computation that FAILED is not a computation that passed. This
+        # returned us_pass/india_pass = True, so a GM sheet the engine could
+        # not evaluate rendered green floor bars.
         return {
-            "us_pass": True,
-            "india_pass": True,
+            "has_gm": True,
+            "gm_model_id": str(model.id),
+            "us_pass": False,
+            "india_pass": False,
             "requires_ceo": True,
             "failing": [],
             "error": str(exc),
+            "reason": f"gross margin could not be computed: {exc}",
         }
     response = build_compute_response(result)
     policy = response.get("policy") or {}
+
+    # A margin needs revenue to exist at all. With revenue of zero the ratio
+    # is undefined, and the policy check passes vacuously — which is how a
+    # sheet reading "Revenue 0.00, GM Unavailable" still showed "Passes both
+    # floors". Nothing green should appear next to a number nobody computed.
+    blended = response.get("gm_blended")
+    us_gm = response.get("gm_us")
+    india_gm = response.get("gm_india")
+    if blended is None and us_gm is None and india_gm is None:
+        return {
+            "has_gm": True,
+            "gm_model_id": str(model.id),
+            "us_pass": False,
+            "india_pass": False,
+            "requires_ceo": True,
+            "failing": [],
+            "gm_us": None,
+            "gm_india": None,
+            "gm_blended": None,
+            "reason": (
+                "no gross margin could be calculated from this plan — it has "
+                "no revenue, or no costed lines"
+            ),
+        }
+
     return {
         "has_gm": True,
         "gm_model_id": str(model.id),
@@ -239,6 +270,7 @@ def _staffing_from_gm(model: GmModel) -> AutoStaffingResult:
                 allocation_pct=r.allocation_pct,
                 hours_billable=r.billable_hours,
                 hourly_bill_rate=r.hourly_bill_rate,
+                hourly_cost=cost,
                 provenance="manual",
                 start_date=r.start_date,
                 end_date=r.end_date,
@@ -260,6 +292,12 @@ def _staffing_from_gm(model: GmModel) -> AutoStaffingResult:
         warnings=warnings,
         sources=[str(model.id)],
     )
+
+
+def _is_fixed_fee(engagement_type: str) -> bool:
+    """Engagements whose revenue is settled rather than billed by the hour."""
+
+    return engagement_type in ("fixed_price", "assessment")
 
 
 # --- needs_you ------------------------------------------------------------
@@ -352,7 +390,28 @@ def _needs_you_for(
                             reason=f"{label}: billable hours not set",
                         )
                     )
-                if line.hourly_bill_rate is None or line.hourly_bill_rate <= 0:
+                # What a line needs depends on how the engagement earns.
+                #
+                # On a fixed fee the revenue is the agreed price whatever the
+                # hours turn out to be, so the bill rate never enters the
+                # margin — the cost does. Demanding a bill rate here asked for
+                # a number nobody has on a contract where nobody bills by the
+                # hour, and it is what put three meaningless blockers on a
+                # fixed-price SOW.
+                if _is_fixed_fee(engagement.primary.type):
+                    if line.hourly_cost is None or line.hourly_cost <= 0:
+                        gaps.append(
+                            NeedsYou(
+                                field=f"staffing[{idx}].hourly_cost",
+                                reason=(
+                                    f"{label}: no cost rate — the margin on a "
+                                    "fixed fee is the fee against cost, so this "
+                                    "is the number that decides it. Set it on "
+                                    "the line or publish a cost band."
+                                ),
+                            )
+                        )
+                elif line.hourly_bill_rate is None or line.hourly_bill_rate <= 0:
                     gaps.append(
                         NeedsYou(
                             field=f"staffing[{idx}].hourly_bill_rate",

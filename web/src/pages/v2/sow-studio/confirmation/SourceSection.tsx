@@ -187,6 +187,7 @@ function EngagementChooser({
   const { primary, secondary } = payload.engagement;
   return (
     <div
+      id="engagement-chooser"
       data-testid="engagement-chooser"
       className="rounded-panel border border-warning/40 bg-warning-surface p-3"
     >

@@ -308,8 +308,13 @@ describe("CommandCenterPage", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("surfaces an ErrorState when the loader throws (non-403)", async () => {
-    // Simulate a hard failure by rejecting a required (non-optional) call.
+  it("keeps the board up when one module fails, and says which", async () => {
+    // This used to assert the opposite — that any non-403 failure rendered a
+    // full-page ErrorState. All ten calls share one Promise.all, so a single
+    // broken endpoint blanked nine healthy ones: when GET /deals started
+    // 500ing on SOW-first opportunities, the whole command centre went dark.
+    // The file's own header promises "errors in one module never hide
+    // healthy ones"; now it is true.
     vi.spyOn(apiClient, "getFinanceDashboard").mockRejectedValue(
       new Error("boom"),
     );
@@ -323,11 +328,19 @@ describe("CommandCenterPage", () => {
       emptyPackages(),
     );
     renderPage();
+
+    // The page renders.
     await waitFor(() => {
       expect(
-        screen.getByText(/We couldn't load the command center/i),
-      ).toBeInTheDocument();
+        screen.queryByText(/We couldn't load the command center/i),
+      ).not.toBeInTheDocument();
     });
+
+    // And the gap is declared rather than passing as "nothing to do here".
+    const banner = await screen.findByTestId("partial-failures");
+    expect(banner).toHaveTextContent("1 section(s) could not be loaded");
+    expect(banner).toHaveTextContent("Finance dashboard");
+    expect(banner).toHaveTextContent("boom");
   });
 
   it("renders 'Unavailable' when Pipeline value is missing (non-CEO role)", async () => {

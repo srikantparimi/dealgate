@@ -51,6 +51,7 @@ from app.services.sow_resources import (
 )
 from app.services.sow_lifecycle import (
     SowLifecycleError,
+    draft_sows,
     delete_version,
     discard_version,
     list_versions,
@@ -512,4 +513,57 @@ async def put_sow_resources(
         "notified": result.notified,
         "margin_before": result.before_margin,
         "margin_after": result.after_margin,
+    }
+
+
+# --- finding work in progress (S10-10) ------------------------------------
+
+
+@router.get("/drafts")
+async def list_draft_sows(
+    mine: bool = True,
+    user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """SOWs started but not yet submitted for approval.
+
+    The gap this closes: nothing in the product listed an in-progress SOW.
+    The approvals board shows approval packages, so a SOW that had not
+    reached one was invisible in every lane — and there was no endpoint that
+    could find it either. A refresh looked exactly like data loss even though
+    every row was safely stored.
+
+    ``mine=false`` shows everyone's, for the reviewer roles that already see
+    every upload job.
+    """
+
+    leader = bool(
+        {"SalesLeader", "Finance", "Legal", "CEO", "SystemAdmin"} & set(user.groups)
+    )
+    uploader_id = None if (not mine and leader) else user.id
+
+    rows = await draft_sows(session, uploader_id=uploader_id)
+    return {
+        "drafts": [
+            {
+                "opportunity_id": str(d.opportunity_id),
+                "sow_version_id": (
+                    str(d.sow_version_id) if d.sow_version_id else None
+                ),
+                "client_id": str(d.client_id) if d.client_id else None,
+                "client_name": d.client_name,
+                "title": d.title,
+                "governance_status": d.governance_status,
+                "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+                "extract_status": d.extract_status,
+                "has_gm": d.has_gm,
+                # Where this SOW should be picked up from.
+                "resume_href": (
+                    f"/sows/new?opportunityId={d.opportunity_id}"
+                    if d.has_gm
+                    else f"/sows/{d.opportunity_id}/staffing"
+                ),
+            }
+            for d in rows
+        ]
     }

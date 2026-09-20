@@ -25,6 +25,7 @@ import { Input } from "../../ui-v2/primitives/input";
 import { cn } from "../../lib/cn";
 import { LANES, laneForPackage, type LaneDef, type LaneId } from "./sow-approvals/lanes";
 import { PackageCard, type CardMeta } from "./sow-approvals/PackageCard";
+import { DraftSowStrip } from "./sow-approvals/DraftSowStrip";
 
 type ChipId = "all" | "blocked" | "mine" | "new";
 
@@ -163,6 +164,11 @@ export function SowApprovalsPage() {
           </div>
         }
       />
+
+      {/* Work in progress, above the board. A SOW that has not reached an
+       * approval package appears in no lane, so without this the only route
+       * back to an unfinished upload was browser history. */}
+      <DraftSowStrip />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div
