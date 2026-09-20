@@ -26,10 +26,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   getSowConfirmation,
-  getSowResources,
+  getSowStaffing,
   importStaffingSheet,
   previewDeliveryModel,
-  saveDeliveryModelVersion,
+  putSowStaffing,
   staffingTemplateUrl,
   type DeliveryLocation,
   type DeliveryPreviewRequestInputs,
@@ -182,7 +182,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
   useEffect(() => {
     if (!opportunityId) return;
     let cancelled = false;
-    getSowResources(opportunityId)
+    getSowStaffing(opportunityId)
       .then((state) => {
         if (cancelled || state.resources.length === 0) return;
         setRows(
@@ -329,7 +329,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
     setSaving(true);
     setBanner(null);
     try {
-      await saveDeliveryModelVersion(opportunityId, {
+      await putSowStaffing(opportunityId, {
         engagement_type: engagementType,
         resource_lines: toResourceLines(rows, engagementType),
         cost_lines: [],

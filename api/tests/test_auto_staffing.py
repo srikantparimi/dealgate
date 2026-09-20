@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pytest
 
 from app.services.auto_staffing import (
-    DEFAULT_FTE_HOURS_PER_WEEK,
     lines_to_payload_dicts,
     staff,
 )
@@ -69,8 +66,12 @@ async def test_single_resource_uses_same_path():
 
 @pytest.mark.asyncio
 async def test_managed_service_headcount_from_coverage():
+    """coverage_hours is a real derivation; the role name must come from the SOW."""
+
     fields = {
         "coverage_hours": _wrap("168"),  # 24x7 = 168 h/week
+        "primary_role": _wrap("Site Reliability Engineer"),
+        "primary_seniority": _wrap("Senior"),
         "term_start": _wrap("2026-10-01"),
         "term_end": _wrap("2027-03-31"),
     }
@@ -78,7 +79,24 @@ async def test_managed_service_headcount_from_coverage():
     # 168 / 40 = 4.2 → 5 FTE (ceil).
     assert len(result.lines) == 5
     assert all(line.provenance == "calculated" for line in result.lines)
+    assert all(line.role == "Site Reliability Engineer" for line in result.lines)
     assert any("coverage=" in n for n in result.notes)
+
+
+@pytest.mark.asyncio
+async def test_managed_service_no_role_returns_empty():
+    """Without primary_role we do not invent a title (was "Support Engineer")."""
+
+    fields = {
+        "coverage_hours": _wrap("168"),
+        "term_start": _wrap("2026-10-01"),
+        "term_end": _wrap("2027-03-31"),
+    }
+    result = await staff("managed_service", fields)
+    assert result.lines == []
+    assert any(
+        "does not name a role" in n for n in result.notes
+    ), result.notes
 
 
 @pytest.mark.asyncio
@@ -89,16 +107,16 @@ async def test_managed_service_no_coverage_warns():
 
 
 @pytest.mark.asyncio
-async def test_tm_uses_forecast_utilization_when_no_table():
+async def test_tm_returns_empty_when_no_table():
+    """A T&M SOW without a resource table gets no fabricated line."""
+
     fields = {
         "term_start": _wrap("2026-10-01"),
         "term_end": _wrap("2026-12-31"),
     }
     result = await staff("tm", fields)
-    assert len(result.lines) == 1
-    assert result.lines[0].provenance == "defaulted"
-    # 13 weeks × 40h × 0.75 = 390h
-    assert result.lines[0].hours_billable > Decimal("300")
+    assert result.lines == []
+    assert any("no resource table" in n for n in result.notes)
 
 
 @pytest.mark.asyncio
@@ -115,7 +133,12 @@ async def test_tm_marks_resource_table_as_defaulted():
 
 
 @pytest.mark.asyncio
-async def test_fixed_price_looks_up_past_sows():
+async def test_fixed_price_links_past_sows_but_never_copies_their_roster():
+    """A past-SOW similarity match is a *reference*, not authority to copy that
+    SOW's team onto this one. auto_staff surfaces the past-SOW id as a
+    source; the actual staffing rows are entered by the reviewer.
+    """
+
     fields = {
         "scope_summary": _wrap("Modernise loan origination platform."),
         "term_start": _wrap("2026-10-01"),
@@ -132,23 +155,13 @@ async def test_fixed_price_looks_up_past_sows():
         ]
 
     result = await staff("fixed_price", fields, past_sow_search=_past_search)
-    assert len(result.lines) == 3
-    assert all(line.provenance == "looked_up" for line in result.lines)
+    assert result.lines == []
     assert "11111111-1111-1111-1111-111111111111" in result.sources
+    assert any("linked as reference" in n for n in result.notes)
 
 
 @pytest.mark.asyncio
 async def test_fixed_price_proposes_nothing_when_no_past_sows():
-    """No evidence, no proposal.
-
-    This previously asserted the opposite: that a novel fixed-price scope
-    produced three `defaulted` lines from a hardcoded roster, at a default
-    hours figure and a ZERO bill rate, dated today+90d. A gross margin was
-    then computed from those numbers with an empty `warnings` list, so
-    nothing told Finance the inputs were invented. CLAUDE.md rule 6 wants a
-    draft *with sources*; a guess with no source is a fabrication.
-    """
-
     fields = {"scope_summary": _wrap("Novel scope with no history.")}
 
     async def _past_search(_q: str):
@@ -156,12 +169,12 @@ async def test_fixed_price_proposes_nothing_when_no_past_sows():
 
     result = await staff("fixed_price", fields, past_sow_search=_past_search)
     assert result.lines == []
-    assert any("must be entered or uploaded" in n for n in result.notes)
+    assert any("enter or upload staffing" in n for n in result.notes)
 
 
 @pytest.mark.asyncio
-async def test_assessment_short_roster_only_with_a_cited_past_sow():
-    """A roster is proposed only when a real approved SOW backs it."""
+async def test_assessment_never_fabricates_a_roster_even_with_past_hits():
+    """Past-SOW similarity is not authority to copy a team onto this SOW."""
 
     fields = {
         "scope_summary": _wrap("Cloud readiness assessment."),
@@ -169,7 +182,6 @@ async def test_assessment_short_roster_only_with_a_cited_past_sow():
         "term_end": _wrap("2026-10-28"),
     }
 
-    # No retrieval available → nothing proposed.
     bare = await staff("assessment", fields)
     assert bare.lines == []
 
@@ -177,15 +189,8 @@ async def test_assessment_short_roster_only_with_a_cited_past_sow():
         return [{"sow_version_id": "11111111-1111-1111-1111-111111111111"}]
 
     result = await staff("assessment", fields, past_sow_search=_past_search)
-    assert len(result.lines) == 3
-    # Every proposed line cites the SOW it came from.
-    assert all(line.provenance == "looked_up" for line in result.lines)
-    assert all(line.source_id for line in result.lines)
-    # 4-week assessment: hours cap at 4 weeks × 40 = 160
-    assert all(
-        line.hours_billable <= DEFAULT_FTE_HOURS_PER_WEEK * Decimal("4")
-        for line in result.lines
-    )
+    assert result.lines == []
+    assert "11111111-1111-1111-1111-111111111111" in result.sources
 
 
 @pytest.mark.asyncio

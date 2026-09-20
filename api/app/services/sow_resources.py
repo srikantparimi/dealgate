@@ -213,6 +213,7 @@ async def update_resources(
         create_gm_model_version,
         parse_gm_model_payload,
     )
+    from app.services.sow_extract import latest_version_for as _latest_sow
 
     signed = await is_signed(session, opportunity_id)
     previous = await _latest_gm(session, opportunity_id)
@@ -231,6 +232,41 @@ async def update_resources(
                 "approvers will read",
                 status_code=422,
             )
+
+    # sow_version_id MUST always be populated — without it, build_confirmation
+    # cannot correlate the saved plan to the extracted SOW, and the confirm
+    # screen falls back to the auto-plan (the bug this whole story fixes).
+    # If the client didn't send one, use the latest SOW version for the deal.
+    latest_sow_state = None
+    if not payload.get("sow_version_id"):
+        latest_sow_state = await _latest_sow(session, opportunity_id)
+        if latest_sow_state is not None:
+            payload = {**payload, "sow_version_id": str(latest_sow_state.id)}
+
+    # Fixed-price revenue: the SOW extraction owns the price. If the frontend
+    # did not carry it into the payload, look it up here — the GM engine
+    # treats missing total_price as 0 on a fixed-fee engagement, which is what
+    # produced "GM Unavailable" on a $50,000 SOW.
+    engagement_type = payload.get("engagement_type") or ""
+    if engagement_type in ("fixed_price", "assessment") and not payload.get(
+        "total_price"
+    ):
+        if latest_sow_state is None:
+            latest_sow_state = await _latest_sow(session, opportunity_id)
+        if latest_sow_state is not None:
+            from app.services.sow_confirmation import _extracted_price
+            from sqlalchemy import select as _select
+            from app.models.sow import SowVersion as _SowVersion
+
+            version = (
+                await session.execute(
+                    _select(_SowVersion).where(_SowVersion.id == latest_sow_state.id)
+                )
+            ).scalar_one_or_none()
+            if version is not None:
+                price = _extracted_price(version)
+                if price is not None:
+                    payload = {**payload, "total_price": format(price, "f")}
 
     parsed = parse_gm_model_payload(payload)
     model = await create_gm_model_version(

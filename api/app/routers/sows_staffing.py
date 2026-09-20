@@ -430,14 +430,25 @@ async def discard_sow_version(
 # --- resources, at any point in the SOW's life (S10-08) -------------------
 
 
-@router.get("/{opportunity_id}/resources")
-async def get_sow_resources(
+@router.get("/{opportunity_id}/staffing")
+async def get_sow_staffing(
     opportunity_id: uuid.UUID,
     _user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """The committed resource plan, its margin, and whether editing it now
-    requires notifying the approvers."""
+    """Canonical read: the committed staffing plan, its margin, and whether
+    editing now requires notifying the approvers."""
+
+    return await current_resources(session, opportunity_id)
+
+
+@router.get("/{opportunity_id}/resources")
+async def get_sow_resources_alias(
+    opportunity_id: uuid.UUID,
+    _user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Backward-compat alias for `/staffing`."""
 
     return await current_resources(session, opportunity_id)
 
@@ -460,18 +471,21 @@ class ResourceUpdateRequest(BaseModel):
     reason: str | None = None
 
 
-@router.put("/{opportunity_id}/resources")
-async def put_sow_resources(
+async def _put_sow_staffing(
     opportunity_id: uuid.UUID,
     body: ResourceUpdateRequest,
-    user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
-    session: AsyncSession = Depends(get_session),
+    user: AuthUser,
+    session: AsyncSession,
 ) -> dict[str, Any]:
     """Save a new resource plan.
 
     Always a new immutable GM version — the previous one is never edited
     (CLAUDE.md rule 4). After signature the change is dated and the approvers
     are told, with the old and new margin in the notice.
+
+    This is THE staffing write path. Both the Staffing tab and the Confirm
+    page's Staffing section call it (via `PUT /sows/{id}/staffing`, aliased
+    to `/resources` for backward compatibility). There is no second store.
     """
 
     db_user = await ensure_user(session, user)
@@ -514,6 +528,30 @@ async def put_sow_resources(
         "margin_before": result.before_margin,
         "margin_after": result.after_margin,
     }
+
+
+@router.put("/{opportunity_id}/staffing")
+async def put_sow_staffing(
+    opportunity_id: uuid.UUID,
+    body: ResourceUpdateRequest,
+    user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Canonical staffing write. Confirm page and Staffing tab both call this."""
+
+    return await _put_sow_staffing(opportunity_id, body, user, session)
+
+
+@router.put("/{opportunity_id}/resources")
+async def put_sow_resources_alias(
+    opportunity_id: uuid.UUID,
+    body: ResourceUpdateRequest,
+    user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Backward-compat alias for `/staffing`."""
+
+    return await _put_sow_staffing(opportunity_id, body, user, session)
 
 
 # --- finding work in progress (S10-10) ------------------------------------

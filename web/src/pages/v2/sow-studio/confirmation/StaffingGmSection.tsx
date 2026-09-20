@@ -24,6 +24,21 @@ export interface StaffingGmSectionProps {
   payload: SowConfirmationPayload;
 }
 
+/**
+ * Allocation lives on the wire as a 0..1 fraction (Decimal, e.g. "1.0000"
+ * for a full-time line). The UI shows it as a percent — one canonical unit
+ * on the wire, `× 100` at render (Kanna 20-Sep directive rule 5).
+ * `"1.0000"` used to render as `1.0000%`; it now renders as `100%`.
+ */
+export function formatAllocationPct(raw: string | number): string {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return String(raw);
+  const pct = n * 100;
+  // Whole numbers render without decimals; fractions get one decimal so
+  // "50%" stays "50%" and "12.5%" stays "12.5%".
+  return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
+}
+
 export function StaffingGmSection({ payload }: StaffingGmSectionProps) {
   const lines = payload.staffing.lines;
   const gm = payload.gm_model;
@@ -163,7 +178,7 @@ function StaffingRow({ line }: { line: SowConfirmationStaffingLine }) {
         {line.hours_billable}
       </div>
       <div role="cell" className="text-right tnum text-body text-text">
-        {line.allocation_pct}%
+        {formatAllocationPct(line.allocation_pct)}%
       </div>
       <div role="cell">
         <ProvenanceChip entry={provEntry} />

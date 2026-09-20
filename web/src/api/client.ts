@@ -1914,19 +1914,19 @@ export interface SowResourceUpdateResult {
   margin_after: SowResourcesState["margin"];
 }
 
-export function getSowResources(
+export function getSowStaffing(
   opportunityId: UUID,
 ): Promise<SowResourcesState> {
-  return request<SowResourcesState>(`/sows/${opportunityId}/resources`);
+  return request<SowResourcesState>(`/sows/${opportunityId}/staffing`);
 }
 
 /**
- * Save a new resource plan.
- *
- * Always a new immutable GM version. After signature `effective_from` and
- * `reason` are required and the approvers are notified with both margins.
+ * The one staffing write path. Both the Staffing tab and the Confirm page's
+ * Staffing section call this — there is no second store. Always writes a new
+ * immutable GM version. After signature `effective_from` and `reason` are
+ * required and the approvers are notified with both margins.
  */
-export function putSowResources(
+export function putSowStaffing(
   opportunityId: UUID,
   body: {
     engagement_type: string;
@@ -1937,11 +1937,16 @@ export function putSowResources(
     reason?: string;
   },
 ): Promise<SowResourceUpdateResult> {
-  return request<SowResourceUpdateResult>(`/sows/${opportunityId}/resources`, {
+  return request<SowResourceUpdateResult>(`/sows/${opportunityId}/staffing`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
 }
+
+/** @deprecated Use `getSowStaffing`. Kept for callers not yet migrated. */
+export const getSowResources = getSowStaffing;
+/** @deprecated Use `putSowStaffing`. Kept for callers not yet migrated. */
+export const putSowResources = putSowStaffing;
 
 /** One row in a SOW's version history. */
 export interface SowVersionRow {

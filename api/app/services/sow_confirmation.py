@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
@@ -109,16 +109,38 @@ def _make_capability_search(
 # --- GM wiring ------------------------------------------------------------
 
 
+def _extracted_price(version: SowVersion) -> Decimal | None:
+    """The fixed price from the SOW extraction, or None if not present."""
+
+    fields = version.extracted_fields or {}
+    raw = read_provenance(fields.get("price")).get("value")
+    if raw in (None, "", []):
+        return None
+    try:
+        # The extractor writes prices as strings like "50000" / "50000.00";
+        # strip currency symbols and thousands separators defensively.
+        s = str(raw).replace(",", "").replace("$", "").strip()
+        return Decimal(s)
+    except (InvalidOperation, ValueError):
+        return None
+
+
 def _build_gm_payload(
     engagement_type: str,
     staffing: AutoStaffingResult,
     sow_version_id: uuid.UUID,
+    total_price: Decimal | None = None,
 ) -> GmModelPayload | None:
     """Translate proposed staffing lines into the GM model payload.
 
     ``permanent_placement`` produces no lines — we return ``None`` and
     the caller skips the create step. Empty lines for other types also
     return ``None`` (the confirm screen surfaces the gap in needs_you).
+
+    ``total_price`` (when provided, for fixed-fee engagements) is the
+    revenue the SOW extraction saw. Without it the GM engine treats a
+    fixed-price SOW as zero-revenue and every margin comes out
+    "Unavailable" — the exact defect in the 5th report.
     """
 
     payload_rows = lines_to_payload_dicts(staffing.lines)
@@ -137,15 +159,25 @@ def _build_gm_payload(
         resource_lines=parsed,
         cost_lines=[],
         phases=[],
+        total_price=total_price,
     )
 
 
-async def _existing_gm_for_sow(
+async def _existing_gm_for_opportunity(
     session: AsyncSession,
     *,
     opportunity_id: uuid.UUID,
-    sow_version_id: uuid.UUID,
 ) -> GmModel | None:
+    """The latest GM model for an opportunity, regardless of sow_version_id.
+
+    The Staffing tab saves via `PUT /sows/{opportunity_id}/staffing` and
+    stores the row keyed to the opportunity; the older delivery-model write
+    path did not always carry `sow_version_id` through, so filtering on it
+    orphaned every plan that came in without one. There is one GM model per
+    opportunity at any moment (rule 4 — every change is a new version), so
+    "latest for this opportunity" is the right question.
+    """
+
     stmt = (
         select(GmModel)
         .options(
@@ -153,7 +185,6 @@ async def _existing_gm_for_sow(
             selectinload(GmModel.cost_lines),
         )
         .where(GmModel.opportunity_id == opportunity_id)
-        .where(GmModel.sow_version_id == sow_version_id)
         .order_by(GmModel.created_at.desc(), GmModel.id.desc())
         .limit(1)
     )
@@ -648,20 +679,26 @@ async def build_confirmation(
         version.extracted_fields or {}, bedrock=bedrock_classifier
     )
 
-    # 3. Staffing — saved plan first, proposal only as a starting point.
+    # 3. Staffing.
     #
-    # This used to call `auto_staff` unconditionally and show its result, so a
-    # plan a human had entered and saved through the staffing gate never
-    # appeared here: the screen kept re-deriving from the extract and
-    # reporting "no staffing lines yet" while the saved GM model sat in the
-    # database. Once someone has committed a plan, that plan is the answer.
-    gm_model: GmModel | None = await _existing_gm_for_sow(
-        session, opportunity_id=opportunity_id, sow_version_id=version.id
+    # ONE store, ONE query, ONE answer. Whatever the Staffing tab last saved
+    # for this opportunity is what the confirm screen shows — regardless of
+    # which SOW version it was tied to. The auto-plan never overwrites what
+    # a human saved (rule 11 of the sprint directive: "auto-plan seeds only
+    # an empty record, once").
+    gm_model: GmModel | None = await _existing_gm_for_opportunity(
+        session, opportunity_id=opportunity_id
     )
 
     if gm_model is not None:
+        # A saved plan is the answer; the auto-plan does not run.
         staffing = _staffing_from_gm(gm_model)
     else:
+        # No plan on file. `auto_staff` returns lines only when the SOW itself
+        # carried a resource table (staff_aug / single_resource / managed_service
+        # with a role named / T&M with a resource table). For everything else
+        # it returns [] with a note; the confirm screen surfaces the gap in
+        # `needs_you`.
         past = _make_past_sow_search(session, embedder)
         caps = _make_capability_search(session, embedder)
         staffing = await auto_staff(
@@ -670,19 +707,26 @@ async def build_confirmation(
             past_sow_search=past,
             capability_search=caps,
         )
-
-    # 4. Auto-GM (idempotent).
-    if gm_model is None and auto_create_gm:
-        payload = _build_gm_payload(
-            engagement.primary.type, staffing, version.id
-        )
-        if payload is not None:
-            gm_model = await create_gm_model_version(
-                session,
-                opportunity_id=opportunity_id,
-                actor_id=actor_id,
-                payload=payload,
+        # Auto-seed a GmModel ONLY when the SOW itself supplied the roster
+        # (auto_staff returned real lines). A fabricated roster is never
+        # persisted — that was the bug where re-opening confirm showed
+        # "manual" phantoms nobody had entered.
+        if auto_create_gm and staffing.lines:
+            price = (
+                _extracted_price(version)
+                if _is_fixed_fee(engagement.primary.type)
+                else None
             )
+            payload = _build_gm_payload(
+                engagement.primary.type, staffing, version.id, total_price=price
+            )
+            if payload is not None:
+                gm_model = await create_gm_model_version(
+                    session,
+                    opportunity_id=opportunity_id,
+                    actor_id=actor_id,
+                    payload=payload,
+                )
 
     # 5. Floors + approvers + tasks + CEO pre-draft.
     floors = _compute_floors(gm_model)

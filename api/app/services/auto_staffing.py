@@ -199,8 +199,18 @@ def _managed_service_lines(
     headcount = int(headcount_decimal.to_integral_value(rounding=ROUND_UP))
     headcount = max(headcount, 1)
 
-    role = str(value_of(extracted.get("primary_role")) or "Support Engineer")
-    seniority = str(value_of(extracted.get("primary_seniority")) or "Mid")
+    role = value_of(extracted.get("primary_role"))
+    seniority = value_of(extracted.get("primary_seniority"))
+    if role is None or seniority is None:
+        # coverage_hours tells us HOW MANY people are needed; it does not tell
+        # us which role to name them under. Return empty and say so; the
+        # reviewer enters the role on the Staffing tab.
+        return [], [
+            "managed_service: coverage_hours known but the SOW does not name a "
+            "role or seniority — enter staffing on the Staffing tab"
+        ]
+    role = str(role)
+    seniority = str(seniority)
     location = _default_location(extracted)
     weeks = _term_weeks(start, end)
     hours_per_line = fte_hours * weeks
@@ -245,27 +255,12 @@ def _tm_lines(
             line.warning = "T&M forecast — cap enforced by not-to-exceed"
         return resource_lines, ["T&M: forecast from stated resource table"]
 
-    # Fall back to a single "Consultant" line sized to the term × utilization.
-    fte_hours = _fte_hours_per_week(extracted)
-    weeks = _term_weeks(start, end)
-    hours = fte_hours * weeks * DEFAULT_FORECAST_UTILIZATION
-    return (
-        [
-            StaffingLine(
-                role="Consultant",
-                seniority="Senior",
-                location=_default_location(extracted),
-                allocation_pct=Decimal("1"),
-                hours_billable=hours,
-                hourly_bill_rate=Decimal("0"),
-                provenance="defaulted",
-                start_date=start,
-                end_date=end,
-                warning="T&M forecast at 75% utilization",
-            )
-        ],
-        ["T&M: no resource table; defaulted to 1 Consultant × 75% utilization"],
-    )
+    # No resource table → no lines. Inventing a default line gives Finance a
+    # number derived from a role the SOW never named. The reviewer enters the
+    # roles on the Staffing tab.
+    return [], [
+        "T&M: no resource table extracted — enter staffing on the Staffing tab"
+    ]
 
 
 async def _looked_up_lines(
@@ -282,7 +277,6 @@ async def _looked_up_lines(
     query = _scope_query(extracted)
     sources: list[str] = []
     notes: list[str] = []
-    lines: list[StaffingLine] = []
 
     past_hits: list[dict[str, Any]] = []
     if past_sow_search is not None and query:
@@ -296,28 +290,22 @@ async def _looked_up_lines(
         if sid:
             sources.append(sid)
 
-    location = _default_location(extracted)
-    weeks = _term_weeks(start, end)
-    # Assessment default: 2-3 people × 4 weeks. Fixed-price: 3 people
-    # sized to the term. Bill rate stays at 0 — resolver fills at save.
-    # No evidence → propose nothing, and say why.
-    #
-    # This used to emit a hardcoded roster (Architect/Engineer/Engineer, or
-    # Consultant/Analyst/Architect for an assessment) at a default hours
-    # figure, a ZERO bill rate and today+90d dates, with an empty `warnings`
-    # list. For a SOW with no resource table that produced a complete-looking
-    # staffing plan in which every number was invented — and a gross margin
-    # computed from it, with nothing to tell Finance the inputs were made up.
-    #
-    # CLAUDE.md rule 6: AI output is a draft *with sources*. A guess with no
-    # source is not a draft, it is a fabrication. sow-first-principles §7:
-    # "fallbacks are loud". An empty grid the human fills in is honest; an
-    # invented one is not.
-    if not past_hits:
+    # No roster is ever fabricated. A guess with no source is a fabrication
+    # (CLAUDE.md rule 6) and past-SOW similarity is not authority to copy that
+    # SOW's team onto this one. Past-SOW ids are surfaced as *sources* so a
+    # human can open them; the staffing rows themselves are entered on the
+    # Staffing tab (or uploaded from the sheet) and saved. `build_confirmation`
+    # will show whatever was saved; if nothing was saved the confirm screen's
+    # `needs_you` says so in plain words.
+    if past_hits:
         notes.append(
-            f"{engagement_type}: the SOW lists no resources and no approved "
-            "past SOW matched this scope — staffing must be entered or "
-            "uploaded before a gross margin can be calculated"
+            f"{engagement_type}: {len(past_hits)} past SOW(s) matched scope — "
+            "linked as reference, not copied into this plan"
+        )
+    else:
+        notes.append(
+            f"{engagement_type}: no past SOW matched this scope — enter or "
+            "upload staffing before gross margin can be calculated"
         )
         if capability_search is not None and query:
             try:
@@ -329,38 +317,7 @@ async def _looked_up_lines(
                     )
             except Exception:  # noqa: BLE001 — never block on retrieval outage
                 pass
-        return [], notes, sources
-
-    if engagement_type == "assessment":
-        roster = [("Consultant", "Senior"), ("Analyst", "Mid"), ("Architect", "Principal")]
-        hours_per_person = _fte_hours_per_week(extracted) * min(weeks, Decimal("4"))
-    else:
-        roster = [
-            ("Architect", "Principal"),
-            ("Engineer", "Senior"),
-            ("Engineer", "Mid"),
-        ]
-        hours_per_person = _fte_hours_per_week(extracted) * weeks
-
-    for role, seniority in roster:
-        lines.append(
-            StaffingLine(
-                role=role,
-                seniority=seniority,
-                location=location,
-                allocation_pct=Decimal("1"),
-                hours_billable=hours_per_person,
-                hourly_bill_rate=Decimal("0"),
-                provenance="looked_up",
-                start_date=start,
-                end_date=end,
-                source_id=sources[0] if sources else None,
-                warning="estimated from past SOW — confirm hours and rates",
-            )
-        )
-
-    notes.append(f"{engagement_type}: {len(past_hits)} past SOW(s) matched scope")
-    return lines, notes, sources
+    return [], notes, sources
 
 
 # --- public API ------------------------------------------------------------
