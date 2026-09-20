@@ -12,6 +12,7 @@ from app.models.capability import CapabilityCatalog
 from app.models.ceo_exception import CeoDelegate, CeoException
 from app.models.client import Agreement, Client, LegalEntity
 from app.models.client_alias import ClientAlias
+from app.models.client_contact import ClientContact
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
 from app.models.embedding import SowEmbedding
 from app.models.forecast import ForecastPeriod

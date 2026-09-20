@@ -163,19 +163,23 @@ def _build_gm_payload(
     )
 
 
-async def _existing_gm_for_opportunity(
+async def _existing_gm_for_sow(
     session: AsyncSession,
     *,
-    opportunity_id: uuid.UUID,
+    sow_id: uuid.UUID,
 ) -> GmModel | None:
-    """The latest GM model for an opportunity, regardless of sow_version_id.
+    """The latest GM model for a specific ``sow``.
 
-    The Staffing tab saves via `PUT /sows/{opportunity_id}/staffing` and
-    stores the row keyed to the opportunity; the older delivery-model write
-    path did not always carry `sow_version_id` through, so filtering on it
-    orphaned every plan that came in without one. There is one GM model per
-    opportunity at any moment (rule 4 — every change is a new version), so
-    "latest for this opportunity" is the right question.
+    Keying by ``sow_id`` (not ``opportunity_id``) is what makes "one query,
+    one answer" true even if a future codepath ever puts two ``Sow`` rows
+    under one opportunity. Today the invariant is one Sow per opportunity
+    (`sow_extract._load_or_create_sow`), but the invariant lives in a
+    ``scalar_one_or_none()`` call, not in the schema. Scoping the read by
+    ``sow_id`` moves that invariant into the query so it can't drift.
+
+    Approved packages pin their exact ``gm_model_id`` (immutable, CLAUDE.md
+    rule 4), so a later edit that creates a new ``GmModel`` here does not
+    displace what the frozen ``approval_package`` still reads.
     """
 
     stmt = (
@@ -184,7 +188,7 @@ async def _existing_gm_for_opportunity(
             selectinload(GmModel.resource_lines),
             selectinload(GmModel.cost_lines),
         )
-        .where(GmModel.opportunity_id == opportunity_id)
+        .where(GmModel.sow_id == sow_id)
         .order_by(GmModel.created_at.desc(), GmModel.id.desc())
         .limit(1)
     )
@@ -681,13 +685,14 @@ async def build_confirmation(
 
     # 3. Staffing.
     #
-    # ONE store, ONE query, ONE answer. Whatever the Staffing tab last saved
-    # for this opportunity is what the confirm screen shows — regardless of
-    # which SOW version it was tied to. The auto-plan never overwrites what
-    # a human saved (rule 11 of the sprint directive: "auto-plan seeds only
-    # an empty record, once").
-    gm_model: GmModel | None = await _existing_gm_for_opportunity(
-        session, opportunity_id=opportunity_id
+    # ONE store, ONE query, ONE answer — scoped to THIS SOW. Whatever the
+    # Staffing tab last saved for this sow is what the confirm screen shows.
+    # The auto-plan never overwrites what a human saved (rule 11 of the
+    # sprint directive: "auto-plan seeds only an empty record, once"). Two
+    # SOWs under the same opportunity keep separate plans because the query
+    # keys on `sow_id`, not `opportunity_id`.
+    gm_model: GmModel | None = await _existing_gm_for_sow(
+        session, sow_id=version.sow_id
     )
 
     if gm_model is not None:

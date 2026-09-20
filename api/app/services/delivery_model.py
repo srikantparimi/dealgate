@@ -652,9 +652,26 @@ async def create_gm_model_version(
             else:
                 revenue_india += rev
 
+    # Resolve `sow_id` from the sow_version so the confirm-screen query can
+    # scope to a single SOW (two SOWs under one opportunity would otherwise
+    # share the same "latest gm_model"). See docstring on
+    # `sow_confirmation._existing_gm_for_sow`.
+    sow_id_for_gm: Optional[uuid.UUID] = None
+    if filled_payload.sow_version_id is not None:
+        from app.models.sow import SowVersion as _SowVersion
+
+        sow_id_for_gm = (
+            await session.execute(
+                select(_SowVersion.sow_id).where(
+                    _SowVersion.id == filled_payload.sow_version_id
+                )
+            )
+        ).scalar_one_or_none()
+
     model = GmModel(
         id=uuid.uuid4(),
         opportunity_id=opportunity_id,
+        sow_id=sow_id_for_gm,
         sow_version_id=filled_payload.sow_version_id,
         engagement_type=filled_payload.engagement_type,
         delivery_pattern=filled_payload.delivery_pattern,
