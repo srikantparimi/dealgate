@@ -326,7 +326,10 @@ class AgreementView:
 @dataclass(frozen=True)
 class OpportunityView:
     id: uuid.UUID
-    hubspot_deal_id: str
+    # Nullable since 0028: an opportunity created from a SOW upload has
+    # no HubSpot deal behind it. Requiring a string here made every
+    # SOW-first opportunity 500 the list it appeared in.
+    hubspot_deal_id: str | None
     governance_status: str
     sales_stage: str | None
     engagement_type: str | None

@@ -327,3 +327,47 @@ async def test_governance_status_stays_intake_when_engagement_type_null(
     ).scalar_one()
     assert fresh.governance_status == "Intake"
     assert fresh.engagement_type is None
+
+
+def test_response_schemas_accept_a_sow_uploaded_opportunity():
+    """An opportunity created from a SOW upload has no HubSpot deal.
+
+    Migration 0028 made `opportunity.hubspot_deal_id` nullable so the
+    SOW-first flow could create opportunities without HubSpot — but the
+    response schemas kept requiring a string. The moment anyone uploaded a
+    SOW, `GET /deals` and `GET /clients/{id}` returned 500 with a pydantic
+    validation error: the list broke for every user, not just for that row.
+
+    Asserted at the schema level because that is exactly where it broke, and
+    it fails loudly if anyone tightens the type back.
+    """
+
+    import uuid as _uuid
+
+    from app.routers.clients import OpportunityLink
+    from app.routers.deals import DealRow
+
+    row = DealRow(
+        id=_uuid.uuid4(),
+        hubspot_deal_id=None,
+        owner_id=None,
+        engagement_type=None,
+        sales_stage=None,
+        governance_status="Intake",
+        next_client_action=None,
+        next_client_date=None,
+        coverage_state="missing",
+    )
+    assert row.hubspot_deal_id is None
+
+    link = OpportunityLink(
+        id=_uuid.uuid4(),
+        hubspot_deal_id=None,
+        governance_status="Intake",
+        sales_stage=None,
+        engagement_type=None,
+        owner_id=None,
+        next_client_action=None,
+        next_client_date=None,
+    )
+    assert link.hubspot_deal_id is None

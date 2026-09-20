@@ -51,7 +51,10 @@ class DealRow(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    hubspot_deal_id: str
+    # Nullable since 0028: an opportunity created from a SOW upload has
+    # no HubSpot deal behind it. Requiring a string here made every
+    # SOW-first opportunity 500 the list it appeared in.
+    hubspot_deal_id: str | None = None
     owner_id: uuid.UUID | None
     client_id: uuid.UUID | None = None
     client_name: str | None = None
@@ -95,7 +98,10 @@ class DealDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    hubspot_deal_id: str
+    # Nullable since 0028: an opportunity created from a SOW upload has
+    # no HubSpot deal behind it. Requiring a string here made every
+    # SOW-first opportunity 500 the list it appeared in.
+    hubspot_deal_id: str | None = None
     owner_id: uuid.UUID | None
     client_id: uuid.UUID | None = None
     client_name: str | None = None
