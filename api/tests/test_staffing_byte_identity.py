@@ -153,6 +153,44 @@ async def test_reopen_confirm_never_reseeds_staffing(fixed_price_sow, session):
 
 
 @pytest.mark.asyncio
+async def test_raising_cost_triggers_ceo_gate(fixed_price_sow, session):
+    """Proof-protocol step 7: change line 2 cost to $220/hr → GM drops to
+    10.4%, US floor (35%) fails, CEO gate triggers.
+
+    Same session as `test_saved_staffing_is_what_confirm_screen_shows`
+    proves the pair Kanna's directive named — both must hold together.
+    """
+
+    opp = fixed_price_sow["opp"]
+    # Original: 2 × SME @ $120 → 42.4% (see the earlier test).
+    # New: line 2 raised to $220 → cost 80×120 + 160×220 = 9,600 + 35,200
+    # = 44,800; revenue 50,000; GM (50k − 44.8k)/50k = 10.4%.
+    lines = [_sme_line("80"), {**_sme_line("160"), "hourly_cost": "220"}]
+
+    await update_resources(
+        session,
+        opportunity_id=opp.id,
+        actor_id=OWNER,
+        payload={
+            "engagement_type": "fixed_price",
+            "resource_lines": lines,
+            "cost_lines": [],
+        },
+    )
+    await session.commit()
+
+    payload = await build_confirmation(
+        session, opportunity_id=opp.id, actor_id=OWNER
+    )
+
+    gm_us = payload.floors["gm_us"]
+    assert gm_us is not None
+    assert Decimal("0.10") <= Decimal(str(gm_us)) <= Decimal("0.11"), gm_us
+    assert payload.floors["us_pass"] is False
+    assert payload.floors["requires_ceo"] is True
+
+
+@pytest.mark.asyncio
 async def test_fixed_price_revenue_uses_extracted_price(fixed_price_sow, session):
     """Kanna directive rule 4: fixed-price revenue = extracted price, not 0.
 
