@@ -4,7 +4,7 @@
  * Renders the `brief_json` that the SOW-first pipeline pre-drafts when
  * the auto-GM run predicts a below-floor package. Nothing is blank on
  * open. Rationale is the only field a human writes (CLAUDE.md rule 10,
- * sow-first-principles §6). Every final decision requires a rationale
+ * sow-first §6). Every final decision requires a rationale
  * of at least one sentence; conditional approval also requires every
  * condition to carry owner + due + evidence + blocking scope.
  *
@@ -196,7 +196,7 @@ export function CEOExceptionDecisionPage() {
 
   const conditionsReady = allConditionsComplete(conditions);
   // Rationale required for *every* final decision — the CEO cannot
-  // walk away without stating why (sow-first-principles §6).
+  // walk away without stating why (sow-first §6).
   const rationaleReady = isSentence(rationale) && rationaleSaved;
   const canSubmit =
     !!exception &&

@@ -35,7 +35,7 @@ engagement type via the declared rule id, (c) has a PDF on disk, and
 ## The six fixtures
 
 Filename → engagement type → classifier rule → auto-staff shape → floor
-outcome. See `docs/sow-first-principles.md` and
+outcome. See `docs/directives/sow-first.md` and
 `docs/backlog/s9-sow-first-pipeline.md` for the full spec.
 
 | # | Filename | Classifier | Rule | Auto-staff | Floors |

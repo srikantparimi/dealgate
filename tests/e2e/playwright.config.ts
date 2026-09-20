@@ -18,10 +18,17 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 
+// Staging runs are slower — the whole flow crosses CloudFront, ALB, ECS
+// Fargate, RDS and Bedrock — so timeouts bump when the base URL is the
+// deployed one. Local dev keeps the tight numbers.
+const IS_STAGING = /d1mu2un4hj9akj\.cloudfront\.net|dealgate\.smartek21\.com/.test(
+  E2E_BASE_URL,
+);
+
 export default defineConfig({
   testDir: "./specs",
-  timeout: 30_000,
-  expect: { timeout: 5_000 },
+  timeout: IS_STAGING ? 180_000 : 30_000,
+  expect: { timeout: IS_STAGING ? 20_000 : 5_000 },
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -31,8 +38,8 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
-    actionTimeout: 10_000,
-    navigationTimeout: 15_000,
+    actionTimeout: IS_STAGING ? 45_000 : 10_000,
+    navigationTimeout: IS_STAGING ? 60_000 : 15_000,
   },
   projects: [
     {

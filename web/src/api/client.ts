@@ -1195,6 +1195,77 @@ export function submitSowVersion(sowVersionId: UUID): Promise<SowVersion> {
   });
 }
 
+// --- Signatories picker ---------------------------------------------------
+
+/**
+ * One authorised internal signatory — a user in a governance group whose
+ * name shows up in the "Internal (People & access)" side of the picker.
+ * Mirrors :class:`app.routers.signatories.InternalSignatoryRow`.
+ */
+export interface InternalSignatoryRow {
+  id: UUID;
+  name: string;
+  email: string;
+  groups: string[];
+}
+
+/**
+ * One client-side signatory. Mirrors
+ * :class:`app.routers.signatories.ClientContactRow`. Idempotent on
+ * ``(client_id, email)`` — the POST route returns the existing row rather
+ * than raising 409 when the email is already on file.
+ */
+export interface ClientContactRow {
+  id: UUID;
+  client_id: UUID;
+  name: string;
+  email: string;
+  title: string | null;
+}
+
+export interface ClientContactCreate {
+  name: string;
+  email: string;
+  title?: string | null;
+}
+
+/**
+ * The normalized shape one picked signatory takes on the SOW's
+ * ``extracted_fields.signatories`` list. ``source`` says which panel
+ * the row came from; ``user_id`` / ``contact_id`` point back at the
+ * governance record so the audit trail names a real person, not a
+ * free-text string.
+ */
+export interface PickedSignatory {
+  source: "internal" | "client";
+  user_id?: UUID | null;
+  contact_id?: UUID | null;
+  name: string;
+  email: string;
+  title?: string | null;
+  role?: string | null;
+}
+
+export function listInternalSignatories(): Promise<InternalSignatoryRow[]> {
+  return request<InternalSignatoryRow[]>(`/signatories/internal`);
+}
+
+export function listClientContacts(
+  clientId: UUID,
+): Promise<ClientContactRow[]> {
+  return request<ClientContactRow[]>(`/clients/${clientId}/contacts`);
+}
+
+export function createClientContact(
+  clientId: UUID,
+  body: ClientContactCreate,
+): Promise<ClientContactRow> {
+  return request<ClientContactRow>(`/clients/${clientId}/contacts`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // --- SOW upload pipeline (S10-01) ------------------------------------------
 
 /**
@@ -1555,7 +1626,7 @@ export type DeliveryCostCategory =
 
 /**
  * S9 — provenance kind for every derived field on the SOW-first pipeline
- * (docs/sow-first-principles.md, CLAUDE.md rule 10). `manual` means a
+ * (docs/directives/sow-first.md, CLAUDE.md rule 10). `manual` means a
  * human overrode the derivation; every other kind names where the value
  * came from.
  */

@@ -5,13 +5,29 @@
  * When the list is empty the section proudly reads that every field is
  * derived — this is the sow-first spec's "confirmation, not entry"
  * moment.
+ *
+ * A blocker for ``signatories`` embeds the SignatoriesPicker inline —
+ * the row is the input, not a label pointing at one (docs/directives/
+ * one-staffing-model.md rule 6, gm-correctness §4).
  */
-import type { SowConfirmationPayload } from "../../../../api/client";
+import type {
+  PickedSignatory,
+  SowConfirmationPayload,
+  UUID,
+} from "../../../../api/client";
 import { CheckCircle2 } from "lucide-react";
+import { readField } from "./helpers";
 import { Section } from "./Section";
+import { SignatoriesPicker } from "./SignatoriesPicker";
 
 export interface NeedsYouSectionProps {
   payload: SowConfirmationPayload;
+  /**
+   * Called with the freshly-saved list every time the inline picker
+   * mutates signatories, so the parent's optimistic payload updates and
+   * this row can drop off the blocker list.
+   */
+  onSignatoriesChange?: (next: PickedSignatory[]) => void;
 }
 
 const EMPTY_COPY =
@@ -40,8 +56,17 @@ function targetFor(field: string): string {
   return `field-row-${field}`;
 }
 
-export function NeedsYouSection({ payload }: NeedsYouSectionProps) {
+export function NeedsYouSection({
+  payload,
+  onSignatoriesChange,
+}: NeedsYouSectionProps) {
   const items = payload.needs_you ?? [];
+  const sowVersionId = payload.sow_version.id as UUID;
+  const clientId = (payload.source?.client_id ?? null) as UUID | null;
+  const fields = payload.sow_version.extracted_fields as
+    | Record<string, unknown>
+    | null;
+  const signatoriesValue = readField(fields, "signatories")?.value;
   return (
     <Section
       id="section-needs-you"
@@ -64,27 +89,43 @@ export function NeedsYouSection({ payload }: NeedsYouSectionProps) {
         >
           {items.map((item, i) => {
             const target = targetFor(item.field);
+            const isSignatories =
+              item.field === "signatories" ||
+              item.field.startsWith("signatories");
             return (
               <li
                 key={`${item.field}-${i}`}
-                className="flex items-start justify-between gap-3 rounded-panel border border-warning/40 bg-warning-surface p-3"
+                className="flex flex-col gap-2 rounded-panel border border-warning/40 bg-warning-surface p-3"
                 data-testid={`needs-you-item-${item.field}`}
               >
-                <div className="min-w-0">
-                  <p className="text-body text-text font-medium">
-                    {humanFieldName(item.field)}
-                  </p>
-                  <p className="text-secondary text-text-secondary">
-                    {item.reason}
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-body text-text font-medium">
+                      {humanFieldName(item.field)}
+                    </p>
+                    <p className="text-secondary text-text-secondary">
+                      {item.reason}
+                    </p>
+                  </div>
+                  {isSignatories ? null : (
+                    <a
+                      href={`#${target}`}
+                      className="text-secondary text-primary underline underline-offset-2"
+                      data-testid={`needs-you-jump-${item.field}`}
+                    >
+                      Jump to field
+                    </a>
+                  )}
                 </div>
-                <a
-                  href={`#${target}`}
-                  className="text-secondary text-primary underline underline-offset-2"
-                  data-testid={`needs-you-jump-${item.field}`}
-                >
-                  Jump to field
-                </a>
+                {isSignatories ? (
+                  <SignatoriesPicker
+                    id={`needs-you-picker-${i}`}
+                    sowVersionId={sowVersionId}
+                    clientId={clientId}
+                    value={signatoriesValue}
+                    onChange={onSignatoriesChange}
+                  />
+                ) : null}
               </li>
             );
           })}

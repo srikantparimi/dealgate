@@ -54,7 +54,7 @@ Pipeline (in one request, then a background job for the slow steps):
    is "needs_pick", the opportunity is created only after the picker
    returns.
 7. **Chain classifier → auto-staffing → auto-GM → approver routing** exactly
-   as `docs/sow-first-principles.md` specifies. Each step writes an
+   as `docs/directives/sow-first.md` specifies. Each step writes an
    `audit_event`.
 8. **Job envelope.** Return `{ job_id, sow_version_id?, opportunity_id? }`
    immediately. `GET /sows/jobs/{job_id}` returns

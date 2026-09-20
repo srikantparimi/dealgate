@@ -6,7 +6,7 @@
  * the file is attached the enclosing ``UploadFlow`` calls
  * ``POST /sows/upload`` and hands the job off to ``PipelineProgress``.
  * There is nothing else for the reviewer to type here — that is the
- * point (docs/sow-first-principles.md).
+ * point (docs/directives/sow-first.md).
  */
 import { useState } from "react";
 import { Upload } from "lucide-react";

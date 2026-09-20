@@ -356,7 +356,7 @@ export async function seedFixtureSow(
 /**
  * Seed a client whose rate card is deliberately absent so the
  * confirmation endpoint surfaces the "no client rate card" inline
- * request + the loud fallback warning (`docs/sow-first-principles.md`
+ * request + the loud fallback warning (`docs/directives/sow-first.md`
  * step 3 + design rule 7).
  *
  * The default seed path already creates a client without a rate card;

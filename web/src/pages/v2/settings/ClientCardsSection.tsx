@@ -7,7 +7,7 @@
  * client is a legitimate empty state (the list of clients is huge and
  * lives under the Clients navigation, not here).
  *
- * Per docs/sow-first-principles.md: client cards, cost bands and margin
+ * Per docs/directives/sow-first.md: client cards, cost bands and margin
  * policy are three different tables. This page never displays or edits
  * HR cost bands or margin floors — they have their own subsections.
  */

@@ -46,7 +46,7 @@ def _line(location: str, hours: str, cost: str | None, bill: str = "0") -> Resou
 
 
 def test_fee_is_split_by_cost_weighted_effort():
-    """sow-first-principles §5: cost-weighted effort is the default basis."""
+    """sow-first §5: cost-weighted effort is the default basis."""
 
     us = _line("US", "100", "120")       # 12,000 of cost
     india = _line("India", "200", "30")  # 6,000 of cost

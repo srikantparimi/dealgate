@@ -1722,7 +1722,7 @@ def allocate_fixed_fee_revenue(
     and a mixed-geography SOW needs that fee attributed to each side before
     the per-geography floors mean anything.
 
-    ``docs/sow-first-principles.md`` §5: "For a mixed fixed-fee SOW the
+    ``docs/directives/sow-first.md`` §5: "For a mixed fixed-fee SOW the
     default allocation is cost-weighted effort; Finance can override with a
     recorded basis." So cost-weighted where cost is known.
 

@@ -63,4 +63,26 @@ if [ -n "${HITS}" ]; then
   exit 1
 fi
 
+# S12 (one-staffing-model.md rule 3): the phantom-roster templates are
+# deleted for good. If `auto_staffing.py` ever mentions Architect, Engineer,
+# Consultant or Analyst as a role literal again, CI fails. Comments are
+# stripped so the deletion story itself can name what was removed.
+AUTO_STAFFING="${ROOT}/api/app/services/auto_staffing.py"
+if [ -f "${AUTO_STAFFING}" ]; then
+  CODE_ONLY=$(python3 -c "
+import re,sys,pathlib
+t = pathlib.Path('${AUTO_STAFFING}').read_text()
+t = re.sub(r'#.*', '', t)
+t = re.sub(r'\"\"\"[\s\S]*?\"\"\"', '', t)
+sys.stdout.write(t)
+")
+  BAD_ROLES=$(printf '%s' "${CODE_ONLY}" | grep -oE 'Architect|Engineer|Consultant|Analyst' | sort -u || true)
+  if [ -n "${BAD_ROLES}" ]; then
+    printf 'no-stubs: phantom role literal detected in auto_staffing.py:\n\n'
+    printf '  %s\n' ${BAD_ROLES}
+    printf '\nAuto-staffing must never fabricate a role name. See docs/directives/one-staffing-model.md rule 3.\n'
+    exit 1
+  fi
+fi
+
 printf 'no-stubs: clean\n'

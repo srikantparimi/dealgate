@@ -115,5 +115,5 @@ Each PDF is generated deterministically by a Python script + `reportlab`
 data.
 
 ## Notes
-- `sow-first-principles.md` is the authoritative acceptance spec.
+- `sow-first.md` is the authoritative acceptance spec.
 - CLAUDE.md rule 10 gates review.

@@ -5,7 +5,7 @@ independently (``document_type``, ``sow_extract``, ``integrations.textract``),
 which meant a Word file — accepted by the upload router and advertised by the
 UI — hit a PDF-only parser, yielded zero pages, and was rejected as "not a
 SOW". ``docs/backlog/s10-sow-upload.md`` calls for "the PDF or DOCX" and
-``docs/sow-first-principles.md`` for "SOW file (PDF/Word)".
+``docs/directives/sow-first.md`` for "SOW file (PDF/Word)".
 
 Everything that needs the text of an uploaded document goes through
 :func:`extract_document_text`.

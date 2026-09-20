@@ -2,7 +2,7 @@
  * S9 — provenance chip.
  *
  * Every derived field on the SOW-first pipeline must carry a
- * provenance stamp (CLAUDE.md rule 10, docs/sow-first-principles.md).
+ * provenance stamp (CLAUDE.md rule 10, docs/directives/sow-first.md).
  * The chip surfaces where the value came from so a reviewer can trust
  * or challenge it without opening a second screen. Tones follow the
  * v2.1 backlog:

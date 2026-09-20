@@ -5,7 +5,7 @@ Revises: 20260919_0025
 Create Date: 2026-09-20
 
 Split the single "rate card" concept into three cleanly separated tables
-per ``docs/sow-first-principles.md``:
+per ``docs/directives/sow-first.md``:
 
 - ``client_rate_card`` / ``client_rate_card_row`` (this migration) —
   per-client bill rates, versioned + effective-dated, sourced from the

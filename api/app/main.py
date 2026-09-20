@@ -33,6 +33,7 @@ from app.routers import (
     me,
     notifications,
     renewals,
+    signatories,
     signed_sow,
     sow,
     sows_staffing,
@@ -145,6 +146,7 @@ app.include_router(adviser.router)
 app.include_router(legacy.router)
 app.include_router(approvals.router)
 app.include_router(ceo_exception.router)
+app.include_router(signatories.router)
 app.include_router(signed_sow.router)
 app.include_router(renewals.router)
 app.include_router(dashboards.router)

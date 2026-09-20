@@ -1,6 +1,6 @@
 """`client_rate_card` + `client_rate_card_row` — per-client bill rates.
 
-S9 wave 1. Per ``docs/sow-first-principles.md``: **client rate cards, HR
+S9 wave 1. Per ``docs/directives/sow-first.md``: **client rate cards, HR
 cost bands and margin policy are three different tables**. This module
 owns the bill-rate side (revenue) — the HR cost bands still live in
 ``app.models.rate_card`` (rename to ``cost_band`` deferred to a follow-up

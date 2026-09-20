@@ -153,7 +153,15 @@ def verify_cognito_jwt(token: str) -> dict[str, Any]:
             signing_key,
             algorithms=[alg],
             issuer=settings.issuer,
-            options={"require": ["exp", "iss", "sub", "token_use"]},
+            # `aud` is validated below per token_use (id tokens use aud;
+            # access tokens use client_id). PyJWT's default aud validation
+            # requires an `audience=` parameter and raises "Invalid audience"
+            # when it isn't supplied even though the check we want happens
+            # below; turn its check off so ours is the only one.
+            options={
+                "require": ["exp", "iss", "sub", "token_use"],
+                "verify_aud": False,
+            },
         )
     except PyJWTError as exc:
         raise CognitoAuthError(f"token invalid: {exc}") from exc

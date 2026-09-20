@@ -1,7 +1,7 @@
 """Client rate cards — per-client, MSA-sourced bill rates.
 
 S9 wave 1. Split from the single ``rate_cards`` service per
-``docs/sow-first-principles.md``. This module owns the **revenue** side
+``docs/directives/sow-first.md``. This module owns the **revenue** side
 (bill rates by client legal entity). Cost bands stay in
 ``app.services.rate_cards`` (rename to ``cost_bands`` deferred so the
 existing 635 tests keep passing during the split).
@@ -241,7 +241,7 @@ async def resolve_bill_rate(
 ) -> ResolvedBillRate:
     """Resolve the bill rate a GM calculation should use.
 
-    Order per ``docs/sow-first-principles.md``:
+    Order per ``docs/directives/sow-first.md``:
 
     1. **SOW-stated override** — if the SOW explicitly names a bill rate
        for this line, that wins for revenue (the client card still

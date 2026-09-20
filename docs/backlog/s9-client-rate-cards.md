@@ -2,7 +2,7 @@
 
 ## Story
 Split the existing single "rate card" concept into three cleanly separated
-tables per `docs/sow-first-principles.md`:
+tables per `docs/directives/sow-first.md`:
 
 - **Client bill rate cards** — per legal entity, versioned + effective-dated.
   Import from the MSA rate schedule (the extractor reads it the same way it

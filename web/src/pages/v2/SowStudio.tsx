@@ -3,7 +3,7 @@
  * wired into it.
  *
  * The studio is now a **confirmation screen**, not a five-step wizard
- * (spec: `docs/sow-first-principles.md`, CLAUDE.md rule 10). The URL
+ * (spec: `docs/directives/sow-first.md`, CLAUDE.md rule 10). The URL
  * `/sows/new` still opens the studio, but its meaning is now:
  *
  *   - No opportunity id and no job id → the compact upload panel
@@ -25,6 +25,7 @@ import {
   submitSowConfirmation,
   uploadSow,
   type EngagementType,
+  type PickedSignatory,
   type SowConfirmationPayload,
   type SowUploadJobResponse,
   type SowUploadRejected422,
@@ -463,6 +464,48 @@ function ConfirmationFlow({
     [sowVersionId, load],
   );
 
+  /**
+   * The picker owns the PATCH — this handler just reconciles the local
+   * copy so the ``signatories`` blocker drops off the "What's still needed"
+   * list without waiting on a reload. A follow-up `load()` re-syncs
+   * everything the server derived from the write (provenance stamp,
+   * status flip).
+   */
+  const handleSignatoriesChange = useCallback(
+    (next: PickedSignatory[]) => {
+      setPayload((prev) => {
+        if (!prev) return prev;
+        const fields = {
+          ...(prev.sow_version.extracted_fields ?? {}),
+        } as Record<string, unknown>;
+        const existing = fields["signatories"] as
+          | { page_ref?: number | null; source_id?: string | null }
+          | undefined;
+        fields["signatories"] = {
+          value: next,
+          provenance: "manual",
+          status: next.length > 0 ? "confirmed" : "unconfirmed",
+          page_ref: existing?.page_ref ?? null,
+          source_id: existing?.source_id ?? null,
+        };
+        return {
+          ...prev,
+          sow_version: { ...prev.sow_version, extracted_fields: fields },
+          needs_you:
+            next.length > 0
+              ? prev.needs_you.filter(
+                  (n) =>
+                    n.field !== "signatories" &&
+                    !n.field.startsWith("signatories"),
+                )
+              : prev.needs_you,
+        };
+      });
+      void load();
+    },
+    [load],
+  );
+
   const handleEngagementPick = useCallback(
     (type: EngagementType) => {
       setPayload((prev) => {
@@ -586,11 +629,18 @@ function ConfirmationFlow({
           {overrideError}
         </p>
       ) : null}
-      <ScopeSection payload={payload} onOverrideField={handleOverride} />
+      <ScopeSection
+        payload={payload}
+        onOverrideField={handleOverride}
+        onSignatoriesChange={handleSignatoriesChange}
+      />
       <RateCardSection payload={payload} />
       <StaffingGmSection payload={payload} />
       <ApproversSection payload={payload} />
-      <NeedsYouSection payload={payload} />
+      <NeedsYouSection
+        payload={payload}
+        onSignatoriesChange={handleSignatoriesChange}
+      />
 
       {submitError ? (
         <div

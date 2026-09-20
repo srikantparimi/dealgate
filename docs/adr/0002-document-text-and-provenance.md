@@ -6,7 +6,7 @@ Status: Accepted (S10-04)
 ## Context
 
 `docs/backlog/s10-sow-upload.md` specifies the upload takes "the PDF or DOCX",
-`docs/sow-first-principles.md` §1 says "SOW file (PDF/Word)", the router
+`docs/directives/sow-first.md` §1 says "SOW file (PDF/Word)", the router
 allowlists the DOCX MIME type and the UI advertises `accept=".docx"`. But
 nothing in the codebase could read a Word file: text extraction was `pypdf`
 in three independent places (`document_type`, `sow_extract`,

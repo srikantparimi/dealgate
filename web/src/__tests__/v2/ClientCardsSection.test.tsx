@@ -2,7 +2,7 @@
  * Settings → Client rate cards — S9 wave 1 acceptance test.
  *
  * Empty landing (no client selected) is the intentional first-render
- * state per docs/sow-first-principles.md: this page is "pick a client
+ * state per docs/directives/sow-first.md: this page is "pick a client
  * to open the editor", not a giant client list.
  */
 

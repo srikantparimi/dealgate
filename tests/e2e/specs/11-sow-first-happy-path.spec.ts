@@ -11,7 +11,7 @@
  *
  * The spec also measures the wall-clock elapsed time from upload to
  * submit-success and asserts it is under 10 minutes — proof of the
- * SOW-first performance target from `docs/sow-first-principles.md`.
+ * SOW-first performance target from `docs/directives/sow-first.md`.
  * A headless test finishes in seconds; the assertion is the
  * proof-of-target, not a stopwatch on a human. See the report block
  * below for the exact assertion.
@@ -117,7 +117,7 @@ test("upload → auto-classify → auto-staff → submit under 10 minutes", asyn
   expect(submit.json.engagement.primary.type).toBe("staff_aug");
 
   const elapsedMs = Date.now() - startedAt;
-  // Manifesto target (`docs/sow-first-principles.md`): a standard SOW
+  // Manifesto target (`docs/directives/sow-first.md`): a standard SOW
   // reaches submitted-for-approval in under 10 minutes of human time.
   // A headless spec finishes in seconds — the assertion is proof of
   // the target, not a stopwatch on a human. We log the wall clock so

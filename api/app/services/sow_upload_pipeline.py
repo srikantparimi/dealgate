@@ -67,7 +67,7 @@ from app.services.provenance import value_of, wrap as wrap_provenance
 
 CLIENT_MATCH_MIN_SCORE = Decimal("0.85")
 CLIENT_MATCH_MIN_GAP = Decimal("0.15")
-NOTICE_WINDOW_DAYS = 60  # 2-month notice per docs/sow-first-principles §7.
+NOTICE_WINDOW_DAYS = 60  # 2-month notice per docs/sow-first §7.
 
 
 class PipelineOutcome(str, Enum):

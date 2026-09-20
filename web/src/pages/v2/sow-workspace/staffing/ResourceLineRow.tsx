@@ -4,7 +4,7 @@
  * Rendered pre-populated from the auto-staffing output. Clicking Edit
  * opens the same row inline as a mini form; on Save the row's
  * provenance flips to `manual` (bill_rate_source preserved) — never a
- * silent overwrite (CLAUDE.md rule 10, sow-first-principles §5).
+ * silent overwrite (CLAUDE.md rule 10, sow-first §5).
  *
  * Every money / percent is a Decimal string coming from the server. The
  * row never computes revenue or GM itself — display arithmetic only.

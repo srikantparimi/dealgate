@@ -1,7 +1,7 @@
 /**
  * SOW studio confirmation screen — Sprint 9 Wave 2 acceptance tests.
  *
- * Anchored to `docs/sow-first-principles.md` and CLAUDE.md rule 10.
+ * Anchored to `docs/directives/sow-first.md` and CLAUDE.md rule 10.
  * The tests exercise the constraints the manifesto pins down:
  *
  * - The screen renders from a single `getSowConfirmation` payload.
@@ -400,23 +400,49 @@ describe("SowStudioPage — confirmation screen", () => {
   });
 
   it("flips a field's provenance to manual when the reviewer overrides", async () => {
-    vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValue(makePayload());
+    // Return the fixture on load, then a payload with the manual stamp on
+    // the follow-up refresh — mirrors the server persisting the override
+    // and shipping back the stamped provenance.
+    const base = makePayload();
+    const stamped = makePayload({
+      sow_version: {
+        ...base.sow_version,
+        extracted_fields: {
+          ...base.sow_version.extracted_fields,
+          deliverables: {
+            value: ["Report", "Roadmap", "Handover deck"],
+            provenance: "manual",
+            status: "confirmed",
+          },
+        },
+      },
+    });
+    vi.spyOn(apiClient, "getSowConfirmation")
+      .mockResolvedValueOnce(base)
+      .mockResolvedValue(stamped);
+    vi.spyOn(apiClient, "confirmSowField").mockResolvedValue(
+      // The reconciler only awaits the promise — the response body is
+      // unused, so a stub cast to the return type is enough.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {} as any,
+    );
     renderStudio();
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /Confirm SOW/i })).toBeInTheDocument();
     });
 
-    // The signatories row is not blank; open the editor, edit, save.
-    const change = screen.getByTestId("field-change-signatories");
+    // Deliverables is an editable list-valued row; open the editor, edit, save.
+    const change = screen.getByTestId("field-change-deliverables");
     await userEvent.click(change);
-    const input = screen.getByTestId("field-edit-signatories");
+    const input = screen.getByTestId("field-edit-deliverables");
     await userEvent.clear(input);
-    await userEvent.type(input, "R. Kumar (Northstar); A. Smith (DealGate)");
-    await userEvent.click(screen.getByTestId("field-save-signatories"));
+    await userEvent.type(input, "Report; Roadmap; Handover deck");
+    await userEvent.click(screen.getByTestId("field-save-deliverables"));
 
-    const row = screen.getByTestId("field-row-signatories");
-    const chip = row.querySelector("[data-manual='true']");
-    expect(chip).not.toBeNull();
+    await waitFor(() => {
+      const row = screen.getByTestId("field-row-deliverables");
+      expect(row.querySelector("[data-manual='true']")).not.toBeNull();
+    });
   });
 });

@@ -1,7 +1,7 @@
 """S9 wave 1 — resolve_bill_rate: SOW override wins, client card next,
 fallback returns a warning.
 
-Order per docs/sow-first-principles.md:
+Order per docs/directives/sow-first.md:
     client card  ->  SOW-stated override  ->  segment default  ->  company default
 
 For the split, "SOW-stated" wins over "client card" for revenue (finance
