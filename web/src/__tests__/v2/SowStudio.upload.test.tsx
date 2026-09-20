@@ -147,7 +147,18 @@ describe("SowStudio — upload path", () => {
     // The confirmation load fires once we navigate to opportunityId; mock
     // it minimally so ConfirmationFlow doesn't 500 in the test.
     vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValue({
-      sow_version: {
+      source: {
+    client_id: "c0000000-0000-0000-0000-000000000001",
+    client_name: "Northwind Traders, Inc.",
+    client_legal_name_extracted: "Northwind Traders, Inc.",
+    legal_entity_name: "Northwind Traders US LLC",
+    sow_title: "Northwind Traders, Inc. — platform modernisation",
+    file_s3_key: "sow/abc/2026-sow.pdf",
+    file_name: "2026-sow.pdf",
+    ref_unit: "page",
+    document_kind: "pdf",
+  },
+  sow_version: {
         id: "00000000-0000-0000-0000-000000000ff1",
         extract_status: "complete",
         engagement_type_suggested: "staff_aug",

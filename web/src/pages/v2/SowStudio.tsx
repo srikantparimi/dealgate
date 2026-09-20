@@ -65,14 +65,19 @@ export function SowStudioPage() {
     [params, setParams],
   );
 
-  const goToConfirmation = useCallback(
+  /**
+   * Upload finished — go to the staffing gate, not straight to confirmation.
+   *
+   * The confirmation screen shows a gross margin, and a gross margin without
+   * a staffing plan under it is either absent or invented. Routing through
+   * the gate means that by the time anyone reads the confirm screen, the
+   * margin on it was computed from a plan a person actually entered.
+   */
+  const goToStaffing = useCallback(
     (oppId: string) => {
-      const next = new URLSearchParams(params);
-      next.set("opportunityId", oppId);
-      next.delete("jobId");
-      setParams(next, { replace: true });
+      nav(`/sows/${oppId}/staffing`);
     },
-    [params, setParams],
+    [nav],
   );
 
   const clearUploadState = useCallback(() => {
@@ -95,7 +100,7 @@ export function SowStudioPage() {
     <UploadFlow
       jobId={jobId}
       onJobStarted={setJobId}
-      onDone={goToConfirmation}
+      onDone={goToStaffing}
       onReset={clearUploadState}
     />
   );

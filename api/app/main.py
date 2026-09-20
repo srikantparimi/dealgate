@@ -35,6 +35,7 @@ from app.routers import (
     renewals,
     signed_sow,
     sow,
+    sows_staffing,
     sows_upload,
     tasks,
 )
@@ -137,6 +138,7 @@ app.include_router(admin_rate_cards.router)
 app.include_router(admin_policy.router)
 app.include_router(gm.router)
 app.include_router(sow.router)
+app.include_router(sows_staffing.router)
 app.include_router(sows_upload.router)
 app.include_router(delivery_model.router)
 app.include_router(adviser.router)

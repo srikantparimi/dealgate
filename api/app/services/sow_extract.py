@@ -201,13 +201,33 @@ def _to_provenance_fields(
     source_id = f"{model}:{prompt_version}"
     for name in EXTRACTED_FIELDS:
         entry = extracted.get(name, {})
+        value = entry.get("value")
+        status = entry.get("status", "unconfirmed")
+
+        # A field the model reported as absent or contradicted is NOT
+        # "extracted". Wrapping it that way put an "extracted · p.78" chip
+        # next to an empty row on the confirm screen — the badge asserting the
+        # value came from the document while the row said it did not. The
+        # reader cannot tell a real citation from a blank that way.
+        #
+        # There is no provenance flavour for "we looked and it is not there",
+        # and inventing one would ripple through the schema, the six fixtures
+        # and the UI. Instead the envelope keeps `page_ref` (where we looked,
+        # which is genuinely useful) and carries a warning the chip renders
+        # instead of a false citation.
+        missing = value in (None, "", [], {}) or status == "disputed"
         out[name] = wrap_provenance(
-            entry.get("value"),
+            value,
             provenance="extracted",
             page_ref=entry.get("page_ref"),
             source_id=source_id,
             confidence=entry.get("confidence"),
-            status=entry.get("status", "unconfirmed"),
+            status=status,
+            warning=(
+                "not stated in the document — needs a value"
+                if missing
+                else None
+            ),
         )
     return out
 

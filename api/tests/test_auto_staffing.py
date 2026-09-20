@@ -138,26 +138,49 @@ async def test_fixed_price_looks_up_past_sows():
 
 
 @pytest.mark.asyncio
-async def test_fixed_price_defaults_when_no_past_sows():
+async def test_fixed_price_proposes_nothing_when_no_past_sows():
+    """No evidence, no proposal.
+
+    This previously asserted the opposite: that a novel fixed-price scope
+    produced three `defaulted` lines from a hardcoded roster, at a default
+    hours figure and a ZERO bill rate, dated today+90d. A gross margin was
+    then computed from those numbers with an empty `warnings` list, so
+    nothing told Finance the inputs were invented. CLAUDE.md rule 6 wants a
+    draft *with sources*; a guess with no source is a fabrication.
+    """
+
     fields = {"scope_summary": _wrap("Novel scope with no history.")}
 
     async def _past_search(_q: str):
         return []
 
     result = await staff("fixed_price", fields, past_sow_search=_past_search)
-    assert all(line.provenance == "defaulted" for line in result.lines)
-    assert any("no past-SOW match" in n for n in result.notes)
+    assert result.lines == []
+    assert any("must be entered or uploaded" in n for n in result.notes)
 
 
 @pytest.mark.asyncio
-async def test_assessment_short_roster():
+async def test_assessment_short_roster_only_with_a_cited_past_sow():
+    """A roster is proposed only when a real approved SOW backs it."""
+
     fields = {
         "scope_summary": _wrap("Cloud readiness assessment."),
         "term_start": _wrap("2026-10-01"),
         "term_end": _wrap("2026-10-28"),
     }
-    result = await staff("assessment", fields)
+
+    # No retrieval available → nothing proposed.
+    bare = await staff("assessment", fields)
+    assert bare.lines == []
+
+    async def _past_search(_q: str):
+        return [{"sow_version_id": "11111111-1111-1111-1111-111111111111"}]
+
+    result = await staff("assessment", fields, past_sow_search=_past_search)
     assert len(result.lines) == 3
+    # Every proposed line cites the SOW it came from.
+    assert all(line.provenance == "looked_up" for line in result.lines)
+    assert all(line.source_id for line in result.lines)
     # 4-week assessment: hours cap at 4 weeks × 40 = 160
     assert all(
         line.hours_billable <= DEFAULT_FTE_HOURS_PER_WEEK * Decimal("4")

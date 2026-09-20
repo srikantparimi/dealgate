@@ -28,13 +28,44 @@ export const PROVENANCE_TONE: Record<SowProvenance, StatusTone> = {
   manual: "warning",
 };
 
-export function provenanceLabel(entry: SowProvenanceEntry | undefined): string {
+/** True when the extractor looked and the value simply is not in the document. */
+export function isMissing(entry: SowProvenanceEntry | undefined): boolean {
+  if (!entry) return true;
+  const v = entry.value;
+  const empty =
+    v === null ||
+    v === undefined ||
+    v === "" ||
+    (Array.isArray(v) && v.length === 0);
+  return empty || entry.status === "disputed";
+}
+
+/**
+ * Reference label for a citation.
+ *
+ * `page_ref` is a page number for a PDF but a body-block ordinal for a Word
+ * file, which has no pages (see docs/adr/0002). Labelling a Word reference
+ * "p.78" points the reader at a page that does not exist, so the unit comes
+ * from the version's `ref_unit`.
+ */
+export function refLabel(pageRef: number, refUnit?: string | null): string {
+  return refUnit === "block" ? `\u00b6${pageRef}` : `p.${pageRef}`;
+}
+
+export function provenanceLabel(
+  entry: SowProvenanceEntry | undefined,
+  refUnit?: string | null,
+): string {
   if (!entry) return "unknown";
+  // An absent value must never wear a citation chip. The chip asserting
+  // "extracted · p.78" beside a row reading "Not on the SOW" is the badge
+  // contradicting the row, and the reader cannot tell it from a real one.
+  if (isMissing(entry)) return "needs you";
   const prov = entry.provenance;
   switch (prov) {
     case "extracted":
       return entry.page_ref != null
-        ? `extracted · p.${entry.page_ref}`
+        ? `extracted · ${refLabel(entry.page_ref, refUnit)}`
         : "extracted";
     case "looked_up":
       return entry.source_id
@@ -61,6 +92,8 @@ function shortSource(source: string): string {
 
 export interface ProvenanceChipProps {
   entry: SowProvenanceEntry | undefined;
+  /** "page" for a PDF, "block" for a Word file. From the version metadata. */
+  refUnit?: string | null;
   className?: string;
 }
 
@@ -69,19 +102,27 @@ export interface ProvenanceChipProps {
  * loud outline via `data-manual="true"` so the reviewer sees the human
  * override at a glance (spec rule 10 — "manual is loud").
  */
-export function ProvenanceChip({ entry, className }: ProvenanceChipProps) {
+export function ProvenanceChip({
+  entry,
+  refUnit,
+  className,
+}: ProvenanceChipProps) {
   const prov = entry?.provenance ?? "manual";
-  const tone = PROVENANCE_TONE[prov];
-  const isManual = prov === "manual";
+  const missing = isMissing(entry);
+  // A gap is a gap regardless of which provenance flavour produced it, and
+  // it reads as a warning — the reviewer has to act on it.
+  const tone = missing ? "warning" : PROVENANCE_TONE[prov];
+  const isManual = prov === "manual" && !missing;
   return (
     <StatusBadge
       tone={tone}
-      label={provenanceLabel(entry)}
-      data-provenance={prov}
+      label={provenanceLabel(entry, refUnit)}
+      data-provenance={missing ? "needs_you" : prov}
       data-manual={isManual ? "true" : undefined}
-      data-testid={`provenance-${prov}`}
+      data-testid={missing ? "provenance-needs_you" : `provenance-${prov}`}
       className={cn(
         isManual && "ring-1 ring-warning/50",
+        missing && "ring-1 ring-warning/60",
         className,
       )}
     />

@@ -31,6 +31,7 @@ import { AppShell } from "./ui-v2/AppShell";
 import { CommandCenterPage } from "./pages/v2/CommandCenter";
 import { SowApprovalsPage } from "./pages/v2/SowApprovals";
 import { SowStudioPage } from "./pages/v2/SowStudio";
+import { StaffingGatePage } from "./pages/v2/sow-staffing/StaffingGate";
 import { SowWorkspacePage } from "./pages/v2/SowWorkspace";
 import { CEOExceptionDecisionPage } from "./pages/v2/CEOExceptionDecision";
 import { PipelinePage } from "./pages/v2/Pipeline";
@@ -134,6 +135,14 @@ export function App() {
                   <Route path="/agreements" element={<AgreementsRegisterPage />} />
                   <Route path="/sows" element={<SowApprovalsPage />} />
                   <Route path="/sows/new" element={<SowStudioPage />} />
+                  {/* Staffing gate — sits between upload and confirmation.
+                   * A gross margin is only as good as the plan under it, so
+                   * the plan is entered (or uploaded) before the confirm
+                   * screen shows a margin at all. */}
+                  <Route
+                    path="/sows/:id/staffing"
+                    element={<StaffingGatePage />}
+                  />
                   <Route path="/sows/:id" element={<SowWorkspacePage />} />
                   <Route path="/sows/:id/:tab" element={<SowWorkspacePage />} />
                   <Route

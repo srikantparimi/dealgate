@@ -33,6 +33,8 @@ export interface FieldRowProps {
   placeholder?: string;
   /** Extra hint below the row. */
   hint?: ReactNode;
+  /** "page" for a PDF, "block" for a Word file — labels the citation. */
+  refUnit?: string | null;
 }
 
 export function FieldRow({
@@ -44,6 +46,7 @@ export function FieldRow({
   readOnly,
   placeholder,
   hint,
+  refUnit,
 }: FieldRowProps) {
   const [editing, setEditing] = useState(false);
   const initial =
@@ -96,7 +99,7 @@ export function FieldRow({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <ProvenanceChip entry={entry} />
+        <ProvenanceChip entry={entry} refUnit={refUnit} />
       </div>
       <div className="flex items-center gap-1">
         {!readOnly && onSaveOverride ? (

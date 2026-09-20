@@ -293,6 +293,37 @@ async def _looked_up_lines(
     weeks = _term_weeks(start, end)
     # Assessment default: 2-3 people × 4 weeks. Fixed-price: 3 people
     # sized to the term. Bill rate stays at 0 — resolver fills at save.
+    # No evidence → propose nothing, and say why.
+    #
+    # This used to emit a hardcoded roster (Architect/Engineer/Engineer, or
+    # Consultant/Analyst/Architect for an assessment) at a default hours
+    # figure, a ZERO bill rate and today+90d dates, with an empty `warnings`
+    # list. For a SOW with no resource table that produced a complete-looking
+    # staffing plan in which every number was invented — and a gross margin
+    # computed from it, with nothing to tell Finance the inputs were made up.
+    #
+    # CLAUDE.md rule 6: AI output is a draft *with sources*. A guess with no
+    # source is not a draft, it is a fabrication. sow-first-principles §7:
+    # "fallbacks are loud". An empty grid the human fills in is honest; an
+    # invented one is not.
+    if not past_hits:
+        notes.append(
+            f"{engagement_type}: the SOW lists no resources and no approved "
+            "past SOW matched this scope — staffing must be entered or "
+            "uploaded before a gross margin can be calculated"
+        )
+        if capability_search is not None and query:
+            try:
+                cap_hits = await capability_search(query)
+                if cap_hits:
+                    notes.append(
+                        f"{engagement_type}: {len(cap_hits)} capability catalog "
+                        "match(es) available as a starting point"
+                    )
+            except Exception:  # noqa: BLE001 — never block on retrieval outage
+                pass
+        return [], notes, sources
+
     if engagement_type == "assessment":
         roster = [("Consultant", "Senior"), ("Analyst", "Mid"), ("Architect", "Principal")]
         hours_per_person = _fte_hours_per_week(extracted) * min(weeks, Decimal("4"))
@@ -313,34 +344,15 @@ async def _looked_up_lines(
                 allocation_pct=Decimal("1"),
                 hours_billable=hours_per_person,
                 hourly_bill_rate=Decimal("0"),
-                provenance="looked_up" if past_hits else "defaulted",
+                provenance="looked_up",
                 start_date=start,
                 end_date=end,
                 source_id=sources[0] if sources else None,
-                warning=(
-                    "estimated from past SOW"
-                    if past_hits
-                    else "estimated from capability catalog default"
-                ),
+                warning="estimated from past SOW — confirm hours and rates",
             )
         )
 
-    if past_hits:
-        notes.append(f"{engagement_type}: {len(past_hits)} past SOW(s) matched scope")
-    else:
-        notes.append(
-            f"{engagement_type}: no past-SOW match — defaulted from capability catalog"
-        )
-        if capability_search is not None and query:
-            try:
-                _hits = await capability_search(query)
-                if _hits:
-                    notes.append(
-                        f"{engagement_type}: {len(_hits)} capability catalog match(es)"
-                    )
-            except Exception:  # noqa: BLE001
-                pass
-
+    notes.append(f"{engagement_type}: {len(past_hits)} past SOW(s) matched scope")
     return lines, notes, sources
 
 

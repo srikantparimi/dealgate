@@ -26,7 +26,6 @@ from app.audit import append_audit
 from app.integrations.bedrock_ceo_brief import draft_brief
 from app.integrations.bedrock_classifier import (
     BedrockClassifier,
-    StubBedrockClassifier,
 )
 from app.integrations.bedrock_embeddings import Embedder
 from app.models.ceo_exception import CeoException
@@ -74,6 +73,7 @@ class ConfirmationPayload:
     projected_tasks: list[dict[str, Any]]
     needs_you: list[NeedsYou] = field(default_factory=list)
     ceo_exception: CeoException | None = None
+    source: dict[str, Any] = field(default_factory=dict)
 
 
 # --- classifier + staffing wiring -----------------------------------------
@@ -164,9 +164,16 @@ async def _existing_gm_for_sow(
 
 def _compute_floors(model: GmModel | None) -> dict[str, Any]:
     if model is None:
+        # "Not computed" is not "passed". This previously returned
+        # us_pass/india_pass = True, so a SOW with no GM model at all
+        # rendered green floor bars on the confirm screen — the exact
+        # opposite of what the reader should conclude. `has_gm` lets the
+        # caller distinguish "no model" from "model that failed".
         return {
-            "us_pass": True,
-            "india_pass": True,
+            "has_gm": False,
+            "gm_model_id": None,
+            "us_pass": False,
+            "india_pass": False,
             "requires_ceo": True,
             "failing": [],
             "reason": "no gm model yet — cannot compute floors",
@@ -196,6 +203,8 @@ def _compute_floors(model: GmModel | None) -> dict[str, Any]:
     response = build_compute_response(result)
     policy = response.get("policy") or {}
     return {
+        "has_gm": True,
+        "gm_model_id": str(model.id),
         "us_pass": policy.get("us_pass", True),
         "india_pass": policy.get("india_pass", True),
         "requires_ceo": policy.get("requires_ceo", False),
@@ -254,6 +263,61 @@ def _needs_you_for(
     for w in staffing.warnings:
         gaps.append(NeedsYou(field="staffing", reason=w))
 
+    # 4. A costed staffing plan is the whole basis of the gross margin.
+    #
+    # Without these checks the screen offered "Submit for approval" on a SOW
+    # with no staffing at all. The backend refuses it (`submit_package`
+    # 404s with "no gm_model for opportunity"), so nothing ungoverned ever
+    # reached Finance — but the user got a dead button and no way to find out
+    # what was actually missing. These make the screen tell the truth.
+    #
+    # `permanent_placement` is the one type with no staffing by design: the
+    # placement fee is invoiced once, so an empty grid is correct there.
+    if engagement.primary.type != "permanent_placement":
+        if not staffing.lines:
+            gaps.append(
+                NeedsYou(
+                    field="staffing",
+                    reason=(
+                        "no staffing plan — enter the roles, hours and rates or "
+                        "upload the staffing sheet; gross margin cannot be "
+                        "calculated without one"
+                    ),
+                )
+            )
+        else:
+            for idx, line in enumerate(staffing.lines):
+                label = f"{line.role} ({line.seniority})"
+                if line.hours_billable is None or line.hours_billable <= 0:
+                    gaps.append(
+                        NeedsYou(
+                            field=f"staffing[{idx}].hours_billable",
+                            reason=f"{label}: billable hours not set",
+                        )
+                    )
+                if line.hourly_bill_rate is None or line.hourly_bill_rate <= 0:
+                    gaps.append(
+                        NeedsYou(
+                            field=f"staffing[{idx}].hourly_bill_rate",
+                            reason=(
+                                f"{label}: no bill rate — add one to the client "
+                                "rate card or set it on the line"
+                            ),
+                        )
+                    )
+
+        # 5. No GM model means Finance has nothing to approve against.
+        if floors.get("gm_model_id") is None and not floors.get("has_gm", False):
+            gaps.append(
+                NeedsYou(
+                    field="gm_model",
+                    reason=(
+                        "gross margin not calculated — complete the staffing "
+                        "plan so the GM sheet can be built"
+                    ),
+                )
+            )
+
     return gaps
 
 
@@ -276,6 +340,84 @@ def _projected_tasks(sow_version: SowVersion) -> list[dict[str, Any]]:
             {"kind": "notice_deadline", "due": notice_val, "owner_role": "Legal"}
         )
     return out
+
+
+# --- source block ---------------------------------------------------------
+
+
+async def _source_block(
+    session: AsyncSession,
+    *,
+    opportunity_id: uuid.UUID,
+    version: SowVersion,
+) -> dict[str, Any]:
+    """Client, title and file for the "Source & type" section.
+
+    These three rows used to be read out of ``extracted_fields`` under the
+    keys ``client_entity``, ``sow_title`` and ``file`` — none of which the
+    extractor has ever produced. So every upload rendered them as "unknown" /
+    "manual" and told the reviewer the information was "Not on the SOW", while
+    the client name sat in ``client_legal_name`` and the file key sat on the
+    version row.
+
+    They are not extracted fields at all: the client is a resolved master-data
+    record, the file is a stored object. They come from the records.
+    """
+
+    from app.models.client import Client, LegalEntity
+
+    opp = (
+        await session.execute(
+            select(Opportunity).where(Opportunity.id == opportunity_id)
+        )
+    ).scalar_one_or_none()
+
+    client_name: str | None = None
+    client_id: str | None = None
+    legal_entity_name: str | None = None
+
+    if opp is not None and opp.client_id is not None:
+        client = (
+            await session.execute(select(Client).where(Client.id == opp.client_id))
+        ).scalar_one_or_none()
+        if client is not None:
+            client_name = client.name
+            client_id = str(client.id)
+            entity = (
+                await session.execute(
+                    select(LegalEntity)
+                    .where(LegalEntity.client_id == client.id)
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if entity is not None:
+                legal_entity_name = entity.name
+
+    fields = version.extracted_fields or {}
+    metadata = fields.get("metadata") or {}
+
+    # Title: what the SOW is, said once. Derived, not typed — the client plus
+    # the engagement it covers is what a person calls this document.
+    extracted_client = read_provenance(fields.get("client_legal_name")).get("value")
+    title_client = client_name or extracted_client
+    scope = read_provenance(fields.get("scope_summary")).get("value")
+    sow_title: str | None = None
+    if title_client:
+        suffix = str(scope).strip() if scope else ""
+        sow_title = f"{title_client} — {suffix[:60]}" if suffix else str(title_client)
+
+    file_key = version.file_s3_key or None
+    return {
+        "client_id": client_id,
+        "client_name": client_name,
+        "client_legal_name_extracted": extracted_client,
+        "legal_entity_name": legal_entity_name,
+        "sow_title": sow_title,
+        "file_s3_key": file_key,
+        "file_name": file_key.rsplit("/", 1)[-1] if file_key else None,
+        "ref_unit": metadata.get("ref_unit", "page"),
+        "document_kind": metadata.get("document_kind"),
+    }
 
 
 # --- CEO exception pre-draft ---------------------------------------------
@@ -394,6 +536,8 @@ async def build_confirmation(
         session, sow_version=version, gm_model=gm_model, floors=floors
     )
 
+    source = await _source_block(session, opportunity_id=opportunity_id, version=version)
+
     needs = _needs_you_for(version, engagement, staffing, floors)
     return ConfirmationPayload(
         sow_version=version,
@@ -405,6 +549,7 @@ async def build_confirmation(
         projected_tasks=tasks,
         needs_you=needs,
         ceo_exception=ceo_draft,
+        source=source,
     )
 
 
@@ -469,6 +614,7 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
     v = payload.sow_version
     engagement = payload.engagement
     return {
+        "source": payload.source,
         "sow_version": {
             "id": str(v.id),
             "extracted_fields": v.extracted_fields,

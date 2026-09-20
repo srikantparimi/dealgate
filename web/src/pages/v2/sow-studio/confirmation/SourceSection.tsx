@@ -35,10 +35,42 @@ export function SourceSection({
   const fields = payload.sow_version.extracted_fields as
     | Record<string, unknown>
     | null;
-  const clientEntry = readField(fields, "client_entity");
-  const titleEntry = readField(fields, "sow_title");
-  const fileEntry = readField(fields, "file");
   const engagementEntry = readField(fields, "engagement_type");
+
+  // Client, title and file are records — a resolved client row and a stored
+  // object — not things the extractor emits. Reading them out of
+  // `extracted_fields` (under keys `client_entity` / `sow_title` / `file`,
+  // which nothing has ever written) is why all three showed "unknown".
+  const src = payload.source;
+
+  const clientEntry: SowProvenanceEntry = src?.client_name
+    ? {
+        value: src.legal_entity_name
+          ? `${src.client_name} · ${src.legal_entity_name}`
+          : src.client_name,
+        provenance: "looked_up",
+        source_id: src.client_id ?? undefined,
+      }
+    : {
+        // Not resolved yet, but the extractor may still have read a name off
+        // the parties clause — show it so the reviewer confirms rather than types.
+        value: src?.client_legal_name_extracted ?? null,
+        provenance: "extracted",
+        status: src?.client_legal_name_extracted ? "unconfirmed" : "disputed",
+      };
+
+  const titleEntry: SowProvenanceEntry = {
+    value: src?.sow_title ?? null,
+    provenance: "calculated",
+    status: src?.sow_title ? "unconfirmed" : "disputed",
+  };
+
+  const fileEntry: SowProvenanceEntry = {
+    value: src?.file_name ?? null,
+    provenance: "looked_up",
+    source_id: src?.file_s3_key ?? undefined,
+    status: src?.file_name ? "unconfirmed" : "disputed",
+  };
 
   // Engagement type is a derived field — the classifier's own result
   // takes precedence over any manual override in extracted_fields.
@@ -68,18 +100,21 @@ export function SourceSection({
           fieldKey="client_entity"
           label="Client + entity"
           entry={clientEntry}
+          refUnit={src?.ref_unit}
           onSaveOverride={onOverrideField}
         />
         <FieldRow
           fieldKey="sow_title"
           label="SOW title"
           entry={titleEntry}
+          refUnit={src?.ref_unit}
           onSaveOverride={onOverrideField}
         />
         <FieldRow
           fieldKey="file"
           label="SOW file"
           entry={fileEntry}
+          refUnit={src?.ref_unit}
           readOnly
           renderValue={(entry) => {
             const v = entry?.value;

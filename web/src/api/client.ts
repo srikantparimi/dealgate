@@ -1460,7 +1460,30 @@ export interface SowConfirmationSowVersion {
   engagement_type_suggested: string | null;
 }
 
+/**
+ * Client, title and file for the "Source & type" section.
+ *
+ * These are records, not extracted fields: the client is resolved master
+ * data and the file is a stored object. The UI previously looked them up in
+ * `extracted_fields` under keys the extractor never emits, so all three rows
+ * rendered "unknown".
+ */
+export interface SowConfirmationSource {
+  client_id: UUID | null;
+  client_name: string | null;
+  /** What the extractor read from the parties clause, before resolution. */
+  client_legal_name_extracted: string | null;
+  legal_entity_name: string | null;
+  sow_title: string | null;
+  file_s3_key: string | null;
+  file_name: string | null;
+  /** "page" for a PDF, "block" for a Word file (docs/adr/0002). */
+  ref_unit: string | null;
+  document_kind: string | null;
+}
+
 export interface SowConfirmationPayload {
+  source: SowConfirmationSource;
   sow_version: SowConfirmationSowVersion;
   engagement: SowConfirmationEngagement;
   staffing: SowConfirmationStaffing;
@@ -1776,6 +1799,62 @@ export function previewDeliveryModel(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/** One row parsed out of an uploaded staffing sheet. */
+export interface StaffingSheetLine {
+  role: string;
+  seniority: string;
+  location: string;
+  allocation_pct: string;
+  hours_billable: string;
+  hourly_bill_rate: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface StaffingImportResponse {
+  resource_lines: StaffingSheetLine[];
+  row_count: number;
+  source: string;
+}
+
+/** A single bad cell, so the UI can list every problem at once. */
+export interface StaffingSheetRowError {
+  row: number;
+  field?: string;
+  message: string;
+}
+
+/** URL of the blank staffing sheet. Opened directly so the browser downloads it. */
+export function staffingTemplateUrl(): string {
+  return `${BASE_URL}/sows/staffing-template.xlsx`;
+}
+
+/**
+ * Upload a filled staffing sheet.
+ *
+ * Parses and returns — nothing is saved. The rows land in the grid so the
+ * reviewer sees the resulting gross margin before committing; a spreadsheet
+ * should not quietly become an approved cost basis.
+ */
+export async function importStaffingSheet(
+  opportunityId: UUID,
+  file: File,
+): Promise<StaffingImportResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}/sows/${opportunityId}/staffing/import`, {
+    method: "POST",
+    headers: { ...(await authHeaders()) },
+    body: form,
+  });
+  const text = await res.text();
+  const body = text ? safeJson(text) : null;
+  if (!res.ok) {
+    throw new ApiError(res.status, body, errorMessage(body, res.status));
+  }
+  return body as StaffingImportResponse;
 }
 
 export function saveDeliveryModelVersion(
