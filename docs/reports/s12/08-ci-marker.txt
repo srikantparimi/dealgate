@@ -1,0 +1,9 @@
+S12 CI evidence markers
+-----------------------
+byte-identity  : api/tests/test_staffing_byte_identity.py
+no-phantom-seed: api/tests/test_no_phantom_seeds.py
+defaulted-grid : api/tests/test_defaulted_grid_regression.py
+sow_id scoping : api/tests/test_sow_id_scoping.py
+signatories    : api/tests/test_signatories.py + web/src/__tests__/v2/SignatoriesPicker.test.tsx
+allocation     : web/src/__tests__/v2/allocation-units.test.ts
+no-stubs guard : scripts/no-stubs.sh (Architect|Engineer|Consultant|Analyst grep)
