@@ -35,6 +35,9 @@ NOTIFICATION_CATEGORIES: tuple[str, ...] = (
     "expiry_warning",
     "escalation",
     "daily_digest",
+    # A signed SOW whose staffing changed: the margin the approvers signed
+    # off on has moved, so they are told with both numbers (S10-08).
+    "resource_change",
 )
 
 NOTIFICATION_CHANNELS: tuple[str, ...] = (

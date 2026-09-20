@@ -25,6 +25,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, require_role
@@ -81,6 +82,10 @@ class UploadResponse(BaseModel):
     sow_version_id: uuid.UUID | None = None
     duplicate: bool = False
     needs_pick: dict[str, Any] | None = None
+    # Other in-progress SOWs for the same client. Parallel contracts are
+    # normal, so this is information for the screen to ask with, not a
+    # rejection.
+    other_open_sows: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class JobStatusResponse(BaseModel):
@@ -148,6 +153,41 @@ def _job_to_response(job) -> JobStatusResponse:
 
 
 # --- endpoints ------------------------------------------------------------
+
+
+async def _other_open_sows(
+    session: AsyncSession, job: Any
+) -> list[dict[str, Any]]:
+    """Other in-progress SOWs for the same client, if any."""
+
+    from app.models.opportunity import Opportunity
+    from app.services.sow_lifecycle import open_sows_for_client
+
+    if job.opportunity_id is None:
+        return []
+    opp = (
+        await session.execute(
+            select(Opportunity).where(Opportunity.id == job.opportunity_id)
+        )
+    ).scalar_one_or_none()
+    if opp is None or opp.client_id is None:
+        return []
+
+    others = await open_sows_for_client(
+        session, opp.client_id, exclude_opportunity_id=opp.id
+    )
+    return [
+        {
+            "opportunity_id": str(o.opportunity_id),
+            "sow_version_id": str(o.sow_version_id),
+            "version_no": o.version_no,
+            "title": o.title,
+            "uploaded_at": o.uploaded_at.isoformat() if o.uploaded_at else None,
+            "governance_status": o.governance_status,
+            "is_signed": o.is_signed,
+        }
+        for o in others
+    ]
 
 
 @router.post(
@@ -254,6 +294,16 @@ async def upload_sow(
             detail=str(exc),
         ) from exc
 
+    # Tell the caller what this client already has open.
+    #
+    # A client legitimately runs several contracts at once, so a second SOW
+    # is not an error and is not blocked. But someone re-uploading a
+    # corrected file from the wrong screen lands here too, and silently
+    # creating a second opportunity gives them two of the same engagement in
+    # the pipeline with separate approval trails. The screen asks; this just
+    # provides the facts to ask with.
+    other_open = await _other_open_sows(session, job)
+
     await session.commit()
     return UploadResponse(
         job_id=job.id,
@@ -263,6 +313,7 @@ async def upload_sow(
         sow_version_id=job.sow_version_id,
         duplicate=False,
         needs_pick=job.needs_pick_payload,
+        other_open_sows=other_open,
     )
 
 

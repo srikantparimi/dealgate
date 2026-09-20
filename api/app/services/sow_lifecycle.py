@@ -37,11 +37,13 @@ from app.models.approval import ApprovalPackage
 from app.models.sow import Sow, SowVersion
 
 __all__ = [
+    "OpenSowSummary",
     "SowLifecycleError",
     "VersionSummary",
     "discard_version",
     "delete_version",
     "list_versions",
+    "open_sows_for_client",
     "reserve_version_no",
     "supersede",
     "was_ever_submitted",
@@ -322,3 +324,94 @@ async def sow_for_opportunity(
             select(Sow).where(Sow.opportunity_id == opportunity_id)
         )
     ).scalar_one_or_none()
+
+
+# --- parallel contracts vs accidental re-uploads (S10-09) -----------------
+
+
+@dataclass
+class OpenSowSummary:
+    opportunity_id: uuid.UUID
+    sow_id: uuid.UUID
+    sow_version_id: uuid.UUID
+    version_no: int
+    title: str | None
+    uploaded_at: datetime | None
+    governance_status: str | None
+    is_signed: bool
+
+
+async def open_sows_for_client(
+    session: AsyncSession,
+    client_id: uuid.UUID,
+    *,
+    exclude_opportunity_id: uuid.UUID | None = None,
+) -> list[OpenSowSummary]:
+    """SOWs already in progress for this client.
+
+    A client legitimately runs several contracts at once, so a second SOW is
+    not an error and must not be blocked. But someone re-uploading a
+    corrected file from the wrong screen also lands here, and silently
+    creating a second opportunity gives them two of the same engagement in
+    the pipeline with separate approval trails — which is what happened.
+
+    So this does not decide. It returns what already exists so the caller can
+    ask: is this a new parallel contract, or the one you already started?
+    """
+
+    from app.models.opportunity import Opportunity
+
+    stmt = (
+        select(SowVersion, Sow, Opportunity)
+        .join(Sow, Sow.id == SowVersion.sow_id)
+        .join(Opportunity, Opportunity.id == Sow.opportunity_id)
+        .where(Opportunity.client_id == client_id)
+        .where(SowVersion.discarded_at.is_(None))
+        .where(SowVersion.superseded_by.is_(None))
+        .order_by(SowVersion.uploaded_at.desc())
+    )
+    rows = list((await session.execute(stmt)).all())
+
+    out: list[OpenSowSummary] = []
+    for version, sow, opp in rows:
+        if exclude_opportunity_id and opp.id == exclude_opportunity_id:
+            continue
+        # A signed SOW is settled work, not something you would be
+        # accidentally re-uploading — but it is still worth showing, because
+        # "we already have one of these signed" is exactly the context
+        # someone starting a renewal needs.
+        signed = await _has_signed_sow(session, opp.id)
+        fields = version.extracted_fields or {}
+        scope = fields.get("scope_summary")
+        title = None
+        if isinstance(scope, dict):
+            raw = scope.get("value")
+            if isinstance(raw, str) and raw.strip():
+                title = raw.strip()[:120]
+        out.append(
+            OpenSowSummary(
+                opportunity_id=opp.id,
+                sow_id=sow.id,
+                sow_version_id=version.id,
+                version_no=version.version_no,
+                title=title,
+                uploaded_at=version.uploaded_at,
+                governance_status=opp.governance_status,
+                is_signed=signed,
+            )
+        )
+    return out
+
+
+async def _has_signed_sow(session: AsyncSession, opportunity_id: uuid.UUID) -> bool:
+    from app.models.signed_sow import SignedSowUpload
+
+    row = (
+        await session.execute(
+            select(SignedSowUpload.id)
+            .join(ApprovalPackage, ApprovalPackage.id == SignedSowUpload.package_id)
+            .where(ApprovalPackage.opportunity_id == opportunity_id)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return row is not None

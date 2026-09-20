@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import contextlib
 import uuid
+from datetime import date
 from typing import Any
 
 import anyio
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +43,12 @@ from app.models.sow import SowVersion
 from app.services.document_text import UnreadableDocument, extract_document_text
 from app.services.document_type import ALLOWED_START_TYPES, classify_document
 from app.services.sow_extract import to_provenance_fields
+from app.services.delivery_model import DeliveryModelInputError
+from app.services.sow_resources import (
+    SowResourceError,
+    current_resources,
+    update_resources,
+)
 from app.services.sow_lifecycle import (
     SowLifecycleError,
     delete_version,
@@ -415,4 +423,93 @@ async def discard_sow_version(
         if version.discarded_at
         else None,
         "reason": version.discard_reason,
+    }
+
+
+# --- resources, at any point in the SOW's life (S10-08) -------------------
+
+
+@router.get("/{opportunity_id}/resources")
+async def get_sow_resources(
+    opportunity_id: uuid.UUID,
+    _user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """The committed resource plan, its margin, and whether editing it now
+    requires notifying the approvers."""
+
+    return await current_resources(session, opportunity_id)
+
+
+class ResourceUpdateRequest(BaseModel):
+    """A new resource plan.
+
+    ``effective_from`` and ``reason`` are only required once the SOW is
+    signed — before that a plan is still a proposal and needs neither.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    engagement_type: str
+    resource_lines: list[dict[str, Any]] = Field(default_factory=list)
+    cost_lines: list[dict[str, Any]] = Field(default_factory=list)
+    total_price: str | None = None
+    sow_version_id: uuid.UUID | None = None
+    effective_from: date | None = None
+    reason: str | None = None
+
+
+@router.put("/{opportunity_id}/resources")
+async def put_sow_resources(
+    opportunity_id: uuid.UUID,
+    body: ResourceUpdateRequest,
+    user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Save a new resource plan.
+
+    Always a new immutable GM version — the previous one is never edited
+    (CLAUDE.md rule 4). After signature the change is dated and the approvers
+    are told, with the old and new margin in the notice.
+    """
+
+    db_user = await ensure_user(session, user)
+    payload: dict[str, Any] = {
+        "engagement_type": body.engagement_type,
+        "resource_lines": body.resource_lines,
+        "cost_lines": body.cost_lines,
+        "sow_version_id": str(body.sow_version_id) if body.sow_version_id else None,
+    }
+    if body.total_price is not None:
+        payload["total_price"] = body.total_price
+
+    try:
+        result = await update_resources(
+            session,
+            opportunity_id=opportunity_id,
+            actor_id=db_user.id,
+            payload=payload,
+            effective_from=body.effective_from,
+            reason=body.reason,
+        )
+    except SowResourceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    except (DeliveryModelInputError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    await session.commit()
+    return {
+        "gm_model_id": str(result.gm_model_id),
+        "previous_gm_model_id": (
+            str(result.previous_gm_model_id) if result.previous_gm_model_id else None
+        ),
+        "requires_notice": result.requires_notice,
+        "effective_from": (
+            result.effective_from.isoformat() if result.effective_from else None
+        ),
+        "notified": result.notified,
+        "margin_before": result.before_margin,
+        "margin_after": result.after_margin,
     }

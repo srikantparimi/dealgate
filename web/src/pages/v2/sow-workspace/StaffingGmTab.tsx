@@ -28,6 +28,7 @@ import { CommercialsPanel } from "./staffing/CommercialsPanel";
 import { GeographyCards } from "./staffing/GeographyCards";
 import { ResourceLineRow } from "./staffing/ResourceLineRow";
 import { GateSteps, type GateStep } from "../../../ui-v2/GateSteps";
+import { ResourcesEditor } from "./ResourcesEditor";
 
 type ViewerRole = "restricted" | "full";
 
@@ -53,18 +54,25 @@ export function StaffingGmTab({
 }: StaffingGmTabProps) {
   const gm = snap.gmModel;
   if (!gm) {
+    // No GM model yet. This used to be a dead end — an empty state whose only
+    // action was "Build from SOW", which cannot work when the SOW lists no
+    // resources (most fixed-fee work). The editor belongs here most of all:
+    // this is the state where someone has to enter the plan.
     return (
-      <EmptyState
-        title="No delivery model yet"
-        description="Upload the SOW and the auto-staffing pipeline will populate this tab. This page never presents a blank grid."
-        action={
-          onRebuildFromSow ? (
-            <Button type="button" onClick={onRebuildFromSow}>
-              <RefreshCw className="h-4 w-4" aria-hidden /> Build from SOW
-            </Button>
-          ) : undefined
-        }
-      />
+      <div className="space-y-6">
+        <EmptyState
+          title="No delivery model yet"
+          description="Nothing was derivable from the SOW, so enter the team below. The gross margin is calculated from it as soon as the rows are costed."
+          action={
+            onRebuildFromSow ? (
+              <Button type="button" onClick={onRebuildFromSow}>
+                <RefreshCw className="h-4 w-4" aria-hidden /> Build from SOW
+              </Button>
+            ) : undefined
+          }
+        />
+        {snap.deal?.id ? <ResourcesEditor opportunityId={snap.deal.id} /> : null}
+      </div>
     );
   }
   const hasNewerSow =
@@ -81,6 +89,10 @@ export function StaffingGmTab({
         <RevenueBreakdown gm={gm} />
         <CostBreakdown gm={gm} viewer={viewer} />
         <StaffingGrid gm={gm} viewer={viewer} onSaveRow={onSaveRow} />
+        {/* Editable for the life of the SOW, not only at the gate on the way
+         * to confirmation. Before signature it is a proposal; after, a change
+         * is dated and every approver is told with both margins. */}
+        {snap.deal?.id ? <ResourcesEditor opportunityId={snap.deal.id} /> : null}
         <PolicyFootnote gm={gm} />
       </div>
       <aside className="space-y-4">

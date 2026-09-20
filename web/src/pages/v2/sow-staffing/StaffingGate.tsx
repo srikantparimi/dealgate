@@ -67,7 +67,7 @@ export function emptyRow(): GridRow {
     role: "",
     seniority: "",
     location: "US",
-    allocation_pct: "1",
+    allocation_pct: "100",
     hours_billable: "",
     hourly_bill_rate: "",
     hourly_cost: "",
@@ -108,6 +108,25 @@ export function rowIsComplete(r: GridRow, engagementType?: string): boolean {
   return Number(r.hourly_bill_rate) > 0;
 }
 
+/**
+ * Utilization as the grid holds it (a percentage) to what the GM library
+ * wants (a 0..1 fraction).
+ *
+ * Plenty of engagements run people part-time — 50% utilized, billed and paid
+ * at 50% — and `allocation_pct` already scales both revenue and cost in the
+ * pure library, so this is the one number that expresses it.
+ *
+ * A value of 1 or less is read as an already-normalised fraction rather than
+ * "1%". Nobody staffs a person at one percent, and the field used to be a
+ * 0..1 decimal, so someone typing "0.5" out of habit gets what they meant.
+ */
+export function utilizationFraction(raw: string): string {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return "1";
+  if (n <= 1) return String(n);
+  return String(Math.min(n, 100) / 100);
+}
+
 export function isFixedFee(engagementType?: string): boolean {
   return engagementType === "fixed_price" || engagementType === "assessment";
 }
@@ -121,7 +140,7 @@ export function toResourceLines(
     seniority: r.seniority.trim(),
     location: r.location as DeliveryLocation,
     person_name: null,
-    allocation_pct: r.allocation_pct || "1",
+    allocation_pct: utilizationFraction(r.allocation_pct || "100"),
     start_date: r.start_date,
     end_date: r.end_date,
     hours_billable: r.hours_billable,
@@ -246,7 +265,8 @@ export function StaffingGatePage(props: StaffingGateProps) {
           role: l.role,
           seniority: l.seniority,
           location: l.location,
-          allocation_pct: l.allocation_pct,
+          // The sheet carries a 0..1 fraction; the grid shows a percent.
+          allocation_pct: String(Number(l.allocation_pct || 1) * 100),
           hours_billable: l.hours_billable,
           hourly_bill_rate: l.hourly_bill_rate,
           hourly_cost: (l as { hourly_cost?: string }).hourly_cost ?? "",
@@ -296,7 +316,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
     { label: "Role", required: true },
     { label: "Seniority", required: true },
     { label: "Location", required: true },
-    { label: "Allocation", required: false },
+    { label: "Utilization %", required: false },
     { label: "Hours", required: true },
     { label: "Bill rate", required: !fixedFee },
     { label: "Cost / hour", required: fixedFee },
@@ -419,7 +439,9 @@ export function StaffingGatePage(props: StaffingGateProps) {
                 <td className="px-2 py-1">
                   <Input
                     value={r.allocation_pct}
-                    aria-label={`allocation-${i}`}
+                    placeholder="100"
+                    title="Percent of this person's time on the engagement. 50 = half time, billed and costed at half."
+                    aria-label={`utilization-${i}`}
                     onChange={(e) => update(i, { allocation_pct: e.target.value })}
                   />
                 </td>

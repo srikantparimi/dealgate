@@ -1265,6 +1265,23 @@ export interface UploadSowResponse {
   sow_version_id: UUID | null;
   duplicate: boolean;
   needs_pick: SowUploadNeedsPickPayload | null;
+  /**
+   * Other in-progress SOWs for the same client.
+   *
+   * Parallel contracts are normal, so this is never a rejection — it is the
+   * information the screen needs to ask whether this is a new contract or
+   * the one you already started. Silently creating a second opportunity for
+   * the same engagement is how duplicates appear in the pipeline.
+   */
+  other_open_sows?: {
+    opportunity_id: UUID;
+    sow_version_id: UUID;
+    version_no: number;
+    title: string | null;
+    uploaded_at: string | null;
+    governance_status: string | null;
+    is_signed: boolean;
+  }[];
 }
 
 export interface SowUploadRejected422 {
@@ -1824,6 +1841,80 @@ export interface StaffingSheetRowError {
   row: number;
   field?: string;
   message: string;
+}
+
+/** A resource as the API returns it — utilization is a percentage here. */
+export interface SowResourceRow {
+  role: string;
+  seniority: string;
+  location: string;
+  person_name: string | null;
+  utilization_pct: string;
+  hours_billable: string;
+  hourly_bill_rate: string;
+  hourly_cost: string | null;
+  start_date: string | null;
+  end_date: string | null;
+}
+
+export interface SowResourcesState {
+  opportunity_id: UUID;
+  gm_model_id: UUID | null;
+  engagement_type: string | null;
+  is_signed: boolean;
+  /** Always true — signature adds a cost to changing, not a prohibition. */
+  editable: boolean;
+  /** After signature, a change is dated and the approvers are told. */
+  requires_notice_on_change: boolean;
+  resources: SowResourceRow[];
+  margin: {
+    gm_model_id: UUID | null;
+    gm_us?: string | null;
+    gm_india?: string | null;
+    gm_blended?: string | null;
+    us_pass?: boolean;
+    india_pass?: boolean;
+    requires_ceo?: boolean;
+  };
+}
+
+export interface SowResourceUpdateResult {
+  gm_model_id: UUID;
+  previous_gm_model_id: UUID | null;
+  requires_notice: boolean;
+  effective_from: string | null;
+  notified: string[];
+  margin_before: SowResourcesState["margin"];
+  margin_after: SowResourcesState["margin"];
+}
+
+export function getSowResources(
+  opportunityId: UUID,
+): Promise<SowResourcesState> {
+  return request<SowResourcesState>(`/sows/${opportunityId}/resources`);
+}
+
+/**
+ * Save a new resource plan.
+ *
+ * Always a new immutable GM version. After signature `effective_from` and
+ * `reason` are required and the approvers are notified with both margins.
+ */
+export function putSowResources(
+  opportunityId: UUID,
+  body: {
+    engagement_type: string;
+    resource_lines: DeliveryResourceLineInput[];
+    cost_lines: DeliveryCostLineInput[];
+    total_price?: string;
+    effective_from?: string;
+    reason?: string;
+  },
+): Promise<SowResourceUpdateResult> {
+  return request<SowResourceUpdateResult>(`/sows/${opportunityId}/resources`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
 /** One row in a SOW's version history. */

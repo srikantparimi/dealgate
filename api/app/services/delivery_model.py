@@ -1728,10 +1728,17 @@ def allocate_fixed_fee_revenue(
         return total_price, Decimal("0"), ["no resource lines — all revenue to US"]
 
     def _weight(line: ResourceLinePayload, *, use_cost: bool) -> Decimal:
-        hours = line.hours_billable or Decimal("0")
+        # Utilization scales the weight. A consultant at 50% on a project
+        # costs half as much as one at 100% for the same calendar hours, and
+        # the pure library already applies `allocation_pct` to both revenue
+        # and cost (see `app/gm/types.py`). Leaving it out here would give a
+        # part-time resource full weight in the fee split.
+        effort = (line.hours_billable or Decimal("0")) * (
+            line.allocation_pct if line.allocation_pct is not None else Decimal("1")
+        )
         if not use_cost:
-            return hours
-        return hours * (line.hourly_cost or Decimal("0"))
+            return effort
+        return effort * (line.hourly_cost or Decimal("0"))
 
     use_cost = all(
         line.hourly_cost is not None and line.hourly_cost > 0 for line in lines

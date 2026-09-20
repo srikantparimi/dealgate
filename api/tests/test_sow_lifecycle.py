@@ -325,3 +325,64 @@ async def test_revision_rejects_a_non_sow(app_with_deps, session):
         )
     assert r.status_code == 422
     assert r.json()["detail"]["detected_type"] == "resume"
+
+
+# --- parallel contracts vs accidental re-uploads (S10-09) ----------------
+
+
+async def test_open_sows_for_client_lists_the_others(session):
+    """A client legitimately runs several contracts at once, so a second SOW
+    is never blocked. But someone re-uploading a corrected file from the
+    wrong screen lands in the same place, and silently creating a second
+    opportunity gives them two of the same engagement with separate approval
+    trails. This surfaces what already exists so the screen can ask."""
+
+    from app.services.sow_lifecycle import open_sows_for_client
+
+    opp_a, sow_a, v1 = await _seed(session)
+    client_id = opp_a.client_id
+
+    # A second, genuinely parallel contract for the same client.
+    opp_b = Opportunity(
+        id=uuid.uuid4(), client_id=client_id, owner_id=v1.uploaded_by,
+        governance_status="Intake",
+    )
+    session.add(opp_b)
+    await session.flush()
+    sow_b = Sow(id=uuid.uuid4(), opportunity_id=opp_b.id)
+    session.add(sow_b)
+    await session.flush()
+    session.add(
+        SowVersion(
+            id=uuid.uuid4(), sow_id=sow_b.id, file_s3_key="k", file_hash="h-b",
+            extract_status="complete", version_no=1,
+        )
+    )
+    await session.commit()
+
+    # Asked from B's perspective, A shows up — and vice versa.
+    from_b = await open_sows_for_client(
+        session, client_id, exclude_opportunity_id=opp_b.id
+    )
+    assert [o.opportunity_id for o in from_b] == [opp_a.id]
+
+    both = await open_sows_for_client(session, client_id)
+    assert len(both) == 2
+
+
+async def test_superseded_and_discarded_versions_are_not_offered(session):
+    """Only what is actually in progress. A superseded version is history and
+    a discarded one was a mistake; offering either as "did you mean this?"
+    would send someone back to a dead record."""
+
+    from app.services.sow_lifecycle import discard_version, open_sows_for_client
+
+    opp, _sow, v1 = await _seed(session)
+    assert len(await open_sows_for_client(session, opp.client_id)) == 1
+
+    await discard_version(
+        session, sow_version_id=v1.id, actor_id=None, reason="wrong client"
+    )
+    await session.commit()
+
+    assert await open_sows_for_client(session, opp.client_id) == []

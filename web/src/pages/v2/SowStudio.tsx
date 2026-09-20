@@ -27,6 +27,7 @@ import {
   type SowConfirmationPayload,
   type SowUploadJobResponse,
   type SowUploadRejected422,
+  type UploadSowResponse,
   type UUID,
 } from "../../api/client";
 import { PageHeader } from "../../ui-v2/PageHeader";
@@ -46,6 +47,7 @@ import {
   blockingCount,
   engagementLabel,
 } from "./sow-studio/confirmation/helpers";
+import { ParallelSowPrompt } from "./sow-studio/upload/ParallelSowPrompt";
 
 const TAGLINE = "Confirmation, not entry — the SOW is the input.";
 
@@ -139,6 +141,12 @@ function UploadFlow({
   const [rejected, setRejected] = useState<SowUploadRejected422 | null>(null);
   const [needsPickJob, setNeedsPickJob] =
     useState<SowUploadJobResponse | null>(null);
+  // Other in-progress SOWs for the same client. Shown as a question, never
+  // as a rejection: a client can legitimately run several contracts at once.
+  const [parallel, setParallel] = useState<{
+    jobId: string;
+    others: NonNullable<UploadSowResponse["other_open_sows"]>;
+  } | null>(null);
 
   const handleUpload = useCallback(
     async ({ file }: { file: File }) => {
@@ -151,6 +159,13 @@ function UploadFlow({
           // Dupe with a fully-resolved opportunity → jump straight to
           // confirmation so the reviewer sees the derived package.
           onDone(res.opportunity_id);
+          return;
+        }
+        const others = res.other_open_sows ?? [];
+        if (others.length > 0) {
+          // Stop and ask. Continuing silently is how the same engagement
+          // ends up in the pipeline twice with separate approval trails.
+          setParallel({ jobId: res.job_id, others });
           return;
         }
         onJobStarted(res.job_id);
@@ -198,6 +213,24 @@ function UploadFlow({
     setNeedsPickJob(null);
     onReset();
   }, [onReset]);
+
+  if (parallel) {
+    // Stop and ask before creating a second opportunity for this client.
+    return (
+      <ParallelSowPrompt
+        others={parallel.others}
+        onContinueNew={() => {
+          const id = parallel.jobId;
+          setParallel(null);
+          onJobStarted(id);
+        }}
+        onOpenExisting={(opportunityId) => {
+          setParallel(null);
+          window.location.assign(`/sows/${opportunityId}`);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
