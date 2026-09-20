@@ -39,11 +39,46 @@ module "secrets" {
   kms_key_arn = module.kms.key_arn
 }
 
+# Certificate for the SPA's custom domain. Must be us-east-1 — CloudFront
+# ignores certificates in any other region.
+#
+# Validation is DNS, and smartek21.com is hosted on Cloudflare, not Route53.
+# That means there is no aws_acm_certificate_validation resource here and there
+# cannot be one: Terraform has no way to write the validation record into a zone
+# it does not manage. The CNAME is added by hand in Cloudflare (see
+# docs/runbooks/custom-domain.md). A certificate whose record was never added
+# sits in PENDING_VALIDATION for 72 hours and then fails — which is exactly what
+# happened to the training.smartek21.com certificate on 1 July.
+resource "aws_acm_certificate" "web" {
+  count = var.domain == "" ? 0 : 1
+
+  provider          = aws.us_east_1
+  domain_name       = var.domain
+  validation_method = "DNS"
+
+  lifecycle {
+    # ACM certificates cannot be modified in place; replacing one that is
+    # attached to a live distribution would break TLS for the window between
+    # destroy and create.
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-web"
+  }
+}
+
 module "web" {
   source      = "./modules/web"
   name_prefix = local.name_prefix
   account_id  = data.aws_caller_identity.current.account_id
   kms_key_arn = module.kms.key_arn
+
+  domain_name = var.domain
+  # Only attach the certificate once ACM reports it ISSUED. Handing CloudFront
+  # a PENDING_VALIDATION certificate fails the apply partway through, leaving
+  # the distribution mid-update.
+  acm_certificate_arn = var.domain == "" ? "" : one(aws_acm_certificate.web[*].arn)
 }
 
 module "auth" {
@@ -52,6 +87,7 @@ module "auth" {
   account_id        = data.aws_caller_identity.current.account_id
   region            = var.region
   cloudfront_domain = module.web.distribution_domain_name
+  custom_domain     = var.domain
 }
 
 module "api" {

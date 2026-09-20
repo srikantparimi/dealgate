@@ -6,6 +6,12 @@ locals {
 
   callback_url = "https://${var.cloudfront_domain}/auth/callback"
   logout_url   = "https://${var.cloudfront_domain}/"
+
+  # The custom domain is additive. Dropping the CloudFront URLs here would lock
+  # out anyone mid-session on the old hostname, and would make a DNS problem
+  # into a total outage rather than a cosmetic one.
+  custom_callback_urls = var.custom_domain == "" ? [] : ["https://${var.custom_domain}/auth/callback"]
+  custom_logout_urls   = var.custom_domain == "" ? [] : ["https://${var.custom_domain}/"]
 }
 
 resource "aws_cognito_user_pool" "this" {
@@ -68,8 +74,14 @@ resource "aws_cognito_user_pool_client" "web" {
 
   supported_identity_providers = ["COGNITO"]
 
-  callback_urls = [local.callback_url, "http://localhost:5173/auth/callback"]
-  logout_urls   = [local.logout_url, "http://localhost:5173/"]
+  callback_urls = concat(
+    [local.callback_url, "http://localhost:5173/auth/callback"],
+    local.custom_callback_urls,
+  )
+  logout_urls = concat(
+    [local.logout_url, "http://localhost:5173/"],
+    local.custom_logout_urls,
+  )
 
   explicit_auth_flows = [
     "ALLOW_USER_SRP_AUTH",

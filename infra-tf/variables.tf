@@ -22,9 +22,9 @@ variable "image_tag" {
 }
 
 variable "domain" {
-  description = "Optional custom domain (e.g. dealgate.example.com). Empty string means use the CloudFront/ALB defaults."
+  description = "Custom domain for the SPA. Empty string means use the CloudFront default hostname. Setting this creates an ACM certificate in us-east-1 and attaches it as a distribution alias; the DNS records are added by hand in Cloudflare (docs/runbooks/custom-domain.md)."
   type        = string
-  default     = ""
+  default     = "dealgate.smartek21.com"
 }
 
 variable "github_repo" {

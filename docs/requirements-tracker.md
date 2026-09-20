@@ -3,7 +3,7 @@
 Every requirement from the build-guide, mapped to its story file, implementation
 modules, tests, and verification evidence.
 
-**Live URL**: https://d1mu2un4hj9akj.cloudfront.net
+**Live URL**: https://dealgate.smartek21.com (also reachable at https://d1mu2un4hj9akj.cloudfront.net — same CloudFront distribution; the custom domain is an added alias, not a replacement. See `docs/runbooks/custom-domain.md`.)
 **Cognito hosted UI**: https://officeapp-dev-405473.auth.us-east-2.amazoncognito.com
 **Account**: `669810405473` / `us-east-2` / all resources prefixed `officeapp-dev-*`
 

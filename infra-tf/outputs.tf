@@ -4,8 +4,18 @@ output "alb_dns" {
 }
 
 output "cloudfront_domain" {
-  description = "CloudFront default domain — SPA entrypoint until we add a custom domain."
+  description = "CloudFront default domain. Still a valid entrypoint after a custom domain is attached — the alias is added, not swapped."
   value       = module.web.distribution_domain_name
+}
+
+output "app_url" {
+  description = "The URL people actually use. Falls back to the CloudFront hostname when no custom domain is configured."
+  value       = var.domain == "" ? "https://${module.web.distribution_domain_name}" : "https://${var.domain}"
+}
+
+output "web_certificate_arn" {
+  description = "ACM certificate backing the custom domain, or null when none is configured."
+  value       = var.domain == "" ? null : one(aws_acm_certificate.web[*].arn)
 }
 
 output "api_ecr_uri" {

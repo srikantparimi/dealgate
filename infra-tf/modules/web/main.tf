@@ -103,6 +103,10 @@ resource "aws_cloudfront_distribution" "web" {
   default_root_object = "index.html"
   price_class         = "PriceClass_100" # US + EU only; cheapest
 
+  # An alias is only legal when viewer_certificate carries a matching ACM cert,
+  # so both are driven off the same pair of variables and move together.
+  aliases = var.domain_name == "" ? [] : [var.domain_name]
+
   origin {
     domain_name              = aws_s3_bucket.web.bucket_regional_domain_name
     origin_id                = "s3-${aws_s3_bucket.web.id}"
@@ -173,8 +177,15 @@ resource "aws_cloudfront_distribution" "web" {
     }
   }
 
+  # With no certificate supplied this is CloudFront's default *.cloudfront.net
+  # cert. With one, we switch to SNI (the dedicated-IP alternative costs ~$600
+  # a month) and raise the floor to TLSv1.2_2021 — the default cert's TLSv1
+  # floor is only tolerable because nobody types that hostname.
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = var.acm_certificate_arn == "" ? true : null
+    acm_certificate_arn            = var.acm_certificate_arn == "" ? null : var.acm_certificate_arn
+    ssl_support_method             = var.acm_certificate_arn == "" ? null : "sni-only"
+    minimum_protocol_version       = var.acm_certificate_arn == "" ? null : "TLSv1.2_2021"
   }
 }
 
