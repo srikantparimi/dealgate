@@ -47,6 +47,11 @@
         "status": "unconfirmed",
         "value": "hourly"
       },
+      "billing_basis_normalized": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "hourly"
+      },
       "client_domain": {
         "page_ref": 1,
         "status": "unconfirmed",
@@ -154,6 +159,11 @@
         "status": "unconfirmed",
         "value": "monthly_fee"
       },
+      "billing_basis_normalized": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "monthly_fee"
+      },
       "client_domain": {
         "page_ref": 1,
         "status": "unconfirmed",
@@ -252,6 +262,11 @@
         "value": "Client provides AWS account and IAM access day 1."
       },
       "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "fixed_price"
+      },
+      "billing_basis_normalized": {
         "page_ref": 2,
         "status": "unconfirmed",
         "value": "fixed_price"
@@ -374,6 +389,11 @@
         "value": "Client leadership available for three 2-hour workshops."
       },
       "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "fixed_price"
+      },
+      "billing_basis_normalized": {
         "page_ref": 2,
         "status": "unconfirmed",
         "value": "fixed_price"
@@ -510,6 +530,11 @@
         "status": "unconfirmed",
         "value": "time_and_materials"
       },
+      "billing_basis_normalized": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "not_to_exceed"
+      },
       "client_domain": {
         "page_ref": 1,
         "status": "unconfirmed",
@@ -608,6 +633,11 @@
         "value": "Discounted rates reflect a strategic seed engagement; renegotiated at renewal per policy."
       },
       "billing_basis": {
+        "page_ref": 2,
+        "status": "unconfirmed",
+        "value": "fixed_price"
+      },
+      "billing_basis_normalized": {
         "page_ref": 2,
         "status": "unconfirmed",
         "value": "fixed_price"

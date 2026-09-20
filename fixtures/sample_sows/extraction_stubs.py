@@ -41,6 +41,11 @@ FIXTURES: dict[str, dict[str, Any]] = {
     "01_staff_aug_us.pdf": {
         # Schema fields — validated by `validate_extract`.
         "fields": {
+            "billing_basis_normalized": {
+                "value": "hourly",
+                "page_ref": 2,
+                "status": "unconfirmed",
+            },
             "client_legal_name": {
                 "value": "Contoso Data Services, LLC",
                 "page_ref": 1,
@@ -147,6 +152,11 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "02_managed_service_india.pdf": {
         "fields": {
+            "billing_basis_normalized": {
+                "value": "monthly_fee",
+                "page_ref": 2,
+                "status": "unconfirmed",
+            },
             "client_legal_name": {
                 "value": "Fabrikam Operations Pvt Ltd",
                 "page_ref": 1,
@@ -229,6 +239,11 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "03_fixed_price_mixed.pdf": {
         "fields": {
+            "billing_basis_normalized": {
+                "value": "fixed_price",
+                "page_ref": 2,
+                "status": "unconfirmed",
+            },
             "client_legal_name": {
                 "value": "Northwind Traders, Inc.",
                 "page_ref": 1,
@@ -317,6 +332,11 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "04_assessment_4week.pdf": {
         "fields": {
+            "billing_basis_normalized": {
+                "value": "fixed_price",
+                "page_ref": 2,
+                "status": "unconfirmed",
+            },
             "client_legal_name": {
                 "value": "Adventure Works Group",
                 "page_ref": 1,
@@ -405,6 +425,11 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "05_tm_capped.pdf": {
         "fields": {
+            "billing_basis_normalized": {
+                "value": "not_to_exceed",
+                "page_ref": 2,
+                "status": "unconfirmed",
+            },
             "client_legal_name": {
                 "value": "Tailspin Toys, LLC",
                 "page_ref": 1,
@@ -497,6 +522,11 @@ FIXTURES: dict[str, dict[str, Any]] = {
     },
     "06_below_floor.pdf": {
         "fields": {
+            "billing_basis_normalized": {
+                "value": "fixed_price",
+                "page_ref": 2,
+                "status": "unconfirmed",
+            },
             "client_legal_name": {
                 "value": "Wingtip Financial, Inc.",
                 "page_ref": 1,

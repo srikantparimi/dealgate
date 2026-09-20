@@ -34,6 +34,7 @@ from app.models.opportunity import Opportunity
 from app.models.sow import SowVersion
 from app.services.auto_staffing import (
     AutoStaffingResult,
+    StaffingLine,
     lines_to_payload_dicts,
     staff as auto_staff,
 )
@@ -45,7 +46,7 @@ from app.services.delivery_model import (
 )
 from app.services.embeddings import search_capabilities, search_sow
 from app.services.engagement_classifier import ClassifierResult, classify
-from app.services.provenance import read as read_provenance
+from app.services.provenance import read as read_provenance, wrap as wrap_provenance
 from app.services.sow_extract import SowNotFound
 
 # Rate-card resolver import is deferred to survive Agent WW's rename
@@ -215,18 +216,74 @@ def _compute_floors(model: GmModel | None) -> dict[str, Any]:
     }
 
 
+def _staffing_from_gm(model: GmModel) -> AutoStaffingResult:
+    """Read the committed plan back off the saved GM model.
+
+    Provenance is ``manual``: these lines were entered or uploaded by a
+    person, not derived from the document, and the confirm screen should say
+    so rather than implying the system worked them out.
+    """
+
+    lines: list[StaffingLine] = []
+    warnings: list[str] = []
+    for r in getattr(model, "resource_lines", []) or []:
+        # ORM columns are `hourly_loaded_cost` / `billable_hours`; the GM
+        # payload shape calls them `hourly_cost` / `hours_billable`. Read
+        # the ORM names here.
+        cost = getattr(r, "hourly_loaded_cost", None)
+        lines.append(
+            StaffingLine(
+                role=r.role,
+                seniority=r.seniority,
+                location=r.location,
+                allocation_pct=r.allocation_pct,
+                hours_billable=r.billable_hours,
+                hourly_bill_rate=r.hourly_bill_rate,
+                provenance="manual",
+                start_date=r.start_date,
+                end_date=r.end_date,
+                source_id=str(model.id),
+                warning=None if cost is not None else "no cost rate resolved",
+            )
+        )
+        if cost is None:
+            # Without a cost rate there is no margin, only a revenue figure.
+            # Say it here so it becomes a submit blocker rather than a silent
+            # "unavailable" on the screen.
+            warnings.append(
+                f"{r.role} ({r.seniority}, {r.location}): no cost rate — "
+                "publish a cost band or enter the loaded cost on the line"
+            )
+    return AutoStaffingResult(
+        lines=lines,
+        notes=[f"staffing read from saved GM model {model.id}"],
+        warnings=warnings,
+        sources=[str(model.id)],
+    )
+
+
 # --- needs_you ------------------------------------------------------------
 
 
+# Fields a human must resolve before submit.
+#
+# `currency` is deliberately absent. SmarTek21 contracts in USD, so a SOW
+# that shows "$50,000.00" without naming a currency is not ambiguous — it is
+# normal. Blocking submit on it made every SOW carry a gap that the reviewer
+# could only ever close one way, which trains people to click through the
+# gaps rather than read them. The extractor is asked to answer USD for $
+# amounts, and `_default_currency` fills it when the document truly is silent.
 _ESSENTIAL_FIELDS: tuple[str, ...] = (
     "scope_summary",
     "price",
-    "currency",
     "term_start",
     "term_end",
     "deliverables",
     "signatories",
 )
+
+# The house currency. Everything SmarTek21 signs is in USD.
+DEFAULT_CURRENCY = "USD"
 
 
 def _needs_you_for(
@@ -340,6 +397,36 @@ def _projected_tasks(sow_version: SowVersion) -> list[dict[str, Any]]:
             {"kind": "notice_deadline", "due": notice_val, "owner_role": "Legal"}
         )
     return out
+
+
+def _default_currency(version: SowVersion) -> None:
+    """Fill an absent currency with USD, marked as defaulted.
+
+    Not as `extracted` — the document did not say it. `defaulted` is one of
+    the five provenance flavours precisely so a value the system supplied is
+    distinguishable from one it read (CLAUDE.md rule 10), and the confirm
+    screen renders it with the source of the default.
+    """
+
+    fields = version.extracted_fields
+    if not isinstance(fields, dict):
+        return
+    entry = fields.get("currency")
+    current = read_provenance(entry).get("value") if entry else None
+    if current not in (None, ""):
+        return
+    fields["currency"] = wrap_provenance(
+        DEFAULT_CURRENCY,
+        provenance="defaulted",
+        page_ref=(read_provenance(entry).get("page_ref") if entry else None),
+        source_id="policy.house_currency",
+        warning="not stated in the SOW — SmarTek21 contracts in USD",
+        status="unconfirmed",
+    )
+    # JSONB is mutated in place; tell SQLAlchemy the attribute changed.
+    from sqlalchemy.orm.attributes import flag_modified
+
+    flag_modified(version, "extracted_fields")
 
 
 # --- source block ---------------------------------------------------------
@@ -502,20 +589,30 @@ async def build_confirmation(
         version.extracted_fields or {}, bedrock=bedrock_classifier
     )
 
-    # 3. Auto-staff.
-    past = _make_past_sow_search(session, embedder)
-    caps = _make_capability_search(session, embedder)
-    staffing = await auto_staff(
-        engagement.primary.type,
-        version.extracted_fields or {},
-        past_sow_search=past,
-        capability_search=caps,
-    )
-
-    # 4. Auto-GM (idempotent).
+    # 3. Staffing — saved plan first, proposal only as a starting point.
+    #
+    # This used to call `auto_staff` unconditionally and show its result, so a
+    # plan a human had entered and saved through the staffing gate never
+    # appeared here: the screen kept re-deriving from the extract and
+    # reporting "no staffing lines yet" while the saved GM model sat in the
+    # database. Once someone has committed a plan, that plan is the answer.
     gm_model: GmModel | None = await _existing_gm_for_sow(
         session, opportunity_id=opportunity_id, sow_version_id=version.id
     )
+
+    if gm_model is not None:
+        staffing = _staffing_from_gm(gm_model)
+    else:
+        past = _make_past_sow_search(session, embedder)
+        caps = _make_capability_search(session, embedder)
+        staffing = await auto_staff(
+            engagement.primary.type,
+            version.extracted_fields or {},
+            past_sow_search=past,
+            capability_search=caps,
+        )
+
+    # 4. Auto-GM (idempotent).
     if gm_model is None and auto_create_gm:
         payload = _build_gm_payload(
             engagement.primary.type, staffing, version.id
@@ -535,6 +632,8 @@ async def build_confirmation(
     ceo_draft = await _predraft_ceo_exception(
         session, sow_version=version, gm_model=gm_model, floors=floors
     )
+
+    _default_currency(version)
 
     source = await _source_block(session, opportunity_id=opportunity_id, version=version)
 

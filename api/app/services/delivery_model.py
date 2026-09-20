@@ -27,13 +27,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Optional
 from io import BytesIO
 
-from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import append_audit
-from app.gm import EngagementType, compute as gm_compute
+from app.gm import compute as gm_compute
 from app.gm.core import min_price as gm_min_price
 from app.gm.policy import INDIA_FLOOR, US_FLOOR, check_floors
 from app.gm.types import (
@@ -134,6 +133,10 @@ class GmModelPayload:
     resource_lines: list[ResourceLinePayload]
     cost_lines: list[CostLinePayload]
     phases: list[PhaseInput] = None  # type: ignore[assignment]
+    # The agreed fee, for engagements where revenue is settled rather than
+    # billed by the hour. Optional: T&M and staff aug derive revenue from
+    # bill rate x hours and leave this None.
+    total_price: Optional[Decimal] = None
 
     def __post_init__(self):  # dataclass frozen shim
         if self.phases is None:
@@ -305,6 +308,7 @@ def parse_gm_model_payload(raw: Any) -> GmModelPayload:
         resource_lines=resources,
         cost_lines=costs,
         phases=phases,
+        total_price=_to_optional_decimal(raw.get('total_price'), field='total_price'),
     )
 
 
@@ -622,16 +626,31 @@ async def create_gm_model_version(
     )
 
     # Snapshot revenue components at save-time so the list view does not
-    # have to re-run the GM engine on read. Bill-rate * hours * allocation
-    # per line (matches the pure library — see ``ResourceLine.revenue``).
-    revenue_us = Decimal("0")
-    revenue_india = Decimal("0")
-    for r in filled_lines:
-        rev = r.hours_billable * r.hourly_bill_rate * r.allocation_pct
-        if r.location == "US":
-            revenue_us += rev
-        else:
-            revenue_india += rev
+    # have to re-run the GM engine on read.
+    #
+    # How revenue is earned depends on the engagement, and this used to
+    # assume one shape for all of them: bill rate x hours x allocation, which
+    # is right for T&M and staff aug and wrong for a fixed fee. On a
+    # fixed-price SOW the revenue is the agreed fee whatever the hours turn
+    # out to be — that is what "fixed" means — so computing it from bill
+    # rates produced a number unrelated to the contract, and zero whenever
+    # the bill rates were left blank (which is reasonable to do on a fixed
+    # fee, since nobody is billing by the hour).
+    if payload.engagement_type in ("fixed_price", "assessment") and (
+        payload.total_price is not None and payload.total_price > 0
+    ):
+        revenue_us, revenue_india, _alloc_notes = allocate_fixed_fee_revenue(
+            filled_lines, payload.total_price
+        )
+    else:
+        revenue_us = Decimal("0")
+        revenue_india = Decimal("0")
+        for r in filled_lines:
+            rev = r.hours_billable * r.hourly_bill_rate * r.allocation_pct
+            if r.location == "US":
+                revenue_us += rev
+            else:
+                revenue_india += rev
 
     model = GmModel(
         id=uuid.uuid4(),
@@ -1671,3 +1690,82 @@ __all__ = [
     "serialize_warnings",
     "summarize_gm_model",
 ]
+
+
+# --- fixed-fee revenue allocation (S10-07) --------------------------------
+
+
+def allocate_fixed_fee_revenue(
+    lines: list[ResourceLinePayload], total_price: Decimal
+) -> tuple[Decimal, Decimal, list[str]]:
+    """Split one fixed fee across US and India. Returns ``(us, india, notes)``.
+
+    For a fixed-fee engagement the revenue is settled — it is the fee. What
+    varies is cost, so the margin is the fee against bottom-up delivery cost,
+    and a mixed-geography SOW needs that fee attributed to each side before
+    the per-geography floors mean anything.
+
+    ``docs/sow-first-principles.md`` §5: "For a mixed fixed-fee SOW the
+    default allocation is cost-weighted effort; Finance can override with a
+    recorded basis." So cost-weighted where cost is known.
+
+    When no cost rate has resolved — no published cost band, nothing entered
+    on the line — cost-weighting is impossible and the fallback is
+    hours-weighted, which is a proxy, not the policy. That is returned as a
+    note so it reaches the confirm screen as a visible fallback rather than
+    passing for the real thing (sow-first §7, "fallbacks are loud").
+
+    The remainder is placed on the larger side so the two always sum to
+    exactly ``total_price``: the fixed-price template rejects an allocation
+    that does not, and silently losing a cent of revenue to rounding would be
+    a worse answer than putting it somewhere explicit.
+    """
+
+    notes: list[str] = []
+    if total_price <= 0:
+        return Decimal("0"), Decimal("0"), ["total price is zero — nothing to allocate"]
+    if not lines:
+        return total_price, Decimal("0"), ["no resource lines — all revenue to US"]
+
+    def _weight(line: ResourceLinePayload, *, use_cost: bool) -> Decimal:
+        hours = line.hours_billable or Decimal("0")
+        if not use_cost:
+            return hours
+        return hours * (line.hourly_cost or Decimal("0"))
+
+    use_cost = all(
+        line.hourly_cost is not None and line.hourly_cost > 0 for line in lines
+    )
+    if not use_cost:
+        notes.append(
+            "revenue split by hours, not cost — no cost rate resolved for every "
+            "line, so cost-weighted allocation was not possible"
+        )
+
+    us = sum(
+        (_weight(r, use_cost=use_cost) for r in lines if r.location == "US"),
+        Decimal("0"),
+    )
+    india = sum(
+        (_weight(r, use_cost=use_cost) for r in lines if r.location == "India"),
+        Decimal("0"),
+    )
+    total_weight = us + india
+    if total_weight <= 0:
+        return total_price, Decimal("0"), [
+            *notes,
+            "no billable hours on any line — all revenue to US",
+        ]
+
+    revenue_us = (total_price * us / total_weight).quantize(Decimal("0.01"))
+    revenue_india = (total_price - revenue_us).quantize(Decimal("0.01"))
+
+    # Guard the sum explicitly rather than trusting the quantize.
+    drift = total_price - (revenue_us + revenue_india)
+    if drift != 0:
+        if revenue_us >= revenue_india:
+            revenue_us += drift
+        else:
+            revenue_india += drift
+
+    return revenue_us, revenue_india, notes

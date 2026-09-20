@@ -85,8 +85,8 @@ def _extract_features(extracted: dict[str, Any]) -> dict[str, Any]:
         "billing_basis": billing_basis,
         "has_resource_table": bool(resource_table),
         "resource_count": len(resource_table) if isinstance(resource_table, list) else 0,
-        "deliverable_count": len(deliverables) if isinstance(deliverables, list) else 0,
-        "milestone_count": len(milestones) if isinstance(milestones, list) else 0,
+        "deliverable_count": _count_items(deliverables),
+        "milestone_count": _count_items(milestones),
         "monthly_fee": monthly_fee,
         "coverage_hours": coverage_hours,
         "price": price,
@@ -100,6 +100,15 @@ def _extract_features(extracted: dict[str, Any]) -> dict[str, Any]:
         )
         or "not to exceed" in scope,
         "term_months": _term_months(extracted),
+        "billing_basis_normalized": value_of(
+            extracted.get("billing_basis_normalized")
+        ),
+        # What the model concluded the engagement is, having read the whole
+        # document. Used when no structural rule fires — a normalised answer
+        # from something that read the prose beats a coin-flip default.
+        "engagement_type_suggested": value_of(
+            extracted.get("engagement_type_suggested")
+        ),
     }
     return features
 
@@ -135,17 +144,69 @@ def _term_months(extracted: dict[str, Any]) -> int | None:
 # --- rules -----------------------------------------------------------------
 
 
+def _count_items(value: Any) -> int:
+    """Count list-shaped content whether it arrives as a list or as prose.
+
+    The extractor is now asked for arrays, but SOWs are written in every
+    format and a model will still sometimes return
+    "Executive briefing; use case inventory; roadmap" as one string. Counting
+    `len()` on that gave 0 — which is how a SOW with four deliverables and
+    three milestones reached the fixed-price rule reporting neither.
+    """
+
+    if value is None:
+        return 0
+    if isinstance(value, (list, tuple)):
+        return len([v for v in value if v not in (None, "")])
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return 0
+        for sep in (";", "|", "\n"):
+            if sep in text:
+                return len([p for p in text.split(sep) if p.strip()])
+        return 1
+    return 0
+
+
+# The classifier speaks "tm"; the extractor's vocabulary says
+# "time_and_materials". One alias table rather than the two drifting apart.
+_TYPE_ALIASES: dict[str, str] = {
+    "time_and_materials": "tm",
+    "t&m": "tm",
+    "tm": "tm",
+    "fixed_price": "fixed_price",
+    "fixed_fee": "fixed_price",
+    "managed_service": "managed_service",
+    "staff_aug": "staff_aug",
+    "single_resource": "single_resource",
+    "assessment": "assessment",
+    "permanent_placement": "permanent_placement",
+}
+
+
+def _canonical_type(value: str) -> str | None:
+    """Map a model-supplied engagement type onto the library's vocabulary."""
+
+    return _TYPE_ALIASES.get(value.strip().lower())
+
+
 def _apply_rules(features: dict[str, Any]) -> tuple[str, str] | None:
     """Return ``(engagement_type, rule_id)`` if a rule locks in, else None."""
 
-    basis = (features["billing_basis"] or "").lower() if features["billing_basis"] else ""
+    # The NORMALISED basis, not the prose. `billing_basis` holds whatever
+    # the SOW actually says — "a fixed fee of $50,000.00 for this engagement
+    # (the \u201cFixed Fee\u201d)" — and comparing that to a literal like
+    # "fixed_fee" with `in (...)` never matched anything a real document
+    # produced. The model normalises; this reads the normalised value.
+    basis = (features.get("billing_basis_normalized") or "").strip().lower()
 
     # Permanent placement — the manifesto's simplest signal.
     if features["scope_mentions_placement"] or basis == "placement_fee":
         return ("permanent_placement", "rule.placement_fee")
 
     # T&M / not-to-exceed.
-    if basis in ("tm", "time_and_materials", "t&m") or features["not_to_exceed"]:
+    if basis in ("time_and_materials", "not_to_exceed") or features["not_to_exceed"]:
         return ("tm", "rule.time_and_materials")
 
     # Managed service: monthly fee + SLA / coverage hours.
@@ -172,10 +233,16 @@ def _apply_rules(features: dict[str, Any]) -> tuple[str, str] | None:
         return ("staff_aug", "rule.multiple_named_roles")
 
     # Fixed price: fixed_price billing basis + deliverables/milestones.
-    if basis in ("fixed_price", "fixed", "fixed_fee") and (
+    if basis in ("fixed_price", "milestone") and (
         features["deliverable_count"] > 0 or features["milestone_count"] > 0
     ):
         return ("fixed_price", "rule.fixed_price_deliverables")
+
+    if basis == "placement_fee":
+        return ("permanent_placement", "rule.placement_fee_basis")
+
+    if basis == "monthly_fee":
+        return ("managed_service", "rule.monthly_fee_basis")
 
     return None
 
@@ -206,6 +273,24 @@ def classify(
             rule_matched=rule_id,
             features=features,
         )
+
+    # No structural rule fired. Before falling back to a guess, use what the
+    # extractor already concluded from reading the whole document — it has
+    # seen the prose, and a normalised answer from the thing that read it
+    # beats a 0.4/0.3 default pair. Held below the auto-confirm threshold so
+    # the reviewer still gets the two-candidate chooser rather than a silent
+    # decision.
+    suggested = features.get("engagement_type_suggested")
+    if isinstance(suggested, str):
+        normalised = _canonical_type(suggested)
+        if normalised is not None:
+            second = "fixed_price" if normalised != "fixed_price" else "tm"
+            return ClassifierResult(
+                primary=Candidate(type=normalised, confidence=0.75),
+                secondary=Candidate(type=second, confidence=0.25),
+                rule_matched=None,
+                features=features,
+            )
 
     # Ambiguous → ask the model. Any adapter failure downgrades to a
     # deterministic default so the confirm page never blocks on Bedrock.

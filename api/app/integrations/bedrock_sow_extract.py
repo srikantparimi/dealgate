@@ -74,6 +74,30 @@ def _timeout_s() -> int:
 
 # The field list is the union of build-guide §6.3 plus the
 # ``engagement_type_suggested`` field the story calls out separately.
+# The engagement shapes the GM library has templates for. The model maps
+# whatever the SOW calls itself onto one of these.
+ENGAGEMENT_TYPES: tuple[str, ...] = (
+    "fixed_price",
+    "time_and_materials",
+    "managed_service",
+    "staff_aug",
+    "single_resource",
+    "assessment",
+    "permanent_placement",
+)
+
+BILLING_BASES: tuple[str, ...] = (
+    "fixed_price",
+    "time_and_materials",
+    "not_to_exceed",
+    "monthly_fee",
+    "milestone",
+    "hourly",
+    "daily",
+    "placement_fee",
+    "other",
+)
+
 EXTRACTED_FIELDS: tuple[str, ...] = (
     # Client identity. Added in S10-04: `_client_signals` previously derived
     # the client name only from `signatories`, so a SOW with no signature
@@ -83,6 +107,9 @@ EXTRACTED_FIELDS: tuple[str, ...] = (
     # essentially every SOW; extract it directly.
     "client_legal_name",
     "client_domain",
+    # Normalised alongside the verbatim `billing_basis`, so the rules have
+    # something stable to read whatever words the SOW uses.
+    "billing_basis_normalized",
     "scope_summary",
     "price",
     "currency",
@@ -219,27 +246,98 @@ def _tool_schema() -> dict[str, Any]:
     before anything is persisted.
     """
 
-    entry = {
-        "type": "object",
-        "properties": {
-            "value": {
-                "description": "The value exactly as written, or null if absent."
+    def _entry(value_schema: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "value": value_schema
+                or {
+                    "description": "The value exactly as written, or null if absent."
+                },
+                "page_ref": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Block number the value came from.",
+                },
+                "status": {"type": "string", "enum": ["unconfirmed", "disputed"]},
             },
-            "page_ref": {
-                "type": "integer",
-                "minimum": 1,
-                "description": "Block number the value came from.",
-            },
-            "status": {"type": "string", "enum": ["unconfirmed", "disputed"]},
-        },
-        "required": ["value", "page_ref", "status"],
+            "required": ["value", "page_ref", "status"],
+        }
+
+    # Per-field value schemas.
+    #
+    # SOWs are written in every format imaginable — "a fixed fee of $50,000",
+    # "Fixed Fee", "firm fixed price", "not-to-exceed", "T&M with a cap".
+    # Downstream rules used to compare that prose against literals like
+    # `"fixed_fee"` with exact equality, so they only ever matched the stub's
+    # own output and never a real document. Asking the model for a normalised
+    # value alongside the verbatim one moves the interpretation to the thing
+    # that can actually read prose, and leaves the deterministic code working
+    # on structure. The money itself is still copied verbatim and parsed as
+    # Decimal in `api/app/gm` (rule 2) — the model never computes.
+    per_field: dict[str, dict[str, Any]] = {
+        "engagement_type_suggested": _entry(
+            {
+                "type": ["string", "null"],
+                "enum": [*ENGAGEMENT_TYPES, None],
+                "description": (
+                    "Which commercial shape this SOW is, whatever words it "
+                    "uses. fixed_price: one agreed fee for a defined scope. "
+                    "time_and_materials: billed on hours worked, including "
+                    "not-to-exceed and capped T&M. managed_service: a "
+                    "recurring monthly or annual fee for ongoing service. "
+                    "staff_aug: named people placed onto the client's team. "
+                    "single_resource: staff_aug with exactly one person. "
+                    "assessment: a short study, discovery or audit producing "
+                    "findings. permanent_placement: a one-off recruitment "
+                    "fee. Null only if the document genuinely does not say."
+                ),
+            }
+        ),
+        "billing_basis_normalized": _entry(
+            {
+                "type": ["string", "null"],
+                "enum": [*BILLING_BASES, None],
+                "description": (
+                    "How money is charged, normalised. The verbatim wording "
+                    "goes in billing_basis."
+                ),
+            }
+        ),
+        "deliverables": _entry(
+            {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": "One entry per deliverable. Never one joined string.",
+            }
+        ),
+        "milestones": _entry(
+            {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": "One entry per milestone. Never one joined string.",
+            }
+        ),
+        "currency": _entry(
+            {
+                "type": ["string", "null"],
+                "description": (
+                    "ISO code such as USD. If the document shows $ amounts "
+                    "without naming a currency, answer USD."
+                ),
+            }
+        ),
     }
+
     return {
         "type": "object",
         "properties": {
             "fields": {
                 "type": "object",
-                "properties": {name: entry for name in EXTRACTED_FIELDS},
+                "properties": {
+                    name: per_field.get(name, _entry())
+                    for name in EXTRACTED_FIELDS
+                },
                 "required": list(EXTRACTED_FIELDS),
             }
         },
@@ -382,6 +480,11 @@ class StubBedrock(BedrockSowExtract):
             "client_domain": {
                 "value": "northwind.example.com",
                 "page_ref": 1,
+                "status": "unconfirmed",
+            },
+            "billing_basis_normalized": {
+                "value": "fixed_price",
+                "page_ref": 2,
                 "status": "unconfirmed",
             },
             "scope_summary": {

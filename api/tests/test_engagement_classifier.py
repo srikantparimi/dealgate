@@ -96,14 +96,66 @@ def test_single_resource_rule():
 
 
 def test_fixed_price_deliverables_rule():
+    """The rule reads the NORMALISED basis, not the prose.
+
+    It used to compare `billing_basis` — whatever wording the SOW used —
+    against literals like "fixed_price" with exact equality. That matched the
+    stub's own output and essentially nothing else, so a real fixed-fee SOW
+    fell through to a guess.
+    """
+
     fields = {
-        "billing_basis": _wrap("fixed_price"),
+        "billing_basis": _wrap('a fixed fee of $50,000.00 (the "Fixed Fee")'),
+        "billing_basis_normalized": _wrap("fixed_price"),
         "deliverables": _wrap(["Discovery report", "Runbook"]),
         "milestones": _wrap([{"name": "M1", "date": "2026-11-01"}]),
     }
     result = classify(fields)
     assert result.primary.type == "fixed_price"
     assert result.rule_matched == "rule.fixed_price_deliverables"
+
+
+def test_prose_lists_are_counted():
+    """SOWs are written in every format. A model asked for an array will
+    still sometimes return "a; b; c", and counting len() on that gave 0 —
+    which is how a SOW with four deliverables reached the fixed-price rule
+    reporting none."""
+
+    fields = {
+        "billing_basis": _wrap("Firm fixed price for the engagement."),
+        "billing_basis_normalized": _wrap("fixed_price"),
+        "deliverables": _wrap(
+            "Executive briefing; Use case inventory; Roadmap sketch"
+        ),
+        "milestones": _wrap(None),
+    }
+    result = classify(fields)
+    assert result.primary.type == "fixed_price"
+    assert result.rule_matched == "rule.fixed_price_deliverables"
+
+
+def test_model_normalised_type_is_used_when_no_rule_fires():
+    """A normalised answer from the thing that read the document beats a
+    0.4/0.3 coin flip — but stays below auto-confirm so a human still picks."""
+
+    fields = {
+        "scope_summary": _wrap("Discovery assessment across three tracks."),
+        "engagement_type_suggested": _wrap("assessment"),
+    }
+    result = classify(fields)
+    assert result.primary.type == "assessment"
+    assert result.rule_matched is None
+    assert result.auto_confirm is False
+
+
+def test_time_and_materials_vocabulary_is_aliased():
+    """The extractor says "time_and_materials"; the GM library says "tm"."""
+
+    fields = {
+        "scope_summary": _wrap("Ongoing engineering support."),
+        "engagement_type_suggested": _wrap("time_and_materials"),
+    }
+    assert classify(fields).primary.type == "tm"
 
 
 def test_ambiguous_falls_through_to_bedrock_stub():

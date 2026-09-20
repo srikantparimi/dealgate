@@ -54,6 +54,7 @@ export interface GridRow {
   allocation_pct: string;
   hours_billable: string;
   hourly_bill_rate: string;
+  hourly_cost: string;
   start_date: string;
   end_date: string;
   /** Where this row came from, so a proposal is never mistaken for a decision. */
@@ -69,6 +70,7 @@ export function emptyRow(): GridRow {
     allocation_pct: "1",
     hours_billable: "",
     hourly_bill_rate: "",
+    hourly_cost: "",
     start_date: "",
     end_date: "",
     origin: "manual",
@@ -84,19 +86,37 @@ export function emptyRow(): GridRow {
  * decide them. Better to ask here than to let the margin be computed over an
  * invented window, which is what the old auto-staffing did.
  */
-export function rowIsComplete(r: GridRow): boolean {
-  return (
+export function rowIsComplete(r: GridRow, engagementType?: string): boolean {
+  const base =
     r.role.trim() !== "" &&
     r.seniority.trim() !== "" &&
     Number(r.hours_billable) > 0 &&
-    Number(r.hourly_bill_rate) > 0 &&
     r.start_date !== "" &&
-    r.end_date !== ""
-  );
+    r.end_date !== "";
+  if (!base) return false;
+
+  // What a row needs depends on how the engagement earns.
+  //
+  // Fixed fee and assessment: the revenue is the agreed price whatever the
+  // hours turn out to be, so the bill rate does not enter the margin at all
+  // — the cost does. Requiring a bill rate here would be asking for a number
+  // nobody has, on a contract where nobody bills by the hour.
+  //
+  // T&M and staff aug: revenue IS bill rate x hours, so that is the required
+  // one, and cost can come from the HR cost bands.
+  if (isFixedFee(engagementType)) return Number(r.hourly_cost) > 0;
+  return Number(r.hourly_bill_rate) > 0;
 }
 
-export function toResourceLines(rows: GridRow[]): DeliveryResourceLineInput[] {
-  return rows.filter(rowIsComplete).map((r) => ({
+export function isFixedFee(engagementType?: string): boolean {
+  return engagementType === "fixed_price" || engagementType === "assessment";
+}
+
+export function toResourceLines(
+  rows: GridRow[],
+  engagementType?: string,
+): DeliveryResourceLineInput[] {
+  return rows.filter((r) => rowIsComplete(r, engagementType)).map((r) => ({
     role: r.role.trim(),
     seniority: r.seniority.trim(),
     location: r.location as DeliveryLocation,
@@ -105,11 +125,12 @@ export function toResourceLines(rows: GridRow[]): DeliveryResourceLineInput[] {
     start_date: r.start_date,
     end_date: r.end_date,
     hours_billable: r.hours_billable,
-    hourly_bill_rate: r.hourly_bill_rate,
-    // Left null on purpose: loaded cost comes from the HR cost bands
+    hourly_bill_rate: r.hourly_bill_rate || "0",
+    // Sent when entered, otherwise left for the HR cost bands to fill
     // server-side. Client rate cards set what we bill; cost bands set what it
-    // costs us. CLAUDE.md keeps those three tables separate for a reason.
-    hourly_cost: null,
+    // costs us; margin policy sets the floors — three separate tables, per
+    // CLAUDE.md. This is the cost one.
+    hourly_cost: r.hourly_cost ? r.hourly_cost : null,
     validated_by: null,
   }));
 }
@@ -164,7 +185,10 @@ export function StaffingGatePage(props: StaffingGateProps) {
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const completeRows = useMemo(() => rows.filter(rowIsComplete), [rows]);
+  const completeRows = useMemo(
+    () => rows.filter((r) => rowIsComplete(r, engagementType)),
+    [rows, engagementType],
+  );
   const canSave = completeRows.length > 0 && !saving;
 
   const update = useCallback(
@@ -188,7 +212,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
     let cancelled = false;
     const t = setTimeout(() => {
       const inputs: DeliveryPreviewRequestInputs = {
-        resource_lines: toResourceLines(rows),
+        resource_lines: toResourceLines(rows, engagementType),
         cost_lines: [],
         ...(totalPrice ? { total_price: totalPrice } : {}),
       };
@@ -225,6 +249,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
           allocation_pct: l.allocation_pct,
           hours_billable: l.hours_billable,
           hourly_bill_rate: l.hourly_bill_rate,
+          hourly_cost: (l as { hourly_cost?: string }).hourly_cost ?? "",
           start_date: l.start_date ?? "",
           end_date: l.end_date ?? "",
           origin: "sheet" as const,
@@ -250,7 +275,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
     try {
       await saveDeliveryModelVersion(opportunityId, {
         engagement_type: engagementType,
-        resource_lines: toResourceLines(rows),
+        resource_lines: toResourceLines(rows, engagementType),
         cost_lines: [],
         ...(totalPrice ? { total_price: totalPrice } : {}),
       });
@@ -261,6 +286,24 @@ export function StaffingGatePage(props: StaffingGateProps) {
       setSaving(false);
     }
   }
+
+  const fixedFee = isFixedFee(engagementType);
+
+  // Which columns are required depends on how the engagement earns, so the
+  // asterisks move with it rather than marking a bill rate mandatory on a
+  // contract where nobody bills by the hour.
+  const columns = [
+    { label: "Role", required: true },
+    { label: "Seniority", required: true },
+    { label: "Location", required: true },
+    { label: "Allocation", required: false },
+    { label: "Hours", required: true },
+    { label: "Bill rate", required: !fixedFee },
+    { label: "Cost / hour", required: fixedFee },
+    { label: "Start", required: true },
+    { label: "End", required: true },
+    { label: "", required: false },
+  ];
 
   const gm = preview?.computed as Record<string, unknown> | undefined;
 
@@ -327,19 +370,15 @@ export function StaffingGatePage(props: StaffingGateProps) {
         <table className="w-full min-w-[56rem] text-secondary">
           <thead className="bg-surface-2 text-text-secondary">
             <tr>
-              {[
-                "Role",
-                "Seniority",
-                "Location",
-                "Allocation",
-                "Hours",
-                "Bill rate",
-                "Start",
-                "End",
-                "",
-              ].map((h) => (
-                <th key={h} className="px-3 py-2 text-left font-medium">
-                  {h}
+              {columns.map((c) => (
+                <th key={c.label} className="px-3 py-2 text-left font-medium">
+                  {c.label}
+                  {c.required ? (
+                    <span className="text-danger" aria-hidden="true">
+                      {" *"}
+                    </span>
+                  ) : null}
+                  {c.required ? <span className="sr-only"> (required)</span> : null}
                 </th>
               ))}
             </tr>
@@ -402,6 +441,14 @@ export function StaffingGatePage(props: StaffingGateProps) {
                 </td>
                 <td className="px-2 py-1">
                   <Input
+                    value={r.hourly_cost}
+                    placeholder="95"
+                    aria-label={`cost-${i}`}
+                    onChange={(e) => update(i, { hourly_cost: e.target.value })}
+                  />
+                </td>
+                <td className="px-2 py-1">
+                  <Input
                     type="date"
                     value={r.start_date}
                     aria-label={`start-${i}`}
@@ -448,7 +495,9 @@ export function StaffingGatePage(props: StaffingGateProps) {
         </Button>
         <p className="text-secondary text-text-secondary">
           {completeRows.length === 0
-            ? "No complete rows yet — a row needs a role, seniority, hours, a bill rate and dates."
+            ? fixedFee
+              ? "No complete rows yet — on a fixed fee a row needs a role, seniority, hours, a cost rate and dates. The bill rate does not affect the margin here."
+              : "No complete rows yet — a row needs a role, seniority, hours, a bill rate and dates."
             : `${completeRows.length} role(s) costed.`}
         </p>
       </div>
@@ -459,7 +508,11 @@ export function StaffingGatePage(props: StaffingGateProps) {
         {completeRows.length === 0 ? (
           <EmptyState
             title="Gross margin will appear here"
-            description="The SOW did not list resources and no approved past SOW matched this scope, so nothing was proposed. Enter the team above or upload the sheet, and the margin calculates as you go."
+            description={
+              fixedFee
+                ? "This is a fixed fee, so the revenue is settled and the margin turns on cost. Enter who is doing the work, their hours and their loaded cost — the fee is split across US and India by cost-weighted effort. Nothing was proposed because the SOW listed no resources and no approved past SOW matched."
+                : "The SOW did not list resources and no approved past SOW matched this scope, so nothing was proposed. Enter the team above or upload the sheet, and the margin calculates as you go."
+            }
           />
         ) : previewError ? (
           <p className="text-secondary text-danger" data-testid="gm-error">

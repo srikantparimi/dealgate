@@ -14,6 +14,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import {
   StaffingGatePage,
   emptyRow,
+  isFixedFee,
   rowIsComplete,
   toResourceLines,
   formatPct,
@@ -40,7 +41,52 @@ beforeEach(() => {
   } as never);
 });
 
-describe("rowIsComplete", () => {
+describe("rowIsComplete — what a row needs depends on the engagement", () => {
+  it("wants COST on a fixed fee, not a bill rate", () => {
+    // A fixed fee earns the agreed price whatever the hours are, so the bill
+    // rate never enters the margin. Requiring it would ask for a number
+    // nobody has on a contract where nobody bills by the hour — which is
+    // what made the reported "GM not calculating" bug possible.
+    const base = {
+      ...emptyRow(),
+      role: "Consultant",
+      seniority: "Senior",
+      hours_billable: "160",
+      start_date: "2026-08-25",
+      end_date: "2026-09-30",
+    };
+    expect(isFixedFee("fixed_price")).toBe(true);
+    expect(isFixedFee("assessment")).toBe(true);
+    expect(isFixedFee("tm")).toBe(false);
+
+    // Bill rate alone is not enough on a fixed fee.
+    expect(
+      rowIsComplete({ ...base, hourly_bill_rate: "225" }, "fixed_price"),
+    ).toBe(false);
+    // Cost alone is.
+    expect(rowIsComplete({ ...base, hourly_cost: "95" }, "fixed_price")).toBe(
+      true,
+    );
+
+    // T&M is the other way round: revenue IS bill rate x hours.
+    expect(rowIsComplete({ ...base, hourly_cost: "95" }, "tm")).toBe(false);
+    expect(rowIsComplete({ ...base, hourly_bill_rate: "225" }, "tm")).toBe(true);
+  });
+
+  it("sends the cost rate when one was entered", () => {
+    const r = {
+      ...emptyRow(),
+      role: "Consultant",
+      seniority: "Senior",
+      hours_billable: "160",
+      hourly_cost: "95",
+      start_date: "2026-08-25",
+      end_date: "2026-09-30",
+    };
+    const [line] = toResourceLines([r], "fixed_price");
+    expect(line.hourly_cost).toBe("95");
+  });
+
   it("rejects a row with no hours, no rate or no dates", () => {
     expect(rowIsComplete(emptyRow())).toBe(false);
     const partial = {
@@ -85,12 +131,16 @@ describe("rowIsComplete", () => {
 });
 
 describe("StaffingGatePage", () => {
-  it("says why nothing was proposed instead of showing an invented plan", async () => {
+  it("says why nothing was proposed, and what a fixed fee actually needs", async () => {
     renderGate();
+    // The mocked SOW is a fixed fee, so the guidance has to say that the
+    // margin turns on cost — telling someone to enter a bill rate on a fixed
+    // fee is what made the reported "GM not calculating" bug possible.
     expect(
-      await screen.findByText(/did not list resources/i),
+      await screen.findByText(/the margin turns on cost/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/no complete rows yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/does not affect the margin/i)).toBeInTheDocument();
   });
 
   it("will not let you continue without a costed row", async () => {
@@ -114,7 +164,8 @@ describe("StaffingGatePage", () => {
     await user.type(await screen.findByLabelText("role-0"), "Consultant");
     await user.type(screen.getByLabelText("seniority-0"), "Senior");
     await user.type(screen.getByLabelText("hours-0"), "160");
-    await user.type(screen.getByLabelText("rate-0"), "225");
+    // Fixed fee → cost is what completes the row.
+    await user.type(screen.getByLabelText("cost-0"), "95");
     await user.type(screen.getByLabelText("start-0"), "2026-08-25");
     await user.type(screen.getByLabelText("end-0"), "2026-09-30");
 
