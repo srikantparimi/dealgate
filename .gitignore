@@ -19,6 +19,15 @@ web/.vite/
 .env
 .env.*
 !.env.example
+
+# web/.env.production is build configuration, not secrets, and it must be in
+# the repo: deploy.yml runs `npm run build` on a CI checkout, so without this
+# file Vite silently falls back to VITE_API_BASE_URL=http://localhost:8000 and
+# an empty Cognito client id. The build stays green and the bundle is dead —
+# every API call to localhost, no login possible. Verified by building without
+# it. Nothing in the file is secret: the Cognito SPA client has
+# generate_secret = false and its id is served inside the bundle regardless.
+!web/.env.production
 secrets/
 *.pem
 *.key
