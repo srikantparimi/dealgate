@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type {
   ClientDetail,
   ClientLegalEntity,
@@ -8,11 +8,14 @@ import type {
 } from "../api/client";
 import { getClient } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
+import { getIdTokenClaims } from "../auth/cognito";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { PageHeader } from "../ui/PageHeader";
 import { StatusChip } from "../ui/StatusChip";
 import { Table, type Column } from "../ui/Table";
+import { DeletionConfirmationDialog } from "../ui-v2/DeletionConfirmationDialog";
+import { Button } from "../ui-v2/primitives/button";
 import { AgreementsPanel } from "./AgreementsPanel";
 import { coverageTone } from "./ClientList";
 
@@ -25,6 +28,22 @@ const SOW_GM_TAB_ROLES = new Set([
   "Delivery",
   "SystemAdmin",
 ]);
+
+// S13a-FE: role gate for the "Delete client" button. Mirrors
+// `api/app/routers/deletion.py::_DELETE_ROLES`. Server enforces this
+// on every write — hiding the button is UX only.
+const DELETE_ROLES: readonly string[] = [
+  "SystemAdmin",
+  "CEO",
+  "SalesLeader",
+  "Finance",
+  "Legal",
+];
+
+function userCanDelete(claimGroups: string[] | null): boolean {
+  const groups = claimGroups ?? [];
+  return groups.some((g) => DELETE_ROLES.includes(g));
+}
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -60,8 +79,19 @@ export function ClientDetailPage() {
   const auth = useOptionalAuth();
   const groups = auth?.user?.groups ?? [];
   const canSeeSowGm = groups.some((g) => SOW_GM_TAB_ROLES.has(g));
+  const navigate = useNavigate();
+  // Fall back to id-token claims so the button gates work on the legacy
+  // page even when it's rendered outside AuthProvider (e.g. the existing
+  // ClientDetail vitest suite).
+  const canDelete = useMemo(() => {
+    if (auth?.user?.groups?.length) return userCanDelete(auth.user.groups);
+    const claims = getIdTokenClaims();
+    const raw = claims?.["cognito:groups"];
+    return userCanDelete(Array.isArray(raw) ? (raw as string[]) : null);
+  }, [auth?.user?.groups]);
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -146,7 +176,32 @@ export function ClientDetailPage() {
             ) : null}
           </span>
         }
+        right={
+          canDelete ? (
+            <Button
+              variant="destructive"
+              onClick={() => setDeleteOpen(true)}
+              data-testid="client-detail-delete-btn"
+            >
+              Delete client
+            </Button>
+          ) : null
+        }
       />
+
+      {canDelete ? (
+        <DeletionConfirmationDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          kind="client"
+          id={client.id}
+          name={client.name}
+          onConfirmed={() => {
+            setDeleteOpen(false);
+            navigate("/pipeline");
+          }}
+        />
+      ) : null}
 
       <Panel title="Client + entities">
         <div style={{ marginBottom: 12, color: "#6b7280", fontSize: 14 }}>

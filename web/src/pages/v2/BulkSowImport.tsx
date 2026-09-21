@@ -14,7 +14,7 @@
  * exports).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ApiError,
   downloadBulkImportLog,
@@ -25,10 +25,32 @@ import {
   type BulkImportBatchSummary,
   type BulkImportFileRow,
 } from "../../api/client";
+import { getIdTokenClaims } from "../../auth/cognito";
+import { DeletionConfirmationDialog } from "../../ui-v2/DeletionConfirmationDialog";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
 import { StatusBadge, type StatusTone } from "../../ui-v2/StatusBadge";
 import { Button } from "../../ui-v2/primitives/button";
+
+/**
+ * Server-enforced delete roles (mirror of
+ * `api/app/routers/deletion.py::_DELETE_ROLES`). Hiding the button is
+ * UX only — the server enforces the same list on the DELETE endpoint.
+ */
+const DELETE_ROLES: readonly string[] = [
+  "SystemAdmin",
+  "CEO",
+  "SalesLeader",
+  "Finance",
+  "Legal",
+];
+
+function userCanDelete(): boolean {
+  const claims = getIdTokenClaims();
+  const raw = claims?.["cognito:groups"];
+  const groups = Array.isArray(raw) ? (raw as string[]) : [];
+  return groups.some((g) => DELETE_ROLES.includes(g));
+}
 
 const STATUS_TONE: Record<string, StatusTone> = {
   queued: "neutral",
@@ -58,6 +80,9 @@ export function BulkSowImportPage() {
   const [files, setFiles] = useState<BulkImportFileRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const canDelete = useMemo(() => userCanDelete(), []);
+  const navigate = useNavigate();
 
   const load = useCallback(async (id: string) => {
     try {
@@ -297,8 +322,31 @@ export function BulkSowImportPage() {
             <Button variant="secondary" onClick={onRerun} data-testid="bulk-rerun-btn">
               Run again
             </Button>
+            {canDelete ? (
+              <Button
+                variant="destructive"
+                onClick={() => setDeleteOpen(true)}
+                data-testid="bulk-delete-btn"
+              >
+                Delete batch
+              </Button>
+            ) : null}
           </aside>
         </div>
+      ) : null}
+
+      {batch && canDelete ? (
+        <DeletionConfirmationDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          kind="batch"
+          id={batch.id}
+          name={batch.id.slice(0, 8)}
+          onConfirmed={() => {
+            setDeleteOpen(false);
+            navigate("/settings/data-imports");
+          }}
+        />
       ) : null}
     </div>
   );

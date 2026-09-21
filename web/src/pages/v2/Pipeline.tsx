@@ -17,7 +17,8 @@
  * not crash the router.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { MoreVertical } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ApiError,
@@ -28,11 +29,19 @@ import {
   type ClientListRow,
   type UUID,
 } from "../../api/client";
+import { getIdTokenClaims } from "../../auth/cognito";
+import { DeletionConfirmationDialog } from "../../ui-v2/DeletionConfirmationDialog";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
 import { StatusBadge } from "../../ui-v2/StatusBadge";
 import { Button } from "../../ui-v2/primitives/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../ui-v2/primitives/dropdown-menu";
 import { Input } from "../../ui-v2/primitives/input";
 import {
   Tabs,
@@ -42,6 +51,30 @@ import {
 } from "../../ui-v2/primitives/tabs";
 import { NewOpportunitySheet } from "./pipeline/NewOpportunitySheet";
 import { agreementDisplay } from "./pipeline/agreementStatus";
+
+/**
+ * Roles allowed to hard-delete or archive records. Mirrors the server-side
+ * `require_role` set on `api/app/routers/deletion.py`. Hiding the row-menu
+ * is UX only — the server enforces the same list on every write.
+ */
+const DELETE_ROLES: readonly string[] = [
+  "SystemAdmin",
+  "CEO",
+  "SalesLeader",
+  "Finance",
+  "Legal",
+];
+
+function currentGroups(): string[] {
+  const claims = getIdTokenClaims();
+  const raw = claims?.["cognito:groups"];
+  return Array.isArray(raw) ? (raw as string[]) : [];
+}
+
+function userCanDelete(): boolean {
+  const groups = currentGroups();
+  return groups.some((g) => DELETE_ROLES.includes(g));
+}
 
 type FilterKey = "all" | "gaps" | "ready" | "followup";
 
@@ -181,33 +214,37 @@ export function PipelinePage() {
   const [query, setQuery] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ClientListRow | null>(null);
+  const canDelete = useMemo(() => userCanDelete(), []);
   const navigate = useNavigate();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [clientRes, agreementRes] = await Promise.all([
+        listClients({ size: 200 }),
+        listAgreements(),
+      ]);
+      setClients(clientRes.items);
+      setAgreements(agreementRes.items);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [clientRes, agreementRes] = await Promise.all([
-          listClients({ size: 200 }),
-          listAgreements(),
-        ]);
-        if (cancelled) return;
-        setClients(clientRes.items);
-        setAgreements(agreementRes.items);
-      } catch (err) {
-        if (cancelled) return;
-        setError(err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
+    void (async () => {
+      await load();
+      if (cancelled) return;
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [load]);
 
   const rows = useMemo(
     () => joinCoverage(clients, agreements),
@@ -337,6 +374,11 @@ export function PipelinePage() {
                     <th className="px-3 py-2 font-medium">MSA</th>
                     <th className="px-3 py-2 font-medium">SOWs · gate</th>
                     <th className="px-3 py-2 font-medium">Next client action</th>
+                    {canDelete ? (
+                      <th className="px-3 py-2 font-medium">
+                        <span className="sr-only">Row actions</span>
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -392,6 +434,37 @@ export function PipelinePage() {
                       <td className="px-3 py-3 align-top text-text-secondary">
                         Set from client workspace
                       </td>
+                      {canDelete ? (
+                        <td
+                          className="px-3 py-3 align-top text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Actions for ${client.name}`}
+                                data-testid={`row-menu-${client.id}`}
+                              >
+                                <MoreVertical
+                                  className="h-4 w-4"
+                                  aria-hidden
+                                />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onSelect={() => setDeleteTarget(client)}
+                                data-testid={`row-delete-${client.id}`}
+                                className="text-danger"
+                              >
+                                Delete…
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -406,6 +479,22 @@ export function PipelinePage() {
         onOpenChange={setNewOpen}
         onDraft={handleNewOpportunityDraft}
       />
+
+      {deleteTarget ? (
+        <DeletionConfirmationDialog
+          open={deleteTarget !== null}
+          onOpenChange={(o) => {
+            if (!o) setDeleteTarget(null);
+          }}
+          kind="client"
+          id={deleteTarget.id}
+          name={deleteTarget.name}
+          onConfirmed={() => {
+            setDeleteTarget(null);
+            void load();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

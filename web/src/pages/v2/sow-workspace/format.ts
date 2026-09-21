@@ -5,18 +5,19 @@
  */
 
 /**
- * Format a decimal string (or null) as USD to the nearest dollar. Returns
+ * Format USD with cents only when present, or a caller-specified precision. Returns
  * ``null`` when the input is missing so the caller can render an honest
  * "Unavailable" state rather than a fake zero (spec §4).
  */
-export function formatUsd(value: string | null | undefined): string | null {
+export function formatUsd(value: string | null | undefined, digits?: number): string | null {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   return parsed.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: digits ?? (Number.isInteger(parsed) ? 0 : 2),
+    maximumFractionDigits: digits ?? 2,
   });
 }
 

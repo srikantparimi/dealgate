@@ -3583,3 +3583,109 @@ export function patchCapability(
 export function deleteCapability(id: UUID): Promise<void> {
   return request<void>(`/admin/capability-catalog/${id}`, { method: "DELETE" });
 }
+
+// --- Deletion + archive (S13a-FE) -----------------------------------------
+
+/**
+ * The five terminal states the server returns for the delete/archive
+ * assessment + write endpoints. Mirrors
+ * ``api/app/services/deletion.py::DeletionAssessment``.
+ *
+ * - ``draft``           — hard-deletable, no approvals, no signature, no HubSpot.
+ * - ``approved``        — an approval package or signed SOW exists; archive only.
+ * - ``hubspot_linked``  — linked to a live HubSpot deal; archive only (a hard
+ *                        delete would resurrect on the next HubSpot sync).
+ * - ``archived``        — write response only; the record was just archived.
+ * - ``deleted``         — write response only; the record was just hard-deleted.
+ */
+export type DeletionState =
+  | "draft"
+  | "approved"
+  | "hubspot_linked"
+  | "archived"
+  | "deleted";
+
+/**
+ * Cascade + governance envelope. The confirmation dialog renders every
+ * entry of ``counts`` verbatim so the user sees exactly what a hard
+ * delete removes (directive §"cascade counts").
+ */
+export interface DeletionAssessmentResponse {
+  state: DeletionState;
+  reason: string;
+  counts: Record<string, number>;
+}
+
+export function assessClientDeletion(
+  clientId: UUID,
+): Promise<DeletionAssessmentResponse> {
+  return request<DeletionAssessmentResponse>(
+    `/clients/${clientId}/deletion-assessment`,
+  );
+}
+
+export function deleteClient(
+  clientId: UUID,
+  reason?: string,
+): Promise<DeletionAssessmentResponse> {
+  const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  return request<DeletionAssessmentResponse>(`/clients/${clientId}${qs}`, {
+    method: "DELETE",
+  });
+}
+
+export function archiveClient(
+  clientId: UUID,
+  reason?: string,
+): Promise<DeletionAssessmentResponse> {
+  return request<DeletionAssessmentResponse>(`/clients/${clientId}/archive`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason ?? null }),
+  });
+}
+
+export function assessOpportunityDeletion(
+  opportunityId: UUID,
+): Promise<DeletionAssessmentResponse> {
+  return request<DeletionAssessmentResponse>(
+    `/opportunities/${opportunityId}/deletion-assessment`,
+  );
+}
+
+export function deleteOpportunity(
+  opportunityId: UUID,
+  reason?: string,
+): Promise<DeletionAssessmentResponse> {
+  const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  return request<DeletionAssessmentResponse>(
+    `/opportunities/${opportunityId}${qs}`,
+    { method: "DELETE" },
+  );
+}
+
+export function archiveOpportunity(
+  opportunityId: UUID,
+  reason?: string,
+): Promise<DeletionAssessmentResponse> {
+  return request<DeletionAssessmentResponse>(
+    `/opportunities/${opportunityId}/archive`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? null }),
+    },
+  );
+}
+
+/**
+ * Bulk-import batch cleanup. Per-record state rules still apply on the
+ * server: a promoted, later-approved SOW blocks its own row and is
+ * reported back in ``counts.skipped_approved``.
+ */
+export function deleteBulkImportBatch(
+  batchId: UUID,
+): Promise<DeletionAssessmentResponse> {
+  return request<DeletionAssessmentResponse>(
+    `/admin/bulk-imports/${batchId}`,
+    { method: "DELETE" },
+  );
+}

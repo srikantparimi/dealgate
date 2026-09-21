@@ -14,7 +14,7 @@
 import { test, expect, type Page, type Request, type Response } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { authStaging } from "../fixtures/staging-auth";
+import { authStaging, cleanupClientsByPrefix } from "../fixtures/staging-auth";
 
 const BASE_URL =
   process.env.E2E_BASE_URL ?? "https://d1mu2un4hj9akj.cloudfront.net";
@@ -357,4 +357,16 @@ test.describe.serial("S12 one-staffing-model proof against staging", () => {
       ].join("\n"),
     );
   });
+});
+
+test.afterAll(async () => {
+  // S13a DoD #6: an e2e run leaves zero residue on staging. Every client
+  // this spec creates is tagged with "Peppermill Casino (S12 …)"; sweep
+  // them via the DELETE endpoint. Idempotent — a 404 or 409 is fine.
+  const { deleted, skipped } = await cleanupClientsByPrefix(
+    BASE_URL,
+    "Peppermill Casino (S12",
+  );
+  // eslint-disable-next-line no-console
+  console.log(`S12 cleanup: deleted=${deleted} skipped=${skipped}`);
 });

@@ -31,6 +31,8 @@ row, or every upload would write one. A group change produces one
 
 from __future__ import annotations
 
+import logging
+import os
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -40,7 +42,49 @@ from app.audit import append_audit
 from app.auth import AuthUser
 from app.models.user import User
 
-__all__ = ["ensure_user"]
+__all__ = ["ensure_user", "hydrate_from_cognito"]
+
+_log = logging.getLogger("dealgate.user_provisioning")
+
+
+def _looks_like_uuid(value: str | None) -> bool:
+    if not value:
+        return True
+    v = value.strip()
+    return (
+        len(v) == 36
+        and v.count("-") == 4
+        and all(c in "0123456789abcdef-" for c in v.lower())
+    )
+
+
+def hydrate_from_cognito(sub: str) -> tuple[str | None, str | None]:
+    """Fetch (email, name) from Cognito for a user whose access token did
+    not carry them.
+
+    Called only when the caller's ``AuthUser`` fields look like the raw
+    ``sub`` (i.e. no useful email/name). Silently returns ``(None, None)``
+    when Cognito isn't configured or the call fails — this is best-effort
+    enrichment, never a source of 500s.
+    """
+
+    pool_id = os.environ.get("COGNITO_USER_POOL_ID")
+    region = os.environ.get("COGNITO_REGION", "us-east-2")
+    if not pool_id:
+        return None, None
+    try:
+        import boto3  # local import: this branch only runs on staging/prod.
+
+        client = boto3.client("cognito-idp", region_name=region)
+        resp = client.admin_get_user(UserPoolId=pool_id, Username=sub)
+        attrs = {a["Name"]: a["Value"] for a in resp.get("UserAttributes", [])}
+        return attrs.get("email"), attrs.get("name")
+    except Exception as exc:  # noqa: BLE001 — enrichment must never break auth.
+        _log.info(
+            "cognito_hydrate_failed",
+            extra={"sub": sub, "error": str(exc)[:200]},
+        )
+        return None, None
 
 
 async def ensure_user(session: AsyncSession, actor: AuthUser) -> User:
@@ -53,14 +97,27 @@ async def ensure_user(session: AsyncSession, actor: AuthUser) -> User:
     a duplicate that splits their task list and audit trail.
     """
 
+    # Cognito access tokens don't carry email/name, so `_user_from_claims`
+    # falls back to the sub (a UUID string) for both fields. When that
+    # happens, hydrate from Cognito once so the row lands with a human
+    # email + name instead of the sub.
+    actor_email = actor.email
+    actor_name = actor.name
+    if _looks_like_uuid(actor_email) or _looks_like_uuid(actor_name):
+        real_email, real_name = hydrate_from_cognito(str(actor.id))
+        if real_email:
+            actor_email = real_email
+        if real_name:
+            actor_name = real_name
+
     existing = (
         await session.execute(select(User).where(User.id == actor.id))
     ).scalar_one_or_none()
 
-    if existing is None and actor.email:
+    if existing is None and actor_email and not _looks_like_uuid(actor_email):
         existing = (
             await session.execute(
-                select(User).where(User.email == actor.email)
+                select(User).where(User.email == actor_email)
             )
         ).scalar_one_or_none()
 
@@ -82,14 +139,21 @@ async def ensure_user(session: AsyncSession, actor: AuthUser) -> User:
                 after={"groups": token_groups, "source": "cognito_token"},
             )
             existing.groups = list(actor.groups or [])
+        # Opportunistic backfill: if the stored row was provisioned before
+        # the Cognito-hydrate branch existed (email/name == sub), overwrite
+        # with the real values now that we have them.
+        if _looks_like_uuid(existing.email) and actor_email and not _looks_like_uuid(actor_email):
+            existing.email = actor_email
+        if _looks_like_uuid(existing.name) and actor_name and not _looks_like_uuid(actor_name):
+            existing.name = actor_name
         existing.last_login = now
         await session.flush()
         return existing
 
     user = User(
         id=actor.id,
-        email=actor.email,
-        name=actor.name or actor.email,
+        email=actor_email,
+        name=actor_name or actor_email,
         groups=list(actor.groups or []),
         last_login=now,
     )

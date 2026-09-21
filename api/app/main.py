@@ -26,6 +26,7 @@ from app.routers import (
     deals,
     deletion,
     delivery_model,
+    dev_seed,
     forecast,
     gm,
     health,
@@ -158,3 +159,8 @@ app.include_router(admin_replay.router)
 app.include_router(admin_function_owners.router)
 app.include_router(admin_bulk_imports.router)
 app.include_router(capability_catalog.router)
+
+# `dev_seed` bypasses the S12 approval ceremony so E2E specs can browser-prove
+# S13a DoD #4. Never registered in prod (see is_dev_seed_enabled).
+if dev_seed.is_dev_seed_enabled():
+    app.include_router(dev_seed.router)

@@ -279,6 +279,9 @@ def _compute_floors(model: GmModel | None) -> dict[str, Any]:
         "gm_us": response.get("gm_us"),
         "gm_india": response.get("gm_india"),
         "gm_blended": response.get("gm_blended"),
+        "revenue_total": format(result.revenue_total, "f"),
+        "us_floor": policy.get("us_floor"),
+        "india_floor": policy.get("india_floor"),
     }
 
 

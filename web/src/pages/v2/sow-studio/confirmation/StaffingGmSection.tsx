@@ -19,6 +19,7 @@ import { StatusBadge } from "../../../../ui-v2/StatusBadge";
 import { Section } from "./Section";
 import { ProvenanceChip } from "./provenance";
 import type { SowProvenance } from "../../../../api/client";
+import { formatPercent, formatUsd } from "../../sow-workspace/format";
 
 export interface StaffingGmSectionProps {
   payload: SowConfirmationPayload;
@@ -46,6 +47,13 @@ export function StaffingGmSection({ payload }: StaffingGmSectionProps) {
   const usPass = floors.us_pass !== false;
   const indiaPass = floors.india_pass !== false;
   const allPass = usPass && indiaPass;
+  const fixedPrice = (gm?.engagement_type ?? payload.engagement.primary.type) === "fixed_price";
+  const usApplicable = lines.some((line) => line.location === "US") || floors.gm_us != null;
+  const indiaApplicable = lines.some((line) => line.location === "India") || floors.gm_india != null;
+  const computed = (usApplicable || indiaApplicable) &&
+    (!usApplicable || floors.gm_us != null) &&
+    (!indiaApplicable || floors.gm_india != null) &&
+    floors.gm_blended != null && !floors.reason && !floors.error;
 
   return (
     <Section
@@ -54,21 +62,24 @@ export function StaffingGmSection({ payload }: StaffingGmSectionProps) {
       description='Editing this grid is the review — the auto-plan opens pre-populated.'
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div>
+        <div className="min-w-0">
           {lines.length ? (
             <div
               role="table"
               aria-label="Staffing grid"
-              className="overflow-hidden rounded-panel border border-divider bg-surface"
+              className="overflow-x-auto rounded-panel border border-divider bg-surface"
             >
               <div
                 role="row"
-                className="grid grid-cols-[minmax(0,2fr)_100px_120px_100px_140px_auto] gap-2 border-b border-divider bg-surface-sunken px-3 py-2 text-[11px] uppercase tracking-wide text-text-secondary"
+                className="grid min-w-[800px] grid-cols-[minmax(120px,2fr)_70px_120px_100px_70px_90px_100px] gap-2 border-b border-divider bg-surface-sunken px-3 py-2 text-[11px] uppercase tracking-wide text-text-secondary"
               >
                 <div role="columnheader">Role · seniority</div>
                 <div role="columnheader">Location</div>
                 <div role="columnheader" className="text-right">
-                  Rate
+                  Bill rate
+                </div>
+                <div role="columnheader" className="text-right">
+                  Cost /hr
                 </div>
                 <div role="columnheader" className="text-right">
                   Hours
@@ -80,7 +91,7 @@ export function StaffingGmSection({ payload }: StaffingGmSectionProps) {
               </div>
               <ul className="divide-y divide-divider">
                 {lines.map((line, i) => (
-                  <StaffingRow key={i} line={line} />
+                  <StaffingRow key={i} line={line} fixedPrice={fixedPrice} />
                 ))}
               </ul>
             </div>
@@ -102,7 +113,7 @@ export function StaffingGmSection({ payload }: StaffingGmSectionProps) {
         </div>
 
         <aside
-          className="rounded-panel border border-divider bg-surface p-3"
+          className="min-w-0 rounded-panel border border-divider bg-surface p-3 tnum"
           aria-label="GM by component"
         >
           <h3 className="text-secondary font-medium text-text-secondary">
@@ -112,14 +123,16 @@ export function StaffingGmSection({ payload }: StaffingGmSectionProps) {
             <ComponentBar
               label="US"
               value={floors.gm_us ?? null}
-              floor={"0.35"}
+              floor={floors.us_floor ?? "0.35"}
               pass={usPass}
+              applicable={usApplicable}
             />
             <ComponentBar
               label="India"
               value={floors.gm_india ?? null}
-              floor={"0.55"}
+              floor={floors.india_floor ?? "0.50"}
               pass={indiaPass}
+              applicable={indiaApplicable}
             />
             <ComponentBar
               label="Blended"
@@ -131,14 +144,14 @@ export function StaffingGmSection({ payload }: StaffingGmSectionProps) {
           </div>
           <div className="mt-3 flex items-center justify-between border-t border-divider pt-3">
             <span className="text-secondary text-text-secondary">Revenue</span>
-            <MoneyCell value={gm?.revenue_us ?? gm?.revenue_india ?? null} />
+            <MoneyCell value={formatUsd(floors.revenue_total ?? (!indiaApplicable ? gm?.revenue_us : !usApplicable ? gm?.revenue_india : null))} />
           </div>
           <div className="mt-3">
             <StatusBadge
-              tone={allPass ? "success" : "danger"}
+              tone={!computed ? "warning" : allPass ? "success" : "danger"}
               label={
-                allPass
-                  ? "Passes both floors"
+                !computed ? "GM incomplete" : allPass
+                  ? usApplicable && indiaApplicable ? "Passes both floors" : `Passes ${usApplicable ? "US" : "India"} floor`
                   : `Fails · ${floors.failing?.join(", ") || "check policy"}`
               }
               data-testid="staffing-floor-summary"
@@ -150,7 +163,7 @@ export function StaffingGmSection({ payload }: StaffingGmSectionProps) {
   );
 }
 
-function StaffingRow({ line }: { line: SowConfirmationStaffingLine }) {
+function StaffingRow({ line, fixedPrice }: { line: SowConfirmationStaffingLine; fixedPrice: boolean }) {
   const provEntry = {
     value: line.role,
     provenance: line.provenance as SowProvenance,
@@ -160,7 +173,7 @@ function StaffingRow({ line }: { line: SowConfirmationStaffingLine }) {
   return (
     <li
       role="row"
-      className="grid grid-cols-[minmax(0,2fr)_100px_120px_100px_140px_auto] items-center gap-2 px-3 py-2"
+      className="grid min-w-[800px] grid-cols-[minmax(120px,2fr)_70px_120px_100px_70px_90px_100px] items-center gap-2 px-3 py-2"
     >
       <div role="cell" className="min-w-0 truncate">
         <span className="text-body text-text font-medium">{line.role}</span>
@@ -172,10 +185,13 @@ function StaffingRow({ line }: { line: SowConfirmationStaffingLine }) {
         {line.location}
       </div>
       <div role="cell" className="text-right tnum text-body text-text">
-        {line.hourly_bill_rate}
+        {fixedPrice ? "— fixed price" : formatUsd(line.hourly_bill_rate, 2) ?? "Unavailable"}
       </div>
       <div role="cell" className="text-right tnum text-body text-text">
-        {line.hours_billable}
+        {formatUsd(line.hourly_cost, 2) ?? "Unavailable"}
+      </div>
+      <div role="cell" className="text-right tnum text-body text-text">
+        {Number(line.hours_billable).toLocaleString("en-US", { maximumFractionDigits: 2 })}
       </div>
       <div role="cell" className="text-right tnum text-body text-text">
         {formatAllocationPct(line.allocation_pct)}%
@@ -193,24 +209,26 @@ function ComponentBar({
   floor,
   pass,
   hideBar,
+  applicable = true,
 }: {
   label: string;
   value: string | null;
   floor: string;
   pass: boolean;
   hideBar?: boolean;
+  applicable?: boolean;
 }) {
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <span className="text-secondary text-text-secondary">{label}</span>
         <span
-          className={pass ? "text-body text-success" : "text-body text-danger"}
+          className={`text-right tnum ${!applicable || value == null ? "text-secondary text-text-secondary" : pass ? "text-body text-success" : "text-body text-danger"}`}
         >
-          {value == null || value === "" ? "Unavailable" : `${value}`}
+          {!applicable ? `Not applicable — no ${label} resources` : formatPercent(value) ?? "Unavailable"}
         </span>
       </div>
-      {!hideBar && value != null && value !== "" ? (
+      {!hideBar && applicable && value != null && value !== "" ? (
         <div className="mt-2">
           <FloorBar value={value} floor={floor} label={label} showChip />
         </div>

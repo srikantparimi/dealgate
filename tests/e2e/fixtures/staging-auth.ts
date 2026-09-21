@@ -122,6 +122,52 @@ export function mintStagingTokens(): { idToken: string; accessToken: string; exp
  * inject the tokens via `addInitScript` — that runs at document-start of
  * every navigation, before any app code sees the empty storage.
  */
+/**
+ * Delete every live client whose name contains `prefix`, using the
+ * S13a delete endpoint. Best-effort — a 404 or 409 is fine (the row
+ * may already be gone, or an approved row can only archive).
+ *
+ * Used by spec `afterAll` hooks so a Playwright run leaves zero residue
+ * on staging (S13a directive DoD #6).
+ */
+export async function cleanupClientsByPrefix(
+  baseUrl: string,
+  prefix: string,
+): Promise<{ deleted: number; skipped: number }> {
+  const { accessToken } = mintStagingTokens();
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  let deleted = 0;
+  let skipped = 0;
+  try {
+    const listRes = await fetch(
+      `${baseUrl}/api/clients?search=${encodeURIComponent(prefix)}&size=200`,
+      { headers },
+    );
+    if (!listRes.ok) return { deleted, skipped };
+    const list = (await listRes.json()) as { items?: Array<{ id: string; name: string }> };
+    for (const c of list.items ?? []) {
+      if (!c.name?.includes(prefix)) continue;
+      try {
+        const del = await fetch(
+          `${baseUrl}/api/clients/${c.id}?reason=e2e%20afterAll%20cleanup`,
+          { method: "DELETE", headers },
+        );
+        if (del.ok) deleted++;
+        else skipped++;
+      } catch {
+        skipped++;
+      }
+    }
+  } catch {
+    // Cleanup is best-effort; a network hiccup at teardown is not a
+    // test failure. Residue surfaces on the next run's listing.
+  }
+  return { deleted, skipped };
+}
+
 export async function authStaging(page: Page, _baseUrl: string): Promise<void> {
   const { idToken, accessToken, expiresAt } = mintStagingTokens();
   await page.context().addInitScript(
