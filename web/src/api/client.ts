@@ -505,6 +505,11 @@ export function getDownloadUrl(id: UUID): Promise<DownloadUrlResponse> {
 
 // --- clients (S2 E3) -------------------------------------------------------
 
+export interface OwnerRef {
+  id: UUID;
+  name: string;
+}
+
 export interface ClientListRow {
   id: UUID;
   name: string;
@@ -512,6 +517,10 @@ export interface ClientListRow {
   coverage_state: string;
   opportunity_count: number;
   owner_ids: UUID[];
+  /** S13a §2.2: owner_id resolved to a display name for the Pipeline UI. */
+  owners: OwnerRef[];
+  /** S13a §2.3: distinct opportunity sources (hubspot, sow_upload, bulk_import, manual). */
+  sources: string[];
 }
 
 export interface ClientListResponse {
@@ -1474,6 +1483,7 @@ export interface SowConfirmationStaffingLine {
   allocation_pct: DecimalStr;
   hours_billable: DecimalStr;
   hourly_bill_rate: DecimalStr;
+  hourly_cost?: DecimalStr | null;
   provenance: SowProvenance;
   source_id: string | null;
   warning: string | null;
@@ -1502,6 +1512,9 @@ export interface SowConfirmationGmModel {
  * (spec §21, CLAUDE.md rule 2).
  */
 export interface SowConfirmationFloors {
+  revenue_total?: DecimalStr | null;
+  us_floor?: DecimalStr;
+  india_floor?: DecimalStr;
   us_pass: boolean;
   india_pass: boolean;
   requires_ceo: boolean;

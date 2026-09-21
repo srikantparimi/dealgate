@@ -112,6 +112,11 @@ class ClientDetailResponse(BaseModel):
     recent_activity: list[RecentAuditRow] = Field(default_factory=list)
 
 
+class OwnerRefResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
 class ClientListRow(BaseModel):
     id: uuid.UUID
     name: str
@@ -119,6 +124,13 @@ class ClientListRow(BaseModel):
     coverage_state: str
     opportunity_count: int
     owner_ids: list[uuid.UUID]
+    # S13a defect §2.2 — the FE renders `owners[*].name` (never `owner_ids[*]`)
+    # so the Pipeline Owner column shows a person, not a UUID.
+    owners: list[OwnerRefResponse] = Field(default_factory=list)
+    # S13a defect §2.3 — distinct opportunity `source` values so the
+    # Commercial-stage column reads "SOW upload" / "Bulk import" / "HubSpot"
+    # truthfully instead of a hardcoded "HubSpot · from CRM" label.
+    sources: list[str] = Field(default_factory=list)
 
 
 class ClientListResponse(BaseModel):
@@ -197,6 +209,10 @@ async def list_clients_endpoint(
                 coverage_state=r.coverage_state,
                 opportunity_count=r.opportunity_count,
                 owner_ids=r.owner_ids,
+                owners=[
+                    OwnerRefResponse(id=o.id, name=o.name) for o in r.owners
+                ],
+                sources=r.sources,
             )
             for r in rows
         ],
