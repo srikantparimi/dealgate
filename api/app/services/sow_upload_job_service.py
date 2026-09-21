@@ -94,13 +94,49 @@ class RejectedDocumentType(UploadPipelineError):
 async def find_by_hash(
     session: AsyncSession, file_hash: str
 ) -> SowUploadJob | None:
-    """Return the existing job for this SHA-256, if any. Dedupe entry point."""
+    """Return the existing job for this SHA-256, if any.
 
-    return (
+    S13a "fresh-start" rule: the hash only counts as a duplicate when the
+    resulting record is still LIVE. A job whose ``sow_version_id`` was hard
+    deleted (the row is gone) or whose ``sow`` was archived is not a live
+    hit; the user must be allowed to re-upload the same bytes and produce
+    a new record. Returning ``None`` here re-runs the pipeline.
+    """
+
+    from app.models.sow import Sow, SowVersion  # local: avoid cycles
+
+    job = (
         await session.execute(
             select(SowUploadJob).where(SowUploadJob.file_hash == file_hash)
         )
     ).scalar_one_or_none()
+    if job is None:
+        return None
+    # No downstream record ever landed → treat as reusable (retry/failed).
+    if job.sow_version_id is None:
+        return job
+    row = (
+        await session.execute(
+            select(SowVersion, Sow.archived_at)
+            .join(Sow, Sow.id == SowVersion.sow_id)
+            .where(SowVersion.id == job.sow_version_id)
+        )
+    ).first()
+    if row is None:
+        # The sow_version was hard-deleted. Detach the job pointer so the
+        # unique(file_hash) row can be reused for the fresh upload.
+        job.sow_version_id = None
+        job.opportunity_id = None
+        return job
+    _version, sow_archived_at = row
+    if sow_archived_at is not None:
+        # Archived → informational, not blocking. The caller (upload service)
+        # decides whether to run again; today we let a fresh upload proceed
+        # and the confirm screen shows a note that an archived SOW existed.
+        job.sow_version_id = None
+        job.opportunity_id = None
+        return job
+    return job
 
 
 async def get_job(

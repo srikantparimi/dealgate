@@ -24,6 +24,7 @@ from app.routers import (
     clients,
     dashboards,
     deals,
+    deletion,
     delivery_model,
     forecast,
     gm,
@@ -142,6 +143,7 @@ app.include_router(sow.router)
 app.include_router(sows_staffing.router)
 app.include_router(sows_upload.router)
 app.include_router(delivery_model.router)
+app.include_router(deletion.router)
 app.include_router(adviser.router)
 app.include_router(legacy.router)
 app.include_router(approvals.router)

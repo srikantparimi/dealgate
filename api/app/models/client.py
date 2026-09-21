@@ -41,6 +41,15 @@ class Client(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    # S13a — archive (void), never hard delete once approved. NULL means
+    # "live"; every default list filters `WHERE archived_at IS NULL`.
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("user.id"), nullable=True
+    )
+    archived_reason: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
 
 class LegalEntity(Base):
