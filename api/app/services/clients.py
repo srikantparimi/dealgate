@@ -450,6 +450,15 @@ class ClientListFilters:
 
 
 @dataclass(frozen=True)
+class OwnerRef:
+    """id + display name, resolved by `list_clients` so the FE never has to
+    render a raw UUID (S13a defect §2.2)."""
+
+    id: uuid.UUID
+    name: str
+
+
+@dataclass(frozen=True)
 class ClientRow:
     id: uuid.UUID
     name: str
@@ -457,6 +466,11 @@ class ClientRow:
     coverage_state: str
     opportunity_count: int
     owner_ids: list[uuid.UUID]
+    # Populated from the `user` table so the FE renders a name — not a UUID.
+    owners: list[OwnerRef]
+    # Distinct opportunity `source` values for this client, in a stable
+    # order (S13a defect §2.3). Empty when the client has no opportunities.
+    sources: list[str]
 
 
 async def list_clients(
@@ -546,12 +560,45 @@ async def list_clients(
                 if any(o.owner_id == owner_uuid for o in opps_by_client.get(c.id, []))
             ]
 
+    # Resolve every owner_id to a display name in one round-trip so the FE
+    # never renders a UUID (S13a defect §2.2). Users referenced but absent
+    # from the table are rendered as "Unassigned" downstream.
+    all_owner_ids = {
+        o.owner_id
+        for opps in opps_by_client.values()
+        for o in opps
+        if o.owner_id is not None
+    }
+    owner_names: dict[uuid.UUID, str] = {}
+    if all_owner_ids:
+        from app.models.user import User as _User
+
+        for u in (
+            await session.execute(
+                select(_User).where(_User.id.in_(list(all_owner_ids)))
+            )
+        ).scalars():
+            owner_names[u.id] = (u.name or u.email or "").strip() or "Unnamed"
+
     rows: list[ClientRow] = []
     for c in clients:
         client_agreements: list[Agreement] = []
         for e in entities_by_client.get(c.id, []):
             client_agreements.extend(agreements_by_entity.get(e.id, []))
         opps = opps_by_client.get(c.id, [])
+        owner_ids_here = [o.owner_id for o in opps if o.owner_id is not None]
+        owners_here = [
+            OwnerRef(id=oid, name=owner_names.get(oid, "Unassigned"))
+            for oid in owner_ids_here
+        ]
+        # Distinct sources in a stable order: hubspot, sow_upload, bulk_import,
+        # manual — most-authoritative first. Any unknown value falls through
+        # to the end so a schema drift doesn't disappear silently.
+        _SOURCE_ORDER = ("hubspot", "sow_upload", "bulk_import", "manual")
+        seen = {o.source for o in opps if o.source}
+        sources_here = [s for s in _SOURCE_ORDER if s in seen] + sorted(
+            seen - set(_SOURCE_ORDER)
+        )
         rows.append(
             ClientRow(
                 id=c.id,
@@ -559,7 +606,9 @@ async def list_clients(
                 hubspot_company_id=c.hubspot_company_id,
                 coverage_state=coverage_state(client_agreements, today=today),
                 opportunity_count=len(opps),
-                owner_ids=[o.owner_id for o in opps if o.owner_id is not None],
+                owner_ids=owner_ids_here,
+                owners=owners_here,
+                sources=sources_here,
             )
         )
 

@@ -123,13 +123,30 @@ function matchesFilter(row: CoverageRow, filter: FilterKey): boolean {
   return true;
 }
 
+/**
+ * Render the client's Commercial-stage column truthfully from the
+ * per-opportunity `source` values the API returned. S13a §2.3 —
+ * previously the column was hardcoded to "HubSpot · from CRM" for
+ * every row, which mislabeled SOW-upload and bulk-import records.
+ */
+function sourceLabel(sources: string[]): string {
+  if (sources.length === 0) return "No opportunities yet";
+  const pretty: Record<string, string> = {
+    hubspot: "HubSpot",
+    sow_upload: "SOW upload",
+    bulk_import: "Bulk import",
+    manual: "Manual",
+  };
+  return sources.map((s) => pretty[s] ?? s).join(" · ");
+}
+
 function matchesSearch(row: CoverageRow, q: string): boolean {
   if (!q) return true;
   const needle = q.toLowerCase();
   return (
     row.client.name.toLowerCase().includes(needle) ||
     (row.client.hubspot_company_id?.toLowerCase().includes(needle) ?? false) ||
-    row.client.owner_ids.some((id) => id.toLowerCase().includes(needle))
+    row.client.owners.some((o) => o.name.toLowerCase().includes(needle))
   );
 }
 
@@ -333,12 +350,12 @@ export function PipelinePage() {
                       <td className="px-3 py-3 align-top">
                         <div className="text-text">{client.name}</div>
                         <div className="text-secondary text-text-secondary">
-                          {client.owner_ids.length === 0 ? (
+                          {client.owners.length === 0 ? (
                             <span className="text-danger">
                               Owner missing · assign
                             </span>
                           ) : (
-                            <span>Owner: {client.owner_ids[0]}</span>
+                            <span>Owner: {client.owners[0].name}</span>
                           )}
                           {client.hubspot_company_id ? (
                             <span className="ml-2 text-text-secondary">
@@ -349,7 +366,7 @@ export function PipelinePage() {
                       </td>
                       <td className="px-3 py-3 align-top">
                         <span className="text-text-secondary">
-                          HubSpot · from CRM
+                          {sourceLabel(client.sources)}
                         </span>
                       </td>
                       <td className="px-3 py-3 align-top">

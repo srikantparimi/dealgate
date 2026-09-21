@@ -241,6 +241,8 @@ describe("CommandCenterPage", () => {
             coverage_state: "gap",
             opportunity_count: 1,
             owner_ids: [],
+            owners: [],
+            sources: [],
           },
         ],
         page: 1,
