@@ -103,3 +103,53 @@ async def test_resolve_client_matches_across_possessive_and_llc(session):
     top = result.candidates[0]
     assert top.client_id == existing.id
     assert top.score >= 0.85, top.score
+
+
+@pytest.mark.asyncio
+async def test_resolve_client_ignores_archived_and_notes_the_match(session):
+    """S13a fresh-start rule + informational note.
+
+    Archive a client, then re-upload a SOW that would otherwise match by
+    name. The resolver must NOT auto-match (fresh client is created via
+    ``needs_pick``) but must attach an ``info`` string + ``archived_matches``
+    entry so the audit trail stays connected.
+    """
+
+    from datetime import UTC, datetime
+
+    archived = Client(
+        id=uuid.uuid4(),
+        name="Peppermill Casino",
+        hubspot_company_id=None,
+        archived_at=datetime.now(UTC),
+        archived_by=None,
+        archived_reason="e2e archive",
+    )
+    session.add(archived)
+    await session.commit()
+
+    result = await resolve_client(
+        session,
+        ClientSignals.from_dict(
+            {
+                "legal_name": "Peppermill Casino's, LLC",
+                "domain": None,
+                "aliases": [],
+                "address_lines": [],
+            }
+        ),
+    )
+
+    # Live scoring bucket empty → needs_pick, so a new client is created.
+    assert result.resolution == "needs_pick", (
+        f"expected needs_pick (archived should not resurrect); got "
+        f"{result.resolution!r} with candidates "
+        f"{[(c.name, c.score) for c in result.candidates]}"
+    )
+    assert result.candidates == [], result.candidates
+    # Non-blocking informational note surfaces the archived match.
+    assert result.archived_matches, result.archived_matches
+    top_archived = result.archived_matches[0]
+    assert top_archived.client_id == archived.id
+    assert top_archived.score >= 0.85, top_archived.score
+    assert result.info and "archived" in result.info.lower(), result.info

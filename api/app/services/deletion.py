@@ -301,7 +301,28 @@ async def _hard_delete_opportunity(
     """Delete every child of an `opportunity` and the row itself."""
 
     counts: dict[str, int] = {}
-    # gm_models + their children first (resource_line / cost_line).
+    # ApprovalPackage + its Approval children FIRST — approval_package has
+    # FKs into gm_model + sow_version, so we must clear it before deleting
+    # those. (Draft deletes normally have zero packages; dev-seed rows do,
+    # and this is called from the /dev/purge-client cleanup path too.)
+    pkg_ids = (
+        (
+            await session.execute(
+                select(ApprovalPackage.id).where(
+                    ApprovalPackage.opportunity_id == opportunity_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if pkg_ids:
+        await session.execute(sa_delete(Approval).where(Approval.package_id.in_(pkg_ids)))
+        r = await session.execute(
+            sa_delete(ApprovalPackage).where(ApprovalPackage.id.in_(pkg_ids))
+        )
+        counts["approval_packages"] = r.rowcount or 0
+    # gm_models + their children (resource_line / cost_line).
     gm_ids = (
         (
             await session.execute(
@@ -334,26 +355,8 @@ async def _hard_delete_opportunity(
         sub = await _hard_delete_sow(session, sow_id)
         for k, v in sub.items():
             counts[k] = counts.get(k, 0) + v
-    # `Task` has no opportunity_id column today, so we can't cascade tasks by
-    # opportunity. Tasks referencing this opportunity via subject/text stay
-    # for the owner to clear manually; a draft opportunity's tasks are
-    # typically the auto-assigned intake follow-ups that expire on their own.
-    #
-    # Approval packages/rows should be zero on a draft delete; guard anyway.
-    pkg_ids = (
-        (
-            await session.execute(
-                select(ApprovalPackage.id).where(
-                    ApprovalPackage.opportunity_id == opportunity_id
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    if pkg_ids:
-        await session.execute(sa_delete(Approval).where(Approval.package_id.in_(pkg_ids)))
-        await session.execute(sa_delete(ApprovalPackage).where(ApprovalPackage.id.in_(pkg_ids)))
+    # `Task` has no opportunity_id column today, so we can't cascade tasks
+    # by opportunity. Tasks stay for the owner to clear manually.
     r = await session.execute(sa_delete(Opportunity).where(Opportunity.id == opportunity_id))
     counts["opportunities"] = r.rowcount or 0
     return counts

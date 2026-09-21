@@ -49,6 +49,28 @@ def is_dev_seed_enabled() -> bool:
 router = APIRouter(prefix="/dev", tags=["dev"])
 
 
+@router.post("/purge-client/{client_id}")
+async def purge_client(
+    client_id: uuid.UUID,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Force-hard-delete a client, bypassing approved / archived refusal.
+
+    E2E cleanup uses this to drop leftover approved+archived rows that
+    the S13a delete endpoint (correctly) refuses. Never call this from
+    the app; it exists so a Playwright run can start from a clean slate.
+    """
+
+    if "SystemAdmin" not in user.groups:
+        return {"ok": False, "status": 403, "error": "SystemAdmin required"}
+    from app.services.deletion import _hard_delete_client
+
+    counts = await _hard_delete_client(session, client_id)
+    await session.commit()
+    return {"ok": True, "client_id": str(client_id), "counts": counts}
+
+
 @router.post("/seed-approved-package/{opportunity_id}")
 async def seed_approved_package(
     opportunity_id: uuid.UUID,

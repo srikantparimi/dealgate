@@ -150,12 +150,30 @@ export async function cleanupClientsByPrefix(
     const list = (await listRes.json()) as { items?: Array<{ id: string; name: string }> };
     for (const c of list.items ?? []) {
       if (!c.name?.includes(prefix)) continue;
+      // 1) Try the governance-checked DELETE first.
+      let del: Response;
       try {
-        const del = await fetch(
-          `${baseUrl}/api/clients/${c.id}?reason=e2e%20afterAll%20cleanup`,
+        del = await fetch(
+          `${baseUrl}/api/clients/${c.id}?reason=e2e%20cleanup`,
           { method: "DELETE", headers },
         );
-        if (del.ok) deleted++;
+      } catch {
+        skipped++;
+        continue;
+      }
+      if (del.ok) {
+        deleted++;
+        continue;
+      }
+      // 2) Approved/archived rows refuse the normal DELETE — nuke via
+      //    the dev-only purge endpoint (S13a e2e uses it to clear
+      //    residue from previous seed runs).
+      try {
+        const purge = await fetch(
+          `${baseUrl}/api/dev/purge-client/${c.id}`,
+          { method: "POST", headers },
+        );
+        if (purge.ok) deleted++;
         else skipped++;
       } catch {
         skipped++;

@@ -98,6 +98,13 @@ class ResolutionResult:
     candidates: list[Candidate] = field(default_factory=list)
     create_new: dict[str, Any] = field(default_factory=dict)
     reason: str | None = None
+    # S13a follow-up: archived clients never resurrect from a fresh
+    # upload (fresh-start rule), but if the incoming name would match
+    # an archived record we surface it as a non-blocking informational
+    # note so the audit trail stays connected. Same pattern as the
+    # archived-SOW duplicate note in ``sow_upload_job_service``.
+    archived_matches: list[Candidate] = field(default_factory=list)
+    info: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -106,6 +113,8 @@ class ResolutionResult:
             "candidates": [c.to_dict() for c in self.candidates],
             "create_new": self.create_new,
             "reason": self.reason,
+            "archived_matches": [c.to_dict() for c in self.archived_matches],
+            "info": self.info,
         }
 
 
@@ -248,15 +257,28 @@ async def resolve_client(
             reason="no legal_name extracted from SOW",
         )
 
+    # S13a: two parallel scoring buckets. `scored` holds LIVE clients
+    # (the only ones eligible to auto-match); `archived` holds clients
+    # whose `archived_at IS NOT NULL` so we can attach an informational
+    # note without resurrecting the record (fresh-start rule).
     scored: dict[uuid.UUID, Candidate] = {}
+    archived: dict[uuid.UUID, Candidate] = {}
     normalised_name = _norm(signals.legal_name)
+
+    def _score_row(
+        row: Client, score: float, reason: str
+    ) -> None:
+        if row.archived_at is None:
+            _bump(scored, row.id, row.name, score, reason)
+        else:
+            _bump(archived, row.id, row.name, score, reason)
 
     # 1. Exact legal-name match.
     exact_stmt = select(Client).where(Client.name.ilike(signals.legal_name))
     exact_rows = (await session.execute(exact_stmt)).scalars().all()
     for row in exact_rows:
         if _norm(row.name) == normalised_name:
-            _bump(scored, row.id, row.name, 1.0, "exact_name")
+            _score_row(row, 1.0, "exact_name")
 
     # 2. Domain match via client_alias.
     if signals.domain:
@@ -269,14 +291,14 @@ async def resolve_client(
         for alias, client in alias_rows:
             alias_norm = _norm(alias.alias)
             if alias_norm in domain_variants:
-                _bump(scored, client.id, client.name, 0.95, "domain")
+                _score_row(client, 0.95, "domain")
         # Also try hubspot_company_id equal to the domain — some tenants
         # use the domain as the natural key.
         hs_stmt = select(Client).where(
             Client.hubspot_company_id.in_(list(domain_variants))
         )
         for row in (await session.execute(hs_stmt)).scalars().all():
-            _bump(scored, row.id, row.name, 0.95, "domain")
+            _score_row(row, 0.95, "domain")
 
     # 3. Alias match on the extracted legal name.
     alias_name_stmt = select(ClientAlias, Client).join(
@@ -284,9 +306,10 @@ async def resolve_client(
     )
     for alias, client in (await session.execute(alias_name_stmt)).all():
         if _norm(alias.alias) == normalised_name:
-            _bump(scored, client.id, client.name, 0.9, "alias")
+            _score_row(client, 0.9, "alias")
 
-    # 4. Fuzzy sweep across the freshest N clients.
+    # 4. Fuzzy sweep across the freshest N clients (live + archived,
+    #    then split by archived_at when scoring).
     fuzzy_stmt = (
         select(Client)
         .order_by(Client.created_at.desc(), Client.id.desc())
@@ -294,10 +317,24 @@ async def resolve_client(
     )
     for row in (await session.execute(fuzzy_stmt)).scalars().all():
         ratio = fuzz.token_sort_ratio(normalised_name, _norm(row.name)) / 100.0
-        if ratio >= 0.85:
-            _bump(scored, row.id, row.name, ratio, "fuzzy_name")
+        if ratio >= MATCH_SCORE_MIN:
+            _score_row(row, ratio, "fuzzy_name")
 
     ordered = sorted(scored.values(), key=lambda c: c.score, reverse=True)
+    ordered_archived = sorted(
+        archived.values(), key=lambda c: c.score, reverse=True
+    )
+
+    # Informational note when the best archived match is a strong candidate
+    # — non-blocking, does not resurrect the record.
+    info_note: str | None = None
+    top_archived_matches: list[Candidate] = []
+    if ordered_archived and ordered_archived[0].score >= MATCH_SCORE_MIN:
+        top_archived_matches = ordered_archived[:3]
+        info_note = (
+            f"matches archived client {ordered_archived[0].name!r} "
+            f"(score {ordered_archived[0].score:.2f}) — not resurrected"
+        )
 
     if not ordered:
         return ResolutionResult(
@@ -305,6 +342,8 @@ async def resolve_client(
             candidates=[],
             create_new=create_new,
             reason="no candidates above 0.85",
+            archived_matches=top_archived_matches,
+            info=info_note,
         )
 
     top = ordered[0]
@@ -317,6 +356,8 @@ async def resolve_client(
             candidates=ordered[:3],
             create_new=create_new,
             reason=top.reason,
+            archived_matches=top_archived_matches,
+            info=info_note,
         )
 
     return ResolutionResult(
@@ -327,6 +368,8 @@ async def resolve_client(
             f"top={top.score:.2f} gap={top.score - second:.2f} — below match"
             f" threshold ({MATCH_SCORE_MIN} with gap {MATCH_SCORE_GAP})"
         ),
+        archived_matches=top_archived_matches,
+        info=info_note,
     )
 
 
