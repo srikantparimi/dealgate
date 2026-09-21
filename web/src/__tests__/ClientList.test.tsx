@@ -21,6 +21,8 @@ const sample: apiClient.ClientListResponse = {
       coverage_state: "MSA missing",
       opportunity_count: 2,
       owner_ids: [],
+      owners: [],
+      sources: [],
     },
   ],
   page: 1,

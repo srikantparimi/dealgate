@@ -45,6 +45,8 @@ describe("GlobalSearch", () => {
           coverage_state: "NDA missing",
           opportunity_count: 2,
           owner_ids: [],
+          owners: [],
+          sources: [],
         },
       ],
       page: 1,
