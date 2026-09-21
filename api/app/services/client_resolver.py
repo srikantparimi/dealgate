@@ -134,8 +134,91 @@ def _domain_stem(domain: str) -> str:
     return stem.strip()
 
 
+_POSSESSIVE = re.compile(r"[’']s\b", re.IGNORECASE)
+# Punctuation includes the em-dash and en-dash — names copied from PDFs
+# often use the typographic forms rather than a plain hyphen.
+_PUNCT = re.compile(r"[.,;:!?\"()/\-_–—]+")
+
+# Entity-form suffixes stripped from the tail of a legal name for matching
+# only (never for display). Punctuation is already collapsed by `_PUNCT`
+# above, so the suffixes are listed in their space-separated form (e.g.
+# "l l c" rather than "l.l.c.") — the tail-strip below runs on tokens.
+# Ordered so multi-word forms are attempted before single-word ones they
+# contain.
+_ENTITY_SUFFIXES: tuple[str, ...] = (
+    "limited liability company",
+    "public limited company",
+    "sociedad anonima",
+    "societe anonyme",
+    "societa a responsabilita limitata",
+    "aktiengesellschaft",
+    "gesellschaft mit beschrankter haftung",
+    "corporation",
+    "incorporated",
+    "company",
+    "limited",
+    "gmbh",
+    "pty ltd",
+    "co ltd",
+    "l l c",
+    "l l p",
+    "p l c",
+    "s a",
+    "s r l",
+    "s r o",
+    "llc",
+    "inc",
+    "corp",
+    "ltd",
+    "llp",
+    "plc",
+    "co",
+    "sa",
+    "ag",
+    "srl",
+    "pty",
+)
+
+
+def _strip_entity_suffix(tokens: list[str]) -> list[str]:
+    """Peel off any trailing entity-form suffix ("llc", "corp", ...).
+
+    Runs iteratively so a name like "Peppermill Casino's, LLC, Inc" (rare
+    but real) sheds both suffixes. The stripped list never falls below one
+    token — a bare "LLC" wouldn't match anything anyway, and losing it
+    entirely would score every one-word name as identical.
+    """
+
+    joined = " ".join(tokens)
+    changed = True
+    while changed and len(tokens) > 1:
+        changed = False
+        for suffix in _ENTITY_SUFFIXES:
+            if joined.endswith(" " + suffix) or joined == suffix:
+                joined = joined[: len(joined) - len(suffix)].strip()
+                tokens = joined.split()
+                changed = True
+                break
+    return tokens
+
+
 def _norm(text: str) -> str:
-    return " ".join(text.lower().split())
+    """Canonicalise a legal name for scoring: lowercase, strip possessives,
+    strip punctuation, drop entity-form suffixes, collapse whitespace.
+
+    ``Peppermill Casino's, LLC`` and ``Peppermill Casino`` both canonicalise
+    to ``peppermill casino``, so the exact-match and fuzzy branches score
+    them as one entity (S13a directive §2.1).
+    """
+
+    lowered = text.lower()
+    # Possessive first so "casino's" becomes "casino" before the punctuation
+    # pass eats the apostrophe entirely.
+    lowered = _POSSESSIVE.sub("", lowered)
+    lowered = _PUNCT.sub(" ", lowered)
+    tokens = lowered.split()
+    tokens = _strip_entity_suffix(tokens)
+    return " ".join(tokens)
 
 
 # --- resolver -------------------------------------------------------------
