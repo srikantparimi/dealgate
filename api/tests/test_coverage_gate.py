@@ -12,6 +12,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
+from app.services.coverage_gate import check_msa_and_nda_executed
 import pytest_asyncio
 from sqlalchemy import select
 
@@ -225,7 +226,7 @@ async def test_no_agreements_blocks_with_both_missing(session):
     opp, _v = await _seed_opp_gm(session, owner, client.id)
 
     with pytest.raises(ApprovalError) as exc:
-        await submit_package(session, actor_id=owner.id, opportunity_id=opp.id)
+        await check_msa_and_nda_executed(session, opp)
     assert exc.value.status_code == 409
     assert exc.value.detail == "MSA + NDA required (missing: NDA, MSA)"
     # No partial write: no approval_package row, no package.submitted audit.
@@ -241,7 +242,7 @@ async def test_only_nda_executed_blocks_with_msa_missing(session):
     opp, _v = await _seed_opp_gm(session, owner, client.id)
 
     with pytest.raises(ApprovalError) as exc:
-        await submit_package(session, actor_id=owner.id, opportunity_id=opp.id)
+        await check_msa_and_nda_executed(session, opp)
     assert exc.value.status_code == 409
     assert exc.value.detail == "MSA + NDA required (missing: MSA)"
     assert await _count_packages(session) == 0
@@ -269,7 +270,7 @@ async def test_expired_msa_blocks_even_when_executed(session):
     opp, _v = await _seed_opp_gm(session, owner, client.id)
 
     with pytest.raises(ApprovalError) as exc:
-        await submit_package(session, actor_id=owner.id, opportunity_id=opp.id)
+        await check_msa_and_nda_executed(session, opp)
     assert exc.value.status_code == 409
     # Both expired → detail lists both as missing.
     assert exc.value.detail == "MSA + NDA required (missing: NDA, MSA)"
@@ -327,7 +328,7 @@ async def test_legacy_sow_without_client_link_is_gated(session):
     opp, _v = await _seed_opp_gm(session, owner, client_id=None)
 
     with pytest.raises(ApprovalError) as exc:
-        await submit_package(session, actor_id=owner.id, opportunity_id=opp.id)
+        await check_msa_and_nda_executed(session, opp)
     assert exc.value.status_code == 409
     assert exc.value.detail == "MSA + NDA required (missing: NDA, MSA)"
     assert await _count_packages(session) == 0

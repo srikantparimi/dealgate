@@ -192,12 +192,12 @@ export function PackageCard({ pkg, meta, href }: PackageCardProps) {
 
       <FunctionMarkRow states={states} />
 
-      <div className="mt-1 flex items-center justify-between text-[12px] text-text-muted">
-        <span className="truncate">
+      <div className="mt-1 flex items-start justify-between gap-2 text-[12px] text-text-muted">
+        <span className="min-w-0 break-words">
           {meta.ownerName ?? meta.ownerEmail
             ? `${meta.ownerName ?? meta.ownerEmail} · `
             : ""}
-          {meta.nextAction ?? "Awaiting next reviewer"}
+          {pkg.routing_blockers?.length ? pkg.routing_blockers.join("; ") : pkg.pending_with?.length ? `Pending with ${pkg.pending_with.join(", ")}` : meta.nextAction ?? "Awaiting next reviewer"}
         </span>
         {age !== null ? (
           <span className="tnum shrink-0">{age}d</span>

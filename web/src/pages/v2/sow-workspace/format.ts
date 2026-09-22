@@ -46,3 +46,18 @@ export function shortId(value: string | null | undefined): string {
   if (!value) return "—";
   return value.slice(-8);
 }
+
+export function formatQuantity(value: string | null | undefined): string | null {
+  if (value == null || value === "" || !Number.isFinite(Number(value))) return null;
+  return Number(value).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+export function formatRate(value: string | null | undefined): string | null {
+  return formatUsd(value, 2);
+}
+
+export function decimalInput(value: string | null | undefined): string {
+  if (!value) return "";
+  if (!value.includes(".")) return value;
+  return value.replace(/0+$/, "").replace(/\.$/, "");
+}

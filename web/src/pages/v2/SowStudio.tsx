@@ -604,7 +604,7 @@ function ConfirmationFlow({
                 data-testid="confirmation-submit"
                 aria-describedby="submit-hint"
               >
-                {submitting ? "Submitting…" : "Submit for approval"}
+                {submitting ? "Confirming…" : "Complete scope"}
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
             </div>
@@ -612,9 +612,9 @@ function ConfirmationFlow({
               id="submit-hint"
               className="text-secondary text-text-secondary"
             >
-              {costsDirty ? "Save direct costs before submitting." : blockers === 0
-                ? "Ready to submit."
-                : `${blockers} field${blockers === 1 ? "" : "s"} still block submit.`}
+              {costsDirty ? "Unsaved direct costs." : blockers === 0
+                ? "Ready to confirm scope."
+                : `${blockers} field${blockers === 1 ? "" : "s"} still block confirmation.`}
             </p>
           </div>
         }

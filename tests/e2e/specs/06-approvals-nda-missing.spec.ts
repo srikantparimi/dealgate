@@ -1,6 +1,5 @@
 /**
- * 06 — submit_package returns 409 when NDA missing; the UI surfaces the
- * message on the deal page.
+ * 06 — missing NDA does not block functional review (S14b).
  */
 import { expect, test } from "@playwright/test";
 import { apiFetch } from "../fixtures/api";
@@ -15,7 +14,7 @@ import {
 
 test.describe.configure({ mode: "serial" });
 
-test("submit_package with missing NDA returns 409, UI shows the block", async ({
+test("submit_package with missing NDA succeeds; workspace names the signature gate", async ({
   page,
 }) => {
   const { client, opportunityId } = await seedClientWithDeal({});
@@ -32,12 +31,9 @@ test("submit_package with missing NDA returns 409, UI shows the block", async ({
     undefined,
     { allowNon2xx: true },
   );
-  expect(res.status).toBe(409);
-  expect(res.text.toLowerCase()).toContain("nda");
+  expect(res.status).toBe(201);
 
   await applyTestUser(page, "Delivery");
-  await page.goto(`/deals/${opportunityId}`);
-  // The Approval panel renders a coverage-missing hint. The exact copy
-  // includes "NDA" so we match on that.
-  await expect(page.getByText(/nda/i)).toBeVisible();
+  await page.goto(`/sows/${opportunityId}/approvals`);
+  await expect(page.getByText("NDA missing - blocks signature, not review.")).toBeVisible();
 });

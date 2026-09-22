@@ -152,6 +152,10 @@ async def test_submit_confirmation_transitions_governance(seeded_sow, session):
         await session.execute(select(Opp).where(Opp.id == seeded_sow["opp"].id))
     ).scalar_one()
     assert opp.governance_status == "SOWDraft.confirmed"
+    from app.models.sow import SowVersion
+    version = await session.get(SowVersion, seeded_sow["sow_version_id"])
+    assert version.confirmed_at is not None
+    assert version.confirmed_by == OWNER
 
 
 @pytest.mark.asyncio
@@ -164,6 +168,19 @@ async def test_submit_confirmation_is_idempotent(seeded_sow, session):
     )
     assert payload_a.gm_model is not None and payload_b.gm_model is not None
     assert payload_a.gm_model.id == payload_b.gm_model.id
+
+
+@pytest.mark.asyncio
+async def test_missing_scope_cannot_stamp_confirmation(seeded_sow, session):
+    from fastapi import HTTPException
+    from app.models.sow import SowVersion
+    row = await session.get(SowVersion, seeded_sow['sow_version_id'])
+    row.extracted_fields = {**row.extracted_fields, 'scope_summary': wrap(None, provenance='manual', status='confirmed')}
+    await session.commit()
+    with pytest.raises(HTTPException) as exc:
+        await submit_confirmation(session, opportunity_id=seeded_sow['opp'].id, actor_id=OWNER)
+    assert exc.value.status_code == 422
+    assert row.confirmed_at is None
 
 
 # --- what actually blocks submit (S10-11) --------------------------------

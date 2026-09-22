@@ -1,10 +1,10 @@
-"""NDA + MSA hard block at ``submit_package`` (S7 A).
+"""NDA + MSA hard block before signature and release (S14b).
 
 Blueprint §2 (hard rule): "No valid NDA + MSA → SOW cannot move to
 signature." Coverage state was tracked in :func:`app.services.clients.coverage_state`
 since Sprint 2 but nothing enforced it at the transition. This module
-holds the single gate the approvals service calls before writing an
-``approval_package`` row.
+holds the gate the signature service checks; functional review does not
+require coverage.
 
 Contract:
 

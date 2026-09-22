@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
@@ -44,6 +45,8 @@ class TaskRow(BaseModel):
     completed_at: datetime | None = None
     completed_by: uuid.UUID | None = None
     escalation_level: int
+    owner_name: str | None = None
+    workflow_href: str | None = None
 
 
 class TaskListResponse(BaseModel):
@@ -63,6 +66,20 @@ class ReassignBody(BaseModel):
 
 
 # --- endpoints -----------------------------------------------------------
+
+
+async def _row(session, task):
+    from app.models.approval import ApprovalPackage
+    from app.models.approval_routing import ApprovalAssignment
+    from app.models.user import User
+    from app.services.user_identity import display_user_name
+    row = TaskRow.model_validate(task)
+    owner = await session.get(User, task.owner_id) if task.owner_id else None
+    row.owner_name = display_user_name(owner.name, owner.email) if owner else "Unassigned"
+    opportunity_id = await session.scalar(select(ApprovalPackage.opportunity_id).join(ApprovalAssignment, ApprovalAssignment.package_id == ApprovalPackage.id).where(ApprovalAssignment.task_id == task.id))
+    if opportunity_id:
+        row.workflow_href = f"/sows/{opportunity_id}/approvals"
+    return row
 
 
 @router.get("", response_model=TaskListResponse)
@@ -86,7 +103,7 @@ async def list_tasks_endpoint(
     )
     rows, total = await list_tasks(session, user, filters)
     return TaskListResponse(
-        items=[TaskRow.model_validate(t) for t in rows],
+        items=[await _row(session, t) for t in rows],
         page=page,
         size=size,
         total=total,

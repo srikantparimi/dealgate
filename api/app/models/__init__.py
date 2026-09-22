@@ -7,6 +7,7 @@ Importing this package registers every mapper on `Base.metadata` — Alembic's
 from app.models.actual import ActualImportBatch, ActualPeriod
 from app.models.adviser_estimate import AdviserEstimate
 from app.models.approval import Approval, ApprovalPackage
+from app.models.approval_routing import ApprovalAssignment, ApprovalConditionEvidence, ApprovalGroup
 from app.models.audit import AuditEvent
 from app.models.capability import CapabilityCatalog
 from app.models.ceo_exception import CeoDelegate, CeoException
@@ -51,6 +52,9 @@ __all__ = [
     "Agreement",
     "Approval",
     "ApprovalPackage",
+    "ApprovalAssignment",
+    "ApprovalConditionEvidence",
+    "ApprovalGroup",
     "AuditEvent",
     "CapabilityCatalog",
     "CeoDelegate",

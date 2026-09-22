@@ -106,6 +106,7 @@ class SowVersionState:
     confirmed_at: datetime | None
     engagement_type_suggested: str | None
     engagement_type_confirmed: str | None
+    version_no: int = 1
 
 
 # --- helpers --------------------------------------------------------------
@@ -148,6 +149,7 @@ async def _opportunity_id_for(
 def _snapshot(version: SowVersion, opportunity_id: uuid.UUID) -> SowVersionState:
     return SowVersionState(
         id=version.id,
+        version_no=version.version_no,
         sow_id=version.sow_id,
         opportunity_id=opportunity_id,
         uploaded_by=version.uploaded_by,

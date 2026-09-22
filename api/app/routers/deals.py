@@ -103,6 +103,7 @@ class DealDetail(BaseModel):
     # SOW-first opportunity 500 the list it appeared in.
     hubspot_deal_id: str | None = None
     owner_id: uuid.UUID | None
+    owner: dict[str, Any] | None = None
     client_id: uuid.UUID | None = None
     client_name: str | None = None
     engagement_type: str | None
@@ -193,6 +194,9 @@ async def list_deals(
 
 
 async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
+    from app.models.user import User
+    from app.services.approval_routing import person
+    owner = await session.get(User, opp.owner_id) if opp.owner_id else None
     tasks = (
         await session.execute(
             select(Task).where(Task.owner_id == opp.owner_id).order_by(Task.due_date.asc())
@@ -217,6 +221,7 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
         id=opp.id,
         hubspot_deal_id=opp.hubspot_deal_id,
         owner_id=opp.owner_id,
+        owner=person(owner) if owner else None,
         client_id=opp.client_id,
         client_name=client_name,
         engagement_type=opp.engagement_type,
@@ -242,7 +247,12 @@ async def get_deal(
     stripped for users without a cost-authorized role (blueprint §3)."""
 
     opp = await _load_opportunity(session, deal_id)
-    await _access_or_403(session, user, opp)
+    from app.models.approval import ApprovalPackage
+    from app.models.approval_routing import ApprovalAssignment
+    assigned = await session.scalar(select(ApprovalAssignment.package_id).join(ApprovalPackage).where(
+        ApprovalPackage.opportunity_id == deal_id, ApprovalAssignment.approver_id == user.id).limit(1))
+    if not assigned:
+        await _access_or_403(session, user, opp)
     detail = await _build_detail(session, opp)
     payload = detail.model_dump(mode="json")
     return redact_costs(payload, set(user.groups))

@@ -539,20 +539,21 @@ async def test_http_decide_requires_matching_role(app_with_session, session, mon
         r = await c.post(
             f"/approvals/packages/{pkg_id}/decisions/delivery",
             headers={"X-Test-User": "h@smartek21.com"},
-            json={"decision": "approve"},
+            json={"decision": "approve", "reason": "Reviewed"},
         )
         assert r.status_code == 403
 
 
 async def test_http_list_gates_read_role(app_with_session, session, monkeypatch):
     await _seed_full_deal(session)
-    # Sales-only user gets 403.
+    # S14b owners can read their packages, but unrelated Sales see no rows.
     monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Sales")
     async with _client(app_with_session) as c:
         r = await c.get(
             "/approvals/packages", headers={"X-Test-User": "salesguy@smartek21.com"}
         )
-        assert r.status_code == 403
+        assert r.status_code == 200
+        assert r.json()["items"] == []
 
     # Finance user succeeds (empty list, still 200).
     monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Finance")

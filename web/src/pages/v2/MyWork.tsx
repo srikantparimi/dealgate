@@ -342,7 +342,7 @@ function TaskRow({
         {row.category ?? "General"}
       </td>
       <td className="px-3 py-3 align-top text-text-secondary tnum">
-        {row.owner_id ? row.owner_id.slice(0, 8) : "Unassigned"}
+        {row.owner_name ?? "Unassigned"}
       </td>
       <td className="px-3 py-3 align-top tnum">
         <div className="text-text">{row.due_date ?? "No due date"}</div>

@@ -35,7 +35,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -278,6 +278,15 @@ async def _load_sow_version(
 # ---- create --------------------------------------------------------------
 
 
+async def _require_signature_eligibility(session, package):
+    from app.services.approval_workflow import require_signature_eligibility
+    from app.services.approvals import ApprovalError
+    try:
+        await require_signature_eligibility(session, package)
+    except ApprovalError as exc:
+        raise SignedSowError(status_code=exc.status_code, detail=exc.detail) from exc
+
+
 async def create_upload(
     session: AsyncSession,
     *,
@@ -304,6 +313,7 @@ async def create_upload(
             ),
         )
 
+    await _require_signature_eligibility(session, package)
     previous = await latest_upload_for(session, package_id)
 
     upload = SignedSowUpload(
@@ -592,6 +602,7 @@ async def release(
     ).scalar_one_or_none()
     if opp is None:
         raise SignedSowError(status_code=404, detail="opportunity not found")
+    await _require_signature_eligibility(session, package)
     owner_id = opp.owner_id or actor_id
 
     # 1. SES fan-out. A missing recipient is silently skipped — the log

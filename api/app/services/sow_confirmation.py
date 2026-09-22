@@ -14,6 +14,7 @@ without inserting a duplicate row (matched by ``sow_version_id`` +
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -290,8 +291,6 @@ def _compute_floors(model: GmModel | None) -> dict[str, Any]:
         "gm_india": response.get("gm_india"),
         "gm_blended": response.get("gm_blended"),
         "revenue_total": format(result.revenue_total, "f"),
-        "us_floor": policy.get("us_floor"),
-        "india_floor": policy.get("india_floor"),
     }
 
 
@@ -370,6 +369,10 @@ _ESSENTIAL_FIELDS: tuple[str, ...] = (
 
 # The house currency. Everything SmarTek21 signs is in USD.
 DEFAULT_CURRENCY = "USD"
+
+
+def scope_blockers(payload: ConfirmationPayload) -> list[NeedsYou]:
+    return [n for n in payload.needs_you if n.field in (*_ESSENTIAL_FIELDS, "engagement_type")]
 
 
 def _needs_you_for(
@@ -793,6 +796,17 @@ async def submit_confirmation(
         session, opportunity_id=opportunity_id, actor_id=actor_id
     )
 
+    # Confirmation commits scope; financial completeness is checked at review submission.
+    from fastapi import HTTPException
+    scope_gaps = scope_blockers(payload)
+    if scope_gaps:
+        raise HTTPException(422, "Complete scope: " + "; ".join(f"{n.field}: {n.reason}" for n in scope_gaps))
+    version = await session.get(SowVersion, payload.sow_version.id)
+    if version.confirmed_at is None:
+        version.confirmed_by, version.confirmed_at = actor_id, datetime.now(UTC)
+        await append_audit(session, actor_id=actor_id, action="sow.confirmed", entity="sow_version", entity_id=str(version.id),
+                           before={"confirmed_at": None}, after={"confirmed_by": str(actor_id), "confirmed_at": version.confirmed_at.isoformat()})
+
     opp = (
         await session.execute(
             select(Opportunity).where(Opportunity.id == opportunity_id)
@@ -897,6 +911,7 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
         },
         "projected_tasks": payload.projected_tasks,
         "needs_you": [{"field": n.field, "reason": n.reason} for n in payload.needs_you],
+        "scope_blockers": [{"field": n.field, "reason": n.reason} for n in scope_blockers(payload)],
         "ceo_gate": (
             {
                 "will_trigger": True,

@@ -24,6 +24,7 @@ import { EmptyState } from "../../../ui-v2/EmptyState";
 import { ErrorState } from "../../../ui-v2/ErrorState";
 import { PageHeader } from "../../../ui-v2/PageHeader";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
+import { ApprovalGroups } from "./ApprovalGroups";
 import {
   Tabs,
   TabsContent,
@@ -31,7 +32,7 @@ import {
   TabsTrigger,
 } from "../../../ui-v2/primitives/tabs";
 
-type TabId = "users" | "roles" | "delegations";
+type TabId = "users" | "roles" | "delegations" | "groups";
 
 interface RoleDoc {
   role: string;
@@ -121,6 +122,7 @@ export function PeopleSection() {
         <TabsList aria-label="People tabs">
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="roles">Roles</TabsTrigger>
+          <TabsTrigger value="groups">Groups</TabsTrigger>
           <TabsTrigger value="delegations">Delegations</TabsTrigger>
         </TabsList>
 
@@ -131,6 +133,7 @@ export function PeopleSection() {
         <TabsContent value="roles">
           <RolesPanel />
         </TabsContent>
+        <TabsContent value="groups"><ApprovalGroups /></TabsContent>
 
         <TabsContent value="delegations">
           <DelegationsPanel />

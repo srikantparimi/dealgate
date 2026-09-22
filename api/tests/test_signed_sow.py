@@ -159,11 +159,14 @@ async def _seed_ready_to_sign_package(
 
     # A minimal gm_model row so the FK holds — the numbers are ignored.
     from app.models.gm_model import GmModel
+    from tests.test_coverage_gate import _seed_client_with_agreements
+    client, _ = await _seed_client_with_agreements(session, kinds_executed=("NDA", "MSA"))
 
     opp = Opportunity(
         id=uuid.uuid4(),
         hubspot_deal_id=f"H-SS-{uuid.uuid4().hex[:6]}",
         owner_id=owner.id,
+        client_id=client.id,
         governance_status="SOWDraft.confirmed",
     )
     session.add(opp)
