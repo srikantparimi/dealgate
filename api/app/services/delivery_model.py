@@ -21,18 +21,19 @@ propagates as "unvalidated" — blueprint §2 forbids treating a gap as zero.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Optional
 from io import BytesIO
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import append_audit
 from app.gm import compute as gm_compute
+from app.gm.direct_costs import finance_summary, floor_delta, resolve_direct_costs
 from app.gm.core import min_price as gm_min_price
 from app.gm.policy import INDIA_FLOOR, US_FLOOR, check_floors
 from app.gm.types import (
@@ -106,6 +107,11 @@ class CostLinePayload:
     note: Optional[str]
     location: str = "US"
     phase_name: Optional[str] = None
+    basis: str = "amount"
+    basis_value: Optional[Decimal] = None
+    reimbursable: bool = False
+    provenance: str = "manual"
+    source_ref: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +143,8 @@ class GmModelPayload:
     # billed by the hour. Optional: T&M and staff aug derive revenue from
     # bill rate x hours and leave this None.
     total_price: Optional[Decimal] = None
+    direct_costs_reviewed: bool = True
+    resolve_missing_rates: bool = True
 
     def __post_init__(self):  # dataclass frozen shim
         if self.phases is None:
@@ -146,14 +154,16 @@ class GmModelPayload:
 # --- parsing helpers -------------------------------------------------------
 
 _ALLOWED_LOCATIONS = frozenset({"US", "India"})
-_ALLOWED_COST_CATEGORIES = frozenset({"tools", "travel", "subcontractor", "other"})
 
 
 def _to_decimal(value: Any, *, field: str) -> Decimal:
     if value is None:
         raise DeliveryModelInputError(f"{field} is required")
     try:
-        return Decimal(str(value))
+        number = Decimal(str(value))
+        if not number.is_finite():
+            raise ValueError("number must be finite")
+        return number
     except (InvalidOperation, ValueError) as exc:
         raise DeliveryModelInputError(f"{field} is not a valid number: {value!r}") from exc
 
@@ -223,23 +233,38 @@ def parse_resource_line(raw: Any, *, field: str) -> ResourceLinePayload:
 def parse_cost_line(raw: Any, *, field: str) -> CostLinePayload:
     if not isinstance(raw, dict):
         raise DeliveryModelInputError(f"{field} must be an object")
-    category = raw.get("category")
-    if category not in _ALLOWED_COST_CATEGORIES:
-        raise DeliveryModelInputError(
-            f"{field}.category must be one of tools/travel/subcontractor/other"
-        )
-    location = raw.get("location", "US")
-    if location not in _ALLOWED_LOCATIONS:
-        raise DeliveryModelInputError(f"{field}.location must be 'US' or 'India'")
+    category = str(raw.get("category") or "").strip()
+    if not category or len(category) > 32:
+        raise DeliveryModelInputError(f"{field}.category must be a nonempty category key up to 32 characters")
+    location = raw.get("location", "proportional")
+    if location not in _ALLOWED_LOCATIONS | {"proportional"}:
+        raise DeliveryModelInputError(f"{field}.location must be 'US', 'India' or 'proportional'")
+    basis = raw.get("basis", "amount")
+    if basis not in {"amount", "percent_revenue"}:
+        raise DeliveryModelInputError(f"{field}.basis must be amount or percent_revenue")
+    basis_value = _to_decimal(raw.get("basis_value", raw.get("amount")), field=f"{field}.basis_value")
+    if basis_value < 0:
+        raise DeliveryModelInputError(f"{field}.basis_value must be non-negative")
+    reimbursable = raw.get("reimbursable", False)
+    if not isinstance(reimbursable, bool):
+        raise DeliveryModelInputError(f"{field}.reimbursable must be boolean")
+    provenance = raw.get("provenance", "manual")
+    if provenance not in {"manual", "extracted"}:
+        raise DeliveryModelInputError(f"{field}.provenance must be manual or extracted")
     phase_name = raw.get("phase_name")
     if phase_name is not None:
         phase_name = str(phase_name).strip() or None
     return CostLinePayload(
         category=category,
-        amount=_to_decimal(raw.get("amount", 0), field=f"{field}.amount"),
+        amount=basis_value,
         note=(str(raw["note"]) if raw.get("note") else None),
         location=location,
         phase_name=phase_name,
+        basis=basis,
+        basis_value=basis_value,
+        reimbursable=reimbursable,
+        provenance=provenance,
+        source_ref=str(raw["source_ref"])[:255] if raw.get("source_ref") else None,
     )
 
 
@@ -340,7 +365,7 @@ async def _client_id_for(
 
     opp = (
         await session.execute(
-            select(Opportunity).where(Opportunity.id == opportunity_id)
+            select(Opportunity).where(Opportunity.id == opportunity_id).with_for_update()
         )
     ).scalar_one_or_none()
     if opp is None:
@@ -422,13 +447,22 @@ def compute_live(payload: GmModelPayload, *, extra_inputs: Optional[dict] = None
 
     engagement = parse_engagement_type(payload.engagement_type)
     inputs = _payload_to_compute_inputs(payload)
+    if payload.engagement_type in ("fixed_price", "assessment") and payload.total_price is not None:
+        us, india, _ = allocate_fixed_fee_revenue(payload.resource_lines, payload.total_price)
+        inputs.update(total_price=format(payload.total_price, "f"), revenue_us=format(us, "f"), revenue_india=format(india, "f"))
+        if payload.engagement_type == "assessment":
+            inputs["deliverable"] = "(delivery plan)"
     if extra_inputs:
         inputs.update(extra_inputs)
     try:
-        parsed = parse_inputs(engagement, inputs)
-    except SandboxInputError as exc:
+        labor = gm_compute(engagement, parse_inputs(engagement, {**inputs, "costs": []}))
+        costs, _, pass_through = resolve_direct_costs(payload.cost_lines, labor)
+        parsed = parse_inputs(engagement, {**inputs, "costs": costs})
+    except (SandboxInputError, ValueError) as exc:
         raise DeliveryModelInputError(str(exc)) from exc
-    return gm_compute(engagement, parsed)
+    result = gm_compute(engagement, parsed)
+    result.finance_summary = finance_summary(result, labor, pass_through)
+    return result
 
 
 # --- capacity + HR warnings -----------------------------------------------
@@ -578,6 +612,9 @@ async def create_gm_model_version(
     # win — this only fills gaps.
     filled_lines: list[ResourceLinePayload] = []
     for line in payload.resource_lines:
+        if not payload.resolve_missing_rates:
+            filled_lines.append(line)
+            continue
         # Resolve bill rate when the caller sent zero/None.
         resolved_bill = line.hourly_bill_rate
         if not resolved_bill or resolved_bill <= 0:
@@ -623,6 +660,8 @@ async def create_gm_model_version(
         resource_lines=filled_lines,
         cost_lines=payload.cost_lines,
         phases=payload.phases,
+        total_price=payload.total_price,
+        direct_costs_reviewed=payload.direct_costs_reviewed,
     )
 
     # Snapshot revenue components at save-time so the list view does not
@@ -668,6 +707,25 @@ async def create_gm_model_version(
             )
         ).scalar_one_or_none()
 
+    version_number = (await session.execute(
+        select(func.max(GmModel.version)).where(GmModel.opportunity_id == opportunity_id)
+    )).scalar_one_or_none() or 0
+    extra = {}
+    if filled_payload.engagement_type in ("fixed_price", "assessment"):
+        extra = {"total_price": format(revenue_us + revenue_india, "f"),
+                 "revenue_us": format(revenue_us, "f"), "revenue_india": format(revenue_india, "f"),
+                 "deliverable": "(delivery plan)"}
+    elif filled_payload.engagement_type == "managed_service":
+        extra = {"monthly_fee_us": format(revenue_us, "f"), "monthly_fee_india": format(revenue_india, "f"), "term_months": "1"}
+    if filled_payload.cost_lines:
+        labor_result = compute_live(replace(filled_payload, cost_lines=[]), extra_inputs=extra)
+        try:
+            _, cost_amounts, _ = resolve_direct_costs(filled_payload.cost_lines, labor_result)
+        except ValueError as exc:
+            raise DeliveryModelInputError(str(exc)) from exc
+    else:
+        cost_amounts = []
+
     model = GmModel(
         id=uuid.uuid4(),
         opportunity_id=opportunity_id,
@@ -680,6 +738,8 @@ async def create_gm_model_version(
         revenue_us=revenue_us,
         revenue_india=revenue_india,
         created_by=actor_id,
+        version=version_number + 1,
+        direct_costs_reviewed=payload.direct_costs_reviewed,
     )
     session.add(model)
     await session.flush()
@@ -739,15 +799,20 @@ async def create_gm_model_version(
                 phase_id=phase_ids_by_name.get(r.phase_name) if r.phase_name else None,
             )
         )
-    for c in filled_payload.cost_lines:
+    for c, amount in zip(filled_payload.cost_lines, cost_amounts):
         session.add(
             CostLine(
                 id=uuid.uuid4(),
                 gm_model_id=model.id,
                 category=c.category,
-                amount=c.amount,
+                amount=amount,
                 note=c.note,
                 location=c.location,
+                basis=c.basis,
+                basis_value=c.basis_value if c.basis_value is not None else c.amount,
+                reimbursable=c.reimbursable,
+                provenance=c.provenance,
+                source_ref=c.source_ref,
                 phase_id=phase_ids_by_name.get(c.phase_name) if c.phase_name else None,
             )
         )
@@ -814,7 +879,7 @@ async def latest_gm_model_for(
             selectinload(GmModel.phases),
         )
         .where(GmModel.opportunity_id == opportunity_id)
-        .order_by(GmModel.created_at.desc(), GmModel.id.desc())
+        .order_by(GmModel.created_at.desc(), GmModel.version.desc(), GmModel.id.desc())
         .limit(1)
     )
     return (await session.execute(stmt)).scalar_one_or_none()
@@ -831,7 +896,7 @@ async def list_gm_models_for(
             selectinload(GmModel.phases),
         )
         .where(GmModel.opportunity_id == opportunity_id)
-        .order_by(GmModel.created_at.desc(), GmModel.id.desc())
+        .order_by(GmModel.created_at.desc(), GmModel.version.desc(), GmModel.id.desc())
     )
     return list((await session.execute(stmt)).scalars().all())
 
@@ -896,6 +961,11 @@ def _model_to_payload(model: GmModel) -> GmModelPayload:
             amount=c.amount,
             note=c.note,
             location=c.location,
+            basis=c.basis or "amount",
+            basis_value=c.basis_value,
+            reimbursable=c.reimbursable or False,
+            provenance=c.provenance or "manual",
+            source_ref=c.source_ref,
         )
         for c in model.cost_lines
     ]
@@ -964,6 +1034,11 @@ def serialize_cost_line(c: CostLine) -> dict:
         "amount": _fmt(c.amount),
         "note": c.note,
         "location": c.location,
+        "basis": c.basis or "amount",
+        "basis_value": _fmt(c.basis_value if c.basis_value is not None else c.amount),
+        "reimbursable": c.reimbursable or False,
+        "provenance": c.provenance or "manual",
+        "source_ref": c.source_ref,
         "phase_id": str(c.phase_id) if getattr(c, "phase_id", None) else None,
     }
 
@@ -978,31 +1053,31 @@ def serialize_phase(p: GmModelPhase) -> dict:
     }
 
 
-def build_compute_response(result: TemplateResult) -> dict:
+def build_compute_response(result: TemplateResult, *, us_floor: Decimal = US_FLOOR, india_floor: Decimal = INDIA_FLOOR) -> dict:
     """Format a ``TemplateResult`` for the JSON API. Mirrors the sandbox
     shape (minus the policy-lookup fields) so the Builder can reuse the
     same rendering code path."""
 
-    us_present = result.revenue_us > 0
-    india_present = result.revenue_india > 0
+    us_present = result.revenue_us > 0 or result.cost_us > 0
+    india_present = result.revenue_india > 0 or result.cost_india > 0
     us_pass = True
     india_pass = True
     failing: list[str] = []
     if us_present:
-        us_pass = result.gm_us is not None and result.gm_us >= US_FLOOR
+        us_pass = result.gm_us is not None and result.gm_us >= us_floor
         if not us_pass:
             failing.append("US")
     if india_present:
-        india_pass = result.gm_india is not None and result.gm_india >= INDIA_FLOOR
+        india_pass = result.gm_india is not None and result.gm_india >= india_floor
         if not india_pass:
             failing.append("India")
     requires_ceo = bool(failing) or not result.complete
     floors = check_floors(result)  # sanity — same shape.
     _ = floors  # kept for future policy-version pass-through.
 
-    min_price_us = gm_min_price(result.cost_us, US_FLOOR) if result.cost_us > 0 else None
+    min_price_us = gm_min_price(result.cost_us, us_floor) if result.cost_us > 0 else None
     min_price_india = (
-        gm_min_price(result.cost_india, INDIA_FLOOR) if result.cost_india > 0 else None
+        gm_min_price(result.cost_india, india_floor) if result.cost_india > 0 else None
     )
 
     return {
@@ -1018,9 +1093,14 @@ def build_compute_response(result: TemplateResult) -> dict:
         "missing": list(result.missing),
         "min_price_us": _fmt(min_price_us),
         "min_price_india": _fmt(min_price_india),
+        "finance_summary": {key: _fmt(value) for key, value in (result.finance_summary or {}).items()},
         "policy": {
-            "us_floor": _fmt(US_FLOOR),
-            "india_floor": _fmt(INDIA_FLOOR),
+            "us_floor": _fmt(us_floor),
+            "india_floor": _fmt(india_floor),
+            "us_applicable": us_present,
+            "india_applicable": india_present,
+            "us_delta": _fmt(floor_delta(result.gm_us, us_floor)),
+            "india_delta": _fmt(floor_delta(result.gm_india, india_floor)),
             "us_pass": us_pass,
             "india_pass": india_pass,
             "requires_ceo": requires_ceo,
@@ -1086,6 +1166,8 @@ def _phase_summary(model: GmModel) -> list[dict]:
             b["cost"] += r.hourly_cost * hours * alloc
 
     for c in model.cost_lines:
+        if c.reimbursable:
+            continue
         key = str(c.phase_id) if getattr(c, "phase_id", None) else UNGROUPED
         b = buckets.get(key)
         if b is None:
@@ -1119,6 +1201,8 @@ def serialize_gm_model(
 ) -> dict:
     payload: dict = {
         "id": str(model.id),
+        "version": model.version,
+        "direct_costs_reviewed": model.direct_costs_reviewed,
         "opportunity_id": (
             str(model.opportunity_id) if model.opportunity_id else None
         ),
@@ -1226,10 +1310,11 @@ def build_xlsx(model: GmModel, result: TemplateResult, response: dict) -> bytes:
 
     if model.cost_lines:
         costs_sheet = wb.create_sheet("Costs")
-        costs_sheet.append(["category", "amount", "location", "note"])
+        costs_sheet.append(["category", "amount", "location", "note", "basis", "basis_value", "reimbursable", "provenance", "source_ref"])
         for c in model.cost_lines:
             costs_sheet.append(
-                [c.category, _fmt(c.amount), c.location, c.note or ""]
+                [c.category, _fmt(c.amount), c.location, c.note or "", c.basis,
+                 _fmt(c.basis_value), c.reimbursable, c.provenance, c.source_ref]
             )
 
     result_sheet = wb.create_sheet("Result")
@@ -1254,6 +1339,16 @@ def build_xlsx(model: GmModel, result: TemplateResult, response: dict) -> bytes:
     result_sheet.append(["requires_ceo", response["policy"]["requires_ceo"]])
     result_sheet.append(["missing", ", ".join(response.get("missing") or [])])
     result_sheet.append(["computed_at", response.get("computed_at")])
+    for key, value in response.get("finance_summary", {}).items():
+        result_sheet.append([key, value])
+    result_sheet.append(["gm_version", model.version])
+
+    # Export user text literally; an expense description is never an Excel formula.
+    for sheet in wb:
+        for row in sheet:
+            for cell in row:
+                if cell.data_type == "f":
+                    cell.data_type = "s"
 
     buf = BytesIO()
     wb.save(buf)
@@ -1386,6 +1481,11 @@ def _build_template_json(model: GmModel) -> dict[str, Any]:
                 "amount": _fmt(c.amount),
                 "location": c.location,
                 "note": c.note,
+                "basis": c.basis or "amount",
+                "basis_value": _fmt(c.basis_value),
+                "reimbursable": c.reimbursable or False,
+                "provenance": c.provenance or "manual",
+                "source_ref": c.source_ref,
             }
             for c in model.cost_lines
         ],
@@ -1566,19 +1666,7 @@ async def seed_from_template(
 
     cost_inputs: list[CostLinePayload] = []
     for c in tj.get("cost_lines") or []:
-        cat = c.get("category")
-        if cat not in _ALLOWED_COST_CATEGORIES:
-            continue
-        loc = c.get("location") if c.get("location") in _ALLOWED_LOCATIONS else "US"
-        cost_inputs.append(
-            CostLinePayload(
-                category=cat,
-                amount=Decimal(str(c.get("amount") or "0")),
-                note=(c.get("note") or None),
-                location=loc,
-                phase_name=(c.get("phase_name") or None),
-            )
-        )
+        cost_inputs.append(parse_cost_line({**c, "basis_value": c.get("basis_value") or c.get("amount") or "0"}, field="template.cost_lines"))
 
     engagement_type = tj.get("engagement_type") or tpl.engagement_type
     payload = GmModelPayload(

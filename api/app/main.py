@@ -35,6 +35,7 @@ from app.routers import (
     me,
     notifications,
     renewals,
+    settings,
     signatories,
     signed_sow,
     sow,
@@ -150,6 +151,7 @@ app.include_router(legacy.router)
 app.include_router(approvals.router)
 app.include_router(ceo_exception.router)
 app.include_router(signatories.router)
+app.include_router(settings.router)
 app.include_router(signed_sow.router)
 app.include_router(renewals.router)
 app.include_router(dashboards.router)

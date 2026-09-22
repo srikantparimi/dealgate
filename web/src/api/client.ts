@@ -1499,11 +1499,14 @@ export interface SowConfirmationStaffing {
 }
 
 export interface SowConfirmationGmModel {
+  direct_costs_reviewed?: boolean;
   id: UUID;
   engagement_type: EngagementType | string;
   revenue_us: DecimalStr | null;
   revenue_india: DecimalStr | null;
   resource_line_count: number;
+  version?: number;
+  cost_lines?: DeliveryCostLineInput[];
 }
 
 /**
@@ -1512,6 +1515,13 @@ export interface SowConfirmationGmModel {
  * (spec §21, CLAUDE.md rule 2).
  */
 export interface SowConfirmationFloors {
+  complete?: boolean;
+  finance_summary?: FinanceSummary;
+  gm_version?: number;
+  us_applicable?: boolean;
+  india_applicable?: boolean;
+  us_delta?: DecimalStr | null;
+  india_delta?: DecimalStr | null;
   revenue_total?: DecimalStr | null;
   us_floor?: DecimalStr;
   india_floor?: DecimalStr;
@@ -1584,6 +1594,7 @@ export interface SowConfirmationSource {
 }
 
 export interface SowConfirmationPayload {
+  direct_cost_proposals?: DirectCostProposal[];
   source: SowConfirmationSource;
   sow_version: SowConfirmationSowVersion;
   engagement: SowConfirmationEngagement;
@@ -1631,11 +1642,7 @@ export type DeliveryLocation = "US" | "India";
  * anything else so the API's 422 path is only reachable when the browser is
  * out of sync with the server (e.g. an old cached bundle).
  */
-export type DeliveryCostCategory =
-  | "tools"
-  | "travel"
-  | "subcontractor"
-  | "other";
+export type DeliveryCostCategory = string;
 
 /**
  * S9 — provenance kind for every derived field on the SOW-first pipeline
@@ -1679,6 +1686,7 @@ export interface DeliveryLineProvenance {
  * warnings key off this.
  */
 export interface DeliveryResourceLineInput {
+  id?: UUID;
   role: string;
   seniority: string;
   location: DeliveryLocation;
@@ -1688,8 +1696,8 @@ export interface DeliveryResourceLineInput {
   end_date: ISODate;
   hours_billable: DecimalStr;
   hourly_bill_rate: DecimalStr;
-  hourly_cost: DecimalStr | null;
-  validated_by: UUID | null;
+  hourly_cost?: DecimalStr | null;
+  validated_by?: UUID | null;
   /** S7 wave 2 — WBS phase name join key at save time. Null keeps the
    * row in the Builder's "Ungrouped" bucket. */
   phase_name?: string | null;
@@ -1700,10 +1708,28 @@ export interface DeliveryResourceLineInput {
 export interface DeliveryCostLineInput {
   category: DeliveryCostCategory;
   amount: DecimalStr;
-  location: DeliveryLocation;
+  location: DeliveryLocation | "proportional";
+  basis?: "amount" | "percent_revenue";
+  basis_value?: DecimalStr;
+  reimbursable?: boolean;
+  provenance?: "manual" | "extracted";
+  source_ref?: string | null;
   note?: string | null;
   phase_name?: string | null;
   provenance_meta?: DeliveryLineProvenance | null;
+}
+
+export type DirectCostProposal = Omit<DeliveryCostLineInput, "amount" | "basis_value"> & {
+  amount: DecimalStr | null;
+  basis_value?: DecimalStr | null;
+};
+
+export function getDirectCostCategories(): Promise<{ categories: string[] }> {
+  return request(`/settings/direct-cost-categories`);
+}
+
+export function saveDirectCostCategories(categories: string[]): Promise<{ categories: string[] }> {
+  return request(`/settings/direct-cost-categories`, { method: "PUT", body: JSON.stringify({ categories }) });
 }
 
 export interface DeliveryResourceLineRow extends DeliveryResourceLineInput {
@@ -1755,6 +1781,10 @@ export interface DeliveryWarning {
  * block so the panel can reuse the sandbox's rendering code.
  */
 export interface DeliveryPolicyResult {
+  us_applicable?: boolean;
+  india_applicable?: boolean;
+  us_delta?: DecimalStr | null;
+  india_delta?: DecimalStr | null;
   us_floor: DecimalStr;
   india_floor: DecimalStr;
   us_pass: boolean;
@@ -1763,7 +1793,21 @@ export interface DeliveryPolicyResult {
   failing: string[];
 }
 
+export interface FinanceSummary {
+  revenue: DecimalStr;
+  labor_cost: DecimalStr | null;
+  direct_cost: DecimalStr;
+  total_delivery_cost: DecimalStr | null;
+  gross_profit: DecimalStr | null;
+  labor_pct: DecimalStr | null;
+  direct_pct: DecimalStr | null;
+  total_cost_pct: DecimalStr | null;
+  pass_through: DecimalStr;
+}
+
 export interface DeliveryComputedResult {
+  finance_summary?: FinanceSummary;
+  gm_version?: number;
   revenue_us: DecimalStr;
   cost_us: DecimalStr;
   gm_us: DecimalStr | null;
@@ -1790,6 +1834,7 @@ export interface DeliveryPreviewResponse {
 }
 
 export interface DeliveryGmModel {
+  version?: number;
   id: UUID;
   opportunity_id: UUID | null;
   sow_version_id: UUID | null;
@@ -1955,6 +2000,7 @@ export function listDraftSows(mine = true): Promise<{ drafts: DraftSowRow[] }> {
 
 /** A resource as the API returns it — utilization is a percentage here. */
 export interface SowResourceRow {
+  id?: UUID;
   role: string;
   seniority: string;
   location: string;
@@ -1968,6 +2014,10 @@ export interface SowResourceRow {
 }
 
 export interface SowResourcesState {
+  resource_lines?: DeliveryResourceLineInput[];
+  direct_cost_proposals?: DirectCostProposal[];
+  cost_lines?: DeliveryCostLineInput[];
+  total_price?: DecimalStr | null;
   opportunity_id: UUID;
   gm_model_id: UUID | null;
   engagement_type: string | null;
@@ -1978,6 +2028,16 @@ export interface SowResourcesState {
   requires_notice_on_change: boolean;
   resources: SowResourceRow[];
   margin: {
+    complete?: boolean;
+    finance_summary?: FinanceSummary;
+    gm_version?: number;
+    us_applicable?: boolean;
+    india_applicable?: boolean;
+    us_floor?: DecimalStr;
+    india_floor?: DecimalStr;
+    us_delta?: DecimalStr | null;
+    india_delta?: DecimalStr | null;
+    failing?: string[];
     gm_model_id: UUID | null;
     gm_us?: string | null;
     gm_india?: string | null;
@@ -2014,8 +2074,8 @@ export function putSowStaffing(
   opportunityId: UUID,
   body: {
     engagement_type: string;
-    resource_lines: DeliveryResourceLineInput[];
-    cost_lines: DeliveryCostLineInput[];
+    resource_lines?: DeliveryResourceLineInput[];
+    cost_lines?: DeliveryCostLineInput[];
     total_price?: string;
     effective_from?: string;
     reason?: string;
@@ -2417,6 +2477,9 @@ export interface CeoBriefGmComponent {
 }
 
 export interface CeoBriefJson {
+  finance_summary?: FinanceSummary;
+  floors?: SowConfirmationFloors;
+  cost_lines?: DeliveryCostLineInput[];
   client: CeoBriefClient;
   scope: string;
   team_summary: string;
@@ -2551,7 +2614,7 @@ export interface ApprovalRow {
   decided_at: ISODateTime | null;
 }
 
-export interface ApprovalPackageFloors {
+export interface ApprovalPackageFloors extends SowConfirmationFloors {
   us_pass: boolean;
   india_pass: boolean;
   requires_ceo: boolean;
@@ -2560,6 +2623,7 @@ export interface ApprovalPackageFloors {
 }
 
 export interface ApprovalPackage {
+  cost_lines?: DeliveryCostLineInput[];
   id: UUID;
   opportunity_id: UUID;
   sow_version_id: UUID;

@@ -20,7 +20,6 @@ from typing import Any
 import httpx
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.main import app as main_app
@@ -257,6 +256,20 @@ async def test_ceo_view_returns_empty_lists_not_nulls_on_empty_db(session):
     assert body["approved_vs_forecast_gp"]["forecast_gp"] == "0"
 
 
+async def test_latest_dashboard_model_uses_version_when_timestamps_tie(session):
+    from app.services.dashboards import _load_latest_gm_for_opps
+
+    owner = await _seed_user(session, "version-owner@example.com", ["Sales"])
+    opp = await _seed_opportunity(session, owner)
+    timestamp = datetime(2026, 9, 21, 12, tzinfo=UTC)
+    older = GmModel(id=uuid.UUID(int=2), opportunity_id=opp.id, engagement_type="tm", version=1, created_at=timestamp)
+    newer = GmModel(id=uuid.UUID(int=1), opportunity_id=opp.id, engagement_type="tm", version=2, created_at=timestamp)
+    session.add_all([older, newer])
+    await session.commit()
+    latest = await _load_latest_gm_for_opps(session, [opp.id])
+    assert latest[opp.id].id == newer.id
+
+
 # ---- Client SOW/GM aggregation (THE test) -------------------------------
 
 
@@ -454,6 +467,34 @@ async def test_finance_view_gm_by_geography_uses_server_totals(session):
     body = await finance_view(session)
     assert Decimal(body["gm_by_geography"]["US"]["gm"]) == Decimal("0.5")
     assert Decimal(body["gm_by_geography"]["India"]["gm"]) == Decimal("0.6")
+
+
+@pytest.mark.parametrize("engagement_type", ["tm", "fixed_price"])
+async def test_dashboard_totals_share_direct_cost_allocation_and_exclude_pass_through(session, engagement_type):
+    owner = await _seed_user(session, "direct-cost-owner@example.com", ["Sales"])
+    client = await _seed_client(session, "Direct Cost Fixture")
+    opp = await _seed_opportunity(session, owner, client_id=client.id)
+    model = await _seed_gm_model(
+        session, opportunity=opp, revenue_us=Decimal("100000"), revenue_india=Decimal("60000"),
+        cost_us=Decimal("65000"), cost_india=Decimal("30000"), engagement_type=engagement_type,
+    )
+    session.add_all([
+        CostLine(gm_model_id=model.id, category="Software", amount=Decimal("1900"),
+                 location="proportional", basis="percent_revenue", basis_value=Decimal("1.1875")),
+        CostLine(gm_model_id=model.id, category="Travel", amount=Decimal("2300"),
+                 location="US", reimbursable=True),
+    ])
+    await session.commit()
+
+    finance = await finance_view(session)
+    assert Decimal(finance["gm_by_geography"]["US"]["gm"]) == Decimal("0.337")
+    assert Decimal(finance["gm_by_geography"]["India"]["gm"]) == Decimal("0.49")
+    clients = await client_sow_gm_view(session, client.id)
+    assert Decimal(clients["rows"][0]["cost_us"]) == Decimal("66300")
+    assert Decimal(clients["rows"][0]["cost_india"]) == Decimal("30600")
+    assert Decimal(clients["totals"]["gross_profit"]) == Decimal("63100")
+    ceo = await ceo_view(session)
+    assert Decimal(ceo["approved_vs_forecast_gp"]["forecast_gp"]) == Decimal("63100")
 
 
 # ---- Sales view ---------------------------------------------------------

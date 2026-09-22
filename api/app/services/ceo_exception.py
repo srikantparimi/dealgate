@@ -245,6 +245,9 @@ async def draft_for_package(
         return existing
 
     brief = draft_brief(brief_inputs or {}, adapter=adapter)
+    from app.services.approvals import _floor_check
+    brief["floors"] = await _floor_check(session, pkg)
+    brief["finance_summary"] = brief["floors"].get("finance_summary")
     row = CeoException(
         id=uuid.uuid4(),
         package_id=package_id,

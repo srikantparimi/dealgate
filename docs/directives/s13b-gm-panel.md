@@ -74,4 +74,3 @@ Browser-proven on staging, screenshots in `docs/reports/s13b.md`:
 5. Direct costs round-trip through save, appear in the approver package and the exported GM (.xlsx), and are versioned with the GM model.
 6. Signatories list shows names, not UUIDs.
 7. Existing goldens untouched and green — this slice must not change any engine result except where direct costs are entered.
-

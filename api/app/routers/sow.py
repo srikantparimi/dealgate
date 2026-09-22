@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user, require_role
 from app.db import get_session
+from app.services.redact import redact_costs
 from app.integrations.bedrock_sow_extract import (
     BedrockSowExtract,
     get_bedrock_sow,
@@ -165,7 +166,7 @@ def _require_owner(user: AuthUser, opp: Opportunity) -> None:
 
 
 def _to_response(
-    state: SowVersionState, download_url: str | None = None
+    state: SowVersionState, download_url: str | None = None, *, user: AuthUser
 ) -> VersionResponse:
     return VersionResponse(
         id=state.id,
@@ -175,7 +176,7 @@ def _to_response(
         uploaded_at=state.uploaded_at,
         file_s3_key=state.file_s3_key,
         file_hash=state.file_hash,
-        extracted_fields=state.extracted_fields,
+        extracted_fields=redact_costs(state.extracted_fields, set(user.groups)),
         extract_status=state.extract_status,
         extract_model=state.extract_model,
         extract_prompt_version=state.extract_prompt_version,
@@ -270,7 +271,7 @@ async def create_version(
 
     await session.commit()
     download = s3.generate_download_url(state.file_s3_key)
-    return _to_response(state, download_url=download)
+    return _to_response(state, download_url=download, user=user)
 
 
 @router.get(
@@ -293,7 +294,7 @@ async def get_current_version(
     if state is None:
         return None
     download = s3.generate_download_url(state.file_s3_key)
-    return _to_response(state, download_url=download)
+    return _to_response(state, download_url=download, user=_user)
 
 
 @router.get("/versions/{sow_version_id}", response_model=VersionResponse)
@@ -305,7 +306,7 @@ async def get_version(
 ) -> VersionResponse:
     state = await _load_version_or_404(session, sow_version_id)
     download = s3.generate_download_url(state.file_s3_key)
-    return _to_response(state, download_url=download)
+    return _to_response(state, download_url=download, user=_user)
 
 
 @router.patch(
@@ -342,7 +343,7 @@ async def patch_field(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     await session.commit()
     download = s3.generate_download_url(new_state.file_s3_key)
-    return _to_response(new_state, download_url=download)
+    return _to_response(new_state, download_url=download, user=user)
 
 
 @router.get("/{opportunity_id}/confirmation")
@@ -373,7 +374,7 @@ async def get_confirmation(
     # writes through delivery_model.create_gm_model_version which flushes
     # but its own commit is what persists the audit + row together.
     await session.commit()
-    return serialize_confirmation(payload)
+    return redact_costs(serialize_confirmation(payload), set(_user.groups))
 
 
 @router.post("/{opportunity_id}/confirmation/submit")
@@ -400,7 +401,7 @@ async def submit_confirmation_endpoint(
         )
     except SowNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return serialize_confirmation(payload)
+    return redact_costs(serialize_confirmation(payload), set(user.groups))
 
 
 @router.post(
@@ -431,4 +432,4 @@ async def submit_version(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     await session.commit()
     download = s3.generate_download_url(new_state.file_s3_key)
-    return _to_response(new_state, download_url=download)
+    return _to_response(new_state, download_url=download, user=user)

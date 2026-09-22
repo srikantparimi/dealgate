@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import append_audit
 from app.models.client import Agreement, Client, LegalEntity
 from app.models.opportunity import Opportunity
+from app.services.user_identity import display_user_name
 
 log = structlog.get_logger("clients")
 
@@ -578,7 +579,7 @@ async def list_clients(
                 select(_User).where(_User.id.in_(list(all_owner_ids)))
             )
         ).scalars():
-            owner_names[u.id] = (u.name or u.email or "").strip() or "Unnamed"
+            owner_names[u.id] = display_user_name(u.name, u.email)
 
     rows: list[ClientRow] = []
     for c in clients:

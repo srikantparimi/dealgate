@@ -19,6 +19,8 @@ import { ErrorState } from "../ui/ErrorState";
 import { PageHeader } from "../ui/PageHeader";
 import { StatusChip } from "../ui/StatusChip";
 import { Table, type Column } from "../ui/Table";
+import { FinanceGmPanel } from "./v2/sow-workspace/staffing/FinanceGmPanel";
+import { DirectCostsEditor } from "./v2/sow-workspace/staffing/DirectCostsEditor";
 
 const STATUS_TONE: Record<ApprovalPackageStatus, "ok" | "warn" | "block" | "neutral"> = {
   pending_delivery_hr: "warn",
@@ -129,24 +131,10 @@ export function ApprovalPackageDetailPage() {
         ) : null}
       </Panel>
 
-      <Panel title="Floor check">
-        <div style={{ display: "flex", gap: 8 }}>
-          <StatusChip tone={floors.us_pass ? "ok" : "block"}>
-            US {floors.us_pass ? "pass" : "fail"}
-          </StatusChip>
-          <StatusChip tone={floors.india_pass ? "ok" : "block"}>
-            India {floors.india_pass ? "pass" : "fail"}
-          </StatusChip>
-          {floors.requires_ceo ? (
-            <StatusChip tone="block">CEO exception</StatusChip>
-          ) : null}
-        </div>
-        {floors.failing.length > 0 ? (
-          <p style={{ marginTop: 8, color: "#6b7280", fontSize: 13 }}>
-            Failing: {floors.failing.join(", ")}
-          </p>
-        ) : null}
-      </Panel>
+      <div className="mb-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {pkg.cost_lines !== undefined ? <DirectCostsEditor rows={pkg.cost_lines} /> : <div />}
+        <FinanceGmPanel result={floors} state="review snapshot" />
+      </div>
 
       <Panel title="Decisions">
         {approvalRows.length === 0 ? (

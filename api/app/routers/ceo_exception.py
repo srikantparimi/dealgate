@@ -29,8 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user, require_role
 from app.db import get_session
+from app.services.redact import redact_costs
 from app.services.ceo_exception import (
-    DECISIONS,
     active_delegate,
     can_decide,
     decide,
@@ -130,7 +130,7 @@ async def list_endpoint(
         )
     pending_only = status_filter == "pending"
     rows = await list_exceptions(session, pending_only=pending_only)
-    return {"items": [_serialize(r) for r in rows]}
+    return redact_costs({"items": [_serialize(r) for r in rows]}, set(actor.groups))
 
 
 @router.get("/ceo-exceptions/{exception_id}")
@@ -140,7 +140,14 @@ async def get_endpoint(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     row = await load_exception(session, exception_id)
-    return _serialize(row)
+    payload = _serialize(row)
+    from app.services.approvals import _floor_check
+    from app.services.ceo_exception import _load_package
+    package = await _load_package(session, row.package_id)
+    floors = await _floor_check(session, package)
+    payload["brief_json"] = {**(row.brief_json or {}), "floors": floors,
+                             "finance_summary": floors.get("finance_summary")}
+    return redact_costs(payload, set(_actor.groups))
 
 
 @router.patch("/ceo-exceptions/{exception_id}/rationale")
@@ -159,7 +166,7 @@ async def patch_rationale_endpoint(
         rationale_text=body.rationale_text,
         tidy=body.tidy,
     )
-    return _serialize(row)
+    return redact_costs(_serialize(row), set(actor.groups))
 
 
 @router.post(
@@ -182,7 +189,7 @@ async def post_decision_endpoint(
         conditions_text=body.conditions_text,
         valid_until=body.valid_until,
     )
-    return _serialize(row)
+    return redact_costs(_serialize(row), set(actor.groups))
 
 
 @router.post(

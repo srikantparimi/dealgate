@@ -96,7 +96,7 @@ describe("CEOExceptionDecisionPage (SOW-first)", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the geography table with both components", async () => {
+  it("renders the Finance panel with both geography components", async () => {
     stubList([baseException()]);
     stubGet(baseException());
     stubGetPackageMissing();
@@ -105,16 +105,11 @@ describe("CEOExceptionDecisionPage (SOW-first)", () => {
 
     await screen.findByRole("heading", { name: /CEO margin exception/i });
 
-    const geoRegion = screen.getByRole("region", {
-      name: /geography scroll region/i,
-    });
-    // Both under-floor components must be visible — never merged.
-    expect(within(geoRegion).getByTestId("geo-row-us")).toBeInTheDocument();
-    expect(within(geoRegion).getByTestId("geo-row-india")).toBeInTheDocument();
-
-    // The floor-bar visual also shows both.
-    expect(screen.getByTestId("geo-bar-us")).toBeInTheDocument();
-    expect(screen.getByTestId("geo-bar-india")).toBeInTheDocument();
+    const panel = screen.getByRole("region", { name: "GM summary" });
+    expect(within(panel).getByText("27.8%")).toBeInTheDocument();
+    expect(within(panel).getByText("45.5%")).toBeInTheDocument();
+    expect(within(panel).getAllByRole("meter")).toHaveLength(2);
+    expect(within(panel).getByTestId("staffing-floor-summary")).toHaveTextContent("Fails · US, India");
   });
 
   it("keeps the rationale textarea as the only free-text human input", async () => {

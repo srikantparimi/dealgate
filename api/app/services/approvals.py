@@ -34,15 +34,14 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.audit import append_audit
-from app.gm.policy import check_floors
 from app.models.approval import (
     APPROVAL_DECISIONS,
     APPROVAL_FUNCTIONS,
@@ -101,11 +100,23 @@ def _resource_line_snapshot(line: Any) -> dict[str, Any]:
 
 
 def _cost_line_snapshot(line: Any) -> dict[str, Any]:
-    return {
+    legacy = line.basis_value is None and not line.reimbursable and (
+        line.basis in (None, "amount") and line.provenance in (None, "manual") and line.source_ref is None
+    )
+    snapshot = {
         "category": line.category,
-        "amount": str(line.amount),
+        "amount": format(line.amount, ".2f") if legacy else str(line.amount),
         "location": line.location,
         "note": line.note,
+    }
+    if legacy:
+        return snapshot
+    return {**snapshot,
+        "basis": line.basis or "amount",
+        "basis_value": str(line.basis_value) if line.basis_value is not None else None,
+        "reimbursable": line.reimbursable or False,
+        "provenance": line.provenance or "manual",
+        "source_ref": line.source_ref,
     }
 
 
@@ -198,7 +209,7 @@ async def _latest_gm_model(
             selectinload(GmModel.cost_lines),
         )
         .where(GmModel.opportunity_id == opportunity_id)
-        .order_by(GmModel.created_at.desc(), GmModel.id.desc())
+        .order_by(GmModel.created_at.desc(), GmModel.version.desc(), GmModel.id.desc())
         .limit(1)
     )
     return (await session.execute(stmt)).scalar_one_or_none()
@@ -567,6 +578,7 @@ async def _floor_check(
         DeliveryModelInputError,
         _extra_inputs_for_model,
         _model_to_payload,
+        build_compute_response,
         compute_live,
     )
     from app.services.gm_sandbox import SandboxInputError
@@ -585,11 +597,14 @@ async def _floor_check(
             "failing": [],
             "error": str(exc),
         }
-    return check_floors(
-        result,
-        us_floor_value=us_floor,
-        india_floor_value=india_floor,
-    )
+    response = build_compute_response(result, us_floor=us_floor, india_floor=india_floor)
+    return {
+        **response["policy"],
+        "gm_model_id": str(gm_model.id), "gm_version": gm_model.version,
+        "gm_us": response["gm_us"], "gm_india": response["gm_india"],
+        "gm_blended": response["gm_blended"], "complete": response["complete"],
+        "finance_summary": response["finance_summary"],
+    }
 
 
 async def _notify_owner_of_rejection(
@@ -1040,6 +1055,9 @@ async def serialize_package_with_floors(
 
     payload = serialize_package(package)
     payload["floors"] = await _floor_check(session, package)
+    from app.services.delivery_model import serialize_cost_line
+    model = await _load_gm_model(session, package.gm_model_id)
+    payload["cost_lines"] = [serialize_cost_line(line) for line in model.cost_lines]
     return payload
 
 

@@ -14,6 +14,7 @@
 import { EmptyState } from "../../../ui-v2/EmptyState";
 import { PageHeader } from "../../../ui-v2/PageHeader";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
+import { DirectCostCategories } from "./DirectCostCategories";
 
 interface FieldRow {
   label: string;
@@ -118,6 +119,8 @@ export function GeneralSection() {
           ))}
         </div>
       </section>
+
+      <DirectCostCategories />
 
       <section
         aria-label="Legal entities"

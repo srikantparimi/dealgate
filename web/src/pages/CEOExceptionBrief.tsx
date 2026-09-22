@@ -17,6 +17,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FinanceGmPanel } from "./v2/sow-workspace/staffing/FinanceGmPanel";
+import { DirectCostsEditor } from "./v2/sow-workspace/staffing/DirectCostsEditor";
 import { useParams } from "react-router-dom";
 import {
   type CeoDecision,
@@ -29,7 +31,6 @@ import { useAuth } from "../auth/AuthProvider";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { PageHeader } from "../ui/PageHeader";
-import { StatusChip } from "../ui/StatusChip";
 
 const DECIDE_ROLES = new Set(["CEO", "SystemAdmin"]);
 
@@ -40,38 +41,6 @@ function fmtMoney(v: string | null | undefined): string {
   const n = Number(v);
   if (Number.isNaN(n)) return v;
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-}
-
-function fmtPct(v: string | null | undefined): string {
-  if (!v) return "—";
-  const n = Number(v);
-  if (Number.isNaN(n)) return v;
-  return `${(n * 100).toFixed(1)}%`;
-}
-
-function GmRow({
-  label,
-  value,
-  floor,
-  passes,
-}: {
-  label: string;
-  value: string | null;
-  floor: string | null;
-  passes: boolean;
-}) {
-  return (
-    <tr>
-      <td style={{ padding: "6px 12px" }}>{label}</td>
-      <td style={{ padding: "6px 12px" }}>{fmtPct(value)}</td>
-      <td style={{ padding: "6px 12px" }}>{fmtPct(floor)}</td>
-      <td style={{ padding: "6px 12px" }}>
-        <StatusChip tone={passes ? "ok" : "block"}>
-          {passes ? "PASS" : "FAIL"}
-        </StatusChip>
-      </td>
-    </tr>
-  );
 }
 
 export function CEOExceptionBriefPage() {
@@ -195,91 +164,11 @@ export function CEOExceptionBriefPage() {
         <div style={{ color: "#374151", fontSize: 14 }}>{b.team_summary || "—"}</div>
       </section>
 
-      {/* Revenue + cost */}
-      <section style={{ marginBottom: 20 }}>
-        <h3 style={{ margin: "0 0 6px 0" }}>Revenue &amp; cost</h3>
-        <table
-          aria-label="Revenue and cost"
-          style={{ borderCollapse: "collapse", fontSize: 14 }}
-        >
-          <thead>
-            <tr style={{ background: "#f3f4f6" }}>
-              <th style={{ padding: "6px 12px", textAlign: "left" }}>Component</th>
-              <th style={{ padding: "6px 12px", textAlign: "left" }}>Revenue</th>
-              <th style={{ padding: "6px 12px", textAlign: "left" }}>Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style={{ padding: "6px 12px" }}>US</td>
-              <td style={{ padding: "6px 12px" }}>{fmtMoney(b.revenue.us)}</td>
-              <td style={{ padding: "6px 12px" }}>{fmtMoney(b.cost.us)}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: "6px 12px" }}>India</td>
-              <td style={{ padding: "6px 12px" }}>{fmtMoney(b.revenue.india)}</td>
-              <td style={{ padding: "6px 12px" }}>{fmtMoney(b.cost.india)}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: "6px 12px", fontWeight: 600 }}>Blended</td>
-              <td style={{ padding: "6px 12px", fontWeight: 600 }}>
-                {fmtMoney(b.revenue.blended)}
-              </td>
-              <td style={{ padding: "6px 12px", fontWeight: 600 }}>
-                {fmtMoney(b.cost.blended)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-
-      {/* GM vs floors */}
-      <section style={{ marginBottom: 20 }}>
-        <h3 style={{ margin: "0 0 6px 0" }}>Gross margin vs. policy floor</h3>
-        <table
-          aria-label="Gross margin"
-          style={{ borderCollapse: "collapse", fontSize: 14 }}
-        >
-          <thead>
-            <tr style={{ background: "#f3f4f6" }}>
-              <th style={{ padding: "6px 12px", textAlign: "left" }}>Component</th>
-              <th style={{ padding: "6px 12px", textAlign: "left" }}>GM</th>
-              <th style={{ padding: "6px 12px", textAlign: "left" }}>Floor</th>
-              <th style={{ padding: "6px 12px", textAlign: "left" }}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <GmRow
-              label="US"
-              value={b.gm.us.value}
-              floor={b.gm.us.floor}
-              passes={b.gm.us.passes}
-            />
-            <GmRow
-              label="India"
-              value={b.gm.india.value}
-              floor={b.gm.india.floor}
-              passes={b.gm.india.passes}
-            />
-            <tr>
-              <td style={{ padding: "6px 12px", fontWeight: 600 }}>Blended</td>
-              <td style={{ padding: "6px 12px", fontWeight: 600 }}>
-                {fmtPct(b.gm.blended.value)}
-              </td>
-              <td style={{ padding: "6px 12px" }}>—</td>
-              <td style={{ padding: "6px 12px" }} />
-            </tr>
-          </tbody>
-        </table>
-        <div style={{ fontSize: 13, color: "#6b7280", marginTop: 6 }}>
-          Price uplift needed — US: <strong>{fmtMoney(b.price_uplift.us)}</strong>{" "}
-          · India: <strong>{fmtMoney(b.price_uplift.india)}</strong>
-        </div>
-        <div style={{ fontSize: 13, color: "#6b7280" }}>
-          Gross-profit shortfall at proposed price:{" "}
-          <strong>{fmtMoney(b.gross_profit_shortfall_usd)}</strong>
-        </div>
-      </section>
+      <div className="mb-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {b.cost_lines !== undefined ? <DirectCostsEditor rows={b.cost_lines} /> : <div />}
+        <FinanceGmPanel result={b.floors ?? { finance_summary: b.finance_summary, revenue_total: b.revenue.blended, gm_us: b.gm.us.value, gm_india: b.gm.india.value, gm_blended: b.gm.blended.value, us_floor: b.gm.us.floor ?? undefined, india_floor: b.gm.india.floor ?? undefined, us_pass: b.gm.us.passes, india_pass: b.gm.india.passes }} state="review snapshot" />
+      </div>
+      <p className="mb-5 text-secondary text-text-secondary">Price uplift needed · US: {fmtMoney(b.price_uplift.us)} · India: {fmtMoney(b.price_uplift.india)}. Gross-profit shortfall: {fmtMoney(b.gross_profit_shortfall_usd)}</p>
 
       {/* Recommendations + alternatives */}
       <section style={{ marginBottom: 20 }}>

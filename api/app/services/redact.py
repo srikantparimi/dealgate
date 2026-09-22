@@ -38,6 +38,10 @@ COST_FIELDS: frozenset[str] = frozenset(
         "actual_cost",
         "hourly_loaded_cost",
         "loaded_cost",
+        "cost_lines",
+        "direct_costs",
+        "direct_cost_proposals",
+        "finance_summary",
     }
 )
 

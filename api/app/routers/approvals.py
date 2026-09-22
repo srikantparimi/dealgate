@@ -18,7 +18,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.models.opportunity import Opportunity
+from app.services.redact import redact_costs
 from app.services.approvals import (
     ApprovalError,
     ListFilters,
@@ -144,7 +145,7 @@ async def submit_endpoint(
         )
     except ApprovalError as exc:
         raise _wrap(exc) from exc
-    return await serialize_package_with_floors(session, pkg)
+    return redact_costs(await serialize_package_with_floors(session, pkg), set(user.groups))
 
 
 @router.get("/packages/{package_id}")
@@ -157,7 +158,7 @@ async def get_endpoint(
         pkg = await load_package(session, package_id)
     except ApprovalError as exc:
         raise _wrap(exc) from exc
-    return await serialize_package_with_floors(session, pkg)
+    return redact_costs(await serialize_package_with_floors(session, pkg), set(_user.groups))
 
 
 @router.post("/packages/{package_id}/decisions/{function}")
@@ -180,7 +181,7 @@ async def decide_endpoint(
         )
     except ApprovalError as exc:
         raise _wrap(exc) from exc
-    return await serialize_package_with_floors(session, pkg)
+    return redact_costs(await serialize_package_with_floors(session, pkg), set(user.groups))
 
 
 @router.post("/packages/{package_id}/void")
@@ -200,7 +201,7 @@ async def void_endpoint(
         )
     except ApprovalError as exc:
         raise _wrap(exc) from exc
-    return await serialize_package_with_floors(session, pkg)
+    return redact_costs(await serialize_package_with_floors(session, pkg), set(user.groups))
 
 
 @router.get("/packages", response_model=PackageListResponse)

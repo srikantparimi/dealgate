@@ -362,6 +362,7 @@ function ConfirmationFlow({
   onSubmittedNavigate: (opportunityId: UUID) => void;
 }) {
   const [payload, setPayload] = useState<SowConfirmationPayload | null>(null);
+  const [costsDirty, setCostsDirty] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -580,7 +581,7 @@ function ConfirmationFlow({
   }
 
   const engagementChip = engagementLabel(payload.engagement.primary.type);
-  const canSubmit = blockers === 0 && !submitting;
+  const canSubmit = blockers === 0 && !submitting && !costsDirty;
 
   return (
     <div className="space-y-4">
@@ -611,7 +612,7 @@ function ConfirmationFlow({
               id="submit-hint"
               className="text-secondary text-text-secondary"
             >
-              {blockers === 0
+              {costsDirty ? "Save direct costs before submitting." : blockers === 0
                 ? "Ready to submit."
                 : `${blockers} field${blockers === 1 ? "" : "s"} still block submit.`}
             </p>
@@ -635,7 +636,7 @@ function ConfirmationFlow({
         onSignatoriesChange={handleSignatoriesChange}
       />
       <RateCardSection payload={payload} />
-      <StaffingGmSection payload={payload} />
+      <StaffingGmSection payload={payload} opportunityId={opportunityId} onSaved={load} onDirtyChange={setCostsDirty} />
       <ApproversSection payload={payload} />
       <NeedsYouSection
         payload={payload}

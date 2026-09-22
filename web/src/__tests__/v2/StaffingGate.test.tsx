@@ -8,7 +8,7 @@
  * a person supplies the real plan instead.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import {
@@ -35,6 +35,8 @@ function renderGate() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.spyOn(api, "getDirectCostCategories").mockResolvedValue({ categories: ["Travel", "Software/licenses"] });
+  vi.spyOn(api, "getSowStaffing").mockResolvedValue({ resources: [], cost_lines: [], margin: {} } as never);
   vi.spyOn(api, "getSowConfirmation").mockResolvedValue({
     engagement: { primary: { type: "fixed_price", confidence: 0.9 } },
     sow_version: { extracted_fields: { price: { value: "$50,000.00" } } },
@@ -42,6 +44,14 @@ beforeEach(() => {
 });
 
 describe("rowIsComplete — what a row needs depends on the engagement", () => {
+  it("omits protected costs and keeps row identity for restricted staffing writes", () => {
+    const row = { ...emptyRow(), id: "resource-1", role: "Engineer", seniority: "Senior", hourly_bill_rate: "250", hourly_cost: "120", hours_billable: "80", start_date: "2026-09-01", end_date: "2026-09-30" };
+    const [line] = toResourceLines([row], "tm", false);
+    expect(line.id).toBe("resource-1");
+    expect(line).not.toHaveProperty("hourly_cost");
+    expect(line).not.toHaveProperty("validated_by");
+  });
+
   it("wants COST on a fixed fee, not a bill rate", () => {
     // A fixed fee earns the agreed price whatever the hours are, so the bill
     // rate never enters the margin. Requiring it would ask for a number
@@ -131,6 +141,34 @@ describe("rowIsComplete — what a row needs depends on the engagement", () => {
 });
 
 describe("StaffingGatePage", () => {
+  it("uses canonical staffing for cost-only previews and leaves saved resources intact", async () => {
+    const original: api.DeliveryResourceLineInput[] = [{ role: "Engineer", seniority: "Senior", location: "US", person_name: "Assigned engineer", allocation_pct: "1", hours_billable: "80", hourly_bill_rate: "0", hourly_cost: "120", validated_by: "hr-1", start_date: "2026-09-01", end_date: "2026-09-30" }, { role: "Pending", seniority: "Senior", location: "US", person_name: null, allocation_pct: "1", hours_billable: "80", hourly_bill_rate: "0", hourly_cost: null, validated_by: null, start_date: "2026-09-01", end_date: "2026-09-30" }];
+    vi.mocked(api.getSowStaffing).mockResolvedValue({ gm_model_id: "existing-gm", engagement_type: "fixed_price", resources: original.map((line) => ({ ...line, utilization_pct: "100" })), resource_lines: original, cost_lines: [], margin: {}, total_price: "50000" } as never);
+    const preview = vi.spyOn(api, "previewDeliveryModel").mockResolvedValue({ computed: { complete: false }, warnings: {} } as never);
+    const save = vi.spyOn(api, "putSowStaffing").mockResolvedValue({ gm_model_id: "next-gm" } as never);
+    renderGate();
+    fireEvent.click(await screen.findByRole("button", { name: "Add cost" }));
+    fireEvent.change(screen.getByLabelText("Cost value 1"), { target: { value: "1000" } });
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    expect(preview.mock.calls.at(-1)?.[0].inputs.resource_lines).toEqual(original);
+    fireEvent.click(screen.getByTestId("save-staffing"));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][1]).not.toHaveProperty("resource_lines");
+    expect(save.mock.calls[0][1].cost_lines?.[0].amount).toBe("1000");
+  });
+
+  it("preserves precise staffing inputs through hydration and saving", async () => {
+    vi.mocked(api.getSowStaffing).mockResolvedValue({ gm_model_id: "existing-gm", resources: [{ id: "resource-1", role: "Engineer", seniority: "Senior", location: "US", person_name: null, utilization_pct: "100.0000", hours_billable: "80.1250", hourly_bill_rate: "0.0000", hourly_cost: "120.1234", start_date: "2026-09-01", end_date: "2026-09-30" }], cost_lines: [], margin: {}, total_price: "50000" } as never);
+    const save = vi.spyOn(api, "putSowStaffing").mockResolvedValue({ gm_model_id: "new-gm" } as never);
+    renderGate();
+    expect(await screen.findByDisplayValue("120.1234")).toBeInTheDocument();
+    expect(screen.getByLabelText("hours-0")).toHaveValue("80.125");
+    fireEvent.change(screen.getByLabelText("role-0"), { target: { value: "Engineer II" } });
+    fireEvent.click(screen.getByTestId("save-staffing"));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][1].resource_lines?.[0]).toMatchObject({ id: "resource-1", hourly_cost: "120.1234", hours_billable: "80.125" });
+  });
+
   it("says why nothing was proposed, and what a fixed fee actually needs", async () => {
     renderGate();
     // The mocked SOW is a fixed fee, so the guidance has to say that the
@@ -183,7 +221,7 @@ describe("StaffingGatePage", () => {
     expect(await screen.findByText("42.0%")).toBeInTheDocument();
     expect(screen.getByText("47.0%")).toBeInTheDocument();
     // India has no lines, so its margin is absent — not zero.
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("Not applicable — no India resources")).toBeInTheDocument();
   });
 
   it("loads rows from an uploaded sheet without saving them", async () => {

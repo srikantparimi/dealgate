@@ -113,6 +113,7 @@ async def preview_endpoint(
                 "delivery_pattern": body.inputs.get("delivery_pattern"),
                 "contingency_pct": body.inputs.get("contingency_pct"),
                 "warranty_days": body.inputs.get("warranty_days"),
+                "total_price": body.inputs.get("total_price"),
             }
         )
         # Templates like fixed_price / assessment / managed_service also carry
@@ -139,14 +140,14 @@ async def preview_endpoint(
 
     capacity = await capacity_conflicts(session, payload.resource_lines)
     hr = hr_lead_time_warnings(payload.resource_lines)
-    return {
+    return redact_costs({
         "engagement_type": payload.engagement_type,
         "computed": build_compute_response(result),
         "warnings": {
             "capacity": serialize_warnings(capacity),
             "hr": serialize_warnings(hr),
         },
-    }
+    }, set(_user.groups))
 
 
 @router.post("/{opportunity_id}/versions", status_code=201)
@@ -176,7 +177,8 @@ async def create_version_endpoint(
 
     # Compute + serialize the resulting model for the save-response.
     try:
-        result = compute_live(payload)
+        from app.services.delivery_model import _extra_inputs_for_model, _model_to_payload
+        result = compute_live(_model_to_payload(model), extra_inputs=_extra_inputs_for_model(model))
     except (DeliveryModelInputError, SandboxInputError):
         # Persisted rows are fine even if compute rejects (e.g. missing
         # cost that the payload chose to leave null) — surface the shape
@@ -263,7 +265,7 @@ async def delete_template_endpoint(
 @router.get("/versions/{gm_model_id}/xlsx")
 async def export_version_endpoint(
     gm_model_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
+    _user: AuthUser = Depends(require_role("Delivery", "Finance", "HR", "SystemAdmin", "CEO")),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     """Excel export. Numbers must match the compute response for the same
@@ -406,5 +408,4 @@ async def list_versions_endpoint(
     await _load_opportunity(session, opportunity_id)
     models = await list_gm_models_for(session, opportunity_id)
     return {"items": [summarize_gm_model(m) for m in models]}
-
 

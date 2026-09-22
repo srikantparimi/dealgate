@@ -31,6 +31,9 @@ export interface FloorBarProps
   showChip?: boolean;
   /** Set to `false` to hide the "0%" / "60%" scale labels either side. */
   showScale?: boolean;
+  /** Policy outcomes and gaps supplied by the Decimal engine. */
+  passes?: boolean;
+  delta?: string | null;
 }
 
 function toPct(s: string): number {
@@ -51,13 +54,15 @@ export function FloorBar({
   label,
   showChip = true,
   showScale = true,
+  passes,
+  delta,
   className,
   ...rest
 }: FloorBarProps) {
   const valuePct = toPct(value);
   const floorPct = toPct(floor);
-  const gap = valuePct - floorPct;
-  const pass = gap >= 0;
+  const gap = delta != null ? Number(delta) * 100 : valuePct - floorPct;
+  const pass = passes ?? gap >= 0;
 
   const fillWidthPct = (clampToScale(valuePct) / SCALE_MAX) * 100;
   const floorLeftPct = (clampToScale(floorPct) / SCALE_MAX) * 100;

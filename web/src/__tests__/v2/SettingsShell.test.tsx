@@ -106,6 +106,7 @@ function emptyReplay<T>(): AdminReplayListResponse<T> {
 }
 
 function stubAllEndpoints() {
+  vi.spyOn(apiClient, "getDirectCostCategories").mockResolvedValue({ categories: ["Travel", "Other"] });
   vi.spyOn(apiClient, "listPolicies").mockResolvedValue(emptyPolicies());
   vi.spyOn(apiClient, "listRateCards").mockResolvedValue(emptyRateCards());
   vi.spyOn(apiClient, "listUsers").mockResolvedValue(emptyUsers());
@@ -228,7 +229,7 @@ describe("SettingsShellPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /History/i })).toBeInTheDocument();
     // Active-policy summary card echoes US 35% / India 50% verbatim.
-    expect(screen.getByLabelText(/Active policy summary/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/Active policy summary/i)).toBeInTheDocument();
   });
 
   it("reuses the existing audit viewer at /settings/audit", async () => {

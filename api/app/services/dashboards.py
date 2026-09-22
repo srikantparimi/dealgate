@@ -58,65 +58,22 @@ def _fmt(value: Optional[Decimal]) -> Optional[str]:
     return format(value, "f")
 
 
-def _line_cost_us(line: ResourceLine) -> Decimal:
-    """US cost of a resource line — Decimal, unrounded.
-
-    Missing ``hourly_cost`` is treated as zero for the aggregation but the
-    parent ``gm_model.complete=False`` flag is what the "missing cost inputs"
-    finance widget keys off — never silently ``0`` a whole margin story.
-    """
-
-    if line.location != "US":
-        return _ZERO
-    cost = line.hourly_cost or _ZERO
-    # Guard hours the same way as allocation. Both are NOT NULL in the model,
-    # but only one was guarded, and a None here is a TypeError that takes out
-    # the CEO, Finance and client dashboards at once.
-    hours = line.billable_hours or _ZERO
-    return hours * cost * (line.allocation_pct or _ZERO)
-
-
-def _line_cost_india(line: ResourceLine) -> Decimal:
-    if line.location != "India":
-        return _ZERO
-    cost = line.hourly_cost or _ZERO
-    # Guard hours the same way as allocation. Both are NOT NULL in the model,
-    # but only one was guarded, and a None here is a TypeError that takes out
-    # the CEO, Finance and client dashboards at once.
-    hours = line.billable_hours or _ZERO
-    return hours * cost * (line.allocation_pct or _ZERO)
-
-
 def _model_totals(model: GmModel) -> dict[str, Decimal]:
-    """Return ``{revenue_us, revenue_india, cost_us, cost_india, complete}``.
+    """Use the same pinned model calculation as Staffing, approvals and export."""
 
-    Uses the snapshot revenue columns on ``gm_model`` and re-sums cost from
-    the resource lines. Cost lines aren't split US/India in the aggregate;
-    they're added to the US side to match the GM library's staff_aug default
-    (build-guide §7). Any refinement stays in ``app.gm``.
-    """
+    from app.services.delivery_model import (
+        _extra_inputs_for_model,
+        _model_to_payload,
+        compute_live,
+    )
 
-    revenue_us = model.revenue_us or _ZERO
-    revenue_india = model.revenue_india or _ZERO
-    cost_us = _ZERO
-    cost_india = _ZERO
-    complete = True
-    for r in model.resource_lines:
-        if r.hourly_cost is None:
-            complete = False
-        cost_us += _line_cost_us(r)
-        cost_india += _line_cost_india(r)
-    for c in model.cost_lines:
-        if c.location == "India":
-            cost_india += c.amount or _ZERO
-        else:
-            cost_us += c.amount or _ZERO
+    result = compute_live(_model_to_payload(model), extra_inputs=_extra_inputs_for_model(model))
     return {
-        "revenue_us": revenue_us,
-        "revenue_india": revenue_india,
-        "cost_us": cost_us,
-        "cost_india": cost_india,
-        "complete": complete,
+        "revenue_us": result.revenue_us,
+        "revenue_india": result.revenue_india,
+        "cost_us": result.cost_us,
+        "cost_india": result.cost_india,
+        "complete": result.complete,
     }
 
 
@@ -151,7 +108,7 @@ async def _load_latest_gm_for_opps(
             selectinload(GmModel.cost_lines),
         )
         .where(GmModel.opportunity_id.in_(opportunity_ids))
-        .order_by(GmModel.opportunity_id, GmModel.created_at.desc(), GmModel.id.desc())
+        .order_by(GmModel.opportunity_id, GmModel.created_at.desc(), GmModel.version.desc(), GmModel.id.desc())
     )
     rows = list((await session.execute(stmt)).scalars())
     out: dict[uuid.UUID, GmModel] = {}

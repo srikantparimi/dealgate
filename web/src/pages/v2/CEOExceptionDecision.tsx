@@ -33,8 +33,8 @@ import { Button } from "../../ui-v2/primitives/button";
 import { Input } from "../../ui-v2/primitives/input";
 import { Label } from "../../ui-v2/primitives/label";
 import { cn } from "../../lib/cn";
-import { GeographyFloorBars } from "./ceo-exception/GeographyFloorBars";
-import { GeographyTable } from "./ceo-exception/GeographyTable";
+import { FinanceGmPanel } from "./sow-workspace/staffing/FinanceGmPanel";
+import { DirectCostsEditor } from "./sow-workspace/staffing/DirectCostsEditor";
 import { PackageGates } from "./ceo-exception/PackageGates";
 import {
   ConditionsEditor,
@@ -126,45 +126,9 @@ export function CEOExceptionDecisionPage() {
 
   const brief = exception?.brief_json ?? null;
 
-  const proposedRevenue = useMemo(
-    () =>
-      formatUsd(brief?.revenue.blended ?? null) ??
-      formatUsd(
-        brief
-          ? String(
-              (Number(brief.revenue.us ?? 0) +
-                Number(brief.revenue.india ?? 0)) as number,
-            )
-          : null,
-      ),
-    [brief],
-  );
-  const eligibleCost = useMemo(
-    () =>
-      formatUsd(brief?.cost.blended ?? null) ??
-      formatUsd(
-        brief
-          ? String(
-              (Number(brief.cost.us ?? 0) +
-                Number(brief.cost.india ?? 0)) as number,
-            )
-          : null,
-      ),
-    [brief],
-  );
-  const expectedProfit = useMemo(() => {
-    if (!brief) return null;
-    const rev =
-      brief.revenue.blended != null
-        ? Number(brief.revenue.blended)
-        : Number(brief.revenue.us ?? 0) + Number(brief.revenue.india ?? 0);
-    const cost =
-      brief.cost.blended != null
-        ? Number(brief.cost.blended)
-        : Number(brief.cost.us ?? 0) + Number(brief.cost.india ?? 0);
-    const p = rev - cost;
-    return Number.isFinite(p) ? formatUsd(String(p)) : null;
-  }, [brief]);
+  const proposedRevenue = formatUsd(brief?.finance_summary?.revenue ?? brief?.revenue.blended);
+  const eligibleCost = formatUsd(brief?.finance_summary?.total_delivery_cost ?? brief?.cost.blended);
+  const expectedProfit = formatUsd(brief?.finance_summary?.gross_profit);
   const combinedGm = useMemo(
     () => formatPercent(brief?.gm.blended.value ?? null),
     [brief],
@@ -308,14 +272,14 @@ export function CEOExceptionDecisionPage() {
         }
         status={
           <>
-            <StatusBadge
+            {brief.gm.us.value != null ? <StatusBadge
               tone={brief.gm.us.passes ? "success" : "danger"}
               label={`US ${brief.gm.us.passes ? "passes" : "below floor"}`}
-            />
-            <StatusBadge
+            /> : null}
+            {brief.gm.india.value != null ? <StatusBadge
               tone={brief.gm.india.passes ? "success" : "danger"}
               label={`India ${brief.gm.india.passes ? "passes" : "below floor"}`}
-            />
+            /> : null}
             {savedDecision ? (
               <StatusBadge tone="success" label={`Decision: ${savedDecision}`} />
             ) : (
@@ -364,8 +328,10 @@ export function CEOExceptionDecisionPage() {
         />
       </section>
 
-      <GeographyTable brief={brief} />
-      <GeographyFloorBars brief={brief} />
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {brief.cost_lines !== undefined || pkg?.cost_lines !== undefined ? <DirectCostsEditor rows={brief.cost_lines ?? pkg?.cost_lines ?? []} /> : <div />}
+        <FinanceGmPanel result={brief.floors ?? { finance_summary: brief.finance_summary, revenue_total: brief.revenue.blended, gm_us: brief.gm.us.value, gm_india: brief.gm.india.value, gm_blended: brief.gm.blended.value, us_floor: brief.gm.us.floor ?? undefined, india_floor: brief.gm.india.floor ?? undefined, us_pass: brief.gm.us.passes, india_pass: brief.gm.india.passes }} state="review snapshot" />
+      </div>
 
       <div className="grid gap-6 twoColumnCollapse:grid-cols-[minmax(0,1.6fr)_minmax(300px,1fr)] items-start">
         <div className="space-y-4">

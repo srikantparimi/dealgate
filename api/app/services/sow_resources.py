@@ -24,7 +24,7 @@ hours. That is the only number needed to express part-time staffing.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -105,8 +105,9 @@ async def _latest_gm(
                 .options(
                     selectinload(GmModel.resource_lines),
                     selectinload(GmModel.cost_lines),
+                    selectinload(GmModel.phases),
                 )
-                .order_by(GmModel.created_at.desc())
+                .order_by(GmModel.created_at.desc(), GmModel.version.desc())
                 .limit(1)
             )
         )
@@ -124,6 +125,7 @@ def _margin_snapshot(model: GmModel | None) -> dict[str, Any]:
 
     floors = _compute_floors(model)
     return {
+        **floors,
         "gm_model_id": str(model.id),
         "gm_us": floors.get("gm_us"),
         "gm_india": floors.get("gm_india"),
@@ -140,13 +142,23 @@ async def current_resources(
     """The committed plan plus everything the screen needs to decide what to
     offer: whether editing needs a notice, and what the margin is now."""
 
+    from app.services.delivery_model import serialize_cost_line, serialize_resource_line
+
     model = await _latest_gm(session, opportunity_id)
     signed = await is_signed(session, opportunity_id)
+    proposals = []
+    if model is not None and not model.direct_costs_reviewed and model.sow_version_id:
+        from app.models.sow import SowVersion
+        from app.services.direct_cost_proposals import propose_direct_costs
+        version = (await session.execute(select(SowVersion).where(SowVersion.id == model.sow_version_id))).scalar_one_or_none()
+        if version is not None:
+            proposals = propose_direct_costs(version.extracted_fields or {})
     lines: list[dict[str, Any]] = []
     if model is not None:
         for r in model.resource_lines:
             lines.append(
                 {
+                    "id": str(r.id),
                     "role": r.role,
                     "seniority": r.seniority,
                     "location": r.location,
@@ -172,8 +184,8 @@ async def current_resources(
                         else "0"
                     ),
                     "hourly_cost": (
-                        format(r.hourly_loaded_cost, "f")
-                        if r.hourly_loaded_cost is not None
+                        format(r.hourly_cost, "f")
+                        if r.hourly_cost is not None
                         else None
                     ),
                     "start_date": r.start_date.isoformat() if r.start_date else None,
@@ -189,6 +201,11 @@ async def current_resources(
         "editable": True,
         "requires_notice_on_change": signed,
         "resources": lines,
+        "resource_lines": [serialize_resource_line(r) for r in model.resource_lines] if model else [],
+        "cost_lines": [serialize_cost_line(c) for c in model.cost_lines] if model else [],
+        "direct_cost_proposals": proposals,
+        "direct_costs_reviewed": model.direct_costs_reviewed if model else False,
+        "total_price": format(model.revenue_us + model.revenue_india, "f") if model else None,
         "margin": _margin_snapshot(model),
     }
 
@@ -214,10 +231,37 @@ async def update_resources(
         parse_gm_model_payload,
     )
     from app.services.sow_extract import latest_version_for as _latest_sow
+    from app.models.opportunity import Opportunity
 
+    await session.execute(select(Opportunity.id).where(Opportunity.id == opportunity_id).with_for_update())
     signed = await is_signed(session, opportunity_id)
     previous = await _latest_gm(session, opportunity_id)
     before = _margin_snapshot(previous)
+    cost_only = previous is not None and "resource_lines" not in payload
+    if previous is not None and "resource_lines" not in payload:
+        from app.services.delivery_model import serialize_gm_model
+        retained = serialize_gm_model(previous)
+        phase_names = {str(phase.id): phase.name for phase in previous.phases}
+        for line in retained["resource_lines"] + retained["cost_lines"]:
+            line["phase_name"] = phase_names.get(line.get("phase_id"))
+        retained["total_price"] = format(previous.revenue_us + previous.revenue_india, "f")
+        payload = {**retained, **payload}
+    if previous is not None and "cost_lines" not in payload:
+        from app.services.delivery_model import serialize_cost_line
+        payload = {**payload, "cost_lines": [serialize_cost_line(c) for c in previous.cost_lines]}
+    if previous is not None and "resource_lines" in payload:
+        from app.services.delivery_model import serialize_resource_line
+        previous_lines = {str(line.id): line for line in previous.resource_lines}
+        phase_names = {str(phase.id): phase.name for phase in previous.phases}
+        resources = []
+        for line in payload["resource_lines"]:
+            original = previous_lines.get(str(line.get("id")))
+            if original is not None:
+                saved = serialize_resource_line(original)
+                line = {**{key: saved[key] for key in ("hourly_cost", "validated_by")},
+                        "phase_name": phase_names.get(saved["phase_id"]), **line}
+            resources.append(line)
+        payload = {**payload, "resource_lines": resources}
 
     if signed:
         if effective_from is None:
@@ -269,6 +313,8 @@ async def update_resources(
                     payload = {**payload, "total_price": format(price, "f")}
 
     parsed = parse_gm_model_payload(payload)
+    if cost_only:
+        parsed = replace(parsed, resolve_missing_rates=False)
     model = await create_gm_model_version(
         session,
         opportunity_id=opportunity_id,

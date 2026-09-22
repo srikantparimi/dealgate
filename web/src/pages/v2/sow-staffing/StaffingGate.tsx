@@ -32,6 +32,7 @@ import {
   putSowStaffing,
   staffingTemplateUrl,
   type DeliveryLocation,
+  type DeliveryCostLineInput,
   type DeliveryPreviewRequestInputs,
   type DeliveryPreviewResponse,
   type DeliveryResourceLineInput,
@@ -44,11 +45,15 @@ import { Button } from "../../../ui-v2/primitives/button";
 import { Input } from "../../../ui-v2/primitives/input";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
 import { EmptyState } from "../../../ui-v2/EmptyState";
-import { cn } from "../../../lib/cn";
+import { FinanceGmPanel } from "../sow-workspace/staffing/FinanceGmPanel";
+import { costsComplete, DirectCostsEditor, proposalCosts } from "../sow-workspace/staffing/DirectCostsEditor";
+import { decimalInput } from "../sow-workspace/format";
 
 const LOCATIONS = ["US", "India"] as const;
 
 export interface GridRow {
+  id?: string;
+  original?: DeliveryResourceLineInput;
   role: string;
   seniority: string;
   location: string;
@@ -135,12 +140,15 @@ export function isFixedFee(engagementType?: string): boolean {
 export function toResourceLines(
   rows: GridRow[],
   engagementType?: string,
+  includeCosts = true,
 ): DeliveryResourceLineInput[] {
   return rows.filter((r) => rowIsComplete(r, engagementType)).map((r) => ({
+    ...(includeCosts ? r.original : { phase_name: r.original?.phase_name, provenance_meta: r.original?.provenance_meta }),
+    ...(r.id ? { id: r.id } : {}),
     role: r.role.trim(),
     seniority: r.seniority.trim(),
     location: r.location as DeliveryLocation,
-    person_name: null,
+    person_name: r.original?.person_name ?? null,
     allocation_pct: utilizationFraction(r.allocation_pct || "100"),
     start_date: r.start_date,
     end_date: r.end_date,
@@ -150,8 +158,7 @@ export function toResourceLines(
     // server-side. Client rate cards set what we bill; cost bands set what it
     // costs us; margin policy sets the floors — three separate tables, per
     // CLAUDE.md. This is the cost one.
-    hourly_cost: r.hourly_cost ? r.hourly_cost : null,
-    validated_by: null,
+    ...(includeCosts ? { hourly_cost: r.hourly_cost ? r.hourly_cost : null, validated_by: r.original?.validated_by ?? null } : {}),
   }));
 }
 
@@ -172,6 +179,13 @@ export function StaffingGatePage(props: StaffingGateProps) {
     props.engagementType ?? "fixed_price",
   );
   const [totalPrice, setTotalPrice] = useState<string | null>(null);
+  const [costs, setCosts] = useState<DeliveryCostLineInput[]>([]);
+  const savedCosts = useRef(false);
+  const [gmVersion, setGmVersion] = useState<number | undefined>();
+  const [loaded, setLoaded] = useState(false);
+  const [costAccess, setCostAccess] = useState(false);
+  const [resourcesDirty, setResourcesDirty] = useState(false);
+  const [originalResources, setOriginalResources] = useState<DeliveryResourceLineInput[] | null>(null);
 
   // Hydrate from whatever is already saved.
   //
@@ -182,26 +196,45 @@ export function StaffingGatePage(props: StaffingGateProps) {
   useEffect(() => {
     if (!opportunityId) return;
     let cancelled = false;
+    setLoaded(false);
+    setCostAccess(false);
+    setTotalPrice(null);
+    setGmVersion(undefined);
+    setResourcesDirty(false);
+    setOriginalResources(null);
+    savedCosts.current = false;
+    setCosts([]);
+    setRows([emptyRow()]);
     getSowStaffing(opportunityId)
       .then((state) => {
-        if (cancelled || state.resources.length === 0) return;
+        if (cancelled) return;
+        setLoaded(true);
+        setCostAccess(state.cost_lines !== undefined);
+        setOriginalResources(state.resource_lines ?? null);
+        if (state.engagement_type) setEngagementType(state.engagement_type as EngagementType);
+        if (state.gm_model_id) { savedCosts.current = true; setCosts(state.cost_lines?.length ? state.cost_lines : proposalCosts(state.direct_cost_proposals)); }
+        if (state.total_price) setTotalPrice(state.total_price);
+        setGmVersion(state.margin?.gm_version);
+        if (state.resources.length === 0) return;
         setRows(
           state.resources.map((r) => ({
+            id: r.id,
+            original: state.resource_lines?.find((line) => line.id === r.id),
             role: r.role,
             seniority: r.seniority,
             location: r.location,
-            allocation_pct: r.utilization_pct,
-            hours_billable: r.hours_billable,
-            hourly_bill_rate: r.hourly_bill_rate,
-            hourly_cost: r.hourly_cost ?? "",
+            allocation_pct: decimalInput(r.utilization_pct),
+            hours_billable: decimalInput(r.hours_billable),
+            hourly_bill_rate: Number(r.hourly_bill_rate) === 0 ? "" : decimalInput(r.hourly_bill_rate),
+            hourly_cost: decimalInput(r.hourly_cost),
             start_date: r.start_date ?? "",
             end_date: r.end_date ?? "",
             origin: "manual" as const,
           })),
         );
       })
-      .catch(() => {
-        /* nothing saved yet, or unreachable — the empty grid still works */
+      .catch((e: unknown) => {
+        if (!cancelled) setBanner(e instanceof Error ? e.message : "Could not load saved staffing");
       });
     return () => {
       cancelled = true;
@@ -215,6 +248,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
       .then((payload) => {
         if (cancelled) return;
         setEngagementType(payload.engagement.primary.type);
+        if (!savedCosts.current) setCosts(payload.gm_model?.cost_lines?.length ? payload.gm_model.cost_lines : proposalCosts(payload.direct_cost_proposals));
         const fields = payload.sow_version.extracted_fields as
           | Record<string, { value?: unknown }>
           | null;
@@ -244,10 +278,11 @@ export function StaffingGatePage(props: StaffingGateProps) {
     () => rows.filter((r) => rowIsComplete(r, engagementType)),
     [rows, engagementType],
   );
-  const canSave = completeRows.length > 0 && !saving;
+  const canSave = loaded && completeRows.length > 0 && !saving && costsComplete(costs);
 
   const update = useCallback(
     (idx: number, patch: Partial<GridRow>) => {
+      setResourcesDirty(true);
       setRows((prev) =>
         prev.map((r, i) => (i === idx ? { ...r, ...patch, origin: "manual" } : r)),
       );
@@ -259,16 +294,17 @@ export function StaffingGatePage(props: StaffingGateProps) {
   // keystroke, and stale responses are dropped so the number on screen always
   // belongs to the rows on screen.
   useEffect(() => {
-    if (completeRows.length === 0) {
+    if (!costAccess || completeRows.length === 0 || !costsComplete(costs)) {
       setPreview(null);
       setPreviewError(null);
       return;
     }
     let cancelled = false;
+    setPreview(null);
     const t = setTimeout(() => {
       const inputs: DeliveryPreviewRequestInputs = {
-        resource_lines: toResourceLines(rows, engagementType),
-        cost_lines: [],
+        resource_lines: !resourcesDirty && originalResources ? originalResources : toResourceLines(rows, engagementType, costAccess),
+        cost_lines: costs,
         ...(totalPrice ? { total_price: totalPrice } : {}),
       };
       previewDeliveryModel({ engagement_type: engagementType, inputs })
@@ -289,13 +325,14 @@ export function StaffingGatePage(props: StaffingGateProps) {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [rows, completeRows.length, engagementType, totalPrice]);
+  }, [rows, costs, costAccess, resourcesDirty, originalResources, completeRows.length, engagementType, totalPrice]);
 
   async function handleUpload(file: File) {
     setSheetErrors([]);
     setBanner(null);
     try {
       const res = await importStaffingSheet(opportunityId, file);
+      setResourcesDirty(true);
       setRows(
         res.resource_lines.map((l) => ({
           role: l.role,
@@ -331,8 +368,8 @@ export function StaffingGatePage(props: StaffingGateProps) {
     try {
       await putSowStaffing(opportunityId, {
         engagement_type: engagementType,
-        resource_lines: toResourceLines(rows, engagementType),
-        cost_lines: [],
+        ...(resourcesDirty || !savedCosts.current ? { resource_lines: toResourceLines(rows, engagementType, costAccess) } : {}),
+        ...(costAccess ? { cost_lines: costs } : {}),
         ...(totalPrice ? { total_price: totalPrice } : {}),
       });
       navigate(`/sows/new?opportunityId=${opportunityId}`);
@@ -361,7 +398,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
     { label: "", required: false },
   ];
 
-  const gm = preview?.computed as Record<string, unknown> | undefined;
+  const gm = preview?.computed;
 
   return (
     <div data-testid="staffing-gate">
@@ -369,7 +406,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
         title="Staffing & rates"
         subtitle="A gross margin is only as good as the plan under it — enter the team or upload the sheet."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-full flex-wrap items-center gap-2">
             <a href={staffingTemplateUrl()} data-testid="download-template">
               <Button variant="secondary">Download template</Button>
             </a>
@@ -422,6 +459,8 @@ export function StaffingGatePage(props: StaffingGateProps) {
         </ul>
       ) : null}
 
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-w-0">
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[56rem] text-secondary">
           <thead className="bg-surface-2 text-text-secondary">
@@ -490,20 +529,20 @@ export function StaffingGatePage(props: StaffingGateProps) {
                   />
                 </td>
                 <td className="px-2 py-1">
-                  <Input
+                  {fixedFee ? <span className="whitespace-nowrap text-text-muted">— fixed price</span> : <Input
                     value={r.hourly_bill_rate}
                     placeholder="225"
                     aria-label={`rate-${i}`}
                     onChange={(e) => update(i, { hourly_bill_rate: e.target.value })}
-                  />
+                  />}
                 </td>
                 <td className="px-2 py-1">
-                  <Input
+                  {costAccess ? <Input
                     value={r.hourly_cost}
                     placeholder="95"
                     aria-label={`cost-${i}`}
                     onChange={(e) => update(i, { hourly_cost: e.target.value })}
-                  />
+                  /> : <span className="text-text-muted">Restricted</span>}
                 </td>
                 <td className="px-2 py-1">
                   <Input
@@ -526,13 +565,14 @@ export function StaffingGatePage(props: StaffingGateProps) {
                     type="button"
                     aria-label={`remove-${i}`}
                     className="text-text-secondary hover:text-danger"
-                    onClick={() =>
+                    onClick={() => {
+                      setResourcesDirty(true);
                       setRows((prev) =>
                         prev.length === 1
                           ? [emptyRow()]
                           : prev.filter((_, j) => j !== i),
-                      )
-                    }
+                      );
+                    }}
                   >
                     Remove
                   </button>
@@ -543,11 +583,14 @@ export function StaffingGatePage(props: StaffingGateProps) {
         </table>
       </div>
 
+      {costAccess ? <div className="mt-5"><DirectCostsEditor rows={costs} onChange={setCosts} disabled={saving} /></div> : null}
+      </div>
+
       <div className="mt-3 flex items-center justify-between">
         <Button
           variant="secondary"
           data-testid="add-row"
-          onClick={() => setRows((prev) => [...prev, emptyRow()])}
+          onClick={() => { setResourcesDirty(true); setRows((prev) => [...prev, emptyRow()]); }}
         >
           Add role
         </Button>
@@ -562,7 +605,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
 
       {/* Live gross margin. Shown only once there is something real to compute
           from — a margin derived from half a row would mislead. */}
-      <div className="mt-6" data-testid="gm-preview">
+      <div className="min-w-0" data-testid="gm-preview">
         {completeRows.length === 0 ? (
           <EmptyState
             title="Gross margin will appear here"
@@ -577,21 +620,8 @@ export function StaffingGatePage(props: StaffingGateProps) {
             {previewError}
           </p>
         ) : gm ? (
-          <div className="flex flex-wrap gap-6 rounded-lg border border-border p-4">
-            {(
-              [
-                ["Blended GM", gm.gm_blended],
-                ["US GM", gm.gm_us],
-                ["India GM", gm.gm_india],
-              ] as const
-            ).map(([label, value]) => (
-              <div key={label}>
-                <p className="text-text-secondary">{label}</p>
-                <p className={cn("text-heading-3")}>
-                  {value == null ? "—" : formatPct(value)}
-                </p>
-              </div>
-            ))}
+          <div className="space-y-4">
+            <FinanceGmPanel result={{ ...gm, ...gm.policy, gm_version: gmVersion }} locations={completeRows.map((row) => row.location)} />
             {preview?.warnings?.capacity?.length ? (
               <StatusBadge
                 tone="warning"
@@ -606,6 +636,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
             ) : null}
           </div>
         ) : null}
+      </div>
       </div>
     </div>
   );

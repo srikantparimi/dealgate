@@ -11,21 +11,17 @@
  * no business math (CLAUDE.md rule 2). Editing a row flips the row's
  * provenance to `manual` — the server records the audit event.
  */
-import { useMemo } from "react";
+import { useCallback, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import type {
   DeliveryGmModel,
   DeliveryResourceLineRow,
 } from "../../../api/client";
 import { EmptyState } from "../../../ui-v2/EmptyState";
-import { Metric } from "../../../ui-v2/Metric";
-import { MoneyCell } from "../../../ui-v2/MoneyCell";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
 import { Button } from "../../../ui-v2/primitives/button";
-import { formatPercent, formatUsd } from "./format";
 import type { WorkspaceSnapshot } from "./readiness";
-import { CommercialsPanel } from "./staffing/CommercialsPanel";
-import { GeographyCards } from "./staffing/GeographyCards";
+import { FinanceGmPanel, type FinanceGmResult } from "./staffing/FinanceGmPanel";
 import { ResourceLineRow } from "./staffing/ResourceLineRow";
 import { GateSteps, type GateStep } from "../../../ui-v2/GateSteps";
 import { ResourcesEditor } from "./ResourcesEditor";
@@ -53,6 +49,8 @@ export function StaffingGmTab({
   onRebuildFromSow,
 }: StaffingGmTabProps) {
   const gm = snap.gmModel;
+  const [preview, setPreview] = useState<FinanceGmResult | null>(null);
+  const showComputed = useCallback((result: FinanceGmResult | null) => setPreview(result ?? {}), []);
   if (!gm) {
     // No GM model yet. This used to be a dead end — an empty state whose only
     // action was "Build from SOW", which cannot work when the SOW lists no
@@ -80,23 +78,19 @@ export function StaffingGmTab({
     gm.latest_sow_version_id !== gm.sow_version_id;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="space-y-6">
+    <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-w-0 space-y-6">
         <StaffingGateSteps gm={gm} />
         <StaffingHeader gm={gm} hasNewerSow={hasNewerSow} onRebuildFromSow={onRebuildFromSow} />
-        <GeographyCards computed={gm.computed ?? null} />
-        <SummaryMetrics gm={gm} />
-        <RevenueBreakdown gm={gm} />
-        <CostBreakdown gm={gm} viewer={viewer} />
         <StaffingGrid gm={gm} viewer={viewer} onSaveRow={onSaveRow} />
         {/* Editable for the life of the SOW, not only at the gate on the way
          * to confirmation. Before signature it is a proposal; after, a change
          * is dated and every approver is told with both margins. */}
-        {snap.deal?.id ? <ResourcesEditor opportunityId={snap.deal.id} /> : null}
+        {snap.deal?.id ? <ResourcesEditor opportunityId={snap.deal.id} onComputed={showComputed} /> : null}
         <PolicyFootnote gm={gm} />
       </div>
       <aside className="space-y-4">
-        <CommercialsPanel computed={gm.computed ?? null} />
+        <FinanceGmPanel result={preview ?? { ...gm.computed, ...gm.computed?.policy, gm_version: gm.version }} locations={gm.resource_lines.map((line) => line.location)} />
       </aside>
     </div>
   );
@@ -110,14 +104,7 @@ export function StaffingGmTab({
  */
 function StaffingGateSteps({ gm }: { gm: DeliveryGmModel }) {
   const c = gm.computed;
-  const usGm = c?.gm_us != null ? Number(c.gm_us) : null;
-  const inGm = c?.gm_india != null ? Number(c.gm_india) : null;
-  // Convert 0.278 → 27.8 style for a fair floor comparison.
-  const toPct = (n: number | null) => (n == null ? null : n <= 1 ? n * 100 : n);
-  const usPct = toPct(usGm);
-  const inPct = toPct(inGm);
-  const belowFloor =
-    (usPct != null && usPct < 35) || (inPct != null && inPct < 50);
+  const belowFloor = c?.policy.requires_ceo === true;
   const complete = c?.complete === true;
   const steps: GateStep[] = [
     { id: "intake", label: "Intake", state: "done" },
@@ -177,129 +164,6 @@ function StaffingHeader({
   );
 }
 
-function SummaryMetrics({ gm }: { gm: DeliveryGmModel }) {
-  const c = gm.computed;
-  const revenue = c
-    ? formatUsd(String(Number(c.revenue_us || 0) + Number(c.revenue_india || 0)))
-    : null;
-  const cost = c
-    ? formatUsd(String(Number(c.cost_us || 0) + Number(c.cost_india || 0)))
-    : null;
-  const profit =
-    c && revenue && cost
-      ? formatUsd(
-          String(
-            Number(c.revenue_us || 0) +
-              Number(c.revenue_india || 0) -
-              (Number(c.cost_us || 0) + Number(c.cost_india || 0)),
-          ),
-        )
-      : null;
-  const gmBlended = formatPercent(c?.gm_blended ?? null);
-
-  return (
-    <section aria-label="Commercial totals" className="grid gap-3 sm:grid-cols-4">
-      <Metric label="Revenue" value={revenue ?? "Unavailable"} />
-      <Metric label="Delivery cost" value={cost ?? "Unavailable"} />
-      <Metric label="Gross profit" value={profit ?? "Unavailable"} />
-      <Metric label="Combined GM" value={gmBlended ?? "Unavailable"} />
-    </section>
-  );
-}
-
-function RevenueBreakdown({ gm }: { gm: DeliveryGmModel }) {
-  const sections = useMemo(
-    () => [
-      {
-        key: "fixed_fee",
-        label: "Fixed fee",
-        value: gm.revenue_us ?? null,
-      },
-      { key: "milestones", label: "Milestones", value: null as string | null },
-      { key: "tandm", label: "Time & materials", value: null as string | null },
-      { key: "recurring", label: "Recurring", value: null as string | null },
-      { key: "one_time", label: "One-time", value: null as string | null },
-      { key: "discounts", label: "Discounts", value: null as string | null },
-    ],
-    [gm.revenue_us],
-  );
-  return (
-    <section
-      aria-label="Revenue breakdown"
-      className="rounded-panel border border-divider bg-surface p-4"
-    >
-      <h2 className="text-section text-text mb-3">Revenue breakdown</h2>
-      <p className="text-secondary text-text-secondary mb-3">
-        Approved cost definition, rate-card version and FX source govern
-        these figures; only the pricing model varies by category.
-      </p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {sections.map((s) => (
-          <div
-            key={s.key}
-            className="flex items-center justify-between rounded-control border border-divider p-3"
-          >
-            <span className="text-body text-text">{s.label}</span>
-            <MoneyCell value={formatUsd(s.value) ?? undefined} />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function CostBreakdown({
-  gm,
-  viewer,
-}: {
-  gm: DeliveryGmModel;
-  viewer: ViewerRole;
-}) {
-  const categoryTotals: Record<string, number> = {};
-  for (const line of gm.cost_lines) {
-    const amount = Number(line.amount);
-    if (!Number.isFinite(amount)) continue;
-    categoryTotals[line.category] = (categoryTotals[line.category] ?? 0) + amount;
-  }
-  const sections = [
-    { key: "staffing", label: "Staffing", value: null as number | null },
-    { key: "subcontractor", label: "Contractors", value: categoryTotals["subcontractor"] ?? null },
-    { key: "burden", label: "Benefits & burden", value: null as number | null },
-    { key: "recruiting", label: "Recruiting & setup", value: null as number | null },
-    { key: "delivery_mgmt", label: "Delivery management", value: null as number | null },
-    { key: "tools", label: "Licences & tools", value: categoryTotals["tools"] ?? null },
-    { key: "travel", label: "Travel", value: categoryTotals["travel"] ?? null },
-    { key: "contingency", label: "Contingency", value: null as number | null },
-  ];
-
-  return (
-    <section
-      aria-label="Cost breakdown"
-      className="rounded-panel border border-divider bg-surface p-4"
-    >
-      <div className="flex items-center justify-between">
-        <h2 className="text-section text-text">Cost breakdown</h2>
-        {viewer === "restricted" ? (
-          <StatusBadge tone="neutral" label="Aggregated view" />
-        ) : null}
-      </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {sections.map((s) => (
-          <div
-            key={s.key}
-            className="flex items-center justify-between rounded-control border border-divider p-3"
-          >
-            <span className="text-body text-text">{s.label}</span>
-            <MoneyCell
-              value={s.value != null ? (formatUsd(String(s.value)) ?? undefined) : undefined}
-            />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function StaffingGrid({
   gm,
   viewer,
@@ -349,10 +213,8 @@ function StaffingGrid({
               <th className="py-2 pr-3 text-right">Bill rate</th>
               <th className="py-2 pr-3 text-right">Hours</th>
               <th className="py-2 pr-3 text-right">
-                {viewer === "restricted" ? "Cost band" : "Cost"}
+                {viewer === "restricted" ? "Cost band" : "Cost /hr"}
               </th>
-              <th className="py-2 pr-3 text-right">Revenue</th>
-              <th className="py-2 pr-3 text-right">GM</th>
               <th className="py-2 pr-3">Provenance</th>
               <th className="py-2 pr-3 text-right">Actions</th>
             </tr>
@@ -363,6 +225,7 @@ function StaffingGrid({
                 key={row.id}
                 row={row}
                 viewer={viewer}
+                fixedFee={gm.engagement_type === "fixed_price" || gm.engagement_type === "assessment"}
                 onSave={onSaveRow}
               />
             ))}

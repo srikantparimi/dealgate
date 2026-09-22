@@ -45,13 +45,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.services.document_text import DocumentText, numbered_prompt_text
+from app.services.direct_cost_proposals import ExtractedDirectCost
 
 log = logging.getLogger(__name__)
 
-# Bumped from sow-v1: the prompt is materially different (numbered blocks,
-# explicit placeholder handling) and the version is persisted on every
-# sow_version for audit attribution.
-EXTRACT_PROMPT_VERSION = "sow-v2"
+# The expense-proposal schema is persisted with each extraction's prompt version.
+EXTRACT_PROMPT_VERSION = "sow-v3-direct-costs"
 
 # Every Anthropic model in this account is INFERENCE_PROFILE-only, so the
 # bare foundation-model id ("anthropic.claude-opus-5") returns a
@@ -126,6 +125,8 @@ EXTRACTED_FIELDS: tuple[str, ...] = (
     "engagement_type_suggested",
 )
 
+OPTIONAL_EXTRACTED_FIELDS: tuple[str, ...] = ("direct_costs",)
+
 
 class BedrockUnavailable(Exception):
     """Raised when Bedrock rejects with 403 / model access disabled."""
@@ -175,6 +176,12 @@ def _validate_field(name: str, entry: Any) -> dict[str, Any]:
     status = entry.get("status", "unconfirmed")
     if status not in {"unconfirmed", "disputed"}:
         raise ValueError(f"field {name!r} status must be unconfirmed|disputed")
+    if name == "direct_costs" and entry.get("value") is not None:
+        values = entry["value"]
+        if not isinstance(values, list):
+            raise ValueError("direct_costs must be an array or null")
+        for line in values:
+            ExtractedDirectCost.model_validate(line)
     return {
         "value": entry.get("value"),
         "page_ref": page_ref,
@@ -194,7 +201,7 @@ def validate_extract(payload: dict[str, Any]) -> ExtractedFields:
     fields_in = payload.get("fields")
     if not isinstance(fields_in, dict):
         raise ValueError("payload.fields must be a dict")
-    unknown = set(fields_in) - set(EXTRACTED_FIELDS)
+    unknown = set(fields_in) - set(EXTRACTED_FIELDS) - set(OPTIONAL_EXTRACTED_FIELDS)
     if unknown:
         raise ValueError(f"unknown fields in extract: {sorted(unknown)}")
     missing = set(EXTRACTED_FIELDS) - set(fields_in)
@@ -203,6 +210,9 @@ def validate_extract(payload: dict[str, Any]) -> ExtractedFields:
     validated: dict[str, dict[str, Any]] = {}
     for name in EXTRACTED_FIELDS:
         validated[name] = _validate_field(name, fields_in[name])
+    for name in OPTIONAL_EXTRACTED_FIELDS:
+        if name in fields_in:
+            validated[name] = _validate_field(name, fields_in[name])
     return ExtractedFields(
         fields=validated,
         model=str(payload.get("model", EXTRACT_MODEL)),
@@ -232,6 +242,15 @@ Rules you must follow exactly:
    value is missing, placeholder, or contradicted elsewhere in the document.
 6. client_legal_name is the CLIENT's legal entity, not the supplier
    (SmarTek21). It is usually in the opening parties clause.
+7. direct_costs contains proposed non-labor expense lines when the document
+   states expense terms. Use categories Travel, Meals & lodging,
+   Software/licenses, Subcontractor, Equipment, or Other. Copy the expense
+   wording into note. basis_value is the verbatim amount or percentage as
+   a string, or null if the document states reimbursement without an amount.
+   Never invent a budget or compute a percentage amount. basis is amount
+   or percent_revenue; location is US, India, or proportional when unstated.
+   reimbursable is true only when the client reimburses that expense.
+   Each proposal carries its own page_ref. Return [] if no expense terms exist.
 
 Return your answer by calling the emit_sow_extract tool. Every field must be
 present."""
@@ -276,6 +295,10 @@ def _tool_schema() -> dict[str, Any]:
     # on structure. The money itself is still copied verbatim and parsed as
     # Decimal in `api/app/gm` (rule 2) — the model never computes.
     per_field: dict[str, dict[str, Any]] = {
+        "direct_costs": _entry({
+            "type": ["array", "null"],
+            "items": ExtractedDirectCost.model_json_schema(),
+        }),
         "engagement_type_suggested": _entry(
             {
                 "type": ["string", "null"],
@@ -336,9 +359,9 @@ def _tool_schema() -> dict[str, Any]:
                 "type": "object",
                 "properties": {
                     name: per_field.get(name, _entry())
-                    for name in EXTRACTED_FIELDS
+                    for name in (*EXTRACTED_FIELDS, *OPTIONAL_EXTRACTED_FIELDS)
                 },
-                "required": list(EXTRACTED_FIELDS),
+                "required": [*EXTRACTED_FIELDS, *OPTIONAL_EXTRACTED_FIELDS],
             }
         },
         "required": ["fields"],

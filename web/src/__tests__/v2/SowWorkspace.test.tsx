@@ -193,18 +193,18 @@ describe("StaffingGmTab (SOW-first)", () => {
 
   it("renders a FloorBar per component in the right panel", () => {
     renderTab(buildGm());
-    expect(screen.getByTestId("commercial-row-us")).toBeInTheDocument();
-    expect(screen.getByTestId("commercial-row-india")).toBeInTheDocument();
-    expect(screen.getByTestId("commercial-row-blended")).toBeInTheDocument();
+    expect(screen.getByText("US · floor 35%")).toBeInTheDocument();
+    expect(screen.getByText("India · floor 50%")).toBeInTheDocument();
+    expect(screen.getByText(/informational/)).toBeInTheDocument();
     // Each row exposes a floor bar with a fail/pass chip.
     const chips = screen.getAllByTestId("floorbar-chip");
-    expect(chips.length).toBeGreaterThanOrEqual(3);
+    expect(chips).toHaveLength(2);
   });
 
   it("below-floor row renders a red fill and Fails by N pts chip", () => {
     renderTab(buildGm());
     // US component is 27.8% vs 35% floor — fails by 7.2 pts.
-    const usPanel = screen.getByTestId("commercial-row-us");
+    const usPanel = screen.getByRole("group", { name: /US — 27.8%/ });
     const chip = within(usPanel).getByTestId("floorbar-chip");
     expect(chip).toHaveTextContent(/Fails by 7\.2 pts/i);
     // The fill is coloured danger, not success.

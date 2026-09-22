@@ -15,11 +15,10 @@ import type {
   DeliveryLineProvenance,
   DeliveryResourceLineRow,
 } from "../../../../api/client";
-import { MarginCell } from "../../../../ui-v2/MarginCell";
 import { MoneyCell } from "../../../../ui-v2/MoneyCell";
 import { Button } from "../../../../ui-v2/primitives/button";
 import { Input } from "../../../../ui-v2/primitives/input";
-import { formatUsd } from "../format";
+import { formatQuantity, formatRate } from "../format";
 import { ProvenanceChip, ProvenanceWarning } from "./ProvenanceChip";
 
 type ViewerRole = "restricted" | "full";
@@ -27,13 +26,14 @@ type ViewerRole = "restricted" | "full";
 export interface ResourceLineRowProps {
   row: DeliveryResourceLineRow;
   viewer: ViewerRole;
+  fixedFee?: boolean;
   onSave?: (
     id: string,
     patch: Partial<DeliveryResourceLineRow>,
   ) => void | Promise<void>;
 }
 
-export function ResourceLineRow({ row, viewer, onSave }: ResourceLineRowProps) {
+export function ResourceLineRow({ row, viewer, fixedFee, onSave }: ResourceLineRowProps) {
   const [editing, setEditing] = useState(false);
   const [role, setRole] = useState(row.role);
   const [seniority, setSeniority] = useState(row.seniority);
@@ -43,20 +43,7 @@ export function ResourceLineRow({ row, viewer, onSave }: ResourceLineRowProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const meta = row.provenance_meta ?? null;
-  const hoursNum = Number(row.hours_billable);
-  const billNum = Number(row.hourly_bill_rate);
-  const costNum = row.hourly_cost != null ? Number(row.hourly_cost) : null;
   const alloc = Number(row.allocation_pct);
-  const revenue = Number.isFinite(hoursNum * billNum) ? hoursNum * billNum : null;
-  const costTotal =
-    costNum != null && Number.isFinite(hoursNum * costNum)
-      ? hoursNum * costNum
-      : null;
-  const gmValue =
-    revenue != null && costTotal != null && revenue > 0
-      ? (revenue - costTotal) / revenue
-      : null;
-  const belowFloor = gmValue != null && gmValue < 0.35;
 
   async function submit() {
     if (!onSave) return;
@@ -101,7 +88,6 @@ export function ResourceLineRow({ row, viewer, onSave }: ResourceLineRowProps) {
   return (
     <tr
       data-testid={`staffing-row-${row.id}`}
-      data-below-floor={belowFloor ? "true" : "false"}
       className="border-t border-divider align-top"
     >
       <td className="py-2 pr-3 text-text">
@@ -128,14 +114,14 @@ export function ResourceLineRow({ row, viewer, onSave }: ResourceLineRowProps) {
       </td>
       <td className="py-2 pr-3 text-text">{row.location}</td>
       <td className="py-2 pr-3">
-        {editing ? (
+        {fixedFee ? <span className="whitespace-nowrap text-text-muted">— fixed price</span> : editing ? (
           <Input
             aria-label={`Bill rate for row ${row.id}`}
             value={bill}
             onChange={(e) => setBill(e.target.value)}
           />
         ) : (
-          <MoneyCell value={formatUsd(String(billNum)) ?? undefined} />
+          <MoneyCell value={formatRate(row.hourly_bill_rate)} />
         )}
       </td>
       <td className="py-2 pr-3">
@@ -146,30 +132,13 @@ export function ResourceLineRow({ row, viewer, onSave }: ResourceLineRowProps) {
             onChange={(e) => setHours(e.target.value)}
           />
         ) : (
-          <MoneyCell value={String(hoursNum.toFixed(1))} />
+          <MoneyCell value={formatQuantity(row.hours_billable)} />
         )}
       </td>
       <td className="py-2 pr-3">
         <MoneyCell
-          value={
-            costTotal != null
-              ? (formatUsd(String(costTotal)) ?? undefined)
-              : undefined
-          }
+          value={viewer === "restricted" ? undefined : formatRate(row.hourly_cost)}
           unavailableLabel={viewer === "restricted" ? "Restricted" : "Unavailable"}
-        />
-      </td>
-      <td className="py-2 pr-3">
-        <MoneyCell
-          value={revenue != null ? (formatUsd(String(revenue)) ?? undefined) : undefined}
-        />
-      </td>
-      <td className="py-2 pr-3">
-        <MarginCell
-          value={gmValue != null ? `${(gmValue * 100).toFixed(1)}%` : undefined}
-          outcome={
-            gmValue == null ? "unavailable" : belowFloor ? "fail" : "pass"
-          }
         />
       </td>
       <td className="py-2 pr-3">

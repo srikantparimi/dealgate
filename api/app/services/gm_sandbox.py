@@ -33,7 +33,7 @@ from app.gm.templates.managed_service import ManagedServiceInputs
 from app.gm.templates.single_resource import SingleResourceInputs
 from app.gm.templates.staff_aug import StaffAugInputs
 from app.gm.templates.tm import TMInputs
-from app.gm.types import CostLine, Money, ResourceLine, TemplateResult
+from app.gm.types import CostLine, ResourceLine, TemplateResult
 
 # --- exceptions ------------------------------------------------------------
 
@@ -101,9 +101,9 @@ def _parse_cost(raw: Any, *, field: str) -> CostLine:
     if not isinstance(raw, dict):
         raise SandboxInputError(f"{field} must be an object")
     category = raw.get("category")
-    if category not in ("tools", "travel", "subcontractor", "other"):
+    if not isinstance(category, str) or not category.strip() or len(category) > 32:
         raise SandboxInputError(
-            f"{field}.category must be one of tools/travel/subcontractor/other"
+            f"{field}.category must be a nonempty category key up to 32 characters"
         )
     location = raw.get("location", "US")
     if location not in ("US", "India"):

@@ -21,7 +21,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
@@ -60,6 +60,8 @@ class GmModel(Base):
         Numeric(14, 2), nullable=False, default=Decimal("0")
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    direct_costs_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     resource_lines: Mapped[list["ResourceLine"]] = relationship(
         "ResourceLine",
@@ -129,8 +131,13 @@ class CostLine(Base):
         Uuid, ForeignKey("gm_model.id"), nullable=False
     )
     category: Mapped[str] = mapped_column(String(32), nullable=False)
-    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(28, 12), nullable=False)
     note: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     location: Mapped[str] = mapped_column(String(16), nullable=False, default="US")
+    basis: Mapped[str] = mapped_column(String(24), nullable=False, default="amount")
+    basis_value: Mapped[Decimal | None] = mapped_column(Numeric(28, 12), nullable=True)
+    reimbursable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    provenance: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     gm_model: Mapped[GmModel] = relationship("GmModel", back_populates="cost_lines")

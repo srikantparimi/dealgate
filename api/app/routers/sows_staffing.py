@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, require_role
 from app.db import get_session
+from app.services.redact import ROLES_ALLOWED_COST, redact_costs
 from app.models.opportunity import Opportunity
 from app.audit import append_audit
 from app.integrations.bedrock_sow_extract import (
@@ -439,7 +440,7 @@ async def get_sow_staffing(
     """Canonical read: the committed staffing plan, its margin, and whether
     editing now requires notifying the approvers."""
 
-    return await current_resources(session, opportunity_id)
+    return redact_costs(await current_resources(session, opportunity_id), set(_user.groups))
 
 
 @router.get("/{opportunity_id}/resources")
@@ -450,7 +451,7 @@ async def get_sow_resources_alias(
 ) -> dict[str, Any]:
     """Backward-compat alias for `/staffing`."""
 
-    return await current_resources(session, opportunity_id)
+    return redact_costs(await current_resources(session, opportunity_id), set(_user.groups))
 
 
 class ResourceUpdateRequest(BaseModel):
@@ -488,13 +489,22 @@ async def _put_sow_staffing(
     to `/resources` for backward compatibility). There is no second store.
     """
 
+    can_edit_costs = bool(set(user.groups) & ROLES_ALLOWED_COST)
+    if not can_edit_costs and (
+        "cost_lines" in body.model_fields_set
+        or any({"hourly_cost", "hourly_loaded_cost", "validated_by"} & line.keys() for line in body.resource_lines)
+    ):
+        raise HTTPException(status_code=403, detail="this role cannot change delivery costs")
     db_user = await ensure_user(session, user)
     payload: dict[str, Any] = {
         "engagement_type": body.engagement_type,
-        "resource_lines": body.resource_lines,
-        "cost_lines": body.cost_lines,
-        "sow_version_id": str(body.sow_version_id) if body.sow_version_id else None,
     }
+    if body.sow_version_id is not None:
+        payload["sow_version_id"] = str(body.sow_version_id)
+    if "resource_lines" in body.model_fields_set:
+        payload["resource_lines"] = body.resource_lines
+    if "cost_lines" in body.model_fields_set:
+        payload["cost_lines"] = body.cost_lines
     if body.total_price is not None:
         payload["total_price"] = body.total_price
 
@@ -515,7 +525,7 @@ async def _put_sow_staffing(
         ) from exc
 
     await session.commit()
-    return {
+    return redact_costs({
         "gm_model_id": str(result.gm_model_id),
         "previous_gm_model_id": (
             str(result.previous_gm_model_id) if result.previous_gm_model_id else None
@@ -527,7 +537,7 @@ async def _put_sow_staffing(
         "notified": result.notified,
         "margin_before": result.before_margin,
         "margin_after": result.after_margin,
-    }
+    }, set(user.groups))
 
 
 @router.put("/{opportunity_id}/staffing")

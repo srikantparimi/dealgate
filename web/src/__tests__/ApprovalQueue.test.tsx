@@ -158,19 +158,33 @@ describe("ApprovalPackageDetail", () => {
     vi.spyOn(apiClient, "getApprovalPackage").mockResolvedValue(
       samplePackage({
         floors: {
+          gm_version: 4,
+          gm_us: "0.30",
+          gm_india: "0.60",
+          gm_blended: "0.40",
+          us_floor: "0.35",
+          india_floor: "0.50",
+          us_applicable: true,
+          india_applicable: true,
+          finance_summary: { revenue: "50000", labor_cost: "28800", direct_cost: "1000", total_delivery_cost: "29800", gross_profit: "20200", labor_pct: "0.576", direct_pct: "0.02", total_cost_pct: "0.596", pass_through: "2300" },
           us_pass: false,
           india_pass: true,
           requires_ceo: true,
           failing: ["US"],
         },
+        cost_lines: [{ category: "Travel", amount: "2300", basis: "amount", basis_value: "2300", location: "proportional", reimbursable: true, provenance: "extracted", note: "Client-reimbursed travel" }],
       }),
     );
     renderDetail();
     await waitFor(() => {
-      expect(screen.getByText(/US fail/i)).toBeInTheDocument();
+      expect(screen.getByTestId("staffing-floor-summary")).toHaveTextContent("Fails · US");
     });
-    expect(screen.getByText(/India pass/i)).toBeInTheDocument();
-    expect(screen.getByText(/CEO exception/i)).toBeInTheDocument();
+    expect(screen.getByText("Fails by 5.0 pts")).toBeInTheDocument();
+    expect(screen.getByText("Passes by 10.0 pts")).toBeInTheDocument();
+    expect(screen.getByText("GM v4 · review snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Client-reimbursed travel")).toBeInTheDocument();
+    expect(screen.getByText("$29,800")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add cost" })).not.toBeInTheDocument();
   });
 
   it("renders the package hash and pinned snapshot ids", async () => {

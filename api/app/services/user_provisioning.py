@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import append_audit
 from app.auth import AuthUser
 from app.models.user import User
+from app.services.user_identity import is_identity_placeholder
 
 __all__ = ["ensure_user", "hydrate_from_cognito"]
 
@@ -124,6 +125,25 @@ async def ensure_user(session: AsyncSession, actor: AuthUser) -> User:
     now = datetime.now(UTC)
 
     if existing is not None:
+        before_profile = {"name": existing.name, "email": existing.email}
+        if is_identity_placeholder(existing.email) and not is_identity_placeholder(actor.email):
+            # An invited profile may already own the email. Preserve its identity.
+            email_owner = (await session.execute(
+                select(User).where(User.email == actor.email, User.id != existing.id)
+            )).scalar_one_or_none()
+            if email_owner is None:
+                existing.email = actor.email
+        if (
+            is_identity_placeholder(existing.name) or existing.name == before_profile["email"]
+        ) and not is_identity_placeholder(actor.name):
+            existing.name = actor.name
+        after_profile = {"name": existing.name, "email": existing.email}
+        if before_profile != after_profile:
+            await append_audit(
+                session, actor_id=existing.id, action="user.profile_synced",
+                entity="user", entity_id=str(existing.id), before=before_profile,
+                after={**after_profile, "source": "cognito_token"},
+            )
         # Keep group membership in step with the token, and audit it when it
         # actually moves — an IdP group change is a permission change.
         token_groups = sorted(actor.groups or [])

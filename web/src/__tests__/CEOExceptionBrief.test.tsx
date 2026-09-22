@@ -101,10 +101,9 @@ describe("CEOExceptionBrief", () => {
     expect(screen.getByTestId("ceo-brief-client")).toHaveTextContent(
       "Global manufacturer",
     );
-    // GM rows have PASS / FAIL chips
-    const gmTable = screen.getByRole("table", { name: /gross margin/i });
-    expect(gmTable).toHaveTextContent("FAIL");
-    expect(gmTable).toHaveTextContent("PASS");
+    const gmPanel = screen.getByRole("region", { name: "GM summary" });
+    expect(gmPanel).toHaveTextContent("Fails by 5.0 pts");
+    expect(gmPanel).toHaveTextContent("Passes by 10.0 pts");
     // Shortfall + uplift
     expect(screen.getByText(/Gross-profit shortfall/i)).toBeInTheDocument();
     expect(screen.getAllByText(/\$5,000/).length).toBeGreaterThan(0);

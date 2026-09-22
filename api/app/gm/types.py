@@ -114,6 +114,7 @@ class TemplateResult:
     gm_blended: Optional[Decimal] = None
     complete: bool = True
     missing: list[str] = field(default_factory=list)
+    finance_summary: dict | None = None
 
     @property
     def revenue_total(self) -> Money:

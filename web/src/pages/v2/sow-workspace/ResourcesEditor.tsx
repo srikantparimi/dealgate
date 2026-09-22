@@ -23,6 +23,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getSowResources,
   putSowResources,
+  previewDeliveryModel,
+  type DeliveryCostLineInput,
   type SowResourcesState,
   type UUID,
 } from "../../../api/client";
@@ -37,17 +39,22 @@ import {
 import { Button } from "../../../ui-v2/primitives/button";
 import { Input } from "../../../ui-v2/primitives/input";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
+import { costsComplete, DirectCostsEditor, proposalCosts } from "./staffing/DirectCostsEditor";
+import type { FinanceGmResult } from "./staffing/FinanceGmPanel";
+import { decimalInput } from "./format";
 
 export function stateToRows(state: SowResourcesState): GridRow[] {
   if (!state.resources.length) return [emptyRow()];
   return state.resources.map((r) => ({
+    id: r.id,
+    original: state.resource_lines?.find((line) => line.id === r.id),
     role: r.role,
     seniority: r.seniority,
     location: r.location,
-    allocation_pct: r.utilization_pct,
-    hours_billable: r.hours_billable,
-    hourly_bill_rate: r.hourly_bill_rate,
-    hourly_cost: r.hourly_cost ?? "",
+    allocation_pct: decimalInput(r.utilization_pct),
+    hours_billable: decimalInput(r.hours_billable),
+    hourly_bill_rate: Number(r.hourly_bill_rate) === 0 ? "" : decimalInput(r.hourly_bill_rate),
+    hourly_cost: decimalInput(r.hourly_cost),
     start_date: r.start_date ?? "",
     end_date: r.end_date ?? "",
     origin: "manual" as const,
@@ -57,14 +64,18 @@ export function stateToRows(state: SowResourcesState): GridRow[] {
 export interface ResourcesEditorProps {
   opportunityId: UUID;
   load?: typeof getSowResources;
+  onComputed?: (result: FinanceGmResult | null) => void;
 }
 
 export function ResourcesEditor({
   opportunityId,
   load = getSowResources,
+  onComputed,
 }: ResourcesEditorProps) {
   const [state, setState] = useState<SowResourcesState | null>(null);
   const [rows, setRows] = useState<GridRow[]>([emptyRow()]);
+  const [costs, setCosts] = useState<DeliveryCostLineInput[]>([]);
+  const [resourcesDirty, setResourcesDirty] = useState(false);
   const [effectiveFrom, setEffectiveFrom] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -72,10 +83,15 @@ export function ResourcesEditor({
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    setState(null);
+    setRows([emptyRow()]);
+    setCosts([]);
+    setResourcesDirty(false);
     try {
       const res = await load(opportunityId);
       setState(res);
       setRows(stateToRows(res));
+      setCosts(res.cost_lines?.length ? res.cost_lines : proposalCosts(res.direct_cost_proposals));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "could not load resources");
@@ -100,12 +116,25 @@ export function ResourcesEditor({
   // not a notice anyone can act on.
   const canSave =
     complete.length > 0 &&
-    !busy &&
+    !!state && !busy && costsComplete(costs) &&
     (!signed || (effectiveFrom !== "" && reason.trim() !== ""));
 
   function update(idx: number, patch: Partial<GridRow>) {
+    setResourcesDirty(true);
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   }
+
+  useEffect(() => {
+    if (!state || state.cost_lines === undefined || !complete.length || !costsComplete(costs)) { onComputed?.(null); return; }
+    let active = true;
+    onComputed?.(null);
+    const timer = setTimeout(() => {
+      previewDeliveryModel({ engagement_type: (state.engagement_type ?? "fixed_price") as import("../../../api/client").EngagementType, inputs: { resource_lines: !resourcesDirty && state.resource_lines ? state.resource_lines : toResourceLines(rows, engagementType), cost_lines: costs, ...(state.total_price ? { total_price: state.total_price } : {}) } }).then((res) => {
+        if (active) { onComputed?.({ ...res.computed, ...res.computed.policy, gm_version: state.margin.gm_version }); setError(null); }
+      }).catch((e: unknown) => { if (active) { onComputed?.(null); setError(e instanceof Error ? e.message : "Could not preview GM"); } });
+    }, 400);
+    return () => { active = false; clearTimeout(timer); };
+  }, [state, rows, costs, resourcesDirty, complete.length, engagementType, onComputed]);
 
   async function save() {
     setBusy(true);
@@ -114,8 +143,9 @@ export function ResourcesEditor({
     try {
       const res = await putSowResources(opportunityId, {
         engagement_type: engagementType ?? "fixed_price",
-        resource_lines: toResourceLines(rows, engagementType),
-        cost_lines: [],
+        ...(resourcesDirty || !state?.gm_model_id ? { resource_lines: toResourceLines(rows, engagementType, state?.cost_lines !== undefined) } : {}),
+        ...(state?.cost_lines !== undefined ? { cost_lines: costs } : {}),
+        ...(state?.total_price ? { total_price: state.total_price } : {}),
         ...(signed ? { effective_from: effectiveFrom, reason: reason.trim() } : {}),
       });
       setNotice(
@@ -160,12 +190,6 @@ export function ResourcesEditor({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {state?.margin?.gm_blended != null ? (
-            <StatusBadge
-              tone={state.margin.us_pass && state.margin.india_pass ? "ok" : "warn"}
-              label={`Blended ${formatPct(state.margin.gm_blended)}`}
-            />
-          ) : null}
           {signed ? <StatusBadge tone="warn" label="signed" /> : null}
           <Button onClick={() => void save()} disabled={!canSave} data-testid="save-resources">
             {busy ? "Saving…" : signed ? "Save & notify" : "Save"}
@@ -263,10 +287,10 @@ export function ResourcesEditor({
                   <Input value={r.hours_billable} aria-label={`res-hours-${i}`} onChange={(e) => update(i, { hours_billable: e.target.value })} />
                 </td>
                 <td className="px-2 py-1">
-                  <Input value={r.hourly_bill_rate} aria-label={`res-rate-${i}`} onChange={(e) => update(i, { hourly_bill_rate: e.target.value })} />
+                  {fixedFee ? <span className="whitespace-nowrap text-text-muted">— fixed price</span> : <Input value={r.hourly_bill_rate} aria-label={`res-rate-${i}`} onChange={(e) => update(i, { hourly_bill_rate: e.target.value })} />}
                 </td>
                 <td className="px-2 py-1">
-                  <Input value={r.hourly_cost} aria-label={`res-cost-${i}`} onChange={(e) => update(i, { hourly_cost: e.target.value })} />
+                  {state?.cost_lines !== undefined ? <Input value={r.hourly_cost} aria-label={`res-cost-${i}`} onChange={(e) => update(i, { hourly_cost: e.target.value })} /> : <span className="text-text-muted">Restricted</span>}
                 </td>
                 <td className="px-2 py-1">
                   <Input type="date" value={r.start_date} aria-label={`res-start-${i}`} onChange={(e) => update(i, { start_date: e.target.value })} />
@@ -279,9 +303,10 @@ export function ResourcesEditor({
                     type="button"
                     aria-label={`res-remove-${i}`}
                     className="text-text-secondary hover:text-danger"
-                    onClick={() =>
-                      setRows((prev) => (prev.length === 1 ? [emptyRow()] : prev.filter((_, j) => j !== i)))
-                    }
+                    onClick={() => {
+                      setResourcesDirty(true);
+                      setRows((prev) => (prev.length === 1 ? [emptyRow()] : prev.filter((_, j) => j !== i)));
+                    }}
                   >
                     Remove
                   </button>
@@ -293,7 +318,7 @@ export function ResourcesEditor({
       </div>
 
       <div className="mt-3 flex items-center justify-between">
-        <Button variant="secondary" data-testid="res-add-row" onClick={() => setRows((p) => [...p, emptyRow()])}>
+        <Button variant="secondary" data-testid="res-add-row" onClick={() => { setResourcesDirty(true); setRows((p) => [...p, emptyRow()]); }}>
           Add role
         </Button>
         <p className="text-secondary text-text-secondary">
@@ -304,6 +329,7 @@ export function ResourcesEditor({
             : `${complete.length} role(s) costed.`}
         </p>
       </div>
+      {state?.cost_lines !== undefined ? <div className="mt-5"><DirectCostsEditor rows={costs} onChange={setCosts} disabled={busy} /></div> : null}
     </section>
   );
 }

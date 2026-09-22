@@ -12,11 +12,12 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, require_role
 from app.db import get_session
+from app.services.user_identity import display_user_email, display_user_name
 from app.services.admin_users import (
     ALLOWED_GROUPS,
     InviteUserPayload,
@@ -43,6 +44,12 @@ class UserRow(BaseModel):
     groups: list[str]
     last_login: datetime | None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def resolve_identity(self):
+        self.name = display_user_name(self.name, self.email)
+        self.email = display_user_email(self.email)
+        return self
 
 
 class UserListResponse(BaseModel):

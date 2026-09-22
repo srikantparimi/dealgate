@@ -21,7 +21,6 @@ from httpx import ASGITransport, AsyncClient
 from app.db import get_session
 from app.main import app
 from app.models.client import Client
-from app.models.client_contact import ClientContact
 from app.models.user import User
 
 
@@ -109,6 +108,17 @@ async def test_internal_signatories_only_returns_governance_group_members(
     emails = {row["email"] for row in r.json()}
     assert "s12-legal@smartek21.com" in emails
     assert "s12-marketing@smartek21.com" not in emails
+
+
+async def test_uuid_profile_names_never_leak_into_signatories_or_people(http_admin, session):
+    placeholder = uuid.uuid4()
+    session.add(User(id=placeholder, name=str(placeholder), email="jane.signer@example.com", groups=["Finance"]))
+    await session.commit()
+    signatories = (await http_admin.get("/signatories/internal")).json()
+    people = (await http_admin.get("/admin/users")).json()["items"]
+    for rows in (signatories, people):
+        row = next(u for u in rows if u["id"] == str(placeholder))
+        assert row["name"] == "jane.signer@example.com"
 
 
 @pytest.mark.asyncio

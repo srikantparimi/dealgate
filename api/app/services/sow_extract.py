@@ -38,6 +38,7 @@ from app.services.document_text import (
 )
 from app.integrations.bedrock_sow_extract import (
     EXTRACTED_FIELDS,
+    OPTIONAL_EXTRACTED_FIELDS,
     BedrockSowExtract,
     ExtractedFields,
     ManualRequired,
@@ -199,7 +200,8 @@ def _to_provenance_fields(
 
     out: dict[str, dict[str, Any]] = {}
     source_id = f"{model}:{prompt_version}"
-    for name in EXTRACTED_FIELDS:
+    names = (*EXTRACTED_FIELDS, *(key for key in OPTIONAL_EXTRACTED_FIELDS if key in extracted))
+    for name in names:
         entry = extracted.get(name, {})
         value = entry.get("value")
         status = entry.get("status", "unconfirmed")

@@ -158,6 +158,7 @@ def _build_gm_payload(
         warranty_days=None,
         resource_lines=parsed,
         cost_lines=[],
+        direct_costs_reviewed=False,
         phases=[],
         total_price=total_price,
     )
@@ -189,7 +190,7 @@ async def _existing_gm_for_sow(
             selectinload(GmModel.cost_lines),
         )
         .where(GmModel.sow_id == sow_id)
-        .order_by(GmModel.created_at.desc(), GmModel.id.desc())
+        .order_by(GmModel.created_at.desc(), GmModel.version.desc(), GmModel.id.desc())
         .limit(1)
     )
     return (await session.execute(stmt)).scalar_one_or_none()
@@ -272,6 +273,15 @@ def _compute_floors(model: GmModel | None) -> dict[str, Any]:
     return {
         "has_gm": True,
         "gm_model_id": str(model.id),
+        "gm_version": model.version,
+        "finance_summary": response.get("finance_summary"),
+        "us_floor": policy.get("us_floor"),
+        "india_floor": policy.get("india_floor"),
+        "us_applicable": policy.get("us_applicable"),
+        "india_applicable": policy.get("india_applicable"),
+        "us_delta": policy.get("us_delta"),
+        "india_delta": policy.get("india_delta"),
+        "complete": response.get("complete"),
         "us_pass": policy.get("us_pass", True),
         "india_pass": policy.get("india_pass", True),
         "requires_ceo": policy.get("requires_ceo", False),
@@ -639,6 +649,8 @@ async def _predraft_ceo_exception(
         "sources": [str(gm_model.id)],
     }
     brief = draft_brief(inputs)
+    brief["floors"] = floors
+    brief["finance_summary"] = floors.get("finance_summary")
     # Not persisted: we return the transient brief so the confirmation
     # page can render "Will trigger". The real row is drafted on submit.
     row = CeoException(
@@ -821,10 +833,17 @@ def _decimal_str(value: Decimal | None) -> str | None:
 
 
 def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
+    from app.services.delivery_model import serialize_cost_line
+    from app.services.direct_cost_proposals import propose_direct_costs
+
     v = payload.sow_version
     engagement = payload.engagement
     return {
         "source": payload.source,
+        "direct_cost_proposals": (
+            propose_direct_costs(v.extracted_fields or {})
+            if payload.gm_model is None or not payload.gm_model.direct_costs_reviewed else []
+        ),
         "sow_version": {
             "id": str(v.id),
             "extracted_fields": v.extracted_fields,
@@ -856,10 +875,13 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
         "gm_model": (
             {
                 "id": str(payload.gm_model.id),
+                "version": payload.gm_model.version,
+                "direct_costs_reviewed": payload.gm_model.direct_costs_reviewed,
                 "engagement_type": payload.gm_model.engagement_type,
                 "revenue_us": _decimal_str(payload.gm_model.revenue_us),
                 "revenue_india": _decimal_str(payload.gm_model.revenue_india),
                 "resource_line_count": len(payload.gm_model.resource_lines),
+                "cost_lines": [serialize_cost_line(c) for c in payload.gm_model.cost_lines],
             }
             if payload.gm_model
             else None

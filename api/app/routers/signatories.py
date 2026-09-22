@@ -18,7 +18,6 @@ one write path per confirm-screen field, per docs/directives/sow-first.md.
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -27,12 +26,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
-from app.auth import AuthUser, current_user, require_role
+from app.auth import AuthUser, require_role
 from app.db import get_session
 from app.models.client import Client
 from app.models.client_contact import ClientContact
 from app.models.user import User
 from app.services.user_provisioning import ensure_user
+from app.services.user_identity import display_user_email, display_user_name
 
 
 router = APIRouter(tags=["signatories"])
@@ -118,8 +118,8 @@ async def list_internal_signatories(
         out.append(
             InternalSignatoryRow(
                 id=u.id,
-                name=u.name or (u.email or "unnamed"),
-                email=u.email or "",
+                name=display_user_name(u.name, u.email),
+                email=display_user_email(u.email),
                 groups=groups,
             )
         )
