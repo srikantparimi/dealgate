@@ -65,12 +65,17 @@ jobs:
           echo "uri=${registry}/${ECR_REPO}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "latest=${registry}/${ECR_REPO}:latest" >> "$GITHUB_OUTPUT"
 
-      # Fargate task runs arm64 for cost; build for that platform only.
+      # S14a.3b: context is repo root (not api/) so the image bundles worker/
+      # alongside api/app. Fargate task runs amd64 (see runtime_platform in
+      # infra-tf/modules/api and modules/schedulers). The workflow used to say
+      # arm64 but every image actually in ECR is amd64 — the arm64 line was
+      # aspirational and never landed.
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
-          context: api
-          platforms: linux/arm64
+          context: .
+          file: api/Dockerfile
+          platforms: linux/amd64
           push: true
           tags: |
             ${{ steps.image.outputs.uri }}

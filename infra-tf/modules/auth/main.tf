@@ -83,9 +83,15 @@ resource "aws_cognito_user_pool_client" "web" {
     local.custom_logout_urls,
   )
 
+  # ALLOW_ADMIN_USER_PASSWORD_AUTH is required by the Playwright E2E suite
+  # (S13a) to programmatically sign in the fixture test user. Cognito's
+  # UpdateUserPoolClient is a full replace — any flow omitted here is nulled
+  # from the client, which breaks the E2E login. Keep this flow enabled in
+  # every env until we move E2E to SRP.
   explicit_auth_flows = [
     "ALLOW_USER_SRP_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
+    "ALLOW_ADMIN_USER_PASSWORD_AUTH",
   ]
 
   prevent_user_existence_errors = "ENABLED"

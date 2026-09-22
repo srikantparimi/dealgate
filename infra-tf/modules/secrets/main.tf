@@ -15,7 +15,13 @@ resource "aws_secretsmanager_secret" "db_password" {
   name                    = "${var.name_prefix}-db-master-password"
   description             = "RDS Postgres master password. Rotation is OFF for dev."
   recovery_window_in_days = 0 # dev: allow immediate re-create
-  kms_key_id              = var.kms_key_arn
+  # TODO(s14a.2): flip to var.kms_key_arn once the customer-managed CMK is
+  # created by module.kms AND the API + execution roles carry the kms:Decrypt
+  # grant scoped via kms:ViaService = secretsmanager.<region>.amazonaws.com.
+  # Flipping this before the grant lands breaks the ECS execution role's
+  # ability to fetch the secret at task start. Null = AWS-managed
+  # aws/secretsmanager (current live state).
+  kms_key_id = null
 }
 
 resource "aws_secretsmanager_secret_version" "db_password" {
@@ -29,7 +35,10 @@ resource "aws_secretsmanager_secret" "db_url" {
   name                    = "${var.name_prefix}-db-url"
   description             = "postgresql://... DSN for the API. Written by the data module."
   recovery_window_in_days = 0
-  kms_key_id              = var.kms_key_arn
+  # TODO(s14a.2): flip to var.kms_key_arn together with db_password + jwt_signing
+  # once the CMK + kms:Decrypt grants land. See db_password above for the full
+  # ordering constraint. Null = AWS-managed aws/secretsmanager (current live state).
+  kms_key_id = null
 }
 
 # JWT signing key for anything issued locally by the API (Cognito signs its own
@@ -43,7 +52,10 @@ resource "aws_secretsmanager_secret" "jwt_signing" {
   name                    = "${var.name_prefix}-jwt-signing-key"
   description             = "Symmetric key for API-issued signed URLs. Rotation OFF for dev."
   recovery_window_in_days = 0
-  kms_key_id              = var.kms_key_arn
+  # TODO(s14a.2): flip to var.kms_key_arn together with db_password + db_url
+  # once the CMK + kms:Decrypt grants land. See db_password above for the full
+  # ordering constraint. Null = AWS-managed aws/secretsmanager (current live state).
+  kms_key_id = null
 }
 
 resource "aws_secretsmanager_secret_version" "jwt_signing" {

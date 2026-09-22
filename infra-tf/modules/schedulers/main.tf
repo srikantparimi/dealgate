@@ -418,6 +418,17 @@ data "aws_iam_policy_document" "audit_export_s3" {
       "${var.audit_export_bucket_arn}/*",
     ]
   }
+
+  # S14a.3b: s3:ListBucket at the bucket level so a HEAD on a missing object
+  # returns 404 instead of 403. Without this, S3 masks 404 as AccessDenied
+  # (its default behaviour when the caller can't list), which the worker's
+  # head() helper treats as a hard error rather than the "not exported yet
+  # today" branch it needs on first-run.
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [var.audit_export_bucket_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "audit_export_s3" {

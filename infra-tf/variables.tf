@@ -16,15 +16,21 @@ variable "region" {
 }
 
 variable "image_tag" {
-  description = "ECR image tag the ECS task should run. Bootstrap uses 'bootstrap'; CI updates this per deploy."
+  description = "ECR image tag the ECS task should run. CI updates this per deploy; the default here is the last known-good tag for a laptop-run `terraform plan/apply` (see git log for what's in ECR right now). Never set to 'bootstrap' — that tag stopped being pushed months ago and any task using it fails with CannotPullContainerError."
   type        = string
-  default     = "bootstrap"
+  default     = "s14a.3b-workers-creds-fix"
 }
 
 variable "domain" {
-  description = "Custom domain for the SPA. Empty string means use the CloudFront default hostname. Setting this creates an ACM certificate in us-east-1 and attaches it as a distribution alias; the DNS records are added by hand in Cloudflare (docs/runbooks/custom-domain.md)."
+  description = "Custom domain for the SPA. Empty string means use the CloudFront default hostname. Setting this creates an ACM certificate (in us-east-1 per CloudFront's constraint) and attaches it as a distribution alias; when the domain lives in an AWS-managed Route 53 zone, ACM's DNS validation record is written into that zone automatically (see infra-tf/modules/dns — added when Kanna picks the app's own domain in s14a.3b's DNS follow-up)."
   type        = string
-  default     = "dealgate.smartek21.com"
+  # S14a.3b (22 Sep 2026): the smartek21.com dependency was cut and the
+  # app-owned Route 53 zone (dealgateapp.com) took its place. The SPA lives
+  # at app.dealgateapp.com; module.dns owns the zone, SES identity, ACM cert,
+  # and root DNS records; module.web attaches the cert to CloudFront and
+  # picks up this value as the alias. Setting to "" reverts CloudFront to
+  # its default cert.
+  default = "app.dealgateapp.com"
 }
 
 variable "github_repo" {

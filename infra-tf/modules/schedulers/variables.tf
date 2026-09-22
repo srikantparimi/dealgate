@@ -73,9 +73,13 @@ variable "memory" {
 }
 
 variable "ses_from_address" {
-  description = "Verified SES sender address; also created as an SES identity by this module."
+  description = "Verified SES sender address; also created as an SES identity by this module. Must be overridden per env — the placeholder default fails validation on purpose so no env silently ships without setting it (S14a.3, 22 Sep 2026: the previous default was a typo of an owner's real address, nobody's inbox)."
   type        = string
-  default     = "srikantp@smartek21.com"
+  default     = "PLACEHOLDER-set-per-env"
+  validation {
+    condition     = can(regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", var.ses_from_address)) && var.ses_from_address != "PLACEHOLDER-set-per-env"
+    error_message = "ses_from_address must be set to a valid email in every env root. The scheduler module refuses to create an SES identity for the placeholder."
+  }
 }
 
 variable "sales_leader_email" {

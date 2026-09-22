@@ -14,8 +14,13 @@ output "app_url" {
 }
 
 output "web_certificate_arn" {
-  description = "ACM certificate backing the custom domain, or null when none is configured."
-  value       = var.domain == "" ? null : one(aws_acm_certificate.web[*].arn)
+  description = "ACM certificate backing the custom domain, or null when none is configured. Sourced from module.dns (which owns the cert + DNS validation)."
+  value       = var.domain == "" ? null : module.dns.app_certificate_arn
+}
+
+output "app_domain_zone_ns" {
+  description = "The four Route 53 nameservers for the dealgateapp.com zone. Matches the registrar defaults; surfaced for any future external delegation."
+  value       = module.dns.zone_name_servers
 }
 
 output "api_ecr_uri" {

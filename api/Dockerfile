@@ -20,9 +20,12 @@ ENV PATH="/opt/venv/bin:${PATH}"
 
 WORKDIR /build
 
+# Build context is the repository root (not api/) so the image can bundle
+# both api/app and worker/, which live as siblings in the repo. CI must pass
+# `context: .` and `file: api/Dockerfile` — see .github/workflows/deploy.yml.
 # Copy metadata + source together; setuptools needs both to build the wheel.
-COPY pyproject.toml README.md* ./
-COPY app ./app
+COPY api/pyproject.toml api/README.md* ./
+COPY api/app ./app
 
 RUN pip install --upgrade pip \
     && pip install -e . \
@@ -56,10 +59,19 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 
 # App source. Keep the copy list narrow so image rebuilds are cache-friendly.
-COPY app ./app
-COPY alembic ./alembic
-COPY alembic.ini ./alembic.ini
-COPY entrypoint.sh /app/entrypoint.sh
+COPY api/app ./app
+COPY api/alembic ./alembic
+COPY api/alembic.ini ./alembic.ini
+COPY api/entrypoint.sh /app/entrypoint.sh
+
+# S14a.3b: scheduler workers (worker.alert_scheduler, worker.notification_sender,
+# worker.renewals_scheduler, worker.audit_export, worker.hubspot_intake,
+# worker.hubspot_writeback) share this image with the API. They're invoked as
+# `python -m worker.<name>` from EventBridge-triggered ECS run-task
+# overrides (see infra-tf/modules/schedulers). worker/ is a plain module tree
+# (not a wheel package); `python -m` adds the WORKDIR (/app) to sys.path so
+# `worker.<name>` resolves without needing an install.
+COPY worker ./worker
 
 RUN chmod +x /app/entrypoint.sh \
     && chown -R app:app /app

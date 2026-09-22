@@ -238,8 +238,11 @@ resource "aws_s3_bucket" "audit_exports" {
   object_lock_enabled = true
 
   tags = {
-    Name    = "${var.name_prefix}-audit-exports"
-    Purpose = "Nightly audit_event export (WORM, 7-year retention) — S7"
+    Name = "${var.name_prefix}-audit-exports"
+    # S14a.3 (22 Sep 2026): AWS S3 tag values only allow letters, numbers,
+    # whitespace, and + - = . _ : / @. The original had an em-dash and
+    # parentheses/commas — all of which S3 rejects with InvalidTag.
+    Purpose = "Nightly audit_event export WORM 7-year retention S7"
   }
 }
 

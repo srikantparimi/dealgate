@@ -148,10 +148,28 @@ def _sigv4_headers(
 
 
 def _aws_credentials() -> tuple[str, str, str | None]:
-    access = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE")
-    secret = os.environ.get("AWS_SECRET_ACCESS_KEY", "SECRETEXAMPLE")
+    # Fargate task role credentials are served by the ECS container credentials
+    # endpoint (169.254.170.2$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI), not env
+    # vars — the placeholder fallback below made every worker task 403 against
+    # S3 until this was fixed (S14a.3b). Defer to botocore's credential
+    # resolver, which already handles env, container endpoint, IMDS, and
+    # config-file chains in the right order.
+    access = os.environ.get("AWS_ACCESS_KEY_ID")
+    secret = os.environ.get("AWS_SECRET_ACCESS_KEY")
     token = os.environ.get("AWS_SESSION_TOKEN")
-    return access, secret, token
+    if access and secret:
+        return access, secret, token
+
+    import boto3
+
+    session = boto3.Session()
+    creds = session.get_credentials()
+    if creds is None:
+        # Preserve the historical placeholder behaviour so unit tests that
+        # never enter this branch keep working.
+        return "AKIAEXAMPLE", "SECRETEXAMPLE", None
+    frozen = creds.get_frozen_credentials()
+    return frozen.access_key, frozen.secret_key, frozen.token
 
 
 # --- Public interface -----------------------------------------------------
