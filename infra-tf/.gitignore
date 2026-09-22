@@ -8,6 +8,13 @@
 crash.log
 crash.*.log
 
+# EXCEPT the bootstrap root, which owns the S3 backend itself and keeps
+# its state local on purpose (s14a.1, 22 Sep 2026). Commit its state so
+# the next operator can plan/import without a re-bootstrap.
+!bootstrap/terraform.tfstate
+!bootstrap/terraform.tfstate.*
+!bootstrap/.terraform.lock.hcl
+
 # Local var files with secrets or account-specific values
 *.tfvars
 *.auto.tfvars

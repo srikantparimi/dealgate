@@ -1,30 +1,27 @@
-# Remote state is intentionally NOT configured for the first bootstrap so a
-# fresh clone can `terraform init -backend=false` and validate.
+# Remote state — S14a.1 (22 September 2026).
 #
-# After the first apply creates the state bucket + lock table below, uncomment
-# and re-run `terraform init -migrate-state` to move local state to S3.
+# The state bucket + lock table are created + owned by
+# `infra-tf/bootstrap/` (its own tiny root, local state — never merge
+# it into this backend). Adopted per s14a.1 to close the state-drift
+# gap that S14a exposed.
 #
-# Suggested one-time bootstrap (run manually, not through this stack):
-#   aws s3api create-bucket \
-#     --bucket officeapp-tfstate-669810405473 \
-#     --region us-east-2 \
-#     --create-bucket-configuration LocationConstraint=us-east-2 \
-#     --profile lm-arbiter-poc
-#   aws dynamodb create-table \
-#     --table-name officeapp-tfstate-lock \
-#     --attribute-definitions AttributeName=LockID,AttributeType=S \
-#     --key-schema AttributeName=LockID,KeyType=HASH \
-#     --billing-mode PAY_PER_REQUEST \
-#     --region us-east-2 \
-#     --profile lm-arbiter-poc
+# Migration on the first operator's machine (one-time):
+#   cd infra-tf
+#   terraform init -migrate-state
+# Answer "yes" to copy the local `terraform.tfstate` to S3. After the
+# migration completes, delete the local `terraform.tfstate*` files.
 #
-# terraform {
-#   backend "s3" {
-#     bucket         = "officeapp-tfstate-669810405473"
-#     key            = "dealgate/dev/terraform.tfstate"
-#     region         = "us-east-2"
-#     dynamodb_table = "officeapp-tfstate-lock"
-#     encrypt        = true
-#     profile        = "lm-arbiter-poc"
-#   }
-# }
+# The env key is `dealgate/staging/terraform.tfstate` because
+# `infra-tf/` IS the staging environment (name_prefix `officeapp-dev`
+# is a historical artefact; see docs/adr/0001-infra-tf-is-staging.md).
+
+terraform {
+  backend "s3" {
+    bucket         = "officeapp-tfstate-669810405473"
+    key            = "dealgate/staging/terraform.tfstate"
+    region         = "us-east-2"
+    dynamodb_table = "officeapp-tfstate-lock"
+    encrypt        = true
+    profile        = "lm-arbiter-poc"
+  }
+}

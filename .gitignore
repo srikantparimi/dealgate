@@ -29,6 +29,12 @@ web/.vite/
 # generate_secret = false and its id is served inside the bundle regardless.
 !web/.env.production
 secrets/
+# Restored 22 Sep 2026 (s14a.1): the infra-tf/modules/secrets/ Terraform
+# module is not a secret — it declares Secrets Manager resources whose
+# values are populated at apply time. Ignoring it hid a whole module from
+# git for months and turned every fresh checkout into an unreadable-module
+# error.
+!infra-tf/modules/secrets/
 *.pem
 *.key
 
@@ -44,6 +50,11 @@ infra-tf/*.tfstate.*
 infra-tf/*.tfvars
 !infra-tf/*.tfvars.example
 infra-tf/crash.log
+# S14a.1 bootstrap keeps LOCAL state on purpose (it owns the S3 bucket
+# that holds every other root's state). Commit its state so the next
+# operator can plan/import/destroy it without re-bootstrapping.
+!infra-tf/bootstrap/terraform.tfstate
+!infra-tf/bootstrap/terraform.tfstate.*
 
 # TypeScript build info
 web/tsconfig.tsbuildinfo
