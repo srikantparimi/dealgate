@@ -40,7 +40,7 @@ export interface ApiFetchOptions {
   query?: Record<string, string | number | boolean | undefined>;
   /** Extra headers to merge over the defaults */
   headers?: Record<string, string>;
-  /** Expect a non-2xx response (returns the body/status untouched). */
+  /** Expect a non-2xx JSON response (still validates its content type). */
   allowNon2xx?: boolean;
 }
 
@@ -85,22 +85,31 @@ export async function apiFetch<T = unknown>(
       data: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
-    const json = text ? (safeJson(text) as T) : (null as unknown as T);
-    if (!res.ok() && !opts.allowNon2xx) {
+    const status = res.status();
+    const contentType = res.headers()["content-type"] ?? "";
+    const isJson = contentType.split(";", 1)[0].trim().toLowerCase() === "application/json";
+    // DELETE endpoints legitimately return 204 without representation headers.
+    const noContent = (status === 204 || status === 205) && text === "";
+    if (!isJson && !(noContent && contentType === "")) {
       throw new Error(
-        `apiFetch ${method} ${path} -> ${res.status()}: ${text.slice(0, 400)}`,
+        `apiFetch ${method} ${path} -> ${status}: expected application/json, got ${contentType || "<missing>"}: ${text.slice(0, 400)}`,
       );
     }
-    return { status: res.status(), ok: res.ok(), json, text };
+    let json: T;
+    try {
+      json = noContent ? null as T : JSON.parse(text) as T;
+    } catch {
+      throw new Error(
+        `apiFetch ${method} ${path} -> ${status}: invalid JSON response: ${text.slice(0, 400)}`,
+      );
+    }
+    if (!res.ok() && !opts.allowNon2xx) {
+      throw new Error(
+        `apiFetch ${method} ${path} -> ${status}: ${text.slice(0, 400)}`,
+      );
+    }
+    return { status, ok: res.ok(), json, text };
   } finally {
     await ctx.dispose();
-  }
-}
-
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
   }
 }

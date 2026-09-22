@@ -256,14 +256,16 @@ resource "aws_ecs_task_definition" "api" {
         containerPort = var.container_port
         protocol      = "tcp"
       }]
-      environment = [
+      environment = concat([
         { name = "DEALGATE_ENV", value = var.env },
         { name = "AWS_REGION", value = var.region },
         { name = "COGNITO_REGION", value = var.region },
         { name = "COGNITO_USER_POOL_ID", value = var.cognito_user_pool_id },
         { name = "COGNITO_CLIENT_ID", value = var.cognito_client_id },
         { name = "PORT", value = tostring(var.container_port) },
-      ]
+        ], var.env == "staging" && var.allow_dev_seed_endpoint ? [
+        { name = "ALLOW_DEV_SEED_ENDPOINT", value = "1" },
+      ] : [])
       secrets = [
         { name = "POSTGRES_URL", valueFrom = var.db_url_secret_arn },
         { name = "JWT_SIGNING_KEY", valueFrom = var.jwt_signing_secret_arn },

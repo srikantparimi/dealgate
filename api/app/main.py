@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 
+from app.middleware import ErrorCacheControlMiddleware
 from app.routers import (
     actuals,
     admin_bulk_imports,
@@ -47,6 +48,7 @@ from app.routers import (
 log = logging.getLogger("dealgate.api")
 
 app = FastAPI(title="DealGate API", version="0.0.1")
+app.add_middleware(ErrorCacheControlMiddleware)
 
 
 def _debug_detail() -> bool:
@@ -125,7 +127,10 @@ async def _unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
     }
     if _debug_detail():
         detail["error"] = str(exc)
-    return JSONResponse(status_code=500, content={"detail": detail})
+    # Starlette's outer ServerErrorMiddleware invokes this outside user middleware.
+    return JSONResponse(
+        status_code=500, content={"detail": detail}, headers={"Cache-Control": "no-store"}
+    )
 
 app.include_router(health.router)
 app.include_router(me.router)

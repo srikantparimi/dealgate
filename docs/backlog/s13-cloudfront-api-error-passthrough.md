@@ -1,5 +1,10 @@
 # S13 — CloudFront custom-error responses masked real API failures
 
+Promoted to [S14a](../directives/s14a-cloudfront.md); see the
+[implementation and verification report](../reports/s14a.md).
+The implementation uses a viewer-request SPA rewrite, not the historical
+origin-error function proposal below.
+
 ## Why
 
 Product owner instruction, 20 September 2026 (S12 correction message):

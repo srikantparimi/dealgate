@@ -54,6 +54,14 @@ resource "aws_cloudfront_origin_access_control" "web" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_function" "spa_rewrite" {
+  name    = "${var.name_prefix}-spa-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "Resolve SPA deep links before S3, never rewrite API or asset errors."
+  publish = true
+  code    = file("${path.module}/spa-rewrite.js")
+}
+
 resource "aws_cloudfront_function" "strip_api_prefix" {
   name    = "${var.name_prefix}-strip-api"
   runtime = "cloudfront-js-2.0"
@@ -135,40 +143,43 @@ resource "aws_cloudfront_distribution" "web" {
     # AWS-managed CachingOptimized policy
     cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6"
     response_headers_policy_id = aws_cloudfront_response_headers_policy.web.id
-  }
-
-  # /api/* proxies to the ALB; disable caching, forward everything.
-  ordered_cache_behavior {
-    path_pattern           = "/api/*"
-    target_origin_id       = "alb-api"
-    viewer_protocol_policy = "https-only"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-
-    # AWS-managed CachingDisabled + AllViewer origin request policies.
-    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"
 
     function_association {
       event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.strip_api_prefix.arn
+      function_arn = aws_cloudfront_function.spa_rewrite.arn
     }
   }
 
-  # SPA fallback: rewrite 403/404 to index.html so client-side routing works.
-  custom_error_response {
-    error_code            = 403
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 10
+  # Both API forms reach the ALB; the SPA function is never attached here.
+  dynamic "ordered_cache_behavior" {
+    for_each = ["/api", "/api/*"]
+    content {
+      path_pattern           = ordered_cache_behavior.value
+      target_origin_id       = "alb-api"
+      viewer_protocol_policy = "https-only"
+      allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+      cached_methods         = ["GET", "HEAD"]
+      compress               = true
+
+      # AWS-managed CachingDisabled + AllViewer origin request policies.
+      cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+      origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"
+
+      function_association {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.strip_api_prefix.arn
+      }
+    }
   }
 
-  custom_error_response {
-    error_code            = 404
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 10
+  # Error TTL is distribution-wide, not a behavior setting. Preserve status/body.
+  # 401/416 are not error-cached; 412/415 are covered by API CachingDisabled.
+  dynamic "custom_error_response" {
+    for_each = toset([400, 403, 404, 405, 414, 500, 501, 502, 503, 504])
+    content {
+      error_code            = custom_error_response.value
+      error_caching_min_ttl = 0
+    }
   }
 
   restrictions {

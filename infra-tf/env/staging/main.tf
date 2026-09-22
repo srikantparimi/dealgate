@@ -79,6 +79,8 @@ module "api" {
   cognito_user_pool_id   = module.auth.user_pool_id
   cognito_client_id      = module.auth.client_id
   kms_key_arn            = module.kms.key_arn
+
+  allow_dev_seed_endpoint = true
 }
 
 module "data" {

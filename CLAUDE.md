@@ -34,6 +34,14 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     right shape", "the right approach is", "pilot" and "prototype" in code
     or PR text are the same defect in a different form. Build the path or
     delete the button.
+12. **No infrastructure changes via console or CLI, ever.** Every AWS,
+    CloudFront, ECS, RDS, IAM, Cognito or Secrets Manager change goes
+    through Terraform in a PR. This includes ECS task-def re-registrations,
+    CloudFront distribution edits, S3 bucket policies, and Cognito user
+    pool client rotations. If Terraform can't express it yet, the story
+    is to teach it — not to bypass it. Adopted 22 Sep 2026 after S14a
+    exposed 61 drifted resources from months of hand-applies never
+    round-tripped into state.
 
 ## Where things live
 

@@ -8,6 +8,12 @@ variable "env" {
   type        = string
 }
 
+variable "allow_dev_seed_endpoint" {
+  description = "Explicit staging-only seed endpoint opt-in; ignored outside staging."
+  type        = bool
+  default     = false
+}
+
 variable "region" {
   description = "AWS region; forwarded to task env as AWS_REGION."
   type        = string
