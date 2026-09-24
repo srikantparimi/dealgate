@@ -46,3 +46,31 @@ export function shortId(value: string | null | undefined): string {
   if (!value) return "—";
   return value.slice(-8);
 }
+
+/**
+ * S15 — presentation helpers used by staffing + direct-costs editors. These
+ * lived on the s14b branch's version of this file (which never merged);
+ * pre-S15 main had callers referencing them, so `tsc` was already red
+ * before S15 shipped. Adding them here so the S15 deploy is not blocked
+ * by unrelated drift.
+ */
+
+/** Format a quantity (hours, seats, count) with thousand separators. */
+export function formatQuantity(value: string | null | undefined): string | null {
+  if (value == null || value === "" || !Number.isFinite(Number(value))) return null;
+  return Number(value).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+/** Format a rate — dollars with 2 decimals. */
+export function formatRate(value: string | null | undefined): string | null {
+  return formatUsd(value, 2);
+}
+
+/** Strip trailing zeros / dots from a raw decimal for a text input's value.
+ * A stored "800.000000000" becomes "800" so the input does not display the
+ * raw padding while still round-tripping numerically on save. */
+export function decimalInput(value: string | null | undefined): string {
+  if (!value) return "";
+  if (!value.includes(".")) return value;
+  return value.replace(/0+$/, "").replace(/\.$/, "");
+}

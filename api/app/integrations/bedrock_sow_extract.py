@@ -53,11 +53,27 @@ log = logging.getLogger(__name__)
 EXTRACT_PROMPT_VERSION = "sow-v3-direct-costs"
 
 # Every Anthropic model in this account is INFERENCE_PROFILE-only, so the
-# bare foundation-model id ("anthropic.claude-opus-5") returns a
-# ValidationException: "Invocation of model ID ... with on-demand throughput
-# isn't supported." The `us.` prefix is the cross-region inference profile and
-# is the id that actually works. Verified against us-east-2 on 2026-09-19.
-EXTRACT_MODEL = "us.anthropic.claude-opus-5"
+# bare foundation-model id returns a ValidationException:
+# "Invocation of model ID ... with on-demand throughput isn't supported."
+# The `us.` prefix is the cross-region inference profile and is the id that
+# actually works.
+#
+# S15 (22 Sep 2026):
+#   - Previous default was "us.anthropic.claude-opus-5" — a made-up model id
+#     (Anthropic's top-of-line is Claude 4.x, no 5.x exists). Every SOW
+#     upload since the 19 Sep change silently failed with ValidationException,
+#     the pipeline turned it into ManualRequired, and `needs_pick_payload`
+#     discarded the reason so nothing surfaced to the UI.
+#   - Bumped to "us.anthropic.claude-opus-4-7" — a real profile, but Opus
+#     4.7 requires an AWS Marketplace subscription (aws-marketplace:Subscribe)
+#     that has not been completed on this account. Kanna's call (22 Sep):
+#     ship with Sonnet 4.6 — same schema-driven extract quality for this
+#     workload, ~5x cheaper, works out of the box today.
+#   - Sonnet 4.6 stays as the default until either extraction quality on
+#     the document corpus warrants Opus or Opus 4.7 gets subscribed. Either
+#     path is a one-line variable change here + IAM ARN update + a Bedrock
+#     console subscription click if the target model requires one.
+EXTRACT_MODEL = "us.anthropic.claude-sonnet-4-6"
 
 # Read at call time, not import time, so tests can monkeypatch the env.
 def _model_id() -> str:

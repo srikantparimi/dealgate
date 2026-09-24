@@ -189,6 +189,75 @@ resource "aws_iam_role_policy" "task_kms" {
   policy = data.aws_iam_policy_document.task_kms.json
 }
 
+# ------------------------------------------------------------------
+# S15: SOW bucket + Bedrock extract IAM (rule 12 remediation).
+#
+# This policy was hand-set on the deployed role
+# (officeapp-dev-api-sow-and-bedrock) — TF never owned it, and its Bedrock
+# ARN scope was pinned to a fictional `claude-opus-5` inference profile
+# which is exactly why every SOW extract silently failed. Adopting it into
+# TF and reworking the ARN scope + adding ListInferenceProfiles for the
+# S15 startup guard. On first apply run:
+#   terraform import module.api.aws_iam_role_policy.sow_and_bedrock \
+#     officeapp-dev-api-task:officeapp-dev-api-sow-and-bedrock
+# ------------------------------------------------------------------
+
+data "aws_iam_policy_document" "sow_and_bedrock" {
+  statement {
+    sid    = "SowBucketObjects"
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:AbortMultipartUpload",
+    ]
+    resources = ["${var.sow_bucket_arn}/sow/*"]
+  }
+
+  statement {
+    sid       = "SowBucketList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [var.sow_bucket_arn]
+  }
+
+  statement {
+    sid    = "BedrockExtract"
+    effect = "Allow"
+    actions = [
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream",
+    ]
+    resources = [
+      # Cross-region inference profile in this account/region.
+      "arn:${data.aws_partition.current.partition}:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:inference-profile/${var.sow_extract_model_id}",
+      # The profile routes to per-region foundation-model ARNs; scope to the
+      # anthropic namespace so a profile bump doesn't need a redeploy of
+      # both this policy AND the env var in lockstep.
+      "arn:${data.aws_partition.current.partition}:bedrock:us-east-1::foundation-model/anthropic.*",
+      "arn:${data.aws_partition.current.partition}:bedrock:us-east-2::foundation-model/anthropic.*",
+      "arn:${data.aws_partition.current.partition}:bedrock:us-west-2::foundation-model/anthropic.*",
+    ]
+  }
+
+  statement {
+    # S15: the startup guard (app.services.bedrock_model_check) calls this
+    # at process start to fail the deploy on an invented model id. List
+    # cannot be resource-scoped; the account has < 50 profiles so the read
+    # is cheap.
+    sid       = "BedrockListForStartupGuard"
+    effect    = "Allow"
+    actions   = ["bedrock:ListInferenceProfiles"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "sow_and_bedrock" {
+  name   = "${var.name_prefix}-api-sow-and-bedrock"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.sow_and_bedrock.json
+}
+
 # The task execution role also needs Decrypt on the CMK — ECS reads the two
 # Secrets Manager secrets *before* the container starts, so it decrypts
 # them with the execution role, not the task role.
@@ -263,6 +332,21 @@ resource "aws_ecs_task_definition" "api" {
         { name = "COGNITO_USER_POOL_ID", value = var.cognito_user_pool_id },
         { name = "COGNITO_CLIENT_ID", value = var.cognito_client_id },
         { name = "PORT", value = tostring(var.container_port) },
+        # S15: pin the Bedrock model id here (rule 12 — it belongs in TF,
+        # not a hand-set env var on the deployed task def). Was previously
+        # set out-of-band to "us.anthropic.claude-opus-5" — a made-up
+        # profile id that made every SOW extract fail with
+        # ValidationException. 4.7 is the well-tested default on
+        # us-east-2 as of 2026-09-22; bump to 4.8 after a proof session.
+        { name = "SOW_EXTRACT_MODEL_ID", value = var.sow_extract_model_id },
+        # S15: SOW_BUCKET was hand-set on the deployed task-def and was
+        # lost the moment TF re-registered the task-def in this slice.
+        # The API's s3_sow._bucket_name() falls back to computing from
+        # AWS_ACCOUNT_ID, which is not in the env, so reads/writes throw
+        # "SOW_BUCKET is not set and AWS_ACCOUNT_ID is unavailable". Wire
+        # it here so the task-def carries the value on every future
+        # register.
+        { name = "SOW_BUCKET", value = "${var.name_prefix}-sows-${data.aws_caller_identity.current.account_id}" },
         ], var.env == "staging" && var.allow_dev_seed_endpoint ? [
         { name = "ALLOW_DEV_SEED_ENDPOINT", value = "1" },
       ] : [])

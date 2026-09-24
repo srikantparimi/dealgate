@@ -102,6 +102,9 @@ class SowVersionState:
     extract_status: str
     extract_model: str | None
     extract_prompt_version: str | None
+    # S15: extract failure reason surfaces alongside the status so consumers
+    # (confirmation API, admin, backfill scripts) don't need a second read.
+    extract_error: str | None
     confirmed_by: uuid.UUID | None
     confirmed_at: datetime | None
     engagement_type_suggested: str | None
@@ -160,6 +163,7 @@ def _snapshot(version: SowVersion, opportunity_id: uuid.UUID) -> SowVersionState
         extract_status=version.extract_status,
         extract_model=version.extract_model,
         extract_prompt_version=version.extract_prompt_version,
+        extract_error=version.extract_error,
         confirmed_by=version.confirmed_by,
         confirmed_at=version.confirmed_at,
         engagement_type_suggested=version.engagement_type_suggested,
@@ -435,6 +439,10 @@ async def run_extract(
 
     if isinstance(result, ManualRequired):
         version.extract_status = "manual_required"
+        # S15: preserve the reason on the version itself so the confirm
+        # page can render an honest banner. Was previously only in the
+        # audit trail — the UI had no way to reach it.
+        version.extract_error = result.reason
         blank = _blank_manual_fields()
         blank["metadata"] = {"extract_source": extract_source}
         version.extracted_fields = blank
@@ -449,6 +457,7 @@ async def run_extract(
         }
     else:
         version.extract_status = "complete"
+        version.extract_error = None
         fields_out = _to_provenance_fields(
             result.fields,
             model=result.model,

@@ -1127,6 +1127,10 @@ export interface SowVersion {
   extract_status: SowExtractStatus;
   extract_model: string | null;
   extract_prompt_version: string | null;
+  // S15: honest banner on the Confirm page reads this to render
+  // "We couldn't read this document (reason). Retry extraction, or
+  // fill the fields below manually." Null when extract_status = "complete".
+  extract_error?: string | null;
   confirmed_by: UUID | null;
   confirmed_at: ISODateTime | null;
   engagement_type_suggested: string | null;
@@ -1182,6 +1186,14 @@ export function getCurrentSowVersion(
 
 export function getSowVersion(sowVersionId: UUID): Promise<SowVersion> {
   return request<SowVersion>(`/sow/versions/${sowVersionId}`);
+}
+
+/** S15: retry Bedrock extract on an existing SOW version. */
+export function reextractSowVersion(sowVersionId: UUID): Promise<SowVersion> {
+  return request<SowVersion>(
+    `/sow/versions/${sowVersionId}/reextract`,
+    { method: "POST" },
+  );
 }
 
 export function confirmSowField(
@@ -1568,6 +1580,13 @@ export interface SowConfirmationSowVersion {
   id: UUID;
   extracted_fields: Record<string, SowProvenanceEntry | unknown> | null;
   extract_status: SowExtractStatus;
+  // S15: honest banner reads this when extract_status !== "complete" to
+  // tell the reviewer WHY manual entry is required. Was silently dropped
+  // before — 15 per-field "Not on the SOW" defects were one pipeline
+  // failure the UI could not name. Optional so pre-S15 fixtures + clients
+  // built against older servers keep compiling; the banner treats
+  // absent-or-null as "no reason available".
+  extract_error?: string | null;
   engagement_type_suggested: string | null;
 }
 

@@ -405,6 +405,45 @@ async def submit_confirmation_endpoint(
 
 
 @router.post(
+    "/versions/{sow_version_id}/reextract", response_model=VersionResponse
+)
+async def reextract_version(
+    sow_version_id: uuid.UUID,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+    s3: SowS3 = Depends(get_sow_s3),
+    bedrock: BedrockSowExtract = Depends(get_bedrock_sow),
+) -> VersionResponse:
+    """S15: retry Bedrock extract on an existing SOW version.
+
+    Called by the Confirm page's honest banner ("We couldn't read this
+    document (reason). Retry extraction, or fill the fields below manually.").
+    Fetches the file bytes from S3 and runs the full extract path
+    (Textract fallback included). Idempotent: re-running against a
+    version that is already ``complete`` re-extracts and overwrites the
+    fields, matching the semantics documented on ``run_extract``.
+    """
+
+    state = await _load_version_or_404(session, sow_version_id)
+    opp = await _load_opportunity(session, state.opportunity_id)
+    if not can_mutate_deal(user, opp) and "SystemAdmin" not in user.groups:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"
+        )
+
+    file_bytes = s3.download_bytes(state.file_s3_key)
+    updated = await run_extract(
+        session,
+        sow_version_id=sow_version_id,
+        bedrock=bedrock,
+        file_bytes=file_bytes,
+    )
+    await session.commit()
+    download = s3.generate_download_url(updated.file_s3_key)
+    return _to_response(updated, download_url=download, user=user)
+
+
+@router.post(
     "/versions/{sow_version_id}/submit", response_model=VersionResponse
 )
 async def submit_version(

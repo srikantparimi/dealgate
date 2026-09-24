@@ -14,6 +14,17 @@ variable "allow_dev_seed_endpoint" {
   default     = false
 }
 
+variable "sow_extract_model_id" {
+  description = "Bedrock inference-profile id for SOW extraction. Must be a `us.` or `global.` cross-region profile that exists in the account per `aws bedrock list-inference-profiles --region <region>` AND has been enabled for the account (some models require an AWS Marketplace subscription — Opus 4.7 does, Sonnet 4.6 does not). Do NOT set to a bare model id — every Anthropic model in this account is INFERENCE_PROFILE-only and returns ValidationException otherwise. S15 (22 Sep 2026): default is Sonnet 4.6 (works today, ~5x cheaper than Opus). Opus 4.7 needs `aws bedrock` marketplace subscribe first; then switch this + the sow_and_bedrock IAM policy ARN."
+  type        = string
+  default     = "us.anthropic.claude-sonnet-4-6"
+}
+
+variable "sow_bucket_arn" {
+  description = "ARN of the SOWs S3 bucket. Wired into the sow_and_bedrock task-role policy for PutObject/GetObject/AbortMultipartUpload on the `sow/*` prefix + ListBucket at the root."
+  type        = string
+}
+
 variable "region" {
   description = "AWS region; forwarded to task env as AWS_REGION."
   type        = string

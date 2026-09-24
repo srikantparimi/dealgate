@@ -42,6 +42,17 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     is to teach it — not to bypass it. Adopted 22 Sep 2026 after S14a
     exposed 61 drifted resources from months of hand-applies never
     round-tripped into state.
+13. **Every blocker is an editor.** If a "What's still needed" row (or
+    any other place that names a missing field) is visible on a page,
+    that page must render an inline input for the field — no naked
+    "Jump to field" that points at another screen. Blockers that
+    legitimately live in another section carry a redirect editor
+    component that names where to go; the row still gets an editor
+    entry. A blocker key with no editor is itself a bug — the
+    `blockerRegistry` completeness test fails the build if a canonical
+    key lands without an entry. Adopted 23 Sep 2026 after S15 found
+    that the signatories-picker fix was a one-off; the pattern was the
+    requirement.
 
 ## Where things live
 

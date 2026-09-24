@@ -73,6 +73,10 @@ class SowVersion(Base):
     )
     extract_model: Mapped[str | None] = mapped_column(String(128))
     extract_prompt_version: Mapped[str | None] = mapped_column(String(32))
+    # S15: extract failure reason preserved from the Bedrock caller (bad
+    # model id, throttle, schema reject, etc.) so the confirm page can show
+    # an honest banner. NULL when extract_status = "complete".
+    extract_error: Mapped[str | None] = mapped_column(String(1024))
     confirmed_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("user.id")
     )

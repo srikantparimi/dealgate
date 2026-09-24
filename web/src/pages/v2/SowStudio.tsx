@@ -45,6 +45,7 @@ import { RateCardSection } from "./sow-studio/confirmation/RateCardSection";
 import { StaffingGmSection } from "./sow-studio/confirmation/StaffingGmSection";
 import { ApproversSection } from "./sow-studio/confirmation/ApproversSection";
 import { NeedsYouSection } from "./sow-studio/confirmation/NeedsYouSection";
+import { ExtractStatusBanner } from "./sow-studio/confirmation/ExtractStatusBanner";
 import {
   blockingCount,
   engagementLabel,
@@ -620,6 +621,15 @@ function ConfirmationFlow({
         }
       />
 
+      {/* S15 D1: honest banner when extract_status !== "complete".
+          Retry hits the reextract endpoint and reloads. */}
+      <ExtractStatusBanner
+        payload={payload}
+        onReextracted={() => {
+          void load();
+        }}
+      />
+
       <SourceSection
         payload={payload}
         onOverrideField={handleOverride}
@@ -640,6 +650,7 @@ function ConfirmationFlow({
       <ApproversSection payload={payload} />
       <NeedsYouSection
         payload={payload}
+        onChanged={load}
         onSignatoriesChange={handleSignatoriesChange}
       />
 

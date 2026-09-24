@@ -124,6 +124,13 @@ module "api" {
   cognito_user_pool_id   = module.auth.user_pool_id
   cognito_client_id      = module.auth.client_id
   kms_key_arn            = module.kms.key_arn
+  # S15: SOW bucket ARN feeds the sow_and_bedrock IAM policy (was hand-set
+  # on the task role, now TF-owned per rule 12). Computed inline instead of
+  # referencing module.storage.sows_bucket_arn because the sows bucket
+  # exists in AWS but is not yet in Terraform state (import is s14a.1b
+  # scope). The bucket name is deterministic — same pattern as the
+  # storage module writes.
+  sow_bucket_arn = "arn:aws:s3:::${local.name_prefix}-sows-${data.aws_caller_identity.current.account_id}"
 }
 
 module "data" {

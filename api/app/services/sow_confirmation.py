@@ -848,6 +848,12 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
             "id": str(v.id),
             "extracted_fields": v.extracted_fields,
             "extract_status": v.extract_status,
+            # S15: honest banner — surface WHY extraction failed so the UI
+            # can show "We couldn't read this document (<reason>). Retry
+            # extraction, or fill the fields manually." Was previously
+            # silent, which is why one pipeline failure looked like N
+            # per-field problems.
+            "extract_error": v.extract_error,
             "engagement_type_suggested": v.engagement_type_suggested,
         },
         "engagement": {

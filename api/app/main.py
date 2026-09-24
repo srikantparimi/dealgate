@@ -51,6 +51,28 @@ app = FastAPI(title="DealGate API", version="0.0.1")
 app.add_middleware(ErrorCacheControlMiddleware)
 
 
+@app.on_event("startup")
+async def _validate_bedrock_model_id() -> None:
+    """S15: fail loudly if SOW_EXTRACT_MODEL_ID is not a live Bedrock profile.
+
+    Kills a whole class of "silently manual_required for weeks" bug — an
+    invented model id makes uvicorn exit non-zero, ECS marks the task
+    unhealthy, and the deploy fails to converge instead of one upload at
+    a time. Skipped in local/test and when SOW_EXTRACT_STUB=1.
+    """
+
+    from app.services.bedrock_model_check import (
+        BedrockModelIdInvalid,
+        validate_extract_model_id,
+    )
+
+    try:
+        validate_extract_model_id()
+    except BedrockModelIdInvalid as exc:
+        log.error("bedrock model id check failed: %s", exc)
+        raise
+
+
 def _debug_detail() -> bool:
     """Include the exception text in the response body outside production."""
 

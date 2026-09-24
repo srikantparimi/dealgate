@@ -222,6 +222,14 @@ class SowS3:
             ExpiresIn=_URL_TTL_SECONDS,
         )
 
+    def download_bytes(self, s3_key: str) -> bytes:
+        """Read the object's bytes directly. Used by the S15 re-extract endpoint
+        so the API can rerun Bedrock on an existing SOW without asking the
+        browser to re-upload."""
+
+        resp = self._client_or_new().get_object(Bucket=self._bucket, Key=s3_key)
+        return resp["Body"].read()
+
 
 class StubS3(SowS3):
     """Deterministic in-process client for tests / offline dev.
@@ -276,6 +284,12 @@ class StubS3(SowS3):
     def generate_download_url(self, s3_key: str) -> str:
         self.download_calls.append(s3_key)
         return f"https://{self._bucket}.local/get/{s3_key}?stub=1"
+
+    def download_bytes(self, s3_key: str) -> bytes:
+        self.download_calls.append(s3_key)
+        # Empty bytes exercise the extractor's "no readable text" branch,
+        # which is what tests want from an offline fake anyway.
+        return b""
 
 
 def get_sow_s3() -> SowS3:

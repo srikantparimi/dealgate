@@ -402,6 +402,9 @@ async def _persist_sow_version_from_cache(
     ex_fields = payload.get("fields")
     ex_model = payload.get("model")
     ex_prompt = payload.get("prompt_version")
+    # S15: extract failure reason preserved so the confirm banner can be
+    # honest about WHY manual entry is required, not just that it is.
+    extract_error = payload.get("error")
     if isinstance(ex_fields, dict) and ex_model and ex_prompt:
         validated = validate_extract(
             {
@@ -429,6 +432,7 @@ async def _persist_sow_version_from_cache(
         file_s3_key=s3_key,
         file_hash=file_hash,
         extract_status=extract_status,
+        extract_error=extract_error if extract_status == "manual_required" else None,
         extracted_fields=fields_out,
         extract_model=model,
         extract_prompt_version=prompt_version,
@@ -633,12 +637,28 @@ async def start_upload(
     )
 
     if result.outcome == PipelineOutcome.NEEDS_PICK:
+        # S15: preserve the extract failure reason. Previously the reason
+        # from a ManualRequired outcome was stashed in result.warnings and
+        # then dropped here; the confirm page had no way to tell the user
+        # "we couldn't read this document because <x>" so it presented
+        # the failure as N missing-field problems.
+        extract_error = next(
+            (
+                w
+                for w in (result.warnings or [])
+                if w.startswith("extract manual_required:")
+                or w.startswith("extract crashed:")
+                or w.startswith("extract returned ")
+            ),
+            None,
+        )
         job.needs_pick_payload = {
             "signals": result.client_signals or {},
             "extract": {
                 "fields": result.extract_fields,
                 "model": result.extract_model,
                 "prompt_version": result.extract_prompt_version,
+                "error": extract_error,
             },
             "candidates": result.needs_pick_candidates,
             "create_new": result.create_new or {},
