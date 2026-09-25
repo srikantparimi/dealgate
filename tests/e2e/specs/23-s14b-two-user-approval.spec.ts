@@ -247,25 +247,18 @@ test("S14b two-user approval end to end on staging", async ({ browser }) => {
   await approverPage.waitForLoadState("networkidle");
   await approverPage.waitForTimeout(1_000);
 
-  // Try to click Approve for delivery.
-  const approveBtn = approverPage.getByRole("button", { name: /^approve$/i }).first();
-  if (await approveBtn.isVisible().catch(() => false)) {
-    await approveBtn.click();
-    // Reason field
-    const reason = approverPage.getByLabel(/reason/i).first();
-    if (await reason.isVisible().catch(() => false)) {
-      await reason.fill(
-        "Reviewed scope, staffing plan and GM. Numbers match the SOW.",
-      );
-    }
-    const confirm = approverPage
-      .getByRole("button", { name: /^(approve|submit|confirm)$/i })
-      .last();
-    if (await confirm.isVisible().catch(() => false)) {
-      await confirm.click();
-    }
-    await approverPage.waitForTimeout(1_500);
-  }
+  // Fill Delivery reason first (button is disabled until reason is present).
+  const reason = approverPage.getByLabel(/delivery reason/i).first();
+  await reason.waitFor({ state: "visible", timeout: 20_000 });
+  await reason.fill("Reviewed scope, staffing plan and GM. Numbers match the SOW.");
+  const approveBtn = approverPage
+    .locator('[data-testid="review-delivery"]')
+    .getByRole("button", { name: /^approve$/i })
+    .first();
+  await approveBtn.waitFor({ state: "visible", timeout: 20_000 });
+  await expect(approveBtn).toBeEnabled({ timeout: 10_000 });
+  await approveBtn.click();
+  await approverPage.waitForTimeout(2_000);
   await approverPage.screenshot({
     path: path.join(S14B_DIR, "04-reviewer-approved.png"),
     fullPage: true,
