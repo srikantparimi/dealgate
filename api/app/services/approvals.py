@@ -32,7 +32,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -332,6 +332,11 @@ async def _create_approval_tasks(
     if not groups:
         return []
 
+    from app.services.approval_workflow import create_tasks
+    routed = await create_tasks(session, actor_id=actor_id, package=package, state=state)
+    if routed is not None:
+        return routed
+
     now = datetime.now(UTC)
     due = add_business_days(now.date(), _APPROVAL_SLA_BUSINESS_DAYS)
 
@@ -408,6 +413,7 @@ async def submit_package(
     *,
     actor_id: uuid.UUID,
     opportunity_id: uuid.UUID,
+    routing: dict[str, Any] | None = None,
 ) -> ApprovalPackage:
     """Freeze the latest confirmed SOW + latest GM model into an
     :class:`ApprovalPackage` in status ``pending_delivery_hr``.
@@ -422,6 +428,8 @@ async def submit_package(
     # S5 E9: block new commitments on a churned SOW. Import lazily to
     # avoid an app.services.renewals ↔ app.services.approvals import cycle.
     from app.services.renewals import has_churn as _renewal_has_churn
+
+    await session.execute(select(Opportunity.id).where(Opportunity.id == opportunity_id).with_for_update())
 
     if await _renewal_has_churn(session, opportunity_id):
         raise ApprovalError(
@@ -445,8 +453,7 @@ async def submit_package(
             detail="no gm_model for opportunity — build one before submitting",
         )
 
-    # S7 A: hard-block on missing NDA + MSA. Runs before any write so a
-    # 409 leaves the transaction clean (no partial approval_package row).
+    # Coverage gates signature, not functional review (blueprint section 2).
     opportunity = (
         await session.execute(
             select(Opportunity).where(Opportunity.id == opportunity_id)
@@ -454,6 +461,15 @@ async def submit_package(
     ).scalar_one_or_none()
     if opportunity is None:
         raise ApprovalError(status_code=404, detail="opportunity not found")
+    if routing:
+        from app.services.approval_routing import submission_plan
+        routing = await submission_plan(
+            session, actor_id=actor_id, opportunity_id=opportunity_id,
+            expected_sow_version_id=uuid.UUID(routing['sow_version_id']),
+            expected_gm_model_id=uuid.UUID(routing['gm_model_id']),
+            choices={r['function']: r for r in routing['rows']},
+        )
+        sow_version = await session.get(SowVersion, uuid.UUID(routing['sow_version_id']))
 
     hash_value = package_hash(sow_version, gm_model)
     if await _duplicate_hash_exists(
@@ -479,6 +495,25 @@ async def submit_package(
     session.add(package)
     await session.flush()
 
+    if routing:
+        from app.models.approval_routing import ApprovalAssignment
+        for row in routing['rows']:
+            session.add(ApprovalAssignment(package_id=package.id, function=row['function'],
+                approver_id=uuid.UUID(row['approver_id']) if row['approver_id'] else None,
+                due_date=date.fromisoformat(row['due_date']), use_sla=row['use_sla']))
+        if routing.get('executive'):
+            executive = routing['executive']
+            session.add(ApprovalAssignment(package_id=package.id, function='executive',
+                approver_id=uuid.UUID(executive['approver_id']) if executive['approver_id'] else None,
+                due_date=add_business_days(date.today(), 2)))
+        await session.flush()
+        for row in routing['rows']:
+            if row['approver_id'] and row['function'] in ('finance', 'legal'):
+                from app.services.approval_workflow import review_url
+                await queue_notification(session, user_id=uuid.UUID(row['approver_id']), category='approval_pending',
+                    subject=f"{row['label']} review assigned", body_md=f"Review is queued after Delivery and HR. [Open review]({review_url(opportunity_id)}).",
+                    related_entity='approval_package', related_entity_id=str(package.id))
+
     await append_audit(
         session,
         actor_id=actor_id,
@@ -493,6 +528,7 @@ async def submit_package(
             "package_hash": hash_value,
             "policy_version_id": (str(policy.id) if policy.id else None),
             "status": package.status,
+            "assignments": routing['rows'] if routing else None,
         },
     )
 
@@ -681,6 +717,8 @@ async def decide(
     _validate_function(function)
     _validate_decision(decision)
 
+    # Serialize sibling decisions so the final parallel reviewer advances once.
+    await session.execute(select(ApprovalPackage).where(ApprovalPackage.id == package_id).with_for_update().execution_options(populate_existing=True))
     package = await load_package(session, package_id)
 
     if package.status in _TERMINAL_STATUSES:
@@ -704,6 +742,9 @@ async def decide(
                 f"expected {sorted(expected)}"
             ),
         )
+
+    from app.services.approval_workflow import authorize_decision, assignments_for, finish_task
+    assignment = await authorize_decision(session, package, actor_id, function, reason)
 
     # Unique-per-(package, function): another approver already covered this.
     dup_function = (
@@ -746,6 +787,8 @@ async def decide(
     )
     session.add(row)
     await session.flush()
+    if assignment:
+        await finish_task(session, assignment, actor_id, 'done')
 
     await append_audit(
         session,
@@ -766,6 +809,8 @@ async def decide(
     # package back to the account owner (governance_status → SOWDraft) and
     # notifies the submitter. The package itself lands in ``rejected``.
     if decision in ("reject", "request_changes"):
+        for pending in await assignments_for(session, package.id):
+            await finish_task(session, pending, actor_id, 'cancelled')
         old_status = package.status
         package.status = "rejected"
         await append_audit(
@@ -849,6 +894,10 @@ async def _advance(
                     "india_pass": floors.get("india_pass", True),
                 },
             )
+            from app.services.ceo_exception import draft_for_package
+            await draft_for_package(session, package.id, commit=False)
+            from app.services.approval_workflow import create_tasks
+            await create_tasks(session, actor_id=actor_id, package=package, state=package.status)
             return
         package.status = "ready_to_sign"
         package.released_at = datetime.now(UTC)
@@ -895,6 +944,8 @@ async def void_on_change(
     package.status = "voided"
     package.voided_at = datetime.now(UTC)
     package.voided_reason = reason
+    from app.services.approval_workflow import close_tasks
+    await close_tasks(session, package.id, actor_id)
     await append_audit(
         session,
         actor_id=actor_id,
@@ -945,6 +996,8 @@ async def manual_void(
     package.status = "voided"
     package.voided_at = datetime.now(UTC)
     package.voided_reason = reason
+    from app.services.approval_workflow import close_tasks
+    await close_tasks(session, package.id, actor_id)
     await append_audit(
         session,
         actor_id=actor_id,
@@ -983,6 +1036,7 @@ class ListFilters:
     opportunity_id: uuid.UUID | None = None
     page: int = 1
     size: int = 25
+    reader_id: uuid.UUID | None = None
 
 
 async def list_packages(
@@ -996,6 +1050,12 @@ async def list_packages(
         .order_by(ApprovalPackage.submitted_at.desc(), ApprovalPackage.id.desc())
     )
     count_stmt = select(sa_func.count(ApprovalPackage.id))
+    if filters.reader_id:
+        from app.models.approval_routing import ApprovalAssignment
+        owned = select(Opportunity.id).where(Opportunity.owner_id == filters.reader_id)
+        assigned = select(ApprovalAssignment.package_id).where(ApprovalAssignment.approver_id == filters.reader_id)
+        visible = ApprovalPackage.opportunity_id.in_(owned) | ApprovalPackage.id.in_(assigned)
+        stmt, count_stmt = stmt.where(visible), count_stmt.where(visible)
     if filters.status:
         stmt = stmt.where(ApprovalPackage.status == filters.status)
         count_stmt = count_stmt.where(ApprovalPackage.status == filters.status)

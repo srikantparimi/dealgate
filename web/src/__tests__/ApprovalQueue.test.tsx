@@ -126,13 +126,14 @@ describe("ApprovalQueue", () => {
       expect(screen.getByTestId(`approve-${PACKAGE_ID}`)).toBeInTheDocument();
     });
     const user = userEvent.setup();
+    await user.type(screen.getByLabelText(`Review reason ${PACKAGE_ID}`), "Reviewed scope");
     await user.click(screen.getByTestId(`approve-${PACKAGE_ID}`));
     await waitFor(() => {
       expect(decide).toHaveBeenCalledTimes(1);
     });
     expect(decide.mock.calls[0][0]).toBe(PACKAGE_ID);
     expect(decide.mock.calls[0][1]).toBe("delivery");
-    expect(decide.mock.calls[0][2]).toEqual({ decision: "approve" });
+    expect(decide.mock.calls[0][2]).toEqual({ decision: "approve", reason: "Reviewed scope" });
   });
 
   it("shows empty state when nothing pending for this role", async () => {

@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { AuthUser } from "../auth/AuthProvider";
 import { cn } from "../lib/cn";
@@ -7,6 +7,8 @@ import { GlobalSearch } from "./GlobalSearch";
 import { NAV_GROUPS } from "./PrimaryNavigation";
 import { NotificationDrawer } from "./NotificationDrawer";
 import { ProfileMenu } from "./ProfileMenu";
+import { getDeal, getCurrentSowVersion, getSowVersion } from "../api/client";
+import { workspaceTitle } from "../pages/v2/sow-workspace/readiness";
 
 /**
  * Quiet 70px header (spec §3). Left: breadcrumb derived from the URL and
@@ -55,7 +57,23 @@ function buildCrumbs(pathname: string): Crumb[] {
 
 export function WorkspaceHeader({ user, className }: WorkspaceHeaderProps) {
   const { pathname } = useLocation();
-  const crumbs = useMemo(() => buildCrumbs(pathname), [pathname]);
+  const recordId = /^\/sows\/([0-9a-f-]{36})(?:\/|$)/i.exec(pathname)?.[1];
+  const [record, setRecord] = useState<{ id: string; crumbs: Crumb[] } | null>(null);
+  useEffect(() => {
+    if (!recordId) return;
+    let current = true;
+    void (async () => {
+      const deal = await getDeal(recordId);
+      const shallow = await getCurrentSowVersion(recordId);
+      const sow = shallow ? await getSowVersion(shallow.id) : null;
+      if (current) setRecord({ id: recordId, crumbs: [
+        { label: deal.client_name ?? "Client", to: deal.client_id ? `/clients/${deal.client_id}` : undefined },
+        { label: workspaceTitle({ deal, sow, gmModel: null, approvalPackage: null, agreements: [], signedSow: null }) },
+      ] });
+    })().catch(() => { if (current) setRecord(null); });
+    return () => { current = false; };
+  }, [recordId]);
+  const crumbs = useMemo(() => recordId ? record?.id === recordId ? record.crumbs : [{ label: "SOW workspace" }] : buildCrumbs(pathname), [pathname, recordId, record]);
 
   return (
     <header

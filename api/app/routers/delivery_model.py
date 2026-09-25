@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import AuthUser, require_role
+from app.auth import AuthUser, current_user, require_role
 from app.db import get_session
 from app.models.opportunity import Opportunity
 from app.services.delivery_model import (
@@ -364,12 +364,19 @@ async def seed_from_template_endpoint(
 @router.get("/{opportunity_id}")
 async def get_latest_endpoint(
     opportunity_id: uuid.UUID,
-    user: AuthUser = Depends(require_role(*_READ_ROLES)),
+    user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Latest version for an opportunity with computed numbers."""
 
-    await _load_opportunity(session, opportunity_id)
+    opp = await _load_opportunity(session, opportunity_id)
+    if not user.has_any_role(_READ_ROLES) and opp.owner_id != user.id:
+        from app.models.approval import ApprovalPackage
+        from app.models.approval_routing import ApprovalAssignment
+        assigned = await session.scalar(select(ApprovalAssignment.package_id).join(ApprovalPackage).where(
+            ApprovalPackage.opportunity_id == opportunity_id, ApprovalAssignment.approver_id == user.id).limit(1))
+        if not assigned:
+            raise HTTPException(status_code=403, detail="Only the owner or a reviewer may read this model")
     model = await latest_gm_model_for(session, opportunity_id)
     if model is None:
         return {"gm_model": None}
@@ -408,4 +415,3 @@ async def list_versions_endpoint(
     await _load_opportunity(session, opportunity_id)
     models = await list_gm_models_for(session, opportunity_id)
     return {"items": [summarize_gm_model(m) for m in models]}
-

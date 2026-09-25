@@ -420,7 +420,7 @@ function packageToCard(pkg: ApprovalPackage, deals: DealRow[]): ApprovalCard {
         : null;
   return {
     id: pkg.id,
-    href: `/sows/${pkg.id}`,
+    href: `/sows/${pkg.opportunity_id}/approvals`,
     client: deal?.client_name ?? deal?.hubspot_deal_id ?? "Package",
     engagement: deal?.engagement_type ?? null,
     // We deliberately do not fabricate a value. The SOW workspace shows
@@ -428,17 +428,18 @@ function packageToCard(pkg: ApprovalPackage, deals: DealRow[]): ApprovalCard {
     // package listing exposes today.
     value: null,
     margin: null,
+    gmVersion: pkg.gm_version,
     marginOutcome: pkg.floors?.requires_ceo ? "fail" : undefined,
     ndaLabel: "See client",
     ndaTone: "progress",
     msaLabel: "See client",
     msaTone: "progress",
     markers: packageMarkers(pkg),
-    owner: null,
+    owner: pkg.owner?.name ?? null,
     ageDays,
     stripe,
     nextAction:
-      pkg.status === "pending_delivery_hr"
+      pkg.routing_blockers?.length ? pkg.routing_blockers.join("; ") : pkg.pending_with?.length ? `Pending with ${pkg.pending_with.join(", ")}` : pkg.status === "pending_delivery_hr"
         ? "Delivery + HR review"
         : pkg.status === "pending_finance_legal"
           ? "Finance + Legal review"

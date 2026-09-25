@@ -34,6 +34,7 @@ export interface ApprovalCard {
   engagement: string | null;
   value: string | null;
   margin: string | null;
+  gmVersion?: number | null;
   marginOutcome?: "pass" | "fail" | "unavailable";
   ndaLabel: string;
   ndaTone: StatusTone;
@@ -81,7 +82,7 @@ function SowMiniCard({ card }: { card: ApprovalCard }) {
   };
   const gmLabel = card.margin
     ? `${card.margin}${card.marginOutcome === "fail" ? " · below floor" : ""}`
-    : "GM not built";
+    : card.gmVersion ? `GM v${card.gmVersion} frozen` : "GM unavailable";
   const gmTone: StatusTone = card.margin ? marginTone(card.marginOutcome) : "neutral";
 
   return (
@@ -119,8 +120,8 @@ function SowMiniCard({ card }: { card: ApprovalCard }) {
         <StatusBadge tone={card.msaTone} label={card.msaLabel} />
       </div>
       <FunctionMarkRow states={states} />
-      <div className="mt-1 flex items-center justify-between text-[12px] text-text-muted">
-        <span className="truncate">
+      <div className="mt-1 flex items-start justify-between gap-2 text-[12px] text-text-muted">
+        <span className="min-w-0 break-words">
           {card.owner ? `${card.owner} · ` : ""}
           {card.nextAction ?? "Awaiting next reviewer"}
         </span>

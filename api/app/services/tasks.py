@@ -205,6 +205,9 @@ async def transition_task(
     if not _actor_can_transition(actor, task):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not authorised")
 
+    if task.category in ('approval.awaiting', 'approval.routing'):
+        raise HTTPException(status_code=409, detail="Approval work must be resolved from the review stream")
+
     from_status = _current_status(task)
     allowed = TASK_TRANSITIONS.get(from_status, set())
     if to_status not in allowed:
@@ -321,6 +324,8 @@ async def reassign_task(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="new owner not found"
         )
+    if task.category in ('approval.awaiting', 'approval.routing'):
+        raise HTTPException(status_code=409, detail="Review assignment is managed by the approval package")
     if task.owner_id == new_owner_id:
         # No-op reassignment: return as-is without an audit row.
         return task
