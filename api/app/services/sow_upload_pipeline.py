@@ -325,6 +325,9 @@ async def _ensure_opportunity(
         setattr(opp, "source", source)
     session.add(opp)
     await session.flush()
+    from app.services.agreement_tracking import ensure_agreement_tasks
+
+    await ensure_agreement_tasks(session, client_id=client_id, owner_id=owner_id, actor_id=owner_id)
     return opp
 
 

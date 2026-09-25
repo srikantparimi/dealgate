@@ -8,10 +8,8 @@ math via the sandbox before Sales sees any GM UI. The §7 discounted case
 from __future__ import annotations
 
 from decimal import Decimal
-from io import BytesIO
 
 import httpx
-import openpyxl
 import pytest
 
 from app.main import app as main_app
@@ -196,8 +194,6 @@ async def test_invalid_engagement_type_rejected(monkeypatch):
             json={"engagement_type": "not_a_thing", "inputs": {}},
         )
     assert r.status_code == 422
-
-
 # --- schema endpoint -------------------------------------------------------
 
 
@@ -233,61 +229,3 @@ async def test_schema_endpoint_rejects_unknown_type(monkeypatch):
             headers={"X-Test-User": "finance@smartek21.com"},
         )
     assert r.status_code == 422
-
-
-# --- xlsx export -----------------------------------------------------------
-
-
-async def test_export_xlsx_numbers_match_compute(monkeypatch):
-    _as_finance(monkeypatch)
-    payload = _discounted_case_payload()
-    async with _client(main_app) as c:
-        compute = await c.post(
-            "/gm/sandbox",
-            headers={"X-Test-User": "finance@smartek21.com"},
-            json=payload,
-        )
-        export = await c.post(
-            "/gm/sandbox/export",
-            headers={"X-Test-User": "finance@smartek21.com"},
-            json=payload,
-        )
-    assert compute.status_code == 200
-    assert export.status_code == 200
-    assert export.headers["content-type"].startswith(
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    wb = openpyxl.load_workbook(BytesIO(export.content), data_only=False)
-    assert set(wb.sheetnames) == {"Inputs", "Result"}
-    result_sheet = wb["Result"]
-
-    # Build a {label: value} dict from the "Result" sheet (col A = label, col B = value).
-    kv: dict[str, object] = {}
-    for row in result_sheet.iter_rows(values_only=True):
-        if not row or row[0] is None:
-            continue
-        kv[str(row[0])] = row[1]
-
-    body = compute.json()
-    assert Decimal(str(kv["revenue_us"])) == Decimal(body["revenue_us"])
-    assert Decimal(str(kv["cost_us"])) == Decimal(body["cost_us"])
-    assert Decimal(str(kv["revenue_india"])) == Decimal(body["revenue_india"])
-    assert Decimal(str(kv["cost_india"])) == Decimal(body["cost_india"])
-    assert Decimal(str(kv["gm_us"])) == Decimal(body["gm_us"])
-    assert Decimal(str(kv["gm_india"])) == Decimal(body["gm_india"])
-    # Policy pass/fail must match.
-    assert str(kv["us_pass"]).lower() == str(body["policy"]["us_pass"]).lower()
-    assert str(kv["india_pass"]).lower() == str(body["policy"]["india_pass"]).lower()
-    assert str(kv["requires_ceo"]).lower() == str(body["policy"]["requires_ceo"]).lower()
-
-
-async def test_export_forbidden_for_sales(monkeypatch):
-    _as_sales(monkeypatch)
-    async with _client(main_app) as c:
-        r = await c.post(
-            "/gm/sandbox/export",
-            headers={"X-Test-User": "sales@smartek21.com"},
-            json=_discounted_case_payload(),
-        )
-    assert r.status_code == 403

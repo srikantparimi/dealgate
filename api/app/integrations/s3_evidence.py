@@ -1,17 +1,14 @@
 """Evidence file uploads for the agreements bucket.
 
-Legal uploads signed PDF/DOCX evidence directly to S3 with a short-lived
-pre-signed PUT URL, then confirms via `PATCH /agreements/{id}` with the
-returned `s3_key`. The server never streams the file.
+Signed PDF/DOCX evidence is stored by the extraction service and filed only
+after Legal confirms the extracted draft. Uploads and downloads use the AWS
+default credential chain, including the ECS task role.
 
 Sprint 2 uses versioning + SSE-AES256 on the bucket. Object Lock lands in
 a later sprint (build-guide §12).
 
-The signing is implemented against SigV4 in stdlib to avoid pulling `boto3`
-into the API image for a single API call. The wire format is exactly what
-`s3.generate_presigned_url` would produce, so switching to `aiobotocore`
-later is transparent to callers. For local tests, `StubS3` returns fake
-URLs so `pytest` never has to talk to AWS.
+The legacy presigned PUT interface remains for API compatibility. For local
+tests, `StubS3` stores bytes in memory and returns synthetic URLs.
 """
 
 from __future__ import annotations
@@ -242,18 +239,19 @@ class EvidenceS3:
         )
 
     def generate_download_url(self, s3_key: str) -> str:
-        access, secret, token = _aws_credentials()
-        return _presign(
-            method="GET",
-            bucket=self._bucket,
-            key=s3_key,
-            region=self._region,
-            access_key=access,
-            secret_key=secret,
-            session_token=token,
-            ttl_seconds=_URL_TTL_SECONDS,
-            signed_headers={},
-        )
+        from app.integrations.s3_sow import _client
+
+        return _client().generate_presigned_url("get_object",
+            Params={"Bucket": self._bucket, "Key": s3_key}, ExpiresIn=_URL_TTL_SECONDS)
+
+    def put_object(self, agreement_id: uuid.UUID, filename: str, content_type: str, body: bytes) -> str:
+        from app.integrations.s3_sow import _client
+
+        if content_type not in _ALLOWED_CONTENT_TYPES:
+            raise UnsupportedContentType("Only PDF and DOCX files are accepted")
+        key = _build_s3_key(agreement_id, filename, content_type)
+        _client().put_object(Bucket=self._bucket, Key=key, Body=body, ContentType=content_type)
+        return key
 
 
 class StubS3(EvidenceS3):
@@ -270,6 +268,14 @@ class StubS3(EvidenceS3):
         # Record every call so tests can assert on ordering / arguments.
         self.upload_calls: list[tuple[uuid.UUID, str, str]] = []
         self.download_calls: list[str] = []
+        self.objects: dict[str, bytes] = {}
+
+    def put_object(self, agreement_id: uuid.UUID, filename: str, content_type: str, body: bytes) -> str:
+        if content_type not in _ALLOWED_CONTENT_TYPES:
+            raise UnsupportedContentType("Only PDF and DOCX files are accepted")
+        key = _build_s3_key(agreement_id, filename, content_type)
+        self.objects[key] = body
+        return key
 
     def generate_upload_url(
         self,

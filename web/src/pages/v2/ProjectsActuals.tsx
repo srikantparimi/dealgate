@@ -1,246 +1,177 @@
-/**
- * Delivery & actuals (`/projects`) — spec §15.
- *
- * Three portfolio tabs — Portfolio / Actuals / Staffing — plus a
- * pre-wired detail page at `/projects/:id/:tab?` via inline nested
- * routes. The detail route is intentionally NOT registered in App.tsx
- * (this Wave brief locks App.tsx). When App.tsx switches the outer
- * pattern to `/projects/*`, this file transparently starts serving the
- * detail pane.
- *
- * Role gates (client-side UX; server independently enforces per
- * CLAUDE.md rule 5):
- *   - Import actuals              → Finance / SystemAdmin
- *   - Update forecast (detail)    → Delivery / SystemAdmin
- *
- * All money and margin strings arrive pre-formatted from the server
- * loader helpers in `projects/format.ts`; the components never do the
- * math (blueprint §2).
- */
-
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Routes, Route, useNavigate } from "react-router-dom";
-import { useAuth } from "../../auth/AuthProvider";
-import {
-  ApiError,
-  getDeals,
-  listActualBatches,
-  type ActualBatch,
-  type DealRow,
-} from "../../api/client";
-import { EmptyState } from "../../ui-v2/EmptyState";
-import { ErrorState } from "../../ui-v2/ErrorState";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { listProjects, type ProjectRow } from "../../api/client";
 import { PageHeader } from "../../ui-v2/PageHeader";
-import { SourceFreshness } from "../../ui-v2/SourceFreshness";
-import { Button } from "../../ui-v2/primitives/button";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../../ui-v2/primitives/tabs";
-import { PortfolioTable, type PortfolioRow } from "./projects/PortfolioTable";
-import { ActualsTab } from "./projects/ActualsTab";
-import { StaffingTab, type StaffingRow } from "./projects/StaffingTab";
-import { ProjectDetailPage } from "./projects/ProjectDetail";
+import { ErrorState } from "../../ui-v2/ErrorState";
+import { EmptyState } from "../../ui-v2/EmptyState";
+import { Input } from "../../ui-v2/primitives/input";
+import { fmtCount, fmtPercent } from "./projects/format";
 
-const FINANCE_ROLES = new Set(["Finance", "SystemAdmin"]);
-
-type TabKey = "portfolio" | "actuals" | "staffing";
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "portfolio", label: "Portfolio" },
-  { key: "actuals", label: "Actuals" },
-  { key: "staffing", label: "Staffing" },
-];
-
-function todayMonth(): string {
-  const d = new Date();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${d.getFullYear()}-${m}`;
-}
-
-/**
- * Turn a deal row into a portfolio row. The server does NOT yet return
- * an approved / forecast final GM per deal, so those columns render as
- * "Not validated" via `MarginCell` — that is the honest "no verified
- * source" state (spec §4). We do not fabricate margins on the client.
- */
-function toPortfolioRow(d: DealRow): PortfolioRow {
-  return {
-    id: d.id,
-    clientProject:
-      d.client_name ?? d.hubspot_deal_id ?? `Deal ${d.id.slice(0, 8)}`,
-    sowEndDate: null,
-    deliveryOwner: d.owner_id ? d.owner_id.slice(0, 8) : null,
-    signedValue: null,
-    approvedFinalGm: null,
-    forecastFinalGm: null,
-    risk:
-      d.governance_status === "released"
-        ? { label: "Active", tone: "ok" }
-        : d.governance_status === "rejected"
-          ? { label: "Blocked", tone: "danger" }
-          : {
-          // Unguarded .replace() throws during useMemo, which blows past
-          // the page ErrorState and hits whatever boundary is above it.
-          label: (d.governance_status ?? "unknown").replace(/_/g, " "),
-          tone: "warn",
-        },
-    nextReview: d.next_client_date,
-  };
-}
-
-function PortfolioIndex() {
-  const nav = useNavigate();
-  const { user } = useAuth();
-  const canUpload = (user?.groups ?? []).some((g) => FINANCE_ROLES.has(g));
-
-  const [tab, setTab] = useState<TabKey>("portfolio");
-  const [deals, setDeals] = useState<DealRow[]>([]);
-  const [batches, setBatches] = useState<ActualBatch[]>([]);
-  const [loading, setLoading] = useState(true);
+export function ProjectsActualsPage() {
+  const [rows, setRows] = useState<ProjectRow[]>([]);
   const [error, setError] = useState<unknown>(null);
-  const [period, setPeriod] = useState<string>(todayMonth());
-  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
-
-  const load = useCallback(async () => {
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
-    try {
-      const [dealsRes, batchesRes] = await Promise.all([
-        getDeals({ size: 100 }),
-        canUpload
-          ? listActualBatches({ size: 20 }).catch((err) => {
-              // Non-403 rethrows; 403 degrades quietly.
-              if (err instanceof ApiError && err.status === 403) return null;
-              throw err;
-            })
-          : Promise.resolve(null),
-      ]);
-      setDeals(dealsRes.items);
-      setBatches(batchesRes?.items ?? []);
-      setFetchedAt(new Date());
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [canUpload]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const portfolioRows = useMemo(() => deals.map(toPortfolioRow), [deals]);
-  const staffingRows = useMemo<StaffingRow[]>(
-    () => [], // Server does not yet return resource lines in the deals list.
-    [],
+    listProjects()
+      .then((r) => {
+        if (!cancelled) setRows(r.items);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [retry]);
+  const filtered = rows.filter((r) =>
+    `${r.title} ${r.client_name} ${r.owner_name}`
+      .toLowerCase()
+      .includes(search.toLowerCase()),
   );
-
-  const actions = (
-    <div className="flex items-center gap-2">
-      {canUpload ? (
-        <Button type="button" data-testid="import-actuals">
-          Import actuals
-        </Button>
-      ) : null}
-      <Button variant="secondary" type="button" data-testid="export-portfolio">
-        Export
-      </Button>
-    </div>
-  );
-
-  const counts: Record<TabKey, number> = {
-    portfolio: portfolioRows.length,
-    actuals: batches.length,
-    staffing: staffingRows.length,
-  };
-
   return (
     <div>
       <PageHeader
-        title="Delivery & actuals"
-        subtitle="Portfolio, reconciliation, forecast and staffing. Signed value is not the same as recognized revenue."
-        actions={actions}
-      />
-
-      <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
-          <TabsList aria-label="Delivery tabs">
-            {TABS.map((t) => (
-              <TabsTrigger key={t.key} value={t.key}>
-                {t.label} ({counts[t.key]})
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        {fetchedAt ? (
-          <SourceFreshness
-            source="DealGate governance"
-            asOf={fetchedAt.toLocaleString()}
-            basis="Server-computed. Missing values render as Unavailable."
+        title="Projects"
+        actions={
+          <Input
+            aria-label="Search projects"
+            placeholder="Search projects"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
-        ) : null}
-      </div>
-
-      <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
-        <TabsContent value={tab} forceMount>
-          {loading ? (
-            <div
-              role="status"
-              className="rounded-panel border border-divider p-6 text-body text-text-secondary"
-            >
-              Loading portfolio…
+        }
+      />
+      {loading ? (
+        <p role="status">Loading projects...</p>
+      ) : error ? (
+        <ErrorState
+          title="Could not load projects"
+          description={String(error)}
+          onRetry={() => setRetry((n) => n + 1)}
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="No running projects"
+          description="No released SOWs match this view."
+        />
+      ) : (
+        filtered.map((row) => (
+          <section
+            key={row.id}
+            className="border-b border-divider py-6"
+            aria-label={row.title}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <Link
+                  className="text-section font-semibold text-primary break-words"
+                  to={`/sows/${row.id}`}
+                >
+                  {row.title}
+                </Link>
+                <p className="mt-1 text-body text-text-secondary">
+                  {row.client_name} · {row.owner_name}
+                </p>
+                <p className="mt-1 text-secondary text-text-secondary">
+                  SOW v{row.sow_version} · GM v{row.gm_version} · Released{" "}
+                  {row.released_at.slice(0, 10)}
+                  {row.term_end ? ` · Ends ${row.term_end}` : ""}
+                </p>
+              </div>
+              <table className="text-body" aria-label={`${row.title} GM`}>
+                <thead>
+                  <tr className="text-left text-text-secondary">
+                    <th className="pr-4">GM</th>
+                    <th className="pr-4">Approved</th>
+                    <th>Forecast</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(["us", "india"] as const).map((region) => (
+                    <tr key={region}>
+                      <th className="pr-4 text-left font-medium">
+                        {region === "us" ? "US" : "India"}
+                      </th>
+                      <td className="pr-4 tnum">
+                        {fmtPercent(row.approved[region]) ?? "Unavailable"}
+                      </td>
+                      <td className="tnum">
+                        {fmtPercent(row.forecast[region]) ?? "Unavailable"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                {row.forecast.as_of && (
+                  <tfoot>
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="pt-1 text-secondary text-text-secondary"
+                      >
+                        Forecast as of {row.forecast.as_of}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
-          ) : error ? (
-            <ErrorState
-              title="We couldn't load the portfolio"
-              description={
-                error instanceof ApiError ? error.message : String(error)
-              }
-              onRetry={() => void load()}
-            />
-          ) : tab === "portfolio" ? (
-            portfolioRows.length === 0 ? (
-              <EmptyState
-                title="No portfolio rows yet."
-                description="Signed SOWs surface here once the release evidence lands."
-              />
-            ) : (
-              <PortfolioTable
-                rows={portfolioRows}
-                onRowClick={(r) => nav(`/projects/${r.id}`)}
-              />
-            )
-          ) : tab === "actuals" ? (
-            <ActualsTab
-              periodMonth={period}
-              onPeriodChange={setPeriod}
-              batches={batches}
-              canUpload={canUpload}
-              reconciliation={null}
-            />
-          ) : (
-            <StaffingTab rows={staffingRows} />
-          )}
-        </TabsContent>
-      </Tabs>
+            <div className="mt-5 overflow-x-auto">
+              <table
+                className="w-full text-body"
+                aria-label={`${row.title} resources`}
+              >
+                <thead>
+                  <tr className="border-b border-divider text-left text-text-secondary">
+                    {[
+                      "Resource",
+                      "Role",
+                      "Location",
+                      "Allocation",
+                      "Hours",
+                      "Dates",
+                    ].map((h) => (
+                      <th key={h} className="py-2 pr-4 font-medium">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {row.resources.map((r) => (
+                    <tr key={r.id} className="border-b border-divider">
+                      <td className="py-3 pr-4">{r.name ?? "To hire"}</td>
+                      <td className="pr-4">{r.role}</td>
+                      <td className="pr-4">{r.location}</td>
+                      <td className="pr-4 tnum">{fmtPercent(r.allocation)}</td>
+                      <td className="pr-4 tnum">
+                        {r.hours == null
+                          ? "Unavailable"
+                          : fmtCount(Number(r.hours))}
+                      </td>
+                      <td className="whitespace-nowrap">
+                        {r.start_date} to {r.end_date}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {row.resources.length === 0 && (
+                <p className="py-3 text-text-secondary">
+                  No resources recorded in this approved baseline.
+                </p>
+              )}
+            </div>
+          </section>
+        ))
+      )}
     </div>
-  );
-}
-
-/**
- * Public entry point. Nests the detail route in-line — the wave brief
- * forbids editing App.tsx, so we ship the sub-routes here for the day
- * App.tsx switches to `/projects/*`.
- */
-export function ProjectsActualsPage() {
-  return (
-    <Routes>
-      <Route index element={<PortfolioIndex />} />
-      <Route path=":id" element={<ProjectDetailPage />} />
-      <Route path=":id/:tab" element={<ProjectDetailPage />} />
-    </Routes>
   );
 }

@@ -214,7 +214,7 @@ async def test_full_flow_webhook_to_opportunity_task_and_audits(wired_app):
 
     async with factory() as s:
         opps = (await s.execute(select(Opportunity))).scalars().all()
-        tasks = (await s.execute(select(Task))).scalars().all()
+        tasks = (await s.execute(select(Task).where(Task.category == "intake"))).scalars().all()
         audits = (
             await s.execute(select(AuditEvent).order_by(AuditEvent.ts, AuditEvent.id))
         ).scalars().all()
@@ -267,7 +267,7 @@ async def test_duplicate_event_id_is_idempotent(wired_app):
 
     async with factory() as s:
         opps = (await s.execute(select(Opportunity))).scalars().all()
-        tasks = (await s.execute(select(Task))).scalars().all()
+        tasks = (await s.execute(select(Task).where(Task.category == "intake"))).scalars().all()
     assert len(opps) == 1
     assert len(tasks) == 1
 
@@ -301,7 +301,7 @@ async def test_missing_owner_falls_back_to_sales_leader(wired_app):
         leader = (
             await s.execute(select(User).where(User.email == LEADER_EMAIL))
         ).scalar_one()
-        task = (await s.execute(select(Task))).scalar_one()
+        task = (await s.execute(select(Task).where(Task.category == "intake"))).scalar_one()
         opp = (await s.execute(select(Opportunity))).scalar_one()
     assert task.owner_id == leader.id
     assert opp.owner_id == leader.id
@@ -328,7 +328,7 @@ async def test_owner_present_in_event_but_deleted_in_hubspot(wired_app):
         leader = (
             await s.execute(select(User).where(User.email == LEADER_EMAIL))
         ).scalar_one()
-        task = (await s.execute(select(Task))).scalar_one()
+        task = (await s.execute(select(Task).where(Task.category == "intake"))).scalar_one()
     assert task.owner_id == leader.id
 
 
@@ -367,7 +367,7 @@ async def test_property_change_event_upserts_opportunity(wired_app):
 
     async with factory() as s:
         opps = (await s.execute(select(Opportunity))).scalars().all()
-        tasks = (await s.execute(select(Task))).scalars().all()
+        tasks = (await s.execute(select(Task).where(Task.category == "intake"))).scalars().all()
         audits = (await s.execute(select(AuditEvent))).scalars().all()
     assert len(opps) == 1
     assert opps[0].sales_stage == "contractsent"
@@ -478,7 +478,7 @@ async def test_worker_process_pending_runs_intake(wired_app):
 
     async with factory() as s:
         opps = (await s.execute(select(Opportunity))).scalars().all()
-        tasks = (await s.execute(select(Task))).scalars().all()
+        tasks = (await s.execute(select(Task).where(Task.category == "intake"))).scalars().all()
         event = (
             await s.execute(_stmt_by_event_id("1001"))
         ).scalar_one()

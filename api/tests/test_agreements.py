@@ -112,7 +112,7 @@ async def test_post_forbidden_for_non_legal(app_with_session, seeded, monkeypatc
             json={
                 "legal_entity_id": str(seeded["entity"].id),
                 "type": "NDA",
-                "state": "drafting",
+                "state": "requested",
                 "owner_email": "legal@smartek21.com",
                 "next_action": "Draft NDA",
                 "due_date": str(date.today() + timedelta(days=7)),
@@ -204,7 +204,7 @@ async def test_post_creates_and_audits(app_with_session, seeded, session, monkey
             json={
                 "legal_entity_id": str(seeded["entity"].id),
                 "type": "NDA",
-                "state": "drafting",
+                "state": "requested",
                 "owner_email": "legal@smartek21.com",
                 "next_action": "Draft NDA",
                 "due_date": str(date.today() + timedelta(days=7)),
@@ -213,14 +213,14 @@ async def test_post_creates_and_audits(app_with_session, seeded, session, monkey
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["kind"] == "NDA"
-    assert body["state"] == "drafting"
+    assert body["state"] == "requested"
     assert body["owner_email"] == "legal@smartek21.com"
 
     rows = await _audit_for(session, uuid.UUID(body["id"]))
     assert len(rows) == 1
     assert rows[0].action == "agreement.created"
     assert rows[0].actor_id == _uid("legal@smartek21.com")
-    assert rows[0].after["state"] == "drafting"
+    assert rows[0].after["state"] == "requested"
     assert await verify_chain(session) is True
 
 
@@ -248,7 +248,7 @@ async def test_post_unknown_type_returns_422(app_with_session, seeded, monkeypat
             json={
                 "legal_entity_id": str(seeded["entity"].id),
                 "type": "SLA",
-                "state": "drafting",
+                "state": "requested",
             },
         )
     assert r.status_code == 422
@@ -263,7 +263,7 @@ async def test_post_missing_legal_entity_returns_404(app_with_session, monkeypat
             json={
                 "legal_entity_id": str(uuid.uuid4()),
                 "type": "NDA",
-                "state": "drafting",
+                "state": "requested",
             },
         )
     assert r.status_code == 404
@@ -275,12 +275,12 @@ async def test_post_missing_legal_entity_returns_404(app_with_session, monkeypat
 async def test_patch_state_transition_audits(
     app_with_session, seeded, session, monkeypatch
 ):
-    # Seed an agreement in `sent` state.
+    # Tracking moves directly from requested to sent, without review.
     agreement = Agreement(
         id=uuid.uuid4(),
         legal_entity_id=seeded["entity"].id,
         kind="NDA",
-        state="sent",
+        state="requested",
     )
     session.add(agreement)
     await session.commit()
@@ -293,7 +293,7 @@ async def test_patch_state_transition_audits(
             f"/agreements/{agreement.id}",
             headers={"X-Test-User": "legal@smartek21.com"},
             json={
-                "state": "executed",
+                "state": "sent",
                 "expiry": expiry,
                 "evidence_s3_key": evidence_key,
                 "notice_days": 60,
@@ -301,7 +301,7 @@ async def test_patch_state_transition_audits(
         )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["state"] == "executed"
+    assert body["state"] == "sent"
     assert body["expiry"] == expiry
     assert body["evidence_s3_key"] == evidence_key
     assert body["notice_days"] == 60
@@ -315,8 +315,8 @@ async def test_patch_state_transition_audits(
         "agreement.state_changed",  # state
     ]
     # The last audit row carries the state diff.
-    assert rows[-1].before == {"state": "sent"}
-    assert rows[-1].after == {"state": "executed"}
+    assert rows[-1].before == {"state": "requested"}
+    assert rows[-1].after == {"state": "sent"}
     assert await verify_chain(session) is True
 
 
@@ -343,7 +343,7 @@ async def test_patch_illegal_transition_returns_422_no_audit(
         )
     assert r.status_code == 422
     detail = r.json()["detail"]
-    assert "'missing'" in detail and "'executed'" in detail
+    assert "signed evidence" in detail
 
     rows = await _audit_for(session, agreement.id)
     # No audit row for the illegal move.
@@ -370,7 +370,7 @@ async def test_patch_executed_without_expiry_returns_422(
             json={"state": "executed"},
         )
     assert r.status_code == 422
-    assert "expiry" in r.json()["detail"]
+    assert "signed evidence" in r.json()["detail"]
 
 
 # --- GET /agreements filters ----------------------------------------------

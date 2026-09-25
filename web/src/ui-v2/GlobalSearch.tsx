@@ -191,7 +191,7 @@ export function GlobalSearch({ className }: GlobalSearchProps) {
                 <CommandItem
                   key={row.id}
                   value={`opp-${row.id}-${row.client_name ?? ""}`}
-                  onSelect={() => handleSelect(`/deals/${row.id}`)}
+                  onSelect={() => handleSelect(`/sows/${row.id}`)}
                 >
                   <Layers className="h-4 w-4 text-text-secondary" aria-hidden />
                   <span className="flex-1 truncate">

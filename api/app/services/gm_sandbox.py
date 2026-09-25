@@ -1,4 +1,4 @@
-"""GM sandbox service — parse inputs, dispatch to the pure library, export xlsx.
+"""Shared GM service: parse inputs and dispatch to the pure library.
 
 This is the M1 sign-off surface: Finance validates the six templates against
 their Excel here before Sales sees any GM UI. **All** math flows through
@@ -16,7 +16,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
-from io import BytesIO
 from typing import Any, Callable, Optional
 from uuid import UUID
 
@@ -231,6 +230,8 @@ def parse_inputs(engagement_type: EngagementType, inputs: dict) -> Any:
     if not isinstance(inputs, dict):
         raise SandboxInputError("inputs must be an object")
     return parser(inputs)
+
+
 
 
 # --- schema for the UI form builder ----------------------------------------
@@ -556,93 +557,6 @@ def run_compute(engagement_type: EngagementType, raw_inputs: dict) -> TemplateRe
     return gm_compute(engagement_type, parsed)
 
 
-# --- xlsx export -----------------------------------------------------------
-
-
-def _echo_resources(inputs: dict) -> list[list[Any]]:
-    """Rows for the Inputs sheet's resources table. Empty for templates
-    without resource lines."""
-    resources = inputs.get("resources")
-    if not isinstance(resources, list):
-        # Some templates use "resource" (singular).
-        r = inputs.get("resource")
-        if isinstance(r, dict):
-            resources = [r]
-        else:
-            return []
-    rows: list[list[Any]] = [
-        ["role", "seniority", "location", "hours_billable", "hourly_bill_rate", "hourly_cost"]
-    ]
-    for r in resources:
-        if not isinstance(r, dict):
-            continue
-        rows.append(
-            [
-                r.get("role", ""),
-                r.get("seniority", ""),
-                r.get("location", ""),
-                r.get("hours_billable", ""),
-                r.get("hourly_bill_rate", ""),
-                r.get("hourly_cost", ""),
-            ]
-        )
-    return rows
-
-
-def build_xlsx(engagement_type: EngagementType, inputs: dict, response: dict) -> bytes:
-    """Two-sheet workbook: Inputs (echo) + Result (per-component + policy).
-
-    The Result sheet's cell values are the **same Decimal strings** that
-    :func:`build_response` produced, so a test can compare Decimal-to-Decimal
-    without any float round-trip.
-    """
-    from openpyxl import Workbook
-
-    wb = Workbook()
-    inputs_sheet = wb.active
-    inputs_sheet.title = "Inputs"
-    inputs_sheet.append(["engagement_type", engagement_type.value])
-    inputs_sheet.append([])
-    # Revenue split echo, when present.
-    for key in ("total_price", "revenue_us", "revenue_india", "monthly_fee_us",
-                "monthly_fee_india", "term_months", "revenue_cap", "deliverable",
-                "replacement_obligation"):
-        if key in inputs and inputs[key] not in (None, ""):
-            inputs_sheet.append([key, str(inputs[key])])
-    inputs_sheet.append([])
-    for row in _echo_resources(inputs):
-        inputs_sheet.append(row)
-
-    result_sheet = wb.create_sheet("Result")
-    # Emit label, value pairs so the test can build a dict trivially.
-    for k in (
-        "revenue_us",
-        "cost_us",
-        "gm_us",
-        "revenue_india",
-        "cost_india",
-        "gm_india",
-        "gm_blended",
-        "min_price_us",
-        "min_price_india",
-        "complete",
-        "geography",
-        "computed_at",
-    ):
-        result_sheet.append([k, response.get(k)])
-    result_sheet.append(["us_pass", response["policy"]["us_pass"]])
-    result_sheet.append(["india_pass", response["policy"]["india_pass"]])
-    result_sheet.append(["requires_ceo", response["policy"]["requires_ceo"]])
-    result_sheet.append(["us_floor", response["policy"]["us_floor"]])
-    result_sheet.append(["india_floor", response["policy"]["india_floor"]])
-    result_sheet.append(["policy_source", response["policy"]["source"]])
-    result_sheet.append(["policy_version_id", response.get("policy_version_id") or ""])
-    result_sheet.append(["rate_card_version_id", response.get("rate_card_version_id") or ""])
-    result_sheet.append(["missing", ", ".join(response.get("missing") or [])])
-
-    buf = BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
 
 
 __all__ = [
@@ -653,6 +567,5 @@ __all__ = [
     "resolve_policy",
     "run_compute",
     "build_response",
-    "build_xlsx",
     "schema_for",
 ]
