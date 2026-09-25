@@ -1,27 +1,8 @@
-"""NDA + MSA hard block at ``submit_package`` (S7 A).
+"""NDA/MSA coverage gate for signature and release, never functional review.
 
-Blueprint §2 (hard rule): "No valid NDA + MSA → SOW cannot move to
-signature." Coverage state was tracked in :func:`app.services.clients.coverage_state`
-since Sprint 2 but nothing enforced it at the transition. This module
-holds the single gate the approvals service calls before writing an
-``approval_package`` row.
-
-Contract:
-
-- Raises :class:`app.services.approvals.ApprovalError` (409) when either
-  NDA or MSA is not in ``executed`` state, or is executed but expired.
-- Message shape is exactly ``"MSA + NDA required (missing: ...)"`` so the
-  UI can render the missing pieces without parsing.
-- The check prefers entity-level: if the opportunity has ``client_id``
-  set, look for NDA + MSA across the client's legal_entities. Since the
-  ``Opportunity`` model does not carry a ``legal_entity_id`` link, we
-  treat "the client has both across entities" as satisfying the rule
-  (blueprint §6.2 Legal coverage model). Legacy sow_versions without a
-  client link fall through to the same check (client=None → all missing).
-
-No side effects: no audit row, no notification, no partial write. The
-caller runs this before ``session.flush`` so a 409 leaves the transaction
-untouched.
+Coverage is checked across the client legal entities, matching the existing
+client-level policy. Missing or expired coverage raises ApprovalError (409).
+Historical executed agreements retain the legacy expiry-date fallback.
 """
 
 from __future__ import annotations

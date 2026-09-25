@@ -10,7 +10,7 @@ import {
 function renderNav(groups: string[]) {
   return render(
     <MemoryRouter initialEntries={["/"]}>
-      <PrimaryNavigation groups={groups} showLegacy={false} />
+      <PrimaryNavigation groups={groups} />
     </MemoryRouter>,
   );
 }
@@ -43,14 +43,14 @@ describe("PrimaryNavigation", () => {
     ).toHaveAttribute("href", "/reports");
     // Settings requires SystemAdmin/Finance/Legal/CEO.
     expect(
-      screen.queryByRole("link", { name: /settings & controls/i }),
+      screen.queryByRole("link", { name: /settings/i }),
     ).not.toBeInTheDocument();
   });
 
   it("shows Settings for privileged roles", () => {
     renderNav(["Finance"]);
     expect(
-      screen.getByRole("link", { name: /settings & controls/i }),
+      screen.getByRole("link", { name: /settings/i }),
     ).toHaveAttribute("href", "/settings");
   });
 

@@ -118,7 +118,7 @@ export function ClientDetailPage() {
       key: "deal",
       header: "Deal",
       render: (o) => (
-        <Link to={`/deals/${o.id}`} style={{ color: "#1d4ed8" }}>
+        <Link to={`/sows/${o.id}`} style={{ color: "#1d4ed8" }}>
           {o.hubspot_deal_id}
         </Link>
       ),

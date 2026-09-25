@@ -273,6 +273,7 @@ async def _create_intake_task(
     task = Task(
         owner_id=owner.id,
         subject=INTAKE_SUBJECT,
+        category="intake",
         due_date=_next_business_day(datetime.now(UTC).date(), INTAKE_DUE_BUSINESS_DAYS),
         status="Open",
     )
@@ -423,6 +424,9 @@ async def handle_event(
     opportunity, created = await _upsert_opportunity(
         session, deal_id, deal_payload, owner, client_row, correlation_id
     )
+    from app.services.agreement_tracking import ensure_agreement_tasks
+
+    await ensure_agreement_tasks(session, client_id=client_row.id, owner_id=owner.id, actor_id=None, correlation_id=correlation_id)
 
     if created:
         await _create_intake_task(session, opportunity, owner, correlation_id)

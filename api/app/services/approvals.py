@@ -54,7 +54,6 @@ from app.models.sow import SowVersion
 from app.models.task import Task
 from app.models.user import User
 from app.services.business_days import add_business_days
-from app.services.coverage_gate import check_msa_and_nda_executed
 from app.services.legacy_import import assert_not_legacy_for_approval
 from app.services.notifications import queue_notification
 from app.services.policy import active_policy
@@ -455,7 +454,6 @@ async def submit_package(
     ).scalar_one_or_none()
     if opportunity is None:
         raise ApprovalError(status_code=404, detail="opportunity not found")
-    await check_msa_and_nda_executed(session, opportunity)
 
     hash_value = package_hash(sow_version, gm_model)
     if await _duplicate_hash_exists(

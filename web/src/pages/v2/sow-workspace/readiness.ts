@@ -74,11 +74,13 @@ export function defaultTabFor(snap: WorkspaceSnapshot): string {
  */
 export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
   const items: ReadinessItem[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const covered = (a: AgreementRow) => a.state === "executed" && (!a.expiry || a.expiry >= today);
   const nda = snap.agreements.find(
-    (a) => a.kind === "NDA" && a.state === "executed",
+    (a) => a.kind === "NDA" && covered(a),
   );
   const msa = snap.agreements.find(
-    (a) => a.kind === "MSA" && a.state === "executed",
+    (a) => a.kind === "MSA" && covered(a),
   );
 
   items.push({
@@ -86,14 +88,14 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
     label: "NDA in force",
     status: nda ? "ok" : "warn",
     statusLabel: nda ? "Executed" : "Missing",
-    hint: nda ? undefined : "Send NDA before scope work leaves the room.",
+    hint: nda ? undefined : "NDA missing - blocks signature, not review.",
   });
   items.push({
     id: "msa",
     label: "MSA in force",
     status: msa ? "ok" : "warn",
     statusLabel: msa ? "Executed" : "Missing",
-    hint: msa ? undefined : "MSA must be executed before signature.",
+    hint: msa ? undefined : "MSA missing - blocks signature, not review.",
   });
 
   const scopeConfirmed = snap.sow?.confirmed_at != null;

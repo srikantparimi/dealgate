@@ -77,7 +77,7 @@ describe("ClientDetail", () => {
     expect(
       screen.getByRole("heading", { name: "Client + entities" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Agreements" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Agreements/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Opportunities" })).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Recent activity" }),
@@ -98,7 +98,7 @@ describe("ClientDetail", () => {
     const link = await screen.findByRole("link", { name: "H-1" });
     expect(link).toHaveAttribute(
       "href",
-      "/deals/dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "/sows/dddddddd-dddd-dddd-dddd-dddddddddddd",
     );
   });
 

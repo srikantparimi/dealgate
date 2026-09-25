@@ -204,6 +204,13 @@ resource "aws_iam_role_policy" "task_kms" {
 
 data "aws_iam_policy_document" "sow_and_bedrock" {
   statement {
+    sid       = "AgreementEvidence"
+    effect    = "Allow"
+    actions   = ["s3:PutObject", "s3:GetObject"]
+    resources = ["${var.agreements_bucket_arn}/agreements/*"]
+  }
+
+  statement {
     sid    = "SowBucketObjects"
     effect = "Allow"
     actions = [
@@ -347,6 +354,7 @@ resource "aws_ecs_task_definition" "api" {
         # it here so the task-def carries the value on every future
         # register.
         { name = "SOW_BUCKET", value = "${var.name_prefix}-sows-${data.aws_caller_identity.current.account_id}" },
+        { name = "AGREEMENTS_BUCKET", value = "${var.name_prefix}-agreements-${data.aws_caller_identity.current.account_id}" },
         ], var.env == "staging" && var.allow_dev_seed_endpoint ? [
         { name = "ALLOW_DEV_SEED_ENDPOINT", value = "1" },
       ] : [])

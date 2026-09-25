@@ -15,13 +15,9 @@ import { ClientDetailPage } from "./pages/ClientDetail";
 import { ClientListPage } from "./pages/ClientList";
 import { ClientSowGmPage } from "./pages/ClientSowGm";
 import { DashboardPage } from "./pages/Dashboard";
-import { DealDetailPage } from "./pages/DealDetail";
-import { DealListPage } from "./pages/DealList";
 import { DeliveryModelTemplatesPage } from "./pages/DeliveryModelTemplates";
-import { GMSandboxPage } from "./pages/GMSandbox";
 import { LegacyImportPage } from "./pages/LegacyImport";
 import { LegacyReconciliationPage } from "./pages/LegacyReconciliation";
-import { MyTasksPage } from "./pages/MyTasks";
 import { NotificationSettingsPage } from "./pages/NotificationSettings";
 import { PolicyAdminPage } from "./pages/PolicyAdmin";
 import { RateCardsPage } from "./pages/RateCards";
@@ -40,7 +36,7 @@ import { SignedHandoffPage } from "./pages/v2/SignedHandoff";
 import { RenewalsV2Page } from "./pages/v2/RenewalsV2";
 import { MyWorkPage } from "./pages/v2/MyWork";
 import { DiscoveryPage } from "./pages/v2/Discovery";
-import { MarginLabPage } from "./pages/v2/MarginLab";
+import { RetiredPage } from "./pages/v2/RetiredPage";
 import { ProjectsActualsPage } from "./pages/v2/ProjectsActuals";
 import { ReportsPage } from "./pages/v2/Reports";
 import { SettingsShellPage } from "./pages/v2/SettingsShell";
@@ -77,20 +73,20 @@ export function App() {
                   {/* Existing (legacy) pages — kept live for Wave 1. Wave 2
                    * will migrate them behind the new routes below. */}
                   <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/deals" element={<DealListPage />} />
-                  <Route path="/deals/:id" element={<DealDetailPage />} />
+                  <Route path="/deals" element={<RetiredPage />} />
+                  <Route path="/deals/:id" element={<RetiredPage />} />
                   <Route path="/clients" element={<ClientListPage />} />
                   <Route path="/clients/:id" element={<ClientDetailPage />} />
                   <Route
                     path="/clients/:id/sows"
                     element={<ClientSowGmPage />}
                   />
-                  <Route path="/tasks" element={<MyTasksPage />} />
+                  <Route path="/tasks" element={<RetiredPage />} />
                   <Route
                     path="/settings/notifications"
                     element={<NotificationSettingsPage />}
                   />
-                  <Route path="/gm/sandbox" element={<GMSandboxPage />} />
+                  <Route path="/gm/sandbox" element={<RetiredPage />} />
                   <Route path="/audit" element={<AuditPage />} />
                   <Route path="/adviser" element={<AdviserListPage />} />
                   <Route path="/adviser/new" element={<AdviserIntakePage />} />
@@ -154,7 +150,7 @@ export function App() {
                   <Route path="/renewals-v2" element={<RenewalsV2Page />} />
                   <Route path="/work" element={<MyWorkPage />} />
                   <Route path="/discovery" element={<DiscoveryPage />} />
-                  <Route path="/margin-lab" element={<MarginLabPage />} />
+                  <Route path="/margin-lab" element={<RetiredPage />} />
                   <Route path="/projects" element={<ProjectsActualsPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/settings" element={<SettingsShellPage />} />
