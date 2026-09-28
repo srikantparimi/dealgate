@@ -217,6 +217,7 @@ async def draft_for_package(
     *,
     brief_inputs: dict[str, Any] | None = None,
     adapter: BriefDrafter | None = None,
+    commit: bool = True,
 ) -> CeoException:
     """Draft the CEO brief for a package that failed policy.
 
@@ -268,7 +269,8 @@ async def draft_for_package(
             "prompt_version": brief.get("prompt_version"),
         },
     )
-    await session.commit()
+    if commit:
+        await session.commit()
     await session.refresh(row)
     return row
 
@@ -406,12 +408,19 @@ async def decide(
                 f"(current status: {pkg.status!r})"
             ),
         )
+    if pkg.submitted_by == actor_id:
+        raise HTTPException(status_code=403, detail="Submitter cannot decide their own CEO exception")
     opp = await _load_opportunity(session, pkg.opportunity_id)
 
     now = datetime.now(UTC)
     row.decision = decision
     row.decided_by = actor_id
     row.decided_at = now
+    from app.models.approval_routing import ApprovalAssignment
+    from app.services.approval_workflow import finish_task
+    assignment = await session.get(ApprovalAssignment, (pkg.id, 'executive'))
+    if assignment:
+        await finish_task(session, assignment, actor_id, 'done')
     if decision == "approve":
         row.conditions_text = (conditions_text or None) if (conditions_text or "").strip() else None
         row.valid_until = valid_until

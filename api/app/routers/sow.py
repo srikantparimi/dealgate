@@ -114,6 +114,7 @@ class VersionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    version_no: int = 1
     sow_id: uuid.UUID
     opportunity_id: uuid.UUID
     uploaded_by: uuid.UUID | None
@@ -171,6 +172,7 @@ def _to_response(
     return VersionResponse(
         id=state.id,
         sow_id=state.sow_id,
+        version_no=state.version_no,
         opportunity_id=state.opportunity_id,
         uploaded_by=state.uploaded_by,
         uploaded_at=state.uploaded_at,

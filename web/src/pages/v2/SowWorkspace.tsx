@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
@@ -24,6 +24,9 @@ import {
   type WorkspaceSnapshot,
 } from "./sow-workspace/readiness";
 import { formatDate, shortId } from "./sow-workspace/format";
+import { SubmitApprovalDialog } from "./sow-workspace/SubmitApprovalDialog";
+import { agreementValid, workspaceTitle } from "./sow-workspace/readiness";
+import { getMe, type MeResponse } from "../../api/client";
 
 const TAB_ORDER = [
   "overview",
@@ -61,35 +64,45 @@ export function SowWorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [degraded, setDegraded] = useState<string[]>([]);
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(Date.now());
+  const [viewer, setViewer] = useState<MeResponse | null>(null);
+  const requestNo = useRef(0);
+  useEffect(() => { getMe().then(setViewer).catch(() => setViewer(null)); }, []);
+
+  const refresh = useCallback(async () => {
+    if (!id) return;
+    const number = ++requestNo.current;
+    try {
+      const res = await loadWorkspace(id);
+      if (number !== requestNo.current) return;
+      setSnap(res.snap); setDegraded(res.degradedEndpoints); setError(null);
+      if (!res.degradedEndpoints.includes("listApprovalPackages") && !res.degradedEndpoints.includes("getApprovalPackage")) setUpdatedAt(Date.now());
+    } catch (err) {
+      if (number === requestNo.current) setError(err instanceof Error ? err.message : "Workspace unavailable");
+    } finally { if (number === requestNo.current) setLoading(false); }
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
-    let cancelled = false;
     setLoading(true);
-    loadWorkspace(id)
-      .then((res) => {
-        if (cancelled) return;
-        setSnap(res.snap);
-        setDegraded(res.degradedEndpoints);
-        setError(null);
-      })
-      .catch((err: Error) => {
-        if (cancelled) return;
-        setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    void refresh();
     return () => {
-      cancelled = true;
+      requestNo.current++;
     };
-  }, [id]);
+  }, [id, tab, refresh]);
 
   const activeTab: TabKey = useMemo(() => {
     if (tab && (TAB_ORDER as readonly string[]).includes(tab)) return tab as TabKey;
     if (!snap) return "overview";
     return defaultTabFor(snap) as TabKey;
   }, [tab, snap]);
+
+  useEffect(() => {
+    if (activeTab !== "approvals") return;
+    const interval = window.setInterval(() => { void refresh(); }, 20_000);
+    return () => window.clearInterval(interval);
+  }, [activeTab, refresh]);
 
   if (!id) {
     return <EmptyState title="Missing SOW id" description="Return to the SOW list." />;
@@ -123,41 +136,36 @@ export function SowWorkspacePage() {
   }
 
   const step = nextValidStep(snap);
+  const canSubmit = !!viewer && (viewer.id === snap.deal?.owner_id || viewer.groups.includes("SystemAdmin"));
+  const termStart = snap.sow?.extracted_fields?.term_start?.value;
+  const termEnd = snap.sow?.extracted_fields?.term_end?.value;
   const rail = buildRail(snap);
   const readiness = buildReadiness(snap);
   const items: RecordTabItem[] = TAB_ORDER.map((key) => ({
     value: key,
     label: TAB_LABELS[key],
     href: `/sows/${id}/${key}`,
-    content: renderTab(key, snap),
+    content: key === "approvals" ? <ApprovalsTab snap={snap} refresh={refresh} updatedAt={updatedAt} canSubmit={canSubmit} /> : renderTab(key, snap),
   }));
 
   return (
-    <div className="space-y-4">
-      <div className="sticky top-0 z-10 bg-background pb-3">
+    <div className="space-y-4 min-w-0">
+      <div className="lg:sticky top-0 z-10 bg-background pb-3">
         <RecordHeader
           eyebrow={snap.deal?.client_name ?? "Client"}
-          title={
-            snap.sow
-              ? `SOW · ${shortId(snap.sow.id)}`
-              : `Opportunity · ${shortId(snap.deal?.hubspot_deal_id)}`
-          }
+          title={workspaceTitle(snap)}
           identity={
             <>
               <span>ID {shortId(id)}</span>
-              <span>Owner {snap.deal?.owner_id ?? "Unassigned"}</span>
-              <span>Type {snap.deal?.engagement_type ?? "—"}</span>
-              <span>
-                Delivery {snap.gmModel?.delivery_pattern ?? "—"}
-              </span>
-              <span>
-                Term {formatDate(snap.sow?.uploaded_at ?? null) ?? "—"}
-              </span>
+              <span>Owner {snap.deal?.owner?.name ?? "Unassigned"}</span>
+              {snap.deal?.engagement_type && <span>Type {snap.deal.engagement_type.replaceAll("_", " ")}</span>}
+              {snap.gmModel?.delivery_pattern && <span>Delivery {snap.gmModel.delivery_pattern}</span>}
+              {typeof termStart === "string" && <span>Term {formatDate(termStart)}{typeof termEnd === "string" ? ` to ${formatDate(termEnd)}` : ""}</span>}
               <span data-testid="sow-version">
-                SOW v {snap.sow ? shortId(snap.sow.id) : "—"}
+                SOW v {snap.sow?.version_no ?? "—"}
               </span>
               <span data-testid="gm-version">
-                GM v {snap.gmModel ? shortId(snap.gmModel.id) : "—"}
+                GM v {snap.gmModel?.version ?? "—"}
               </span>
             </>
           }
@@ -166,7 +174,7 @@ export function SowWorkspacePage() {
               <StatusBadge
                 tone={
                   snap.agreements.some(
-                    (a) => a.kind === "NDA" && a.state === "executed",
+                    (a) => a.kind === "NDA" && agreementValid(a),
                   )
                     ? "ok"
                     : "warn"
@@ -176,7 +184,7 @@ export function SowWorkspacePage() {
               <StatusBadge
                 tone={
                   snap.agreements.some(
-                    (a) => a.kind === "MSA" && a.state === "executed",
+                    (a) => a.kind === "MSA" && agreementValid(a),
                   )
                     ? "ok"
                     : "warn"
@@ -216,8 +224,13 @@ export function SowWorkspacePage() {
           primaryAction={
             <Button
               type="button"
-              disabled={step.disabled}
-              onClick={() => step.href && nav(`/sows/${id}/${step.href}`)}
+              className="whitespace-normal h-auto min-h-9 max-w-full text-left"
+              disabled={step.disabled || (step.action === "submit" && !canSubmit)}
+              onClick={() => {
+                if (step.action === "submit") setSubmitOpen(true);
+                else if (step.label === "Complete scope") nav(`/sows/new?opportunityId=${id}`);
+                else if (step.href) nav(`/sows/${id}/${step.href}`);
+              }}
               aria-label={step.label}
               title={step.reason}
             >
@@ -237,18 +250,18 @@ export function SowWorkspacePage() {
           </p>
         ) : null}
 
-        {step.disabled && step.reason ? (
+        {step.reason ? (
           <p className="mt-2 text-secondary text-text-secondary">
-            Primary action held: {step.reason}
+            {step.reason}
           </p>
         ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-4">
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 min-w-0">
           <RecordTabs items={items} value={activeTab} />
         </div>
-        <aside className="lg:col-span-1 hidden lg:block">
+        <aside className="lg:col-span-1">
           <div className="sticky top-56">
             <section
               aria-label="Readiness"
@@ -256,13 +269,13 @@ export function SowWorkspacePage() {
             >
               <h2 className="text-section text-text mb-3">Readiness</h2>
               <ul className="space-y-2">
-                {readiness.slice(0, 6).map((item) => (
+                {readiness.map((item) => (
                   <li
                     key={item.id}
-                    className="flex items-center justify-between gap-2 text-body text-text"
+                    className="text-body text-text"
                   >
-                    <span>{item.label}</span>
-                    <StatusBadge tone={item.status} label={item.statusLabel} />
+                    <div className="flex flex-wrap items-center justify-between gap-2"><span>{item.label}</span><StatusBadge tone={item.status} label={item.statusLabel} /></div>
+                    {item.hint && <p className="text-secondary text-text-secondary mt-1">{item.hint}</p>}
                   </li>
                 ))}
               </ul>
@@ -270,6 +283,7 @@ export function SowWorkspacePage() {
           </div>
         </aside>
       </div>
+      <SubmitApprovalDialog id={id} open={submitOpen} onOpenChange={setSubmitOpen} onSubmitted={() => { void refresh(); nav(`/sows/${id}/approvals`); }} />
     </div>
   );
 }

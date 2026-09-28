@@ -250,10 +250,22 @@ export async function submitApprovalPackage(
   opportunityId: string,
   submitterRole: Role = "Delivery",
 ): Promise<{ id: string; status: string }> {
+  // Explicit fixture routing keeps reviewer identity distinct from the submitter,
+  // even when local auth grants every role to every test identity.
+  const assignments: Record<string, { approver_id: string }> = {};
+  for (const role of ["Delivery", "HR", "Finance", "Legal"] as const) {
+    const reviewer = await apiFetch<{ id: string }>(role, "GET", "/me");
+    const fn = role.toLowerCase();
+    await apiFetch("SystemAdmin", "PUT", `/approvals/groups/${fn}`, {
+      member_ids: [reviewer.json.id], backup_ids: [], default_approver_id: reviewer.json.id,
+    });
+    assignments[fn] = { approver_id: reviewer.json.id };
+  }
   const res = await apiFetch<{ id: string; status: string }>(
-    submitterRole,
+    submitterRole === "Delivery" ? "Sales" : submitterRole,
     "POST",
     `/approvals/packages/${opportunityId}`,
+    { assignments },
   );
   return res.json;
 }
@@ -267,7 +279,7 @@ export async function decidePackage(
 ): Promise<void> {
   await apiFetch(role, "POST", `/approvals/packages/${packageId}/decisions/${fn}`, {
     decision,
-    reason,
+    reason: reason ?? "E2E reviewer checked the frozen scope and model.",
   });
 }
 

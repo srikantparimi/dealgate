@@ -12,6 +12,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
+from app.services.coverage_gate import check_msa_and_nda_executed
 import pytest_asyncio
 from sqlalchemy import select
 

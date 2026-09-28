@@ -118,7 +118,7 @@ export const FUNCTION_LABEL: Record<SowConfirmationApproverFunction, string> = {
  * still block submit. Zero means the primary button can enable.
  */
 export function blockingCount(payload: SowConfirmationPayload): number {
-  return payload.needs_you?.length ?? 0;
+  return (payload.scope_blockers ?? payload.needs_you)?.length ?? 0;
 }
 
 /**

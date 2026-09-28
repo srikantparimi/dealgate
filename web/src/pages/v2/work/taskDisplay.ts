@@ -37,7 +37,7 @@ export const TASK_CATEGORIES: string[] = [
   "followup",
 ];
 
-const WORKFLOW_ONLY_CATEGORIES = new Set(["approval", "signature"]);
+const WORKFLOW_ONLY_CATEGORIES = new Set(["approval", "approval.awaiting", "approval.routing", "signature"]);
 
 /** Row → tab mapping. `Completed` includes `done` + `cancelled`; a
  * snoozed or blocked task lives under "Waiting on others". */
@@ -94,7 +94,8 @@ export function statusLabel(status: string): string {
  * date or an owner. */
 export function nextActionLabel(row: TaskInboxRow): string {
   const c = row.category ?? "";
-  if (c === "approval") return "Review package";
+  if (c === "approval" || c === "approval.awaiting") return "Review package";
+  if (c === "approval.routing") return "Resolve routing blocker";
   if (c === "signature") return "Prepare signature";
   if (c === "coverage") return "Resolve agreement";
   if (c === "expiry") return "Confirm renewal";

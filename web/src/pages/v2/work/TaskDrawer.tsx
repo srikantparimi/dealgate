@@ -107,7 +107,7 @@ export function TaskDrawer({
               <div>
                 <dt className="text-secondary text-text-secondary">Owner</dt>
                 <dd className="text-text tnum">
-                  {task.owner_id ?? "Unassigned"}
+                  {task.owner_name ?? "Unassigned"}
                 </dd>
               </div>
               <div>
@@ -132,7 +132,7 @@ export function TaskDrawer({
               </div>
             </dl>
 
-            <div className="mt-6 border-t border-divider pt-4">
+            {!task.category?.startsWith("approval.") && <div className="mt-6 border-t border-divider pt-4">
               <h3 className="text-section text-text mb-3">Reassign</h3>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="reassign-owner">New owner (user id)</Label>
@@ -150,7 +150,7 @@ export function TaskDrawer({
                   Reassign task
                 </Button>
               </div>
-            </div>
+            </div>}
 
             <div className="mt-6 flex flex-col gap-2 border-t border-divider pt-4">
               {task.record_url && <Button variant="secondary" asChild><Link to={task.record_url}>Open agreement</Link></Button>}
@@ -167,9 +167,9 @@ export function TaskDrawer({
                   <Button variant="primary" asChild>
                     <Link
                       to={
-                        task.category === "signature"
+                        task.workflow_href ?? (task.category === "signature"
                           ? "/handoffs"
-                          : "/sows"
+                          : "/sows")
                       }
                     >
                       Open workflow

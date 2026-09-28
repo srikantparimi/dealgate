@@ -69,6 +69,7 @@ export function ApprovalQueuePage() {
   const [items, setItems] = useState<ApprovalPackage[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [reasons, setReasons] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setError(null);
@@ -110,11 +111,11 @@ export function ApprovalQueuePage() {
 
   const decide = useCallback(
     async (pkg: ApprovalPackage, decision: ApprovalDecision) => {
-      if (!fn) return;
+      if (!fn || !reasons[pkg.id]?.trim()) return;
       const key = `${pkg.id}:${decision}`;
       setBusy((prev) => new Set(prev).add(key));
       try {
-        await decideApprovalPackage(pkg.id, fn, { decision });
+        await decideApprovalPackage(pkg.id, fn, { decision, reason: reasons[pkg.id].trim() });
         await load();
       } catch (e) {
         setError(e);
@@ -126,7 +127,7 @@ export function ApprovalQueuePage() {
         });
       }
     },
-    [fn, load],
+    [fn, load, reasons],
   );
 
   const cols: Column<ApprovalPackage>[] = [
@@ -134,7 +135,7 @@ export function ApprovalQueuePage() {
       key: "id",
       header: "Package",
       render: (p) => (
-        <Link to={`/approvals/${p.id}`} style={{ color: "#1d4ed8" }}>
+        <Link to={`/sows/${p.opportunity_id}/approvals`} style={{ color: "#1d4ed8" }}>
           {p.id.slice(0, 8)}…
         </Link>
       ),
@@ -159,12 +160,14 @@ export function ApprovalQueuePage() {
         if (alreadyDecided(p)) {
           return <span style={{ color: "#6b7280" }}>Decided</span>;
         }
+        if (p.assignments?.length && !p.assignments.some(a => a.function === fn && a.can_decide)) return <Link to={`/sows/${p.opportunity_id}/approvals`}>View review status</Link>;
         return (
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <input aria-label={`Review reason ${p.id}`} required placeholder="Reason (required)" value={reasons[p.id] ?? ""} onChange={e => setReasons({ ...reasons, [p.id]: e.target.value })} />
             <button
               type="button"
               onClick={() => decide(p, "approve")}
-              disabled={busy.has(`${p.id}:approve`)}
+              disabled={busy.has(`${p.id}:approve`) || !reasons[p.id]?.trim()}
               data-testid={`approve-${p.id}`}
               style={{
                 padding: "4px 10px",
@@ -181,7 +184,7 @@ export function ApprovalQueuePage() {
             <button
               type="button"
               onClick={() => decide(p, "reject")}
-              disabled={busy.has(`${p.id}:reject`)}
+              disabled={busy.has(`${p.id}:reject`) || !reasons[p.id]?.trim()}
               data-testid={`reject-${p.id}`}
               style={{
                 padding: "4px 10px",
@@ -198,7 +201,7 @@ export function ApprovalQueuePage() {
             <button
               type="button"
               onClick={() => decide(p, "request_changes")}
-              disabled={busy.has(`${p.id}:request_changes`)}
+              disabled={busy.has(`${p.id}:request_changes`) || !reasons[p.id]?.trim()}
               data-testid={`request-${p.id}`}
               style={{
                 padding: "4px 10px",

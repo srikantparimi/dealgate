@@ -2,6 +2,7 @@ import {
   ApiError,
   getApprovalPackage,
   getDeal,
+  getClient,
   getLatestDeliveryModel,
   getSignedSowUpload,
   getSowVersion,
@@ -49,12 +50,17 @@ export async function loadWorkspace(id: UUID): Promise<{
   );
   const agreements = await swallow(
     "listAgreements",
-    async () => (await listAgreements()).items,
+    async () => {
+      if (!deal?.client_id) return [];
+      const client = await getClient(deal.client_id);
+      const rows = await Promise.all(client.legal_entities.map(e => listAgreements({ legal_entity_id: e.id })));
+      return rows.flatMap(r => r.items);
+    },
     [],
   );
   const pkgList = await swallow(
     "listApprovalPackages",
-    () => listApprovalPackages({ opportunity_id: id, size: 1 }),
+    () => listApprovalPackages({ opportunity_id: id, size: 200 }),
     { items: [], page: 1, size: 1, total: 0 },
   );
   const packageSummary = pkgList.items[0] ?? null;
@@ -92,6 +98,7 @@ export async function loadWorkspace(id: UUID): Promise<{
       sow: sowFull,
       gmModel: gmLatest.gm_model,
       approvalPackage,
+      approvalHistory: pkgList.items.map(p => p.id === approvalPackage?.id ? approvalPackage : p),
       agreements,
       signedSow,
     },

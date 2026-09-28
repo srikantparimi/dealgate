@@ -53,6 +53,7 @@ export interface AuditRow {
 }
 
 export interface DealDetail extends DealRow {
+  owner?: OwnerRef | null;
   tasks: TaskRow[];
   audit: AuditRow[];
   // S3 E6 / S4 E7: compact GM model + latest approval package summaries.
@@ -636,6 +637,8 @@ export function getClient(id: UUID): Promise<ClientDetail> {
 
 export interface TaskInboxRow {
   record_url?: string | null;
+  owner_name?: string | null;
+  workflow_href?: string | null;
   id: UUID;
   owner_id: UUID | null;
   subject: string;
@@ -1126,6 +1129,7 @@ export interface SowExtractedField {
 export type SowExtractedFields = Partial<Record<SowFieldName, SowExtractedField>>;
 
 export interface SowVersion {
+  version_no?: number;
   id: UUID;
   sow_id: UUID;
   opportunity_id: UUID;
@@ -1633,6 +1637,7 @@ export interface SowConfirmationPayload {
   approvers: Record<SowConfirmationApproverFunction, SowConfirmationApprover>;
   projected_tasks: SowConfirmationProjectedTask[];
   needs_you: SowConfirmationNeedsYou[];
+  scope_blockers?: SowConfirmationNeedsYou[];
   ceo_gate: SowConfirmationCeoGate;
 }
 
@@ -2634,6 +2639,7 @@ export type ApprovalFunction = "delivery" | "hr" | "finance" | "legal";
 export type ApprovalDecision = "approve" | "reject" | "request_changes";
 
 export interface ApprovalRow {
+  approver_name?: string;
   id: UUID;
   package_id: UUID;
   function: ApprovalFunction;
@@ -2652,6 +2658,20 @@ export interface ApprovalPackageFloors extends SowConfirmationFloors {
 }
 
 export interface ApprovalPackage {
+  sow_version?: number;
+  gm_version?: number;
+  submitted_by_name?: string;
+  pending_with?: string[];
+  ceo_pending_with?: string | null;
+  routing_blockers?: string[];
+  assignments?: ApprovalAssignment[];
+  owner?: OwnerRef | null;
+  ceo_exception?: {
+    id: UUID; decision: string | null; decided_at: string | null;
+    decided_by_name: string | null; conditions_text: string | null;
+    rationale_text: string | null; valid_until: string | null;
+    evidence: string | null; conditions_unmet: boolean; expired: boolean;
+  } | null;
   cost_lines?: DeliveryCostLineInput[];
   id: UUID;
   opportunity_id: UUID;
@@ -2693,10 +2713,46 @@ export interface ListApprovalPackagesQuery {
 
 export function submitApprovalPackage(
   opportunityId: UUID,
+  body?: { sow_version_id: UUID; gm_model_id: UUID; assignments: Record<string, { approver_id: UUID | null; due_date: string; use_sla?: boolean }> },
 ): Promise<ApprovalPackage> {
   return request<ApprovalPackage>(`/approvals/packages/${opportunityId}`, {
     method: "POST",
+    body: body ? JSON.stringify(body) : undefined,
   });
+}
+
+export interface ApprovalAssignment {
+  function: ApprovalFunction; approver_id: UUID | null; approver_name: string;
+  due_date: string; active: boolean; blocked: boolean; can_decide: boolean;
+}
+
+export interface ApprovalGroup {
+  function: ApprovalFunction | "executive"; label: string; members: OwnerRef[];
+  default_approver_id: UUID | null; backup_ids: UUID[];
+  delegations: { delegate_id: UUID; effective_from: string; expiry: string }[];
+}
+
+export interface SubmissionPlan {
+  sow_version_id: UUID; sow_version: number; gm_model_id: UUID; gm_version: number;
+  rows: (ApprovalGroup & { approver_id: UUID | null; due_date: string; use_sla: boolean; blocker: string | null })[];
+  executive: (ApprovalGroup & { approver_id: UUID | null }) | null;
+  floors: ApprovalPackageFloors;
+}
+
+export function listApprovalGroups(): Promise<{ items: ApprovalGroup[]; can_edit: boolean }> {
+  return request("/approvals/groups");
+}
+export function updateApprovalGroup(fn: string, body: { member_ids: UUID[]; backup_ids: UUID[]; default_approver_id: UUID | null }): Promise<ApprovalGroup> {
+  return request(`/approvals/groups/${fn}`, { method: "PUT", body: JSON.stringify(body) });
+}
+export function getSubmissionPlan(id: UUID): Promise<SubmissionPlan> {
+  return request(`/approvals/plan/${id}`);
+}
+export function routeMissingApprovals(id: UUID): Promise<ApprovalPackage> {
+  return request(`/approvals/packages/${id}/route`, { method: "POST" });
+}
+export function recordConditionEvidence(id: UUID, evidence: string): Promise<ApprovalPackage> {
+  return request(`/approvals/packages/${id}/condition-evidence`, { method: "POST", body: JSON.stringify({ evidence }) });
 }
 
 export function getApprovalPackage(packageId: UUID): Promise<ApprovalPackage> {

@@ -258,6 +258,47 @@ async def seed_approved_package(
         },
     )
 
+    # S14b integration proof: attach ApprovalAssignment rows using each
+    # group's default approver so the ReviewStream renders per-function
+    # Approve controls. Executive is CEO-derived, so pick the first CEO
+    # user available; skip if none.
+    from datetime import date, timedelta
+
+    from app.models.approval_routing import ApprovalAssignment, ApprovalGroup
+    from app.models.user import User
+
+    due = date.today() + timedelta(days=2)
+    for fn in ("delivery", "hr", "finance", "legal"):
+        group = await session.get(ApprovalGroup, fn)
+        approver_id = group.default_approver_id if group else None
+        session.add(
+            ApprovalAssignment(
+                package_id=pkg.id,
+                function=fn,
+                approver_id=approver_id,
+                due_date=due,
+                use_sla=True,
+            )
+        )
+    ceo = (
+        await session.execute(
+            select(User).where(User.groups.contains(["CEO"]))
+            if False
+            else select(User)
+        )
+    ).scalars().all()
+    ceo_user = next((u for u in ceo if "CEO" in (u.groups or [])), None)
+    if ceo_user is not None:
+        session.add(
+            ApprovalAssignment(
+                package_id=pkg.id,
+                function="executive",
+                approver_id=ceo_user.id,
+                due_date=due,
+                use_sla=False,
+            )
+        )
+
     await session.commit()
     return {
         "ok": True,

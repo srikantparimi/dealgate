@@ -19,6 +19,7 @@ export interface WorkspaceSnapshot {
   sow: SowVersion | null;
   gmModel: DeliveryGmModel | null;
   approvalPackage: ApprovalPackage | null;
+  approvalHistory?: ApprovalPackage[];
   agreements: AgreementRow[];
   signedSow: SignedSowUpload | null;
 }
@@ -28,6 +29,7 @@ export interface NextStep {
   href?: string;
   disabled: boolean;
   reason?: string;
+  action?: "submit";
 }
 
 /**
@@ -74,13 +76,11 @@ export function defaultTabFor(snap: WorkspaceSnapshot): string {
  */
 export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
   const items: ReadinessItem[] = [];
-  const today = new Date().toISOString().slice(0, 10);
-  const covered = (a: AgreementRow) => a.state === "executed" && (!a.expiry || a.expiry >= today);
   const nda = snap.agreements.find(
-    (a) => a.kind === "NDA" && covered(a),
+    (a) => a.kind === "NDA" && agreementValid(a),
   );
   const msa = snap.agreements.find(
-    (a) => a.kind === "MSA" && covered(a),
+    (a) => a.kind === "MSA" && agreementValid(a),
   );
 
   items.push({
@@ -134,11 +134,14 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
   ];
   for (const fn of functions) {
     const ok = approvedFns.has(fn);
+    const assignment = pkg?.assignments?.find(a => a.function === fn);
+    const decision = pkg?.approvals.find(a => a.function === fn);
     items.push({
       id: `fn-${fn}`,
-      label: `${fn[0].toUpperCase()}${fn.slice(1)} review`,
+      label: `${fn === "hr" ? "HR" : fn[0].toUpperCase() + fn.slice(1)} review`,
       status: ok ? "ok" : pkg ? "warn" : "neutral",
-      statusLabel: ok ? "Approved" : pkg ? "Pending" : "Not submitted",
+      statusLabel: ok ? "Approved" : decision ? decision.decision.replaceAll("_", " ") : assignment?.blocked ? "Blocked" : pkg ? "Pending" : "Not submitted",
+      hint: decision?.reason ?? (assignment ? assignment.blocked ? "Owner: SystemAdmin. Configure an eligible reviewer." : `${assignment.active ? "Pending with" : "Queued for"} ${assignment.approver_name}` : undefined),
     });
   }
 
@@ -146,9 +149,9 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
     items.push({
       id: "ceo",
       label: "CEO margin exception",
-      status: pkg.status === "pending_ceo_exception" ? "warn" : "ok",
+      status: pkg.ceo_exception?.decision === "approve" ? "ok" : "warn",
       statusLabel:
-        pkg.status === "pending_ceo_exception" ? "Pending" : "Recorded",
+        pkg.ceo_exception?.decision === "approve" ? "Recorded" : pkg.status === "pending_ceo_exception" ? "Pending" : "Queued",
     });
   }
 
@@ -189,6 +192,19 @@ export function nextValidStep(snap: WorkspaceSnapshot): NextStep {
   const pkg = snap.approvalPackage;
   const status = pkg?.status;
 
+  if (status === "pending_delivery_hr" || status === "pending_finance_legal") {
+    return { label: "View review status", href: "approvals", disabled: false };
+  }
+  if (status === "pending_ceo_exception") {
+    return { label: "Awaiting CEO decision", href: "approvals", disabled: false };
+  }
+  if (pkg && status === "ready_to_sign") {
+    if (pkg.ceo_exception?.conditions_unmet) return { label: `Blocked: ${pkg.ceo_exception.conditions_text}`, href: "approvals", disabled: false, reason: `Owner: ${pkg.owner?.name ?? "Account owner"}. Evidence of satisfied CEO conditions is required.` };
+    if (pkg.ceo_exception?.expired) return { label: "Resolve expired CEO exception", href: "approvals", disabled: false };
+    return { label: "Prepare signature", href: "signature", disabled: false };
+  }
+  if (status === "released") return { label: "View handoff", href: "handoff", disabled: false };
+
   if (!snap.sow || snap.sow.confirmed_at == null) {
     return {
       label: "Complete scope",
@@ -199,40 +215,20 @@ export function nextValidStep(snap: WorkspaceSnapshot): NextStep {
   }
   if (!snap.gmModel?.computed?.complete) {
     return {
-      label: "Build GM",
+      label: "Open Staffing & GM",
       href: "staffing",
       disabled: false,
+      reason: snap.gmModel?.completeness_issues?.join("; ") || "Missing validated staffing costs or revenue.",
     };
   }
-  if (!pkg) {
+  if (!pkg || status === "voided" || status === "rejected") {
+    const returned = pkg?.approvals.find(a => a.decision !== "approve");
     return {
-      label: "Submit package",
+      label: status === "rejected" ? "Resolve review" : "Submit for approval",
       href: "approvals",
       disabled: false,
-    };
-  }
-  if (
-    status === "pending_delivery_hr" ||
-    status === "pending_finance_legal"
-  ) {
-    return {
-      label: "Resolve review",
-      href: "approvals",
-      disabled: false,
-    };
-  }
-  if (status === "pending_ceo_exception") {
-    return {
-      label: "Review exception",
-      href: "exception",
-      disabled: false,
-    };
-  }
-  if (status === "ready_to_sign") {
-    return {
-      label: "Prepare signature",
-      href: "signature",
-      disabled: false,
+      action: "submit",
+      reason: returned ? `${returned.function}: ${returned.reason}` : undefined,
     };
   }
   return {
@@ -263,7 +259,7 @@ export function buildRail(snap: WorkspaceSnapshot): RailStep[] {
     {
       key: "scope_gm",
       label: "Scope & GM",
-      state: gmDone
+      state: scopeDone && gmDone
         ? "done"
         : scopeDone
           ? "current"
@@ -288,7 +284,7 @@ export function buildRail(snap: WorkspaceSnapshot): RailStep[] {
           : status === "pending_ceo_exception"
             ? "current"
             : "upcoming",
-      href: "exception",
+      href: "approvals",
     },
     {
       key: "signature",
@@ -313,4 +309,15 @@ export function buildRail(snap: WorkspaceSnapshot): RailStep[] {
   ];
 
   return rail;
+}
+
+export function agreementValid(a: AgreementRow): boolean {
+  return a.state === "executed" && (!a.expiry || a.expiry >= new Date().toISOString().slice(0, 10));
+}
+
+export function workspaceTitle(snap: WorkspaceSnapshot): string {
+  const fields = snap.sow?.extracted_fields as Record<string, { value?: unknown }> | undefined;
+  const title = fields?.sow_title?.value ?? fields?.title?.value;
+  if (typeof title === "string" && title.trim()) return title.trim();
+  return [snap.deal?.client_name ?? "SOW", snap.deal?.engagement_type?.replaceAll("_", " ")].filter(Boolean).join(" · ");
 }

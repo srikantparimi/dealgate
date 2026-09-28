@@ -37,7 +37,7 @@ export function RecordHeader({
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="mt-1 text-page-mobile sm:text-page text-text truncate">
+        <h1 className="mt-1 text-page-mobile sm:text-page text-text break-words">
           {title}
         </h1>
         {identity ? (
