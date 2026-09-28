@@ -75,6 +75,11 @@ variable "cognito_user_pool_id" {
   type        = string
 }
 
+variable "cognito_user_pool_arn" {
+  description = "Cognito user pool ARN. Grants cognito-idp:AdminGetUser to the task role so hydrate_from_cognito can backfill user.name."
+  type        = string
+}
+
 variable "cognito_client_id" {
   description = "Cognito app client ID (env var on the task)."
   type        = string

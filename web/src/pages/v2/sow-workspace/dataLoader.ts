@@ -2,7 +2,6 @@ import {
   ApiError,
   getApprovalPackage,
   getDeal,
-  getClient,
   getLatestDeliveryModel,
   getSignedSowUpload,
   getSowVersion,
@@ -52,9 +51,8 @@ export async function loadWorkspace(id: UUID): Promise<{
     "listAgreements",
     async () => {
       if (!deal?.client_id) return [];
-      const client = await getClient(deal.client_id);
-      const rows = await Promise.all(client.legal_entities.map(e => listAgreements({ legal_entity_id: e.id })));
-      return rows.flatMap(r => r.items);
+      const res = await listAgreements({ client_id: deal.client_id });
+      return res.items;
     },
     [],
   );

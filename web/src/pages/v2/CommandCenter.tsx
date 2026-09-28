@@ -22,7 +22,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarClock,
-  FileSignature,
 } from "lucide-react";
 import { useAuth } from "../../auth/AuthProvider";
 import {
@@ -152,19 +151,6 @@ async function safe<T>(
 // and (later) unit-test in isolation.
 // -----------------------------------------------------------------------------
 
-function agreementGapCount(agreements: AgreementRow[]): number {
-  const gapStates = new Set([
-    "missing",
-    "requested",
-    "drafting",
-    "under_review",
-    "sent",
-    "partially_signed",
-    "expired",
-  ]);
-  return agreements.filter((a) => gapStates.has(a.state)).length;
-}
-
 function marker(status: string | null | undefined): FunctionalReviewMarker {
   if (status === "approve") return "approved";
   if (status === "reject") return "rejected";
@@ -193,7 +179,9 @@ function bannerMetrics(
     data.approvalsDelivery.length +
     data.approvalsFinance.length +
     data.approvalsCeo.length;
-  const agreementGaps = agreementGapCount(data.agreements);
+  // S17: agreement gaps aren't a concept anymore. Show the total docs
+  // uploaded so the banner still has a fourth tile.
+  const agreementsCount = data.agreements.length;
   const ceoPending = isCeo
     ? data.ceo?.ceo_exceptions_pending.length ?? null
     : data.approvalsCeo.length;
@@ -214,12 +202,11 @@ function bannerMetrics(
       description: "Across every approval lane",
     },
     {
-      id: "agreement_gaps",
-      label: "Clients with agreement gaps",
-      value: formatCount(agreementGaps),
+      id: "agreements_uploaded",
+      label: "NDA & MSA documents on file",
+      value: formatCount(agreementsCount),
       href: "/agreements",
-      description: "NDA or MSA not executed",
-      alert: (agreementGaps ?? 0) > 0,
+      description: "Signed docs stored per client",
     },
     {
       id: "ceo_pending",
@@ -274,30 +261,7 @@ function firstPrioritySignals(data: CommandData): PrioritySignal[] {
     }
   }
 
-  const pendingMsa = data.agreements.find(
-    (a) => a.kind === "MSA" && (a.state === "sent" || a.state === "partially_signed"),
-  );
-  if (pendingMsa) {
-    out.push({
-      id: `msa-${pendingMsa.id}`,
-      kind: "msa_signature",
-      title: "MSA awaiting signature",
-      reason:
-        pendingMsa.next_action ??
-        "Sent to the client for signature. Follow up if quiet.",
-      owner: pendingMsa.owner_email,
-      deadline: pendingMsa.due_date ? `Due ${pendingMsa.due_date}` : null,
-      href: `/agreements`,
-      statusLabel:
-        pendingMsa.state === "partially_signed"
-          ? "Partially signed"
-          : "Awaiting signature",
-      statusTone: "warning",
-      icon: FileSignature,
-      iconTone: "warn",
-      testId: "signal-msa",
-    });
-  }
+  // S17: no MSA-awaiting-signature signal — agreements are a flat doc store.
 
   const nextRenewal = [...data.renewals]
     .filter((r) => r.status === "open")
@@ -334,21 +298,17 @@ function readinessRows(data: CommandData): ReadinessRow[] {
   }
   const agreementsByClient = new Map<string, AgreementRow[]>();
   for (const a of data.agreements) {
-    const list = agreementsByClient.get(a.legal_entity_id) ?? [];
+    const list = agreementsByClient.get(a.client_id) ?? [];
     list.push(a);
-    agreementsByClient.set(a.legal_entity_id, list);
+    agreementsByClient.set(a.client_id, list);
   }
 
   const rows: ReadinessRow[] = [];
   for (const c of data.clients.slice(0, READINESS_LIMIT)) {
     const deal = dealByClient.get(c.id) ?? null;
-    // The agreements list is keyed by legal_entity_id, not client_id. This
-    // is a lossy shortcut for the command center header — the pipeline
-    // page owns the accurate coverage view (§7). We still show whatever
-    // matches; if nothing matches the cells stay honest "Missing".
     const clientAgreements = agreementsByClient.get(c.id) ?? [];
-    const nda = clientAgreements.find((a) => a.kind === "NDA") ?? null;
-    const msa = clientAgreements.find((a) => a.kind === "MSA") ?? null;
+    const ndaCount = clientAgreements.filter((a) => a.kind === "NDA").length;
+    const msaCount = clientAgreements.filter((a) => a.kind === "MSA").length;
 
     rows.push({
       id: c.id,
@@ -356,30 +316,18 @@ function readinessRows(data: CommandData): ReadinessRow[] {
       clientHref: `/clients/${c.id}`,
       ownerName: null,
       commercialStage: deal?.sales_stage ?? null,
-      nda: nda
-        ? {
-            label: nda.state.replace(/_/g, " "),
-            tone:
-              nda.state === "executed"
-                ? "ok"
-                : nda.state === "missing"
-                  ? "warn"
-                  : "primarySubtle",
-            href: `/agreements`,
-          }
-        : null,
-      msa: msa
-        ? {
-            label: msa.state.replace(/_/g, " "),
-            tone:
-              msa.state === "executed"
-                ? "ok"
-                : msa.state === "missing"
-                  ? "warn"
-                  : "primarySubtle",
-            href: `/agreements`,
-          }
-        : null,
+      // S17: agreements are documents, not states. Show a count-badge and
+      // link to the register.
+      nda: {
+        label: ndaCount ? `${ndaCount} doc${ndaCount === 1 ? "" : "s"}` : "None",
+        tone: ndaCount ? "ok" : "primarySubtle",
+        href: `/agreements`,
+      },
+      msa: {
+        label: msaCount ? `${msaCount} doc${msaCount === 1 ? "" : "s"}` : "None",
+        tone: msaCount ? "ok" : "primarySubtle",
+        href: `/agreements`,
+      },
       sowGate: deal
         ? {
             label: (deal.governance_status ?? "unknown").replace(/_/g, " "),

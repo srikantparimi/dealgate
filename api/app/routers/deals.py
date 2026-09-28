@@ -34,7 +34,6 @@ from app.services.deals import (
     build_deal_count_query,
     build_deal_list_query,
     can_mutate_deal,
-    coverage_state_summary,
     get_client_name,
     is_leader,
     latest_approval_package_summary,
@@ -63,7 +62,6 @@ class DealRow(BaseModel):
     governance_status: str
     next_client_action: str | None
     next_client_date: date | None
-    coverage_state: str
 
 
 class DealListResponse(BaseModel):
@@ -111,7 +109,6 @@ class DealDetail(BaseModel):
     governance_status: str
     next_client_action: str | None
     next_client_date: date | None
-    coverage_state: str
     tasks: list[TaskRow]
     audit: list[AuditRow]
     # S3 E6: compact summary of the latest gm_model for the deal, or None.
@@ -156,7 +153,6 @@ async def _access_or_403(session: AsyncSession, user: AuthUser, opp: Opportunity
 
 
 async def _row_for(session: AsyncSession, opp: Opportunity) -> DealRow:
-    coverage = await coverage_state_summary(session, client_id=opp.client_id)
     client_name = await get_client_name(session, opp.client_id)
     return DealRow(
         id=opp.id,
@@ -169,7 +165,6 @@ async def _row_for(session: AsyncSession, opp: Opportunity) -> DealRow:
         governance_status=opp.governance_status,
         next_client_action=opp.next_client_action,
         next_client_date=opp.next_client_date,
-        coverage_state=coverage,
     )
 
 
@@ -212,7 +207,6 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
         )
     ).scalars().all()
 
-    coverage = await coverage_state_summary(session, client_id=opp.client_id)
     client_name = await get_client_name(session, opp.client_id)
     gm_model_summary = await latest_gm_model_summary(session, opp.id)
     package_summary = await latest_approval_package_summary(session, opp.id)
@@ -229,7 +223,6 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
         governance_status=opp.governance_status,
         next_client_action=opp.next_client_action,
         next_client_date=opp.next_client_date,
-        coverage_state=coverage,
         tasks=[TaskRow.model_validate(t) for t in tasks],
         audit=[AuditRow.model_validate(a) for a in audit_rows],
         gm_model=gm_model_summary,

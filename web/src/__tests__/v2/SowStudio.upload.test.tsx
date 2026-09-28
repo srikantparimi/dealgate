@@ -197,7 +197,10 @@ describe("SowStudio — upload path", () => {
     await userEvent.click(screen.getByTestId("picker-submit"));
 
     await waitFor(() => {
-      expect(pickSpy).toHaveBeenCalledWith(JOB, { client_id: CLIENT_A });
+      expect(pickSpy).toHaveBeenCalledWith(JOB, {
+        client_id: CLIENT_A,
+        agreements_signed: false,
+      });
     });
   });
 });

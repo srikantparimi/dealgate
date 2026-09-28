@@ -69,15 +69,16 @@ async def test_below_floor_generates_brief_after_all_functions_and_closes_tasks(
 
 
 @pytest.mark.asyncio
-async def test_signature_still_requires_coverage_and_void_cancels_work(session):
-    from app.services.approval_workflow import require_signature_eligibility
+async def test_void_cancels_open_review_tasks(session):
+    """S17 replaces the old S14b coverage-gate check: NDA/MSA is no longer
+    a signature gate, but void-on-change must still cancel every pending
+    review task."""
+
     from app.services.approvals import void_on_change
 
     owner, opp, _, _, _ = await fixture(session)
     plan = await routing.submission_plan(session, opportunity_id=opp.id, actor_id=owner.id)
-    pkg = await submit_package(session, actor_id=owner.id, opportunity_id=opp.id, routing=plan)
-    with pytest.raises(ApprovalError, match="NDA"):
-        await require_signature_eligibility(session, pkg)
+    await submit_package(session, actor_id=owner.id, opportunity_id=opp.id, routing=plan)
     await void_on_change(session, actor_id=owner.id, opportunity_id=opp.id, reason="Scope revised")
     assert all(t.status == "cancelled" for t in (await session.scalars(select(Task))).all())
 

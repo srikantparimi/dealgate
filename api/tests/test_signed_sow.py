@@ -159,8 +159,18 @@ async def _seed_ready_to_sign_package(
 
     # A minimal gm_model row so the FK holds — the numbers are ignored.
     from app.models.gm_model import GmModel
-    from tests.test_coverage_gate import _seed_client_with_agreements
-    client, _ = await _seed_client_with_agreements(session, kinds_executed=("NDA", "MSA"))
+    from app.models.client import Client, LegalEntity
+
+    # S17: no NDA/MSA coverage rows needed to reach ready_to_sign.
+    client = Client(
+        id=uuid.uuid4(),
+        name=f"Signed-sow client {uuid.uuid4().hex[:6]}",
+        hubspot_company_id=f"HS-SS-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(client)
+    await session.flush()
+    session.add(LegalEntity(id=uuid.uuid4(), client_id=client.id, name="Entity 1"))
+    await session.flush()
 
     opp = Opportunity(
         id=uuid.uuid4(),
@@ -171,10 +181,6 @@ async def _seed_ready_to_sign_package(
     )
     session.add(opp)
     await session.flush()
-    from tests.test_coverage_gate import _seed_client_with_agreements
-
-    client, _ = await _seed_client_with_agreements(session)
-    opp.client_id = client.id
 
     sow = Sow(id=uuid.uuid4(), opportunity_id=opp.id)
     session.add(sow)

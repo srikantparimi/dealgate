@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
 
 import pytest
 from sqlalchemy import select
@@ -45,10 +44,18 @@ async def test_client_legal_entity_agreement_chain(session):
     le = LegalEntity(client_id=c.id, name="Acme Inc.", country="US")
     session.add(le)
     await session.flush()
+    # S17: Agreement is a flat doc store — client_id + kind + file_key.
+    uploader = User(email="uploader@smartek21.com", name="Upload", groups=["Legal"])
+    session.add(uploader)
+    await session.flush()
     a = Agreement(
-        legal_entity_id=le.id,
+        id=uuid.uuid4(),
+        client_id=c.id,
         kind="MSA",
-        effective_date=date(2026, 1, 1),
+        file_key=f"agreements/{uuid.uuid4()}/msa.pdf",
+        filename="msa.pdf",
+        file_size=1024,
+        uploaded_by=uploader.id,
     )
     session.add(a)
     await session.commit()

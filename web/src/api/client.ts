@@ -25,7 +25,6 @@ export interface DealRow {
   governance_status: string;
   next_client_action: string | null;
   next_client_date: ISODate | null;
-  coverage_state: string;
 }
 
 export interface DealListResponse {
@@ -370,103 +369,34 @@ export function getRoleHistory(userId: UUID): Promise<RoleHistoryResponse> {
 
 // --- agreements (S2-E3) ----------------------------------------------------
 
-export type AgreementState =
-  | "missing"
-  | "requested"
-  | "drafting"
-  | "under_review"
-  | "sent"
-  | "partially_signed"
-  | "executed"
-  | "expired"
-  | "terminated"
-  | "superseded";
 
 export type AgreementKind = "NDA" | "MSA";
 
-export interface Signatory {
-  name: string;
-  email: string;
-  role?: string;
-}
-
+// S17: agreements are a flat doc store. One row per uploaded file.
+// The old state/owner/next_action/dates/signatories shape is gone.
 export interface AgreementRow {
   id: UUID;
-  legal_entity_id: UUID;
+  client_id: UUID;
+  client_name: string;
   kind: AgreementKind;
-  state: AgreementState;
-  owner_email: string | null;
-  next_action: string | null;
-  due_date: ISODate | null;
-  effective_from: ISODate | null;
-  expiry: ISODate | null;
-  notice_days: number | null;
-  evidence_s3_key: string | null;
-  signatories: Signatory[] | null;
-  created_at: ISODateTime;
-  updated_at: ISODateTime;
-  client_name?: string | null;
-  legal_entity_name?: string | null;
-  display_state?: string | null;
+  filename: string;
+  file_size: number;
+  uploaded_by: UUID;
+  uploaded_by_name: string;
+  uploaded_at: ISODateTime;
 }
 
 export interface AgreementListResponse {
   items: AgreementRow[];
-  allowed_states: AgreementState[];
 }
 
 export interface ListAgreementsQuery {
-  legal_entity_id?: UUID;
-  state?: AgreementState;
-  expiring_within_days?: number;
-}
-
-export interface CreateAgreementBody {
-  legal_entity_id: UUID;
-  type: AgreementKind;
-  state?: AgreementState;
-  owner_email?: string | null;
-  next_action?: string | null;
-  due_date?: ISODate | null;
-}
-
-export interface PatchAgreementBody {
-  owner_email?: string | null;
-  state?: AgreementState;
-  next_action?: string | null;
-  due_date?: ISODate | null;
-  effective_from?: ISODate | null;
-  expiry?: ISODate | null;
-  notice_days?: number | null;
-  evidence_s3_key?: string | null;
-  signatories?: Signatory[] | null;
-}
-
-export interface UploadUrlRequest {
-  filename: string;
-  content_type: string;
-}
-
-export interface UploadUrlResponse {
-  url: string;
-  s3_key: string;
-  method: "PUT";
-  expires_in: number;
-  required_headers?: Record<string, string> | null;
-}
-
-export interface DownloadUrlResponse {
-  url: string;
-  expires_in: number;
+  client_id?: UUID;
 }
 
 function agreementParams(query: ListAgreementsQuery): string {
   const params = new URLSearchParams();
-  if (query.legal_entity_id) params.set("legal_entity_id", query.legal_entity_id);
-  if (query.state) params.set("state", query.state);
-  if (query.expiring_within_days !== undefined) {
-    params.set("expiring_within_days", String(query.expiring_within_days));
-  }
+  if (query.client_id) params.set("client_id", query.client_id);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -477,52 +407,26 @@ export function listAgreements(
   return request<AgreementListResponse>(`/agreements${agreementParams(query)}`);
 }
 
-export function createAgreement(body: CreateAgreementBody): Promise<AgreementRow> {
-  return request<AgreementRow>(`/agreements`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-export function patchAgreement(
-  id: UUID,
-  body: PatchAgreementBody,
+export function uploadAgreement(
+  clientId: UUID,
+  kind: AgreementKind,
+  file: File,
 ): Promise<AgreementRow> {
-  return request<AgreementRow>(`/agreements/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
-}
-
-export function getUploadUrl(
-  id: UUID,
-  body: UploadUrlRequest,
-): Promise<UploadUrlResponse> {
-  return request<UploadUrlResponse>(`/agreements/${id}/evidence-upload-url`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-export function getDownloadUrl(id: UUID): Promise<DownloadUrlResponse> {
-  return request<DownloadUrlResponse>(`/agreements/${id}/evidence-download-url`);
-}
-
-export interface AgreementDocumentDraft {
-  id: UUID;
-  agreement_id: UUID;
-  confirmed: boolean;
-  fields: Record<string, { value: string | null; page_ref: number } | string | null>;
-}
-
-export function extractAgreement(id: UUID, file: File): Promise<AgreementDocumentDraft> {
   const body = new FormData();
+  body.append("client_id", clientId);
+  body.append("kind", kind);
   body.append("file", file);
-  return request(`/agreements/${id}/extract`, { method: "POST", body });
+  return request<AgreementRow>(`/agreements`, { method: "POST", body });
 }
 
-export function executeAgreement(id: UUID, body: { document_id: UUID; effective_from: string; expiry: string; signed_confirmed: boolean; correction_reason?: string }): Promise<AgreementRow> {
-  return request(`/agreements/${id}/execute`, { method: "POST", body: JSON.stringify(body) });
+export function getAgreementDownloadUrl(
+  id: UUID,
+): Promise<{ url: string; filename: string }> {
+  return request(`/agreements/${id}/download`);
+}
+
+export function deleteAgreement(id: UUID): Promise<void> {
+  return request<void>(`/agreements/${id}`, { method: "DELETE" });
 }
 
 export interface ProjectRow {
@@ -548,7 +452,6 @@ export interface ClientListRow {
   id: UUID;
   name: string;
   hubspot_company_id: string | null;
-  coverage_state: string;
   opportunity_count: number;
   owner_ids: UUID[];
   /** S13a §2.2: owner_id resolved to a display name for the Pipeline UI. */
@@ -605,7 +508,6 @@ export interface ClientDetail {
   name: string;
   hubspot_company_id: string | null;
   timezone: string | null;
-  coverage_state: string;
   legal_entities: ClientLegalEntity[];
   agreements: ClientAgreement[];
   opportunities: ClientOpportunity[];
@@ -1150,6 +1052,8 @@ export interface SowVersion {
   engagement_type_suggested: string | null;
   engagement_type_confirmed: string | null;
   download_url: string | null;
+  // S17: the upload-form checkbox. Informational only.
+  agreements_signed?: boolean;
 }
 
 export interface SowUploadUrlRequest {
@@ -1434,7 +1338,7 @@ export function getSowJob(jobId: UUID): Promise<SowUploadJobResponse> {
  * API returns 422 if both or neither are supplied; the client-side
  * union mirrors that invariant.
  */
-export type SowJobPickBody =
+export type SowJobPickBody = { agreements_signed?: boolean } & (
   | { client_id: UUID; create_new?: never }
   | {
       client_id?: never;
@@ -1443,7 +1347,8 @@ export type SowJobPickBody =
         domain?: string | null;
         address_lines?: string[] | null;
       };
-    };
+    }
+);
 
 export function pickSowJobClient(
   jobId: UUID,
@@ -2660,6 +2565,11 @@ export interface ApprovalPackageFloors extends SowConfirmationFloors {
 export interface ApprovalPackage {
   sow_version?: number;
   gm_version?: number;
+  // S17: board cards read these to render a real title + client name.
+  // Populated by /approvals routes when the join is available.
+  sow_title?: string | null;
+  opportunity_title?: string | null;
+  client_name?: string | null;
   submitted_by_name?: string;
   pending_with?: string[];
   ceo_pending_with?: string | null;
@@ -3003,7 +2913,6 @@ export interface SalesMyDeal {
 export interface SalesMissingContract {
   client_id: UUID;
   client_name: string | null;
-  coverage_state: string;
 }
 
 export interface SalesAdviserEstimate {
@@ -3790,6 +3699,26 @@ export function archiveClient(
   return request<DeletionAssessmentResponse>(`/clients/${clientId}/archive`, {
     method: "POST",
     body: JSON.stringify({ reason: reason ?? null }),
+  });
+}
+
+// S17: SOW-scoped delete + assessment. Kanna can delete a SOW at any
+// stage (draft, approved, signed). The service enforces role gating.
+export function assessSowDeletion(
+  sowId: UUID,
+): Promise<DeletionAssessmentResponse> {
+  return request<DeletionAssessmentResponse>(
+    `/sows/${sowId}/deletion-assessment`,
+  );
+}
+
+export function deleteSow(
+  sowId: UUID,
+  reason?: string,
+): Promise<DeletionAssessmentResponse> {
+  const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  return request<DeletionAssessmentResponse>(`/sows/${sowId}${qs}`, {
+    method: "DELETE",
   });
 }
 

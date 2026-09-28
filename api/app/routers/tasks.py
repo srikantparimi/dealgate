@@ -18,7 +18,6 @@ from sqlalchemy import select
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
-from app.models.agreement_tracking import AgreementGap
 from app.services.tasks import (
     TaskListFilters,
     list_tasks,
@@ -105,12 +104,7 @@ async def list_tasks_endpoint(
         size=size,
     )
     rows, total = await list_tasks(session, user, filters)
-    gaps = dict((await session.execute(select(AgreementGap.task_id, AgreementGap.legal_entity_id)
-        .where(AgreementGap.task_id.in_([row.id for row in rows])))).all()) if rows else {}
     items = [await _row(session, t) for t in rows]
-    for item in items:
-        if item.id in gaps:
-            item.record_url = f"/agreements?entity={gaps[item.id]}"
     return TaskListResponse(
         items=items,
         page=page,

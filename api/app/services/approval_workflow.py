@@ -158,21 +158,38 @@ async def authorize_decision(session, package, actor_id, function, reason):
 
 async def review_projection(session, package, actor_id=None):
     from app.services.approvals import serialize_package
+    from app.models.client import Client
 
     data = serialize_package(package)
     users = {str(u.id): person(u) for u in (await session.scalars(select(User))).all()}
     sow = await session.get(SowVersion, package.sow_version_id)
     gm = await session.get(GmModel, package.gm_model_id)
     opp = await session.get(Opportunity, package.opportunity_id)
+    client = (
+        await session.get(Client, opp.client_id) if opp and opp.client_id else None
+    )
+    # S17 board cards: extract SOW title + client name so the row never
+    # shows a raw id/hash.
+    sow_title: str | None = None
+    if sow and isinstance(sow.extracted_fields, dict):
+        for key in ("sow_title", "title"):
+            cell = sow.extracted_fields.get(key)
+            if isinstance(cell, dict) and cell.get("value"):
+                sow_title = str(cell["value"]).strip() or None
+                if sow_title:
+                    break
     data.update(
         sow_version=sow.version_no if sow else None,
         gm_version=gm.version if gm else None,
-        submitted_by_name=users.get(str(package.submitted_by), {}).get("name", "Name unavailable"),
+        sow_title=sow_title,
+        opportunity_title=(opp.next_client_action if opp else None),
+        client_name=client.name if client else None,
+        submitted_by_name=users.get(str(package.submitted_by), {}).get("name", "Unassigned"),
         owner=users.get(str(opp.owner_id)) if opp else None,
     )
     for approval in data["approvals"]:
         approval["approver_name"] = users.get(approval["approver_id"], {}).get(
-            "name", "Name unavailable"
+            "name", "Unassigned"
         )
     roster = {g["function"]: g for g in await groups(session)}
     decisions = {a.function for a in package.approvals}
@@ -232,12 +249,11 @@ async def review_projection(session, package, actor_id=None):
 
 
 async def require_signature_eligibility(session, package):
-    from app.services.coverage_gate import check_msa_and_nda_executed
-
     opp = await session.get(Opportunity, package.opportunity_id)
     if not opp:
         fail("Opportunity not found", 404)
-    await check_msa_and_nda_executed(session, opp)
+    # S17: NDA/MSA coverage no longer gates signature. The upload form's
+    # `agreements_signed` checkbox is a display note, not a gate.
     exception = await session.scalar(
         select(CeoException).where(CeoException.package_id == package.id)
     )

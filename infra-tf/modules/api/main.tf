@@ -291,6 +291,27 @@ resource "aws_iam_role_policy" "task_execution_kms" {
   policy = data.aws_iam_policy_document.task_execution_kms.json
 }
 
+# S17: hydrate_from_cognito calls admin_get_user to backfill user.name +
+# user.email when the access token doesn't carry them. Without this the
+# board cards read "Unassigned" for every freshly-materialised user (the
+# S16a fix relied on this permission being present).
+data "aws_iam_policy_document" "task_cognito_read" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "cognito-idp:AdminGetUser",
+      "cognito-idp:ListUsers",
+    ]
+    resources = [var.cognito_user_pool_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "task_cognito_read" {
+  name   = "${var.name_prefix}-api-cognito-read"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.task_cognito_read.json
+}
+
 # ------------------------------------------------------------------
 # Cluster, log group, task def, service
 # ------------------------------------------------------------------

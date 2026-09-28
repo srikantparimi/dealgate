@@ -76,26 +76,17 @@ export function defaultTabFor(snap: WorkspaceSnapshot): string {
  */
 export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
   const items: ReadinessItem[] = [];
-  const nda = snap.agreements.find(
-    (a) => a.kind === "NDA" && agreementValid(a),
-  );
-  const msa = snap.agreements.find(
-    (a) => a.kind === "MSA" && agreementValid(a),
-  );
-
+  // S17: NDA/MSA no longer gate readiness. The upload checkbox lands as a
+  // note but never a blocker; the register lives at /agreements.
+  const agreementsMarked = snap.sow?.agreements_signed === true;
   items.push({
-    id: "nda",
-    label: "NDA in force",
-    status: nda ? "ok" : "warn",
-    statusLabel: nda ? "Executed" : "Missing",
-    hint: nda ? undefined : "NDA missing - blocks signature, not review.",
-  });
-  items.push({
-    id: "msa",
-    label: "MSA in force",
-    status: msa ? "ok" : "warn",
-    statusLabel: msa ? "Executed" : "Missing",
-    hint: msa ? undefined : "MSA missing - blocks signature, not review.",
+    id: "nda-msa",
+    label: "NDA & MSA",
+    status: agreementsMarked ? "ok" : "neutral",
+    statusLabel: agreementsMarked ? "Marked signed on upload" : "Not marked",
+    hint: agreementsMarked
+      ? undefined
+      : "The uploader did not tick 'NDA and MSA are signed'. Nothing is blocked; this is a note only.",
   });
 
   const scopeConfirmed = snap.sow?.confirmed_at != null;
@@ -311,8 +302,11 @@ export function buildRail(snap: WorkspaceSnapshot): RailStep[] {
   return rail;
 }
 
-export function agreementValid(a: AgreementRow): boolean {
-  return a.state === "executed" && (!a.expiry || a.expiry >= new Date().toISOString().slice(0, 10));
+export function agreementValid(_a: AgreementRow): boolean {
+  // S17: an uploaded agreement row IS the record — there's no state or
+  // expiry to gate on. Kept as a helper so callers don't need to change
+  // shape; always returns true.
+  return true;
 }
 
 export function workspaceTitle(snap: WorkspaceSnapshot): string {

@@ -23,7 +23,7 @@ from app.db import get_session
 from app.main import app as main_app
 from app.models.approval import Approval, ApprovalPackage
 from app.models.audit import AuditEvent
-from app.models.client import Agreement, Client, LegalEntity
+from app.models.client import Client, LegalEntity
 from app.models.notification import Notification
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
@@ -94,39 +94,26 @@ async def _seed_opp_with_sow(
     confirmed: bool = True,
     with_coverage: bool = True,
 ) -> tuple[Opportunity, SowVersion]:
-    # S7 A: submit_package now enforces NDA + MSA coverage. Give the opp a
-    # client with an Executed NDA + MSA by default so existing behaviour
-    # (packages submit successfully) is preserved. Tests that want to
-    # exercise the coverage gate pass ``with_coverage=False``.
-    client_id: uuid.UUID | None = None
-    if with_coverage:
-        client = Client(
-            id=uuid.uuid4(),
-            name=f"Client for {owner.email}",
-            hubspot_company_id=f"HS-CO-{uuid.uuid4().hex[:6]}",
-        )
-        session.add(client)
-        await session.flush()
-        entity = LegalEntity(
-            id=uuid.uuid4(),
-            client_id=client.id,
-            name="Default entity",
-        )
-        session.add(entity)
-        await session.flush()
-        for kind in ("NDA", "MSA"):
-            session.add(
-                Agreement(
-                    id=uuid.uuid4(),
-                    legal_entity_id=entity.id,
-                    kind=kind,
-                    state="executed",
-                    effective_date=date(2026, 1, 1),
-                    expiry=date(2030, 12, 31),
-                )
-            )
-        await session.flush()
-        client_id = client.id
+    # S17: NDA/MSA no longer gate submission. `with_coverage` is kept as a
+    # parameter for source compatibility but only decides whether to
+    # attach a client + legal entity so downstream tests can render a
+    # client name; the coverage_gate rules are gone.
+    _ = with_coverage
+    client = Client(
+        id=uuid.uuid4(),
+        name=f"Client for {owner.email}",
+        hubspot_company_id=f"HS-CO-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(client)
+    await session.flush()
+    entity = LegalEntity(
+        id=uuid.uuid4(),
+        client_id=client.id,
+        name="Default entity",
+    )
+    session.add(entity)
+    await session.flush()
+    client_id = client.id
 
     opp = Opportunity(
         id=uuid.uuid4(),

@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import append_audit
 from app.db import session_factory
 from app.models.audit import AuditEvent
-from app.models.client import Agreement, LegalEntity
+from app.models.client import LegalEntity
 from app.models.opportunity import Opportunity
 from app.models.task import Task
 from app.models.user import User
@@ -171,152 +171,12 @@ async def _create_task(
     return task
 
 
-# ---- trigger 1 + 2: agreement expiry warning + expired ---------------
-
-
-async def _agreement_owner_user(
-    session: AsyncSession, agreement: Agreement
-) -> User | None:
-    """Resolve the Legal owner for an agreement.
-
-    Preference order: the row's own ``owner_email`` (Legal set this in the
-    Agreements UI); the ``LEGAL_LEADER_EMAIL`` env var (function head);
-    no owner (task lands unassigned so Legal sees it in the leader view).
-    """
-
-    email = (agreement.owner_email or "").strip()
-    if not email:
-        email = (os.environ.get(LEGAL_LEADER_EMAIL_ENV) or "").strip()
-    if not email:
-        return None
-    row = (
-        await session.execute(select(User).where(User.email == email))
-    ).scalar_one_or_none()
-    if row is not None:
-        return row
-    row = User(email=email, name="Legal Owner", groups=["Legal"])
-    session.add(row)
-    await session.flush()
-    return row
-
-
-def _agreement_expiry_date(agreement: Agreement) -> date | None:
-    """Return the canonical expiry, tolerating the S1 vs S2 column names."""
-
-    return agreement.expiry or agreement.expiry_date
-
-
-async def _process_agreement_expiries(
-    session: AsyncSession, now: datetime, result: TickResult
-) -> None:
-    """Trigger 1 (60-day warning) and trigger 2 (already expired)."""
-
-    today = now.date()
-    warn_cutoff = today + timedelta(days=EXPIRY_WARNING_WINDOW_DAYS)
-
-    rows = list(
-        (
-            await session.execute(
-                select(Agreement).where(Agreement.state == "executed")
-            )
-        )
-        .scalars()
-        .all()
-    )
-    for agreement in rows:
-        expiry = _agreement_expiry_date(agreement)
-        if expiry is None:
-            continue
-
-        if today <= expiry <= warn_cutoff:
-            key = _trigger_key("agreement.expiry_warning", str(agreement.id))
-            fired = await record_trigger(
-                session,
-                trigger_key=key,
-                trigger_name="agreement.expiry_warning",
-                entity="agreement",
-                entity_id=str(agreement.id),
-            )
-            if not fired:
-                result.triggers_skipped += 1
-                continue
-
-            owner = await _agreement_owner_user(session, agreement)
-            correlation = f"scheduler:{key}"
-            subject = (
-                f"{agreement.kind} agreement expires {expiry.isoformat()} — start renewal"
-            )
-            await _create_task(
-                session,
-                owner=owner,
-                subject=subject,
-                category="agreement.expiry_warning",
-                due_date=expiry,
-                correlation_id=correlation,
-                related_entity="agreement",
-                related_entity_id=str(agreement.id),
-            )
-            result.tasks_created += 1
-            if owner is not None:
-                queued = await queue_notification(
-                    session,
-                    user_id=owner.id,
-                    category="expiry_warning",
-                    subject=subject,
-                    body_md=(
-                        f"The **{agreement.kind}** agreement expires on "
-                        f"`{expiry.isoformat()}`. Start the renewal or "
-                        "confirm no further engagement is required."
-                    ),
-                    related_entity="agreement",
-                    related_entity_id=str(agreement.id),
-                )
-                result.notifications_queued += len(queued)
-            result.triggers_fired.append(key)
-            continue
-
-        if expiry < today:
-            key = _trigger_key("agreement.expired", str(agreement.id))
-            fired = await record_trigger(
-                session,
-                trigger_key=key,
-                trigger_name="agreement.expired",
-                entity="agreement",
-                entity_id=str(agreement.id),
-            )
-            if not fired:
-                result.triggers_skipped += 1
-                continue
-
-            owner = await _agreement_owner_user(session, agreement)
-            correlation = f"scheduler:{key}"
-            subject = f"{agreement.kind} agreement expired on {expiry.isoformat()}"
-            await _create_task(
-                session,
-                owner=owner,
-                subject=subject,
-                category="agreement.expired",
-                due_date=today,
-                correlation_id=correlation,
-                related_entity="agreement",
-                related_entity_id=str(agreement.id),
-            )
-            result.tasks_created += 1
-            if owner is not None:
-                queued = await queue_notification(
-                    session,
-                    user_id=owner.id,
-                    category="expiry_warning",
-                    subject=subject,
-                    body_md=(
-                        f"The **{agreement.kind}** agreement expired on "
-                        f"`{expiry.isoformat()}`. Coverage is now broken."
-                    ),
-                    related_entity="agreement",
-                    related_entity_id=str(agreement.id),
-                )
-                result.notifications_queued += len(queued)
-            result.triggers_fired.append(key)
+# ---- trigger 1 + 2: agreement expiry warning + expired (S17: gone) ---
+#
+# The agreement expiry scheduler triggers went away with S17: agreements
+# are a flat doc store with no expiry column. Kept the file section
+# markers below so the trigger numbering in the rest of the module still
+# lines up with the build guide.
 
 
 # ---- trigger 3: opportunity overdue check-in ---------------------------
@@ -669,7 +529,7 @@ async def run_tick(session: AsyncSession, now: datetime | None = None) -> TickRe
 
     when = (now or _now()).astimezone(UTC)
     result = TickResult()
-    await _process_agreement_expiries(session, when, result)
+    # S17: agreement expiry triggers removed — agreements have no expiry.
     await _process_opportunity_overdue(session, when, result)
     await _process_approval_sla(session, when, result)
     await _process_task_escalations(session, when, result)

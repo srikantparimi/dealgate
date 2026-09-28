@@ -65,7 +65,6 @@ export function SalesDashboardPage() {
         </Link>
       ),
     },
-    { key: "state", header: "Coverage", render: (r) => r.coverage_state },
   ];
   const missingRows = data.missing_contracts.map((r) => ({
     ...r,

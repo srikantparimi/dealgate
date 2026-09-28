@@ -19,22 +19,17 @@
 
 import { MoreVertical } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   ApiError,
-  listAgreements,
   listClients,
-  type AgreementRow,
-  type AgreementState,
   type ClientListRow,
-  type UUID,
 } from "../../api/client";
 import { getIdTokenClaims } from "../../auth/cognito";
 import { DeletionConfirmationDialog } from "../../ui-v2/DeletionConfirmationDialog";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
-import { StatusBadge } from "../../ui-v2/StatusBadge";
 import { Button } from "../../ui-v2/primitives/button";
 import {
   DropdownMenu,
@@ -50,7 +45,6 @@ import {
   TabsTrigger,
 } from "../../ui-v2/primitives/tabs";
 import { NewOpportunitySheet } from "./pipeline/NewOpportunitySheet";
-import { agreementDisplay } from "./pipeline/agreementStatus";
 
 /**
  * Roles allowed to hard-delete or archive records. Mirrors the server-side
@@ -76,84 +70,12 @@ function userCanDelete(): boolean {
   return groups.some((g) => DELETE_ROLES.includes(g));
 }
 
-type FilterKey = "all" | "gaps" | "ready" | "followup";
+// S17: NDA/MSA is a doc store — no gap/ready/follow-up filters. The
+// Pipeline just shows every client with an ownership + search filter.
+type FilterKey = "all";
 
-interface CoverageRow {
+interface ClientRow {
   client: ClientListRow;
-  nda: AgreementRow | null;
-  msa: AgreementRow | null;
-}
-
-const READY: AgreementState[] = ["executed"];
-const GAP: AgreementState[] = [
-  "missing",
-  "requested",
-  "drafting",
-  "under_review",
-  "sent",
-  "partially_signed",
-  "expired",
-  "terminated",
-];
-
-function isReady(state: AgreementState | null | undefined): boolean {
-  return state != null && READY.includes(state);
-}
-
-function hasGap(state: AgreementState | null | undefined): boolean {
-  // A null state (no agreement row) is a gap — spec §7 New entities
-  // start Missing.
-  return state == null || GAP.includes(state);
-}
-
-function joinCoverage(
-  clients: ClientListRow[],
-  agreements: AgreementRow[],
-): CoverageRow[] {
-  // For MVP: pick the first NDA and MSA per legal-entity-linked client.
-  // Real production would consider effective/expiry and precedence; the
-  // list is capped so this is fine for the display join.
-  const ndaByEntity = new Map<UUID, AgreementRow>();
-  const msaByEntity = new Map<UUID, AgreementRow>();
-  for (const a of agreements) {
-    const bucket = a.kind === "NDA" ? ndaByEntity : msaByEntity;
-    if (!bucket.has(a.legal_entity_id)) bucket.set(a.legal_entity_id, a);
-  }
-  // We don't have client → legal_entity in the ClientListRow, so
-  // fall back to matching by name+hubspot_company_id keys via the
-  // display strategy: if the client's coverage_state hints "NDA
-  // missing" or "MSA missing" we surface that; otherwise we simply
-  // show the first NDA/MSA the agreement service returned for any
-  // entity linked to this client via ClientDetail.
-  // For the pipeline row we make a best-effort by matching agreements
-  // that reference an entity name similar to the client — but rather
-  // than hallucinate a match, we rely on `coverage_state` and mark the
-  // row as Missing when the string says so. Any richer join is server
-  // work.
-  return clients.map((c) => {
-    const coverage = c.coverage_state ?? "";
-    const ndaMissing = /nda missing/i.test(coverage);
-    const msaMissing = /msa missing/i.test(coverage);
-    const nda = ndaMissing ? null : (ndaByEntity.values().next().value ?? null);
-    const msa = msaMissing ? null : (msaByEntity.values().next().value ?? null);
-    return { client: c, nda, msa };
-  });
-}
-
-function matchesFilter(row: CoverageRow, filter: FilterKey): boolean {
-  const ndaState = row.nda?.state ?? null;
-  const msaState = row.msa?.state ?? null;
-  if (filter === "all") return true;
-  if (filter === "ready") return isReady(ndaState) && isReady(msaState);
-  if (filter === "gaps") return hasGap(ndaState) || hasGap(msaState);
-  if (filter === "followup") {
-    // Follow-up due is any client with a next action in the past week
-    // window; without that field on the list row, treat "MSA missing"
-    // / "NDA missing" coverage as an actionable follow-up so the tab
-    // is never silently empty (spec §4 honest states).
-    return row.client.coverage_state !== "Complete";
-  }
-  return true;
 }
 
 /**
@@ -173,7 +95,7 @@ function sourceLabel(sources: string[]): string {
   return sources.map((s) => pretty[s] ?? s).join(" · ");
 }
 
-function matchesSearch(row: CoverageRow, q: string): boolean {
+function matchesSearch(row: ClientRow, q: string): boolean {
   if (!q) return true;
   const needle = q.toLowerCase();
   return (
@@ -183,31 +105,8 @@ function matchesSearch(row: CoverageRow, q: string): boolean {
   );
 }
 
-interface AgreementBadgeProps {
-  agreement: AgreementRow | null;
-  kind: "NDA" | "MSA";
-  clientId: UUID;
-}
-
-function AgreementBadge({ agreement, kind, clientId }: AgreementBadgeProps) {
-  const { label, tone } = agreementDisplay(agreement?.state);
-  const to = agreement ? `/agreements/${agreement.id}` : `/clients/${clientId}`;
-  return (
-    <Link
-      to={to}
-      className="inline-flex items-center rounded-control focus-visible:outline-focus"
-      aria-label={`${kind} status: ${label}`}
-      data-testid={`badge-${kind.toLowerCase()}-${clientId}`}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <StatusBadge tone={tone} label={`${kind} · ${label}`} />
-    </Link>
-  );
-}
-
 export function PipelinePage() {
   const [clients, setClients] = useState<ClientListRow[]>([]);
-  const [agreements, setAgreements] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -222,12 +121,8 @@ export function PipelinePage() {
     setLoading(true);
     setError(null);
     try {
-      const [clientRes, agreementRes] = await Promise.all([
-        listClients({ size: 200 }),
-        listAgreements(),
-      ]);
+      const clientRes = await listClients({ size: 200 });
       setClients(clientRes.items);
-      setAgreements(agreementRes.items);
     } catch (err) {
       setError(err);
     } finally {
@@ -246,13 +141,13 @@ export function PipelinePage() {
     };
   }, [load]);
 
-  const rows = useMemo(
-    () => joinCoverage(clients, agreements),
-    [clients, agreements],
+  const rows = useMemo<ClientRow[]>(
+    () => clients.map((c) => ({ client: c })),
+    [clients],
   );
   const filtered = useMemo(
-    () => rows.filter((r) => matchesFilter(r, filter) && matchesSearch(r, query)),
-    [rows, filter, query],
+    () => rows.filter((r) => matchesSearch(r, query)),
+    [rows, query],
   );
 
   const unownedCount = useMemo(
@@ -266,21 +161,13 @@ export function PipelinePage() {
     );
   }
 
-  const emptyReason: string = query
-    ? "No clients match this search."
-    : filter === "gaps"
-      ? "No clients with agreement gaps."
-      : filter === "ready"
-        ? "No clients with both NDA and MSA executed."
-        : filter === "followup"
-          ? "No follow-ups due right now."
-          : "No clients yet.";
+  const emptyReason: string = query ? "No clients match this search." : "No clients yet.";
 
   return (
     <div>
       <PageHeader
         title="Pipeline clients"
-        subtitle="Owners, commercial stage, NDA and MSA readiness, current SOW gate and the next client action."
+        subtitle="Owners, commercial stage and the next client action. NDA/MSA lives on the Agreements page."
         actions={
           <Button
             variant="primary"
@@ -322,9 +209,6 @@ export function PipelinePage() {
         >
           <TabsList aria-label="Pipeline filters">
             <TabsTrigger value="all">All clients</TabsTrigger>
-            <TabsTrigger value="gaps">Agreement gaps</TabsTrigger>
-            <TabsTrigger value="ready">Ready agreements</TabsTrigger>
-            <TabsTrigger value="followup">Follow-up due</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="sm:w-64">
@@ -370,9 +254,7 @@ export function PipelinePage() {
                   <tr className="text-left text-secondary text-text-secondary">
                     <th className="px-3 py-2 font-medium">Client · owner</th>
                     <th className="px-3 py-2 font-medium">Commercial stage</th>
-                    <th className="px-3 py-2 font-medium">NDA</th>
-                    <th className="px-3 py-2 font-medium">MSA</th>
-                    <th className="px-3 py-2 font-medium">SOWs · gate</th>
+                    <th className="px-3 py-2 font-medium">SOWs</th>
                     <th className="px-3 py-2 font-medium">Next client action</th>
                     {canDelete ? (
                       <th className="px-3 py-2 font-medium">
@@ -382,7 +264,7 @@ export function PipelinePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(({ client, nda, msa }) => (
+                  {filtered.map(({ client }) => (
                     <tr
                       key={client.id}
                       data-testid={`row-${client.id}`}
@@ -411,25 +293,8 @@ export function PipelinePage() {
                           {sourceLabel(client.sources)}
                         </span>
                       </td>
-                      <td className="px-3 py-3 align-top">
-                        <AgreementBadge
-                          agreement={nda}
-                          kind="NDA"
-                          clientId={client.id}
-                        />
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <AgreementBadge
-                          agreement={msa}
-                          kind="MSA"
-                          clientId={client.id}
-                        />
-                      </td>
                       <td className="px-3 py-3 align-top tnum text-text">
                         {client.opportunity_count}
-                        <span className="ml-1 text-text-secondary">
-                          · {client.coverage_state}
-                        </span>
                       </td>
                       <td className="px-3 py-3 align-top text-text-secondary">
                         Set from client workspace

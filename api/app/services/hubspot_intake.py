@@ -424,10 +424,7 @@ async def handle_event(
     opportunity, created = await _upsert_opportunity(
         session, deal_id, deal_payload, owner, client_row, correlation_id
     )
-    from app.services.agreement_tracking import ensure_agreement_tasks
-
-    await ensure_agreement_tasks(session, client_id=client_row.id, owner_id=owner.id, actor_id=None, correlation_id=correlation_id)
-
+    # S17: no more auto-created 'obtain NDA/MSA' tasks. NDA/MSA is a doc store now.
     if created:
         await _create_intake_task(session, opportunity, owner, correlation_id)
     else:

@@ -61,16 +61,6 @@ class LegalEntityRow(BaseModel):
     country: str | None
 
 
-class AgreementRow(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    legal_entity_id: uuid.UUID
-    kind: str
-    effective_date: date | None
-    expiry_date: date | None
-
-
 class OpportunityLink(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -105,9 +95,7 @@ class ClientDetailResponse(BaseModel):
     name: str
     hubspot_company_id: str | None
     timezone: str | None
-    coverage_state: str
     legal_entities: list[LegalEntityRow]
-    agreements: list[AgreementRow]
     opportunities: list[OpportunityLink]
     recent_activity: list[RecentAuditRow] = Field(default_factory=list)
 
@@ -121,7 +109,6 @@ class ClientListRow(BaseModel):
     id: uuid.UUID
     name: str
     hubspot_company_id: str | None
-    coverage_state: str
     opportunity_count: int
     owner_ids: list[uuid.UUID]
     # S13a defect §2.2 — the FE renders `owners[*].name` (never `owner_ids[*]`)
@@ -206,7 +193,6 @@ async def list_clients_endpoint(
                 id=r.id,
                 name=r.name,
                 hubspot_company_id=r.hubspot_company_id,
-                coverage_state=r.coverage_state,
                 opportunity_count=r.opportunity_count,
                 owner_ids=r.owner_ids,
                 owners=[
@@ -250,20 +236,9 @@ async def get_client_endpoint(
         name=detail.name,
         hubspot_company_id=detail.hubspot_company_id,
         timezone=detail.timezone,
-        coverage_state=detail.coverage_state,
         legal_entities=[
             LegalEntityRow(id=e.id, name=e.name, country=e.country)
             for e in detail.legal_entities
-        ],
-        agreements=[
-            AgreementRow(
-                id=a.id,
-                legal_entity_id=a.legal_entity_id,
-                kind=a.kind,
-                effective_date=a.effective_date,
-                expiry_date=a.expiry_date,
-            )
-            for a in detail.agreements
         ],
         opportunities=[
             OpportunityLink(
@@ -288,7 +263,6 @@ async def _load_recent_activity(session: AsyncSession, detail: Any) -> list[Rece
 
     ids: list[str] = [str(detail.id)]
     ids.extend(str(e.id) for e in detail.legal_entities)
-    ids.extend(str(a.id) for a in detail.agreements)
     ids.extend(str(o.id) for o in detail.opportunities)
 
     # Also include audits keyed on entities that touch this client but were

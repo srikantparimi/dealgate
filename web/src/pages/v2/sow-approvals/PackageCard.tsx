@@ -1,20 +1,22 @@
 /**
- * SowPackageCard — DealGate v2.1 prototype (lines 204–216, 546–557).
+ * SowPackageCard — DealGate v2.1 prototype (lines 204–216, 546–557),
+ * S17-updated.
  *
  * Card layout:
- *   - Header row: bold client, right-aligned value.
- *   - Description row: engagement type / short summary.
+ *   - Header row: bold SOW title, right-aligned value. Never an id or hash.
+ *   - Description row: client name (+ engagement type when present).
  *   - GM chip (ok / warn / bad / neutral) with the outcome text.
- *   - NDA + MSA chip pair with muted "NDA" / "MSA" labels.
- *   - FunctionMark row (D / H / F / L, 22×18) followed by "n/4 reviews".
+ *   - FunctionMark row (D / H / F / L, 22×18) followed by pending-with names.
  *   - Left stripe per state (bad / warn / prog).
  *   - Owner + next-action + age foot.
+ *
+ * S17: NDA/MSA chips are gone. Approver names use "Unassigned" when a
+ * user row can't be resolved (server-side default).
  *
  * Never draggable. Server enforces gate transitions.
  */
 import { Link } from "react-router-dom";
 import type {
-  AgreementRow,
   ApprovalFunction,
   ApprovalPackage,
 } from "../../../api/client";
@@ -31,26 +33,6 @@ function ageInDays(iso: string | null): number | null {
   const ms = Date.now() - new Date(iso).getTime();
   if (Number.isNaN(ms)) return null;
   return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
-}
-
-function agreementTone(state: string | undefined): StatusTone {
-  if (!state) return "warning";
-  if (state === "executed") return "success";
-  if (
-    state === "expired" ||
-    state === "terminated" ||
-    state === "superseded"
-  ) {
-    return "danger";
-  }
-  if (state === "missing") return "warning";
-  return "progress";
-}
-
-function agreementShort(state: string | undefined): string {
-  if (!state) return "Missing";
-  if (state === "executed") return "OK";
-  return state.replace(/_/g, " ");
 }
 
 function decisionState(decision: string | undefined): FunctionState {
@@ -92,8 +74,6 @@ export interface CardMeta {
   marginPct?: string | null;
   completeness?: string | null;
   nextAction?: string | null;
-  ndaAgreement?: AgreementRow | null;
-  msaAgreement?: AgreementRow | null;
   dueDate?: string | null;
   /**
    * S10-02: sow_version.governance_status. When it is
@@ -152,19 +132,17 @@ export function PackageCard({ pkg, meta, href }: PackageCardProps) {
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-semibold text-text truncate">
-          {meta.clientName ?? meta.sowName ?? "Untitled SOW"}
+          {meta.sowName ?? "Untitled SOW"}
         </span>
         {value ? (
           <span className="tnum text-[12px] text-text-secondary">{value}</span>
         ) : null}
       </div>
-      {meta.sowName || meta.engagementType ? (
-        <div className="text-[12px] text-text-secondary truncate">
-          {[meta.sowName, meta.engagementType]
-            .filter(Boolean)
-            .join(" · ")}
-        </div>
-      ) : null}
+      <div className="text-[12px] text-text-secondary truncate">
+        {[meta.clientName, meta.engagementType]
+          .filter(Boolean)
+          .join(" · ") || "Unassigned client"}
+      </div>
 
       <div className="flex flex-wrap items-center gap-[4px]">
         <StatusBadge tone={gmTone} label={gmLabel} />
@@ -175,19 +153,6 @@ export function PackageCard({ pkg, meta, href }: PackageCardProps) {
             data-testid="legacy-chip"
           />
         ) : null}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-[4px]">
-        <span className="text-[11px] text-text-muted">NDA</span>
-        <StatusBadge
-          tone={agreementTone(meta.ndaAgreement?.state)}
-          label={agreementShort(meta.ndaAgreement?.state)}
-        />
-        <span className="text-[11px] text-text-muted ml-1">MSA</span>
-        <StatusBadge
-          tone={agreementTone(meta.msaAgreement?.state)}
-          label={agreementShort(meta.msaAgreement?.state)}
-        />
       </div>
 
       <FunctionMarkRow states={states} />

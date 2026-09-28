@@ -1,22 +1,21 @@
-"""`client`, `legal_entity`, `agreement` — skeletons per build-guide §10.
+"""`client`, `legal_entity`, `agreement`.
 
-`Agreement` grew the S2-E3 state-machine columns (§6.2) and the evidence key
-alongside the original `kind` / `effective_date` / `expiry_date` fields. The
-state list + allowed transitions live in `app.services.agreement_state`; the
-model only persists the current value plus dates, next-action and signatories.
+S17 simplifies `agreement` to a flat document store: id, client_id, kind
+(NDA|MSA), file_key/filename/file_size, uploaded_by/uploaded_at. States,
+owner, next action, expiry dates and signatories all went with the
+agreement-tracking tear-out. The file is the truth.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
-from typing import Any
+from datetime import datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
-from app.db.base import Base, JsonB
+from app.db.base import Base
 
 
 class Client(Base):
@@ -24,10 +23,6 @@ class Client(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    # S2 E3: HubSpot company id is the natural key we upsert by. Nullable
-    # because the ad-hoc "Unknown company (deal <id>)" fallback clients that
-    # the intake worker creates when HubSpot returns no company link have
-    # no HubSpot side to point at.
     hubspot_company_id: Mapped[str | None] = mapped_column(
         String(64), unique=True, nullable=True
     )
@@ -41,8 +36,9 @@ class Client(Base):
         onupdate=func.now(),
         nullable=False,
     )
-    # S13a — archive (void), never hard delete once approved. NULL means
-    # "live"; every default list filters `WHERE archived_at IS NULL`.
+    # S13a archive column stays because non-agreement code still filters on
+    # it; S17's "delete really removes" contract is enforced in the delete
+    # service, not by removing this flag.
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -76,40 +72,19 @@ class Agreement(Base):
     __tablename__ = "agreement"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    legal_entity_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("legal_entity.id"), nullable=False
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("client.id"), nullable=False
     )
-    # kind is "NDA" or "MSA" for Sprint 1. Constrained via app logic; enum in a later story.
-    kind: Mapped[str] = mapped_column(String(32), nullable=False)
-    # State machine (see `app.services.agreement_state.ALLOWED_STATES`). New
-    # rows default to "missing" so the coverage helper still has a value to
-    # render for a legal-entity that hasn't started paperwork yet.
-    state: Mapped[str] = mapped_column(String(32), nullable=False, default="missing")
-    # Ownership + next steps live on the agreement row so the Legal panel can
-    # render "who is doing what" without joining `task`.
-    owner_email: Mapped[str | None] = mapped_column(String(320))
-    next_action: Mapped[str | None] = mapped_column(String(255))
-    due_date: Mapped[date | None] = mapped_column(Date)
-    # `effective_from` supersedes the original `effective_date`; both are kept
-    # so callers written before S2-E3 keep working.
-    effective_from: Mapped[date | None] = mapped_column(Date)
-    effective_date: Mapped[date | None] = mapped_column(Date)
-    expiry: Mapped[date | None] = mapped_column(Date)
-    expiry_date: Mapped[date | None] = mapped_column(Date)
-    notice_days: Mapped[int | None] = mapped_column(Integer)
-    # Pointer to the uploaded evidence file in the agreements S3 bucket.
-    # NULL until Legal uploads a signed PDF/DOCX; required when state==executed
-    # (enforced in `app.services.agreement_state.transition`).
-    evidence_s3_key: Mapped[str | None] = mapped_column(String(1024))
-    # Free-form list of signatories: [{"name": ..., "email": ..., "role": ...}].
-    # Stored as JSONB on Postgres, JSON on SQLite via `JsonB`.
-    signatories: Mapped[list[dict[str, Any]] | None] = mapped_column(JsonB)
-    created_at: Mapped[datetime] = mapped_column(
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    file_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("user.id"), nullable=False
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
+    __table_args__ = (
+        CheckConstraint("kind IN ('NDA', 'MSA')", name="ck_agreement_kind"),
     )

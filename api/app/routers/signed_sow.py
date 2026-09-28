@@ -43,7 +43,6 @@ from app.integrations.ses import SESClient, get_ses_client
 from app.models.approval import ApprovalPackage
 from app.models.opportunity import Opportunity
 from app.services.signed_sow import (
-    _require_coverage,
     SignedSowError,
     create_upload,
     latest_upload_for,
@@ -154,10 +153,7 @@ async def create_upload_url(
 ) -> UploadUrlResponse:
     package, opp = await _load_package_and_opp(session, package_id)
     _require_owner(user, opp)
-    try:
-        await _require_coverage(session, package)
-    except SignedSowError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    _ = package  # S17: signature upload URL no longer needs a coverage gate.
     try:
         # We reuse the SOW bucket + prefix — the signed pdf lives under
         # the opportunity's SOW folder alongside the pre-signature drafts.

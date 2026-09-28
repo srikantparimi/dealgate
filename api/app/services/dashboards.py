@@ -35,12 +35,11 @@ from app.gm.policy import INDIA_FLOOR, US_FLOOR
 from app.models.adviser_estimate import AdviserEstimate
 from app.models.approval import ApprovalPackage
 from app.models.ceo_exception import CeoException
-from app.models.client import Agreement, Client, LegalEntity
+from app.models.client import Client, LegalEntity
 from app.models.gm_model import GmModel, ResourceLine
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow
 from app.models.task import Task
-from app.services.clients import coverage_state as _coverage_state
 
 _ZERO = Decimal("0")
 
@@ -594,54 +593,9 @@ async def sales_view(session: AsyncSession, user: AuthUser) -> dict[str, Any]:
 
     next_actions = [d for d in my_deals if d["next_client_action"]]
 
+    # S17: agreements are a flat doc store — no coverage rollup on the Sales
+    # dashboard. The panel that read this now points at /agreements directly.
     missing_contracts: list[dict[str, Any]] = []
-    client_ids = {o.client_id for o in my_opps if o.client_id is not None}
-    if client_ids:
-        entities = list(
-            (
-                await session.execute(
-                    select(LegalEntity).where(LegalEntity.client_id.in_(client_ids))
-                )
-            ).scalars()
-        )
-        entity_ids = [e.id for e in entities]
-        entities_by_client: dict[uuid.UUID, list[LegalEntity]] = defaultdict(list)
-        for e in entities:
-            entities_by_client[e.client_id].append(e)
-        agreements = []
-        if entity_ids:
-            agreements = list(
-                (
-                    await session.execute(
-                        select(Agreement).where(
-                            Agreement.legal_entity_id.in_(entity_ids)
-                        )
-                    )
-                ).scalars()
-            )
-        ags_by_entity: dict[uuid.UUID, list[Agreement]] = defaultdict(list)
-        for a in agreements:
-            ags_by_entity[a.legal_entity_id].append(a)
-        clients = list(
-            (
-                await session.execute(select(Client).where(Client.id.in_(client_ids)))
-            ).scalars()
-        )
-        clients_by_id = {c.id: c for c in clients}
-        for cid in client_ids:
-            client_ags: list[Agreement] = []
-            for e in entities_by_client.get(cid, []):
-                client_ags.extend(ags_by_entity.get(e.id, []))
-            state = _coverage_state(client_ags)
-            if state != "Complete":
-                c = clients_by_id.get(cid)
-                missing_contracts.append(
-                    {
-                        "client_id": str(cid),
-                        "client_name": c.name if c else None,
-                        "coverage_state": state,
-                    }
-                )
 
     my_estimates = list(
         (
@@ -760,28 +714,10 @@ async def hr_view(session: AsyncSession) -> dict[str, Any]:
 async def legal_view(session: AsyncSession) -> dict[str, Any]:
     """Legal dashboard aggregate.
 
-    * ``nda_msa_coverage_summary`` — count of clients per coverage label.
-    * ``packages_awaiting_legal`` — approval packages sitting in
-      ``pending_finance_legal`` with no legal decision recorded yet.
-    * ``notice_dates_approaching`` — agreements with a ``due_date`` inside
-      30 days.
+    S17: NDA/MSA coverage rollups and notice-date reminders are gone —
+    agreements are a flat doc store, no dates or states to compute over.
+    Only the packages-awaiting-legal queue remains.
     """
-
-    clients = list((await session.execute(select(Client))).scalars())
-    entities = list((await session.execute(select(LegalEntity))).scalars())
-    ents_by_client: dict[uuid.UUID, list[LegalEntity]] = defaultdict(list)
-    for e in entities:
-        ents_by_client[e.client_id].append(e)
-    agreements = list((await session.execute(select(Agreement))).scalars())
-    ags_by_entity: dict[uuid.UUID, list[Agreement]] = defaultdict(list)
-    for a in agreements:
-        ags_by_entity[a.legal_entity_id].append(a)
-    coverage_counts: dict[str, int] = defaultdict(int)
-    for c in clients:
-        client_ags: list[Agreement] = []
-        for e in ents_by_client.get(c.id, []):
-            client_ags.extend(ags_by_entity.get(e.id, []))
-        coverage_counts[_coverage_state(client_ags)] += 1
 
     from app.models.approval import Approval
 
@@ -808,31 +744,12 @@ async def legal_view(session: AsyncSession) -> dict[str, Any]:
                     else None,
                 }
             )
-    _ = Approval  # future-proof: keep the import discoverable.
-
-    today = date.today()
-    cutoff = today + timedelta(days=30)
-    approaching_ags = [
-        a
-        for a in agreements
-        if a.due_date is not None and today <= a.due_date <= cutoff
-    ]
-    notice_dates = [
-        {
-            "agreement_id": str(a.id),
-            "kind": a.kind,
-            "state": a.state,
-            "due_date": a.due_date.isoformat() if a.due_date else None,
-            "next_action": a.next_action,
-            "owner_email": a.owner_email,
-        }
-        for a in approaching_ags
-    ]
+    _ = Approval
 
     return {
-        "nda_msa_coverage_summary": dict(coverage_counts),
+        "nda_msa_coverage_summary": {},
         "packages_awaiting_legal": awaiting_legal,
-        "notice_dates_approaching": notice_dates,
+        "notice_dates_approaching": [],
     }
 
 

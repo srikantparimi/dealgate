@@ -15,7 +15,7 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from app.models.audit import AuditEvent
-from app.models.client import Agreement, Client, LegalEntity
+from app.models.client import Client, LegalEntity
 from app.models.notification import Notification
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
@@ -98,6 +98,7 @@ async def _seed_user(session, email: str, groups: list[str]) -> User:
 
 
 async def _seed_client(session) -> Client:
+    # S17: no NDA/MSA coverage rows needed to submit a package.
     client = Client(
         id=uuid.uuid4(),
         name=f"Client {uuid.uuid4().hex[:6]}",
@@ -107,17 +108,6 @@ async def _seed_client(session) -> Client:
     await session.flush()
     entity = LegalEntity(id=uuid.uuid4(), client_id=client.id, name="Entity 1")
     session.add(entity)
-    await session.flush()
-    for kind in ("NDA", "MSA"):
-        session.add(
-            Agreement(
-                id=uuid.uuid4(),
-                legal_entity_id=entity.id,
-                kind=kind,
-                state="executed",
-                expiry=date(2030, 12, 31),
-            )
-        )
     await session.commit()
     return client
 

@@ -17,26 +17,14 @@ interface Check {
  */
 export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
   const checks: Check[] = [];
-  const nda = snap.agreements.find(
-    (a) => a.kind === "NDA" && a.state === "executed",
-  );
-  const msa = snap.agreements.find(
-    (a) => a.kind === "MSA" && a.state === "executed",
-  );
+  // S17: NDA/MSA are no longer signature gates. Show a note reflecting
+  // the SOW's upload checkbox; never blocks Send.
+  const marked = snap.sow?.agreements_signed === true;
   checks.push({
-    id: "nda",
-    label: "NDA coverage",
-    status: nda ? "ok" : "danger",
-    statusLabel: nda ? "In force" : "Missing",
-    hint: nda
-      ? undefined
-      : "Register the executed NDA in the Agreements register.",
-  });
-  checks.push({
-    id: "msa",
-    label: "MSA coverage",
-    status: msa ? "ok" : "danger",
-    statusLabel: msa ? "In force" : "Missing",
+    id: "nda-msa",
+    label: "NDA & MSA",
+    status: marked ? "ok" : "neutral",
+    statusLabel: marked ? "Marked signed on upload" : "Not marked",
   });
 
   const pkg = snap.approvalPackage;

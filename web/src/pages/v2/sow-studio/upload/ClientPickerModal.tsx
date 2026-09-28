@@ -70,6 +70,7 @@ export function ClientPickerModal({
   const [createNew, setCreateNew] = useState<SowUploadNeedsPickCreateNew>(
     initialCreateNew,
   );
+  const [agreementsSigned, setAgreementsSigned] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,10 +92,14 @@ export function ClientPickerModal({
             domain: createNew.domain?.trim() || null,
             address_lines: createNew.address_lines ?? null,
           },
+          agreements_signed: agreementsSigned,
         });
       } else {
         const clientId = selected.slice("candidate:".length);
-        job = await pickSowJobClient(jobId, { client_id: clientId });
+        job = await pickSowJobClient(jobId, {
+          client_id: clientId,
+          agreements_signed: agreementsSigned,
+        });
       }
       onPicked(job);
     } catch (err) {
@@ -201,6 +206,19 @@ export function ClientPickerModal({
               </div>
             </div>
           ) : null}
+          <label
+            className="flex items-center gap-2 rounded-panel border border-divider p-3"
+            data-testid="picker-agreements-signed"
+          >
+            <input
+              type="checkbox"
+              checked={agreementsSigned}
+              onChange={(e) => setAgreementsSigned(e.target.checked)}
+            />
+            <span className="text-body text-text">
+              NDA and MSA are signed with this client
+            </span>
+          </label>
           {error ? (
             <p role="alert" className="text-danger" data-testid="picker-error">
               {error}

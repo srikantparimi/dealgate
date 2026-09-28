@@ -1,28 +1,17 @@
-"""Client service — S2 E3.
+"""Client service.
 
-Three concerns live here:
+S17 rip-out: `coverage_state`, the `AgreementView` DTO and all queries that
+scanned `agreement` rows are gone. NDA/MSA is a flat doc store now — the
+list page reads `/agreements` directly and no other page cares about
+coverage. `Client.name`, `LegalEntity`, `Opportunity` and the client
+detail read stay.
 
-- :func:`coverage_state` — a pure function over a list of ``Agreement`` rows
-  that returns the short human-readable coverage label used by the client
-  page and the deals list. Kept side-effect free so it can be unit-tested
-  cheaply and reused from any caller (deals, workflow, notifications).
-- :func:`upsert_client_from_hubspot` — used by the HubSpot intake worker to
-  upsert a ``client`` row keyed by ``hubspot_company_id`` plus a default
-  ``legal_entity``. Emits ``client.created`` / ``client.updated`` audits and
-  ``legal_entity.created`` in the caller's transaction (rule 5).
-- :func:`get_client_detail` — the DB read that the client detail endpoint
-  returns: client + legal_entities + agreements + opportunities +
-  ``coverage_state`` derived from the client's agreements.
-
-Role gating lives in :mod:`app.routers.clients` (rule 5 says the endpoint
-does the check); the service layer stays authorization-agnostic so callers
-like the HubSpot worker can reuse it without a fake user.
+Role gating still lives in :mod:`app.routers.clients` (rule 5).
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -32,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
-from app.models.client import Agreement, Client, LegalEntity
+from app.models.client import Client, LegalEntity
 from app.models.opportunity import Opportunity
 from app.services.user_identity import display_user_name
 
@@ -40,76 +29,6 @@ log = structlog.get_logger("clients")
 
 
 DEFAULT_LEGAL_ENTITY_SUFFIX = " (default)"
-
-# Ordered priority so we can pick the "worst" coverage state deterministically.
-_STATE_PRIORITY: tuple[str, ...] = (
-    "NDA + MSA missing",
-    "NDA missing",
-    "MSA missing",
-    "NDA expired",
-    "MSA expired",
-    "Awaiting signature",
-    "Complete",
-)
-
-
-# --- pure coverage helper ---------------------------------------------------
-
-
-def coverage_state(
-    agreements: Iterable[Agreement], today: date | None = None
-) -> str:
-    """Return the short label describing NDA + MSA coverage.
-
-    Pure: takes an iterable of ``Agreement`` rows and today's date, returns
-    one of:
-
-    - ``"Complete"`` — NDA and MSA both present, both executed, none expired.
-    - ``"NDA missing"`` / ``"MSA missing"`` — one of the two is absent.
-    - ``"NDA + MSA missing"`` — both are absent.
-    - ``"NDA expired"`` / ``"MSA expired"`` — latest agreement of that kind
-      has an ``expiry_date`` in the past.
-    - ``"Awaiting signature"`` — an agreement of the missing kind exists but
-      has no ``effective_date`` yet (Agent K's CRUD sets that field on sign).
-
-    The "worst" state wins if several apply (e.g. NDA missing + MSA expired
-    → ``"NDA missing"``), so callers can render a single badge.
-    """
-
-    today = today or date.today()
-    ags = list(agreements)
-
-    findings: list[str] = []
-    for kind in ("NDA", "MSA"):
-        matching = [a for a in ags if a.kind == kind]
-        if not matching:
-            findings.append(f"{kind} missing")
-            continue
-        # Pick the freshest by expiry then effective date so we ignore
-        # stale historical rows.
-        matching.sort(
-            key=lambda a: (
-                a.expiry_date or date.min,
-                a.effective_date or date.min,
-            ),
-            reverse=True,
-        )
-        latest = matching[0]
-        if latest.effective_date is None:
-            findings.append("Awaiting signature")
-            continue
-        if latest.expiry_date is not None and latest.expiry_date < today:
-            findings.append(f"{kind} expired")
-
-    if not findings:
-        return "Complete"
-
-    # Combine missing NDA + MSA into a single label the UI can show as one
-    # chip; otherwise return the highest-priority single finding.
-    if set(findings) == {"NDA missing", "MSA missing"}:
-        return "NDA + MSA missing"
-    findings.sort(key=lambda f: _STATE_PRIORITY.index(f) if f in _STATE_PRIORITY else 99)
-    return findings[0]
 
 
 # --- upsert used by the HubSpot intake worker -------------------------------
@@ -126,8 +45,6 @@ class HubSpotCompanyData:
 
 
 def _company_from_payload(payload: dict[str, Any]) -> HubSpotCompanyData:
-    """Coerce a HubSpot ``/crm/v3/objects/companies/{id}`` payload."""
-
     props = payload.get("properties") or {}
     return HubSpotCompanyData(
         hubspot_company_id=str(payload.get("id") or props.get("hs_object_id") or ""),
@@ -143,13 +60,6 @@ async def upsert_client_from_hubspot(
     company_payload: dict[str, Any] | HubSpotCompanyData,
     correlation_id: str | None = None,
 ) -> Client:
-    """Upsert a ``client`` (and a default ``legal_entity``) by HubSpot company id.
-
-    Returns the persisted ``Client`` row. Never commits — the caller owns
-    the transaction so this write lands together with the opportunity and
-    audit rows for the same webhook event.
-    """
-
     data = (
         company_payload
         if isinstance(company_payload, HubSpotCompanyData)
@@ -187,91 +97,94 @@ async def upsert_client_from_hubspot(
             },
             correlation_id=correlation_id,
         )
-        await _ensure_default_legal_entity(
-            session, client, data.country, correlation_id
-        )
-        return client
+    else:
+        client = existing
+        before = {"name": client.name, "timezone": client.timezone}
+        changed = False
+        if client.name != data.name and data.name:
+            client.name = data.name
+            changed = True
+        if client.timezone != data.timezone and data.timezone:
+            client.timezone = data.timezone
+            changed = True
+        if changed:
+            await append_audit(
+                session,
+                actor_id=None,
+                action="client.updated",
+                entity="client",
+                entity_id=str(client.id),
+                before=before,
+                after={"name": client.name, "timezone": client.timezone},
+                correlation_id=correlation_id,
+            )
 
-    # Update path — only touch fields that changed to keep the audit trail
-    # clean and avoid pointless writes.
-    before: dict[str, Any] = {
-        "name": existing.name,
-        "timezone": existing.timezone,
-    }
-    after: dict[str, Any] = {}
-    changed = False
-    if data.name and existing.name != data.name:
-        existing.name = data.name
-        after["name"] = data.name
-        changed = True
-    if data.timezone and existing.timezone != data.timezone:
-        existing.timezone = data.timezone
-        after["timezone"] = data.timezone
-        changed = True
-
-    if changed:
-        await session.flush()
-        await append_audit(
-            session,
-            actor_id=None,
-            action="client.updated",
-            entity="client",
-            entity_id=str(existing.id),
-            before=before,
-            after=after,
-            correlation_id=correlation_id,
-        )
-    # Make sure the default legal entity exists even if the client row
-    # itself did not change (idempotency guarantee for replays).
-    await _ensure_default_legal_entity(session, existing, data.country, correlation_id)
-    return existing
+    await ensure_default_legal_entity(
+        session, client=client, country=data.country, correlation_id=correlation_id
+    )
+    return client
 
 
 async def upsert_unknown_client_for_deal(
-    session: AsyncSession, *, deal_id: str, correlation_id: str | None = None
-) -> Client:
-    """Fallback client used when HubSpot returns no company link.
-
-    Keyed by a synthetic ``hubspot_company_id`` (``unknown:deal:<id>``) so a
-    replay of the same event does not create duplicate rows. Nothing about
-    the shape is user-facing on its own — the client page will show it as
-    "Unknown company (deal <id>)" until a human links the real HubSpot
-    company (Agent K's CRUD story).
-    """
-
-    synthetic_id = f"unknown:deal:{deal_id}"
-    data = HubSpotCompanyData(
-        hubspot_company_id=synthetic_id,
-        name=f"Unknown company (deal {deal_id})",
-        timezone=None,
-        country=None,
-    )
-    return await upsert_client_from_hubspot(
-        session, company_payload=data, correlation_id=correlation_id
-    )
-
-
-async def _ensure_default_legal_entity(
     session: AsyncSession,
+    *,
+    deal_id: str,
+    correlation_id: str | None = None,
+) -> Client:
+    """When HubSpot returns no company for a deal, we still need a client row
+    so the opportunity can be created. This upsert keeps its ``hubspot_company_id``
+    NULL and derives a stable placeholder name from the deal id."""
+
+    placeholder_name = f"Unknown company (deal {deal_id})"
+    existing = (
+        await session.execute(select(Client).where(Client.name == placeholder_name))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    client = Client(id=uuid.uuid4(), name=placeholder_name, hubspot_company_id=None)
+    session.add(client)
+    await session.flush()
+    await append_audit(
+        session,
+        actor_id=None,
+        action="client.created",
+        entity="client",
+        entity_id=str(client.id),
+        before=None,
+        after={"name": client.name, "reason": "no HubSpot company on deal"},
+        correlation_id=correlation_id,
+    )
+    await ensure_default_legal_entity(
+        session, client=client, country=None, correlation_id=correlation_id
+    )
+    return client
+
+
+async def ensure_default_legal_entity(
+    session: AsyncSession,
+    *,
     client: Client,
     country: str | None,
-    correlation_id: str | None,
+    correlation_id: str | None = None,
 ) -> LegalEntity:
-    """Guarantee every client has at least one legal entity to hang agreements on."""
+    """Guarantee every client has at least one legal entity. Agreements are
+    client-scoped in S17, but many other paths (opportunities, rate cards)
+    still key off `legal_entity_id`."""
 
     existing = (
         await session.execute(
-            select(LegalEntity).where(LegalEntity.client_id == client.id).limit(1)
+            select(LegalEntity)
+            .where(LegalEntity.client_id == client.id)
+            .order_by(LegalEntity.created_at.asc())
         )
     ).scalar_one_or_none()
     if existing is not None:
         return existing
-
     entity = LegalEntity(
         id=uuid.uuid4(),
         client_id=client.id,
-        name=f"{client.name}{DEFAULT_LEGAL_ENTITY_SUFFIX}",
-        country=(country or None),
+        name=(client.name + DEFAULT_LEGAL_ENTITY_SUFFIX)[:255],
+        country=country,
     )
     session.add(entity)
     await session.flush()
@@ -282,11 +195,7 @@ async def _ensure_default_legal_entity(
         entity="legal_entity",
         entity_id=str(entity.id),
         before=None,
-        after={
-            "client_id": str(client.id),
-            "name": entity.name,
-            "country": entity.country,
-        },
+        after={"client_id": str(client.id), "name": entity.name, "country": entity.country},
         correlation_id=correlation_id,
     )
     return entity
@@ -303,33 +212,8 @@ class LegalEntityView:
 
 
 @dataclass(frozen=True)
-class AgreementView:
-    id: uuid.UUID
-    legal_entity_id: uuid.UUID
-    kind: str
-    effective_date: date | None
-    expiry_date: date | None
-    # S2-E3 additions — surfaced so the client detail view can render the
-    # Agreements panel without a second round-trip. Existing consumers that
-    # only care about `kind`/`effective_date`/`expiry_date` keep working
-    # because the new fields default to None on rows that predate the
-    # `agreement_state` migration.
-    state: str = "missing"
-    owner_email: str | None = None
-    next_action: str | None = None
-    due_date: date | None = None
-    effective_from: date | None = None
-    expiry: date | None = None
-    notice_days: int | None = None
-    evidence_s3_key: str | None = None
-
-
-@dataclass(frozen=True)
 class OpportunityView:
     id: uuid.UUID
-    # Nullable since 0028: an opportunity created from a SOW upload has
-    # no HubSpot deal behind it. Requiring a string here made every
-    # SOW-first opportunity 500 the list it appeared in.
     hubspot_deal_id: str | None
     governance_status: str
     sales_stage: str | None
@@ -345,17 +229,17 @@ class ClientDetail:
     name: str
     hubspot_company_id: str | None
     timezone: str | None
-    coverage_state: str
     legal_entities: list[LegalEntityView]
-    agreements: list[AgreementView]
     opportunities: list[OpportunityView]
 
 
 async def get_client_detail(
     session: AsyncSession, client_id: uuid.UUID, *, today: date | None = None
 ) -> ClientDetail | None:
-    """Load a full client detail response. Returns ``None`` if the id is unknown."""
+    """Load a client detail response. Agreements are read separately from the
+    /agreements endpoint (S17)."""
 
+    _ = today  # unused since coverage_state went away
     client = (
         await session.execute(select(Client).where(Client.id == client_id))
     ).scalar_one_or_none()
@@ -371,21 +255,6 @@ async def get_client_detail(
             )
         ).scalars()
     )
-    entity_ids = [e.id for e in entities]
-    agreements: Sequence[Agreement]
-    if entity_ids:
-        agreements = list(
-            (
-                await session.execute(
-                    select(Agreement)
-                    .where(Agreement.legal_entity_id.in_(entity_ids))
-                    .order_by(Agreement.created_at.asc())
-                )
-            ).scalars()
-        )
-    else:
-        agreements = []
-
     opportunities = list(
         (
             await session.execute(
@@ -395,33 +264,13 @@ async def get_client_detail(
             )
         ).scalars()
     )
-
     return ClientDetail(
         id=client.id,
         name=client.name,
         hubspot_company_id=client.hubspot_company_id,
         timezone=client.timezone,
-        coverage_state=coverage_state(agreements, today=today),
         legal_entities=[
             LegalEntityView(id=e.id, name=e.name, country=e.country) for e in entities
-        ],
-        agreements=[
-            AgreementView(
-                id=a.id,
-                legal_entity_id=a.legal_entity_id,
-                kind=a.kind,
-                effective_date=a.effective_date,
-                expiry_date=a.expiry_date,
-                state=a.state,
-                owner_email=a.owner_email,
-                next_action=a.next_action,
-                due_date=a.due_date,
-                effective_from=a.effective_from,
-                expiry=a.expiry,
-                notice_days=a.notice_days,
-                evidence_s3_key=a.evidence_s3_key,
-            )
-            for a in agreements
         ],
         opportunities=[
             OpportunityView(
@@ -444,7 +293,7 @@ async def get_client_detail(
 
 @dataclass(frozen=True)
 class ClientListFilters:
-    owner: str | None = None  # "me", user-id string, or None
+    owner: str | None = None
     search: str | None = None
     page: int = 1
     size: int = 25
@@ -452,9 +301,6 @@ class ClientListFilters:
 
 @dataclass(frozen=True)
 class OwnerRef:
-    """id + display name, resolved by `list_clients` so the FE never has to
-    render a raw UUID (S13a defect §2.2)."""
-
     id: uuid.UUID
     name: str
 
@@ -464,13 +310,9 @@ class ClientRow:
     id: uuid.UUID
     name: str
     hubspot_company_id: str | None
-    coverage_state: str
     opportunity_count: int
     owner_ids: list[uuid.UUID]
-    # Populated from the `user` table so the FE renders a name — not a UUID.
     owners: list[OwnerRef]
-    # Distinct opportunity `source` values for this client, in a stable
-    # order (S13a defect §2.3). Empty when the client has no opportunities.
     sources: list[str]
 
 
@@ -481,56 +323,19 @@ async def list_clients(
     accessible_client_ids: set[uuid.UUID] | None,
     today: date | None = None,
 ) -> tuple[list[ClientRow], int]:
-    """Return (rows, total). ``accessible_client_ids=None`` means "no filter"
-    (leader roles); otherwise the caller has narrowed the visible set already.
-
-    Simple Python-side pagination: the client table is small in Sprint 2 and
-    the coverage state needs a per-client scan of agreements, so we assemble
-    the summary and then slice. Sprint 3 can switch to a SQL windowing query
-    if this becomes a hotspot.
-    """
-
+    _ = today
     base = select(Client)
     if filters.search:
         needle = f"%{filters.search.strip().lower()}%"
         from sqlalchemy import func as _f
 
         base = base.where(_f.lower(Client.name).like(needle))
-
     clients = list((await session.execute(base.order_by(Client.name.asc()))).scalars())
-
     if accessible_client_ids is not None:
         clients = [c for c in clients if c.id in accessible_client_ids]
 
-    # Prefetch agreements + opportunities for every visible client in two
-    # queries to avoid an N+1 in the loop below.
     client_ids = [c.id for c in clients]
     if client_ids:
-        entity_rows = list(
-            (
-                await session.execute(
-                    select(LegalEntity).where(LegalEntity.client_id.in_(client_ids))
-                )
-            ).scalars()
-        )
-        entities_by_client: dict[uuid.UUID, list[LegalEntity]] = {}
-        for e in entity_rows:
-            entities_by_client.setdefault(e.client_id, []).append(e)
-        entity_ids = [e.id for e in entity_rows]
-        agreement_rows: list[Agreement] = (
-            list(
-                (
-                    await session.execute(
-                        select(Agreement).where(Agreement.legal_entity_id.in_(entity_ids))
-                    )
-                ).scalars()
-            )
-            if entity_ids
-            else []
-        )
-        agreements_by_entity: dict[uuid.UUID, list[Agreement]] = {}
-        for a in agreement_rows:
-            agreements_by_entity.setdefault(a.legal_entity_id, []).append(a)
         opp_rows = list(
             (
                 await session.execute(
@@ -542,18 +347,13 @@ async def list_clients(
         for o in opp_rows:
             opps_by_client.setdefault(o.client_id, []).append(o)  # type: ignore[arg-type]
     else:
-        entities_by_client = {}
-        agreements_by_entity = {}
         opps_by_client = {}
 
     if filters.owner is not None:
-        # ``me`` handled by the router (which knows the caller id); here we
-        # accept a UUID and drop clients that have no matching opportunity.
         try:
             owner_uuid = uuid.UUID(filters.owner)
         except ValueError:
             clients = []
-            owner_uuid = None  # type: ignore[assignment]
         else:
             clients = [
                 c
@@ -561,9 +361,6 @@ async def list_clients(
                 if any(o.owner_id == owner_uuid for o in opps_by_client.get(c.id, []))
             ]
 
-    # Resolve every owner_id to a display name in one round-trip so the FE
-    # never renders a UUID (S13a defect §2.2). Users referenced but absent
-    # from the table are rendered as "Unassigned" downstream.
     all_owner_ids = {
         o.owner_id
         for opps in opps_by_client.values()
@@ -581,21 +378,15 @@ async def list_clients(
         ).scalars():
             owner_names[u.id] = display_user_name(u.name, u.email)
 
+    _SOURCE_ORDER = ("hubspot", "sow_upload", "bulk_import", "manual")
     rows: list[ClientRow] = []
     for c in clients:
-        client_agreements: list[Agreement] = []
-        for e in entities_by_client.get(c.id, []):
-            client_agreements.extend(agreements_by_entity.get(e.id, []))
         opps = opps_by_client.get(c.id, [])
         owner_ids_here = [o.owner_id for o in opps if o.owner_id is not None]
         owners_here = [
             OwnerRef(id=oid, name=owner_names.get(oid, "Unassigned"))
             for oid in owner_ids_here
         ]
-        # Distinct sources in a stable order: hubspot, sow_upload, bulk_import,
-        # manual — most-authoritative first. Any unknown value falls through
-        # to the end so a schema drift doesn't disappear silently.
-        _SOURCE_ORDER = ("hubspot", "sow_upload", "bulk_import", "manual")
         seen = {o.source for o in opps if o.source}
         sources_here = [s for s in _SOURCE_ORDER if s in seen] + sorted(
             seen - set(_SOURCE_ORDER)
@@ -605,7 +396,6 @@ async def list_clients(
                 id=c.id,
                 name=c.name,
                 hubspot_company_id=c.hubspot_company_id,
-                coverage_state=coverage_state(client_agreements, today=today),
                 opportunity_count=len(opps),
                 owner_ids=owner_ids_here,
                 owners=owners_here,
@@ -621,8 +411,6 @@ async def list_clients(
 async def accessible_client_ids_for(
     session: AsyncSession, *, owner_id: uuid.UUID
 ) -> set[uuid.UUID]:
-    """Return the set of client ids this owner has at least one opportunity on."""
-
     rows = list(
         (
             await session.execute(
@@ -634,15 +422,15 @@ async def accessible_client_ids_for(
 
 
 __all__ = [
-    "AgreementView",
     "ClientDetail",
     "ClientListFilters",
     "ClientRow",
     "HubSpotCompanyData",
     "LegalEntityView",
     "OpportunityView",
+    "OwnerRef",
     "accessible_client_ids_for",
-    "coverage_state",
+    "ensure_default_legal_entity",
     "get_client_detail",
     "list_clients",
     "upsert_client_from_hubspot",

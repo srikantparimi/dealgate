@@ -869,6 +869,8 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
             # per-field problems.
             "extract_error": v.extract_error,
             "engagement_type_suggested": v.engagement_type_suggested,
+            # S17 upload checkbox — informational only, never a gate.
+            "agreements_signed": bool(getattr(v, "agreements_signed", False)),
         },
         "engagement": {
             "primary": {

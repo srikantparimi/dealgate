@@ -13,7 +13,7 @@ def test_display_name_preserves_known_name_and_hides_uuid_placeholders():
     identifier = str(uuid.uuid4())
     assert display_user_name(" Jane Signer ", "jane@example.com") == "Jane Signer"
     assert display_user_name(identifier, "jane@example.com") == "jane@example.com"
-    assert display_user_name(identifier, identifier) == "Name unavailable"
+    assert display_user_name(identifier, identifier) == "Unassigned"
     assert display_user_email(identifier) == ""
 
 

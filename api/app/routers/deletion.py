@@ -1,22 +1,21 @@
-"""Delete + archive routes (S13a-B2).
+"""Delete routes (S17 single delete service).
 
-Governance rules live in ``app.services.deletion``. This router is thin:
-role check → service call → return the assessment (counts included so
-the UI can show the cascade confirmation the directive asks for).
+The service enforces one contract: hard-delete cascades everywhere.
+The router is thin: role check → service call → return the assessment
+(counts included so the UI can show the cascade confirmation dialog).
 
-Endpoints (all admin-gated, per directive):
+Endpoints (all admin-gated):
 
-- ``GET  /clients/{id}/deletion-assessment`` — non-mutating; what would
-  happen if the user hit Delete now (state, reason, cascade counts).
+- ``GET  /clients/{id}/deletion-assessment``
 - ``DELETE /clients/{id}?reason=...``
-- ``POST /clients/{id}/archive`` body ``{reason}``
+- ``POST /clients/{id}/archive``               (kept for UI back-compat;
+                                                 hard-deletes under the hood)
 - ``GET  /opportunities/{id}/deletion-assessment``
 - ``DELETE /opportunities/{id}?reason=...``
-- ``POST /opportunities/{id}/archive`` body ``{reason}``
-- ``DELETE /admin/bulk-imports/{batch_id}?reason=...``  (batch cleanup)
-
-`DELETE /sows/versions/{id}` already exists in ``sows_staffing.py`` and
-keeps the SOW-version lifecycle semantics (never-submitted only).
+- ``POST /opportunities/{id}/archive``          (as above)
+- ``GET  /sows/{sow_id}/deletion-assessment``   (S17: new SOW-scoped assess)
+- ``DELETE /sows/{sow_id}?reason=...``          (S17: hard-delete at any stage)
+- ``DELETE /admin/bulk-imports/{batch_id}?reason=...``
 """
 
 from __future__ import annotations
@@ -37,18 +36,20 @@ from app.services.deletion import (
     archive_opportunity,
     assess_client,
     assess_opportunity,
+    assess_sow,
     delete_client,
     delete_import_batch,
     delete_opportunity,
+    delete_sow,
 )
 from app.services.user_provisioning import ensure_user
 
 
 router = APIRouter(tags=["deletion"])
 
-# Delete-with-cascade lives with governance roles. A record owner can
-# delete their own drafts by way of the SysAdmin path in staging; a
-# production rollout would layer per-record ownership on top.
+# S17 §2: delete is available "at any stage, including approved or signed".
+# The role check stays governance-scoped — a random Sales user can't
+# vaporise a package — but there is no per-state refusal in the service.
 _DELETE_ROLES: tuple[str, ...] = (
     "SystemAdmin",
     "CEO",
@@ -105,11 +106,10 @@ async def delete_client_endpoint(
     user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> AssessmentResponse:
+    _ = reason
     db_user = await ensure_user(session, user)
     try:
-        result = await delete_client(
-            session, client_id=client_id, actor_id=db_user.id, reason=reason
-        )
+        result = await delete_client(session, client_id=client_id, actor_id=db_user.id)
     except DeletionError as exc:
         _raise(exc)
     await session.commit()
@@ -126,7 +126,7 @@ async def archive_client_endpoint(
     db_user = await ensure_user(session, user)
     try:
         result = await archive_client(
-            session, client_id=client_id, actor_id=db_user.id, reason=body.reason
+            session, client_id=client_id, actor_id=db_user.id, reason=body.reason or ""
         )
     except DeletionError as exc:
         _raise(exc)
@@ -159,13 +159,11 @@ async def delete_opportunity_endpoint(
     user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> AssessmentResponse:
+    _ = reason
     db_user = await ensure_user(session, user)
     try:
         result = await delete_opportunity(
-            session,
-            opportunity_id=opportunity_id,
-            actor_id=db_user.id,
-            reason=reason,
+            session, opportunity_id=opportunity_id, actor_id=db_user.id
         )
     except DeletionError as exc:
         _raise(exc)
@@ -188,12 +186,51 @@ async def archive_opportunity_endpoint(
             session,
             opportunity_id=opportunity_id,
             actor_id=db_user.id,
-            reason=body.reason,
+            reason=body.reason or "",
         )
     except DeletionError as exc:
         _raise(exc)
     await session.commit()
     return _to_response(result)
+
+
+# --- SOW (S17) ----------------------------------------------------------
+
+
+@router.get(
+    "/sows/{sow_id}/deletion-assessment",
+    response_model=AssessmentResponse,
+)
+async def get_sow_deletion_assessment(
+    sow_id: uuid.UUID,
+    _user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> AssessmentResponse:
+    try:
+        return _to_response(await assess_sow(session, sow_id))
+    except DeletionError as exc:
+        _raise(exc)
+
+
+@router.delete("/sows/{sow_id}", response_model=AssessmentResponse)
+async def delete_sow_endpoint(
+    sow_id: uuid.UUID,
+    reason: str | None = Query(default=None),
+    user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> AssessmentResponse:
+    _ = reason
+    db_user = await ensure_user(session, user)
+    try:
+        summary = await delete_sow(session, sow_id=sow_id, actor_id=db_user.id)
+    except DeletionError as exc:
+        _raise(exc)
+    await session.commit()
+    return AssessmentResponse(
+        state="draft",
+        reason=f"SOW '{summary.sow_title}' deleted from {summary.stage}",
+        counts=summary.counts,
+    )
 
 
 # --- batch --------------------------------------------------------------

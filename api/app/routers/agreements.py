@@ -1,53 +1,39 @@
-"""Agreements (NDA / MSA) API — S2-E3.
+"""Agreements as a flat NDA/MSA document store (S17).
+
+Contract: one row per uploaded file. Client + kind (NDA/MSA) + file. The
+list is client, type, filename, uploaded by, uploaded date. No states,
+owners, next actions, expiry dates or extraction — S16a's tracking is
+gone. Nothing else in the app reads these rows to gate a decision.
 
 Endpoints:
 
-- ``POST   /agreements``                     — Legal / SystemAdmin creates a row.
-- ``GET    /agreements``                     — governance roles read a filtered list.
-- ``PATCH  /agreements/{id}``                — Legal / SystemAdmin mutates state
-  and dates. Every changed field emits an ``agreement.state_changed`` audit row
-  (the audit action name is used across all mutations per §12).
-- ``POST   /agreements/{id}/evidence-upload-url``  — short-lived S3 PUT URL.
-- ``GET    /agreements/{id}/evidence-download-url`` — short-lived S3 GET URL.
-
-Business rules live in ``app.services.agreement_state``; the S3 signing lives
-in ``app.integrations.s3_evidence``. This router does auth, shape conversion
-and audit emission — nothing else.
+- ``POST   /agreements``             — multipart upload; picks client + kind + file.
+- ``GET    /agreements``             — governance-role list (filterable by client).
+- ``GET    /agreements/{id}/download`` — short-lived S3 GET url for the stored file.
+- ``DELETE /agreements/{id}``        — SystemAdmin or Legal removes the row + S3 object.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
-from typing import Any
+from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.auth import AuthUser, current_user, require_role
 from app.db import get_session
-from app.integrations.s3_evidence import (
-    EvidenceS3,
-    UnsupportedContentType,
-    get_evidence_s3,
-)
-from app.models.client import Agreement, Client, LegalEntity
-from app.integrations.bedrock_sow_extract import BedrockSowExtract, get_bedrock_sow
-from app.services.agreement_state import (
-    ALLOWED_STATES,
-    LEGACY_STATES,
-    InvalidAgreementTransition,
-    transition,
-)
+from app.integrations.s3_evidence import EvidenceS3, UnsupportedContentType, get_evidence_s3
+from app.models.client import Agreement, Client
+from app.models.user import User
+from app.services.user_identity import display_user_name
+from app.services.user_provisioning import ensure_user
 
 router = APIRouter(prefix="/agreements", tags=["agreements"])
 
-
-# Governance roles that may read agreements. Mutations are stricter — Legal
-# or SystemAdmin only. Kept in sync with blueprint §3.
 _READ_ROLES: tuple[str, ...] = (
     "Marketing",
     "Sales",
@@ -61,423 +47,194 @@ _READ_ROLES: tuple[str, ...] = (
     "SystemAdmin",
 )
 _MUTATE_ROLES: tuple[str, ...] = ("Legal", "SystemAdmin")
-
-
 _ALLOWED_KINDS: frozenset[str] = frozenset({"NDA", "MSA"})
-
-
-# --- schemas --------------------------------------------------------------
+_ALLOWED_CTS: frozenset[str] = frozenset(
+    {
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+)
 
 
 class AgreementRow(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    legal_entity_id: uuid.UUID
-    kind: str
-    state: str
-    owner_email: str | None
-    next_action: str | None
-    due_date: date | None
-    effective_from: date | None
-    expiry: date | None
-    notice_days: int | None
-    evidence_s3_key: str | None
-    signatories: list[dict[str, Any]] | None
-    created_at: datetime
-    updated_at: datetime
-    client_name: str | None = None
-    legal_entity_name: str | None = None
-    display_state: str | None = None
+    client_id: uuid.UUID
+    client_name: str
+    kind: Literal["NDA", "MSA"]
+    filename: str
+    file_size: int
+    uploaded_by: uuid.UUID
+    uploaded_by_name: str
+    uploaded_at: str
 
 
 class AgreementListResponse(BaseModel):
     items: list[AgreementRow]
-    allowed_states: list[str] = Field(default_factory=lambda: list(ALLOWED_STATES))
 
 
-class AgreementCreateBody(BaseModel):
-    legal_entity_id: uuid.UUID
-    type: str = Field(description="NDA or MSA")
-    state: str = "missing"
-    owner_email: EmailStr | None = None
-    next_action: str | None = Field(default=None, max_length=255)
-    due_date: date | None = None
-
-
-class AgreementPatchBody(BaseModel):
-    state: str | None = None
-    owner_email: EmailStr | None = None
-    next_action: str | None = Field(default=None, max_length=255)
-    due_date: date | None = None
-    effective_from: date | None = None
-    expiry: date | None = None
-    notice_days: int | None = Field(default=None, ge=0)
-    evidence_s3_key: str | None = Field(default=None, max_length=1024)
-    signatories: list[dict[str, Any]] | None = None
-
-
-class UploadUrlRequest(BaseModel):
-    filename: str = Field(min_length=1, max_length=255)
-    content_type: str = Field(
-        description="MIME type — pdf or docx only",
-        examples=["application/pdf"],
+def _serialize(row: Agreement, client: Client, uploader: User | None) -> AgreementRow:
+    return AgreementRow(
+        id=row.id,
+        client_id=row.client_id,
+        client_name=client.name,
+        kind=row.kind,  # type: ignore[arg-type]
+        filename=row.filename,
+        file_size=row.file_size,
+        uploaded_by=row.uploaded_by,
+        uploaded_by_name=(
+            display_user_name(uploader.name, uploader.email) if uploader else "Unassigned"
+        ),
+        uploaded_at=row.uploaded_at.isoformat() if row.uploaded_at else "",
     )
-
-
-class UploadUrlResponse(BaseModel):
-    url: str
-    s3_key: str
-    method: str
-    expires_in: int
-    required_headers: dict[str, str] | None = None
-
-
-class DownloadUrlResponse(BaseModel):
-    url: str
-    expires_in: int
-
-
-# --- helpers --------------------------------------------------------------
-
-
-def _serialize(value: Any) -> Any:
-    if isinstance(value, (uuid.UUID, date, datetime)):
-        return str(value)
-    return value
-
-
-def _row(agreement: Agreement) -> AgreementRow:
-    row = AgreementRow.model_validate(agreement)
-    row.effective_from = agreement.effective_from or agreement.effective_date
-    row.expiry = agreement.expiry or agreement.expiry_date
-    row.display_state = agreement.state
-    if agreement.state in ("drafting", "under_review"):
-        row.display_state = "requested"
-    elif agreement.state == "partially_signed":
-        row.display_state = "sent"
-    elif agreement.state == "executed" and row.expiry:
-        remaining = (row.expiry - date.today()).days
-        row.display_state = "expired" if remaining < 0 else "expiring" if remaining <= 60 else "executed"
-    return row
-
-
-async def _load(session: AsyncSession, agreement_id: uuid.UUID) -> Agreement:
-    row = (
-        await session.execute(
-            select(Agreement).where(Agreement.id == agreement_id)
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agreement not found")
-    return row
-
-
-# --- endpoints ------------------------------------------------------------
-
-
-@router.post("", response_model=AgreementRow, status_code=201)
-async def create_agreement(
-    body: AgreementCreateBody,
-    actor: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
-    session: AsyncSession = Depends(get_session),
-) -> AgreementRow:
-    if body.type not in _ALLOWED_KINDS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"type must be one of {sorted(_ALLOWED_KINDS)}",
-        )
-    if body.state not in ALLOWED_STATES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"state must be one of {list(ALLOWED_STATES)}",
-        )
-    if body.state in ("executed", "expired"):
-        raise HTTPException(422, "Upload and confirm signed evidence before marking executed")
-    # `legal_entity_id` must exist. Reject 404 rather than letting the FK
-    # error bubble up as a 500 at flush time.
-    legal_entity = (
-        await session.execute(
-            select(LegalEntity).where(LegalEntity.id == body.legal_entity_id)
-        )
-    ).scalar_one_or_none()
-    if legal_entity is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="legal_entity not found"
-        )
-
-    agreement = Agreement(
-        id=uuid.uuid4(),
-        legal_entity_id=body.legal_entity_id,
-        kind=body.type,
-        state=body.state,
-        owner_email=str(body.owner_email) if body.owner_email else None,
-        next_action=body.next_action,
-        due_date=body.due_date,
-    )
-    session.add(agreement)
-    await session.flush()
-
-    await append_audit(
-        session,
-        actor_id=actor.id,
-        action="agreement.created",
-        entity="agreement",
-        entity_id=str(agreement.id),
-        before=None,
-        after={
-            "legal_entity_id": str(agreement.legal_entity_id),
-            "kind": agreement.kind,
-            "state": agreement.state,
-            "owner_email": agreement.owner_email,
-            "next_action": agreement.next_action,
-            "due_date": _serialize(agreement.due_date),
-        },
-    )
-    await session.commit()
-    await session.refresh(agreement)
-    return _row(agreement)
 
 
 @router.get("", response_model=AgreementListResponse)
 async def list_agreements(
-    legal_entity_id: uuid.UUID | None = Query(default=None),
-    state: str | None = Query(default=None),
-    expiring_within_days: int | None = Query(default=None, ge=0, le=3650),
+    client_id: uuid.UUID | None = Query(default=None),
     _user: AuthUser = Depends(require_role(*_READ_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> AgreementListResponse:
-    stmt = select(Agreement)
-    if legal_entity_id is not None:
-        stmt = stmt.where(Agreement.legal_entity_id == legal_entity_id)
-    if state is not None:
-        if state not in (*ALLOWED_STATES, *LEGACY_STATES):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"state must be one of {list(ALLOWED_STATES)}",
-            )
-        stmt = stmt.where(Agreement.state == state)
-    stmt = stmt.order_by(Agreement.created_at.desc())
-    rows = (await session.execute(stmt)).scalars().all()
-
-    if expiring_within_days is not None:
-        # Filter in Python so the boundary condition is trivial to read.
-        from datetime import date as _date, timedelta
-
-        cutoff = _date.today() + timedelta(days=expiring_within_days)
-        rows = [r for r in rows if r.expiry is not None and r.expiry <= cutoff]
-
-    # Agreements carry no cost fields — the response shape reflects that;
-    # nothing further to strip.
-    entities = {e.id: (e.name, name) for e, name in (await session.execute(
-        select(LegalEntity, Client.name).join(Client, Client.id == LegalEntity.client_id))).all()}
-    result = []
-    for agreement in rows:
-        row = _row(agreement)
-        row.legal_entity_name, row.client_name = entities.get(agreement.legal_entity_id, (None, None))
-        result.append(row)
-    return AgreementListResponse(items=result)
+    stmt = select(Agreement).order_by(Agreement.uploaded_at.desc())
+    if client_id is not None:
+        stmt = stmt.where(Agreement.client_id == client_id)
+    rows = list((await session.execute(stmt)).scalars().all())
+    if not rows:
+        return AgreementListResponse(items=[])
+    client_ids = {r.client_id for r in rows}
+    uploader_ids = {r.uploaded_by for r in rows}
+    clients = {
+        c.id: c
+        for c in (
+            await session.execute(select(Client).where(Client.id.in_(client_ids)))
+        ).scalars()
+    }
+    users = {
+        u.id: u
+        for u in (
+            await session.execute(select(User).where(User.id.in_(uploader_ids)))
+        ).scalars()
+    }
+    return AgreementListResponse(
+        items=[
+            _serialize(r, clients[r.client_id], users.get(r.uploaded_by))
+            for r in rows
+            if r.client_id in clients
+        ]
+    )
 
 
-_PATCH_TRACKED: tuple[str, ...] = (
-    "owner_email",
-    "next_action",
-    "due_date",
-    "effective_from",
-    "expiry",
-    "notice_days",
-    "evidence_s3_key",
-    "signatories",
-)
-
-
-@router.patch("/{agreement_id}", response_model=AgreementRow)
-async def patch_agreement(
-    agreement_id: uuid.UUID,
-    body: AgreementPatchBody,
-    actor: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
-    session: AsyncSession = Depends(get_session),
-) -> AgreementRow:
-    agreement = await _load(session, agreement_id)
-    provided = body.model_dump(exclude_unset=True)
-    if not provided:
-        return _row(agreement)
-    if provided.get("state") == "executed" and agreement.state != "executed":
-        raise HTTPException(422, "Upload and confirm signed evidence before marking executed")
-    if agreement.state in ("executed", "expired", "terminated", "superseded") and any(k in provided for k in ("effective_from", "expiry", "evidence_s3_key")):
-        raise HTTPException(422, "Upload replacement signed evidence to change executed dates or file")
-
-    # Apply non-state fields FIRST so `expiry` is set before we validate the
-    # `executed` transition inside `transition()`.
-    for field in _PATCH_TRACKED:
-        if field not in provided:
-            continue
-        old_value = getattr(agreement, field)
-        new_value = provided[field]
-        if old_value == new_value:
-            continue
-        setattr(agreement, field, new_value)
-        await append_audit(
-            session,
-            actor_id=actor.id,
-            action="agreement.state_changed",
-            entity="agreement",
-            entity_id=str(agreement.id),
-            before={field: _serialize(old_value)},
-            after={field: _serialize(new_value)},
-        )
-
-    # State transition last — it may require columns that were just set above
-    # (e.g. `expiry` before moving to `executed`).
-    if "state" in provided and provided["state"] is not None:
-        new_state = provided["state"]
-        old_state = agreement.state
-        if new_state != old_state:
-            try:
-                transition(agreement, new_state, actor.id)
-            except InvalidAgreementTransition as exc:
-                # 422 with the reason from the state machine; no audit row.
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=str(exc),
-                ) from exc
-            await append_audit(
-                session,
-                actor_id=actor.id,
-                action="agreement.state_changed",
-                entity="agreement",
-                entity_id=str(agreement.id),
-                before={"state": old_state},
-                after={"state": new_state},
-            )
-
-    await session.commit()
-    await session.refresh(agreement)
-    return _row(agreement)
-
-
-@router.post(
-    "/{agreement_id}/evidence-upload-url",
-    response_model=UploadUrlResponse,
-)
-async def create_evidence_upload_url(
-    agreement_id: uuid.UUID,
-    body: UploadUrlRequest,
-    actor: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
+@router.post("", response_model=AgreementRow, status_code=status.HTTP_201_CREATED)
+async def upload_agreement(
+    client_id: uuid.UUID = Form(...),
+    kind: str = Form(...),
+    file: UploadFile = File(...),
+    user: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
     session: AsyncSession = Depends(get_session),
     s3: EvidenceS3 = Depends(get_evidence_s3),
-) -> UploadUrlResponse:
-    agreement = await _load(session, agreement_id)
-    try:
-        signed = s3.generate_upload_url(agreement.id, body.filename, body.content_type)
-    except UnsupportedContentType as exc:
+) -> AgreementRow:
+    kind_upper = kind.strip().upper()
+    if kind_upper not in _ALLOWED_KINDS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"kind must be one of {sorted(_ALLOWED_KINDS)}",
+        )
+    content_type = (file.content_type or "").lower()
+    if content_type not in _ALLOWED_CTS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Upload a PDF or a .docx Word document.",
+        )
+    client = await session.get(Client, client_id)
+    if client is None or client.archived_at is not None:
+        raise HTTPException(status_code=404, detail="client not found")
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="file is empty"
+        )
 
+    db_user = await ensure_user(session, user)
+    agreement_id = uuid.uuid4()
+    try:
+        key = s3.put_object(agreement_id, file.filename or "agreement", content_type, file_bytes)
+    except UnsupportedContentType as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    row = Agreement(
+        id=agreement_id,
+        client_id=client_id,
+        kind=kind_upper,
+        file_key=key,
+        filename=file.filename or "agreement",
+        file_size=len(file_bytes),
+        uploaded_by=db_user.id,
+    )
+    session.add(row)
+    await session.flush()
     await append_audit(
         session,
-        actor_id=actor.id,
-        action="agreement.evidence_upload_url_issued",
+        actor_id=db_user.id,
+        action="agreement.uploaded",
         entity="agreement",
-        entity_id=str(agreement.id),
+        entity_id=str(row.id),
         before=None,
         after={
-            "s3_key": signed.s3_key,
-            "content_type": body.content_type,
-            "expires_in": signed.expires_in,
+            "client_id": str(client_id),
+            "kind": kind_upper,
+            "filename": row.filename,
+            "file_size": row.file_size,
         },
     )
     await session.commit()
-    return UploadUrlResponse(
-        url=signed.url,
-        s3_key=signed.s3_key,
-        method=signed.method,
-        expires_in=signed.expires_in,
-        required_headers=signed.required_headers,
-    )
+    return _serialize(row, client, db_user)
 
 
-@router.get(
-    "/{agreement_id}/evidence-download-url",
-    response_model=DownloadUrlResponse,
-)
-async def get_evidence_download_url(
+@router.get("/{agreement_id}/download")
+async def download_agreement(
     agreement_id: uuid.UUID,
-    actor: AuthUser = Depends(require_role(*_READ_ROLES)),
+    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
     session: AsyncSession = Depends(get_session),
     s3: EvidenceS3 = Depends(get_evidence_s3),
-) -> DownloadUrlResponse:
-    agreement = await _load(session, agreement_id)
-    if not agreement.evidence_s3_key:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="agreement has no evidence file",
-        )
-    url = s3.generate_download_url(agreement.evidence_s3_key)
+) -> dict[str, str]:
+    row = await session.get(Agreement, agreement_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="agreement not found")
+    return {"url": s3.generate_download_url(row.file_key), "filename": row.filename}
+
+
+@router.delete("/{agreement_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agreement(
+    agreement_id: uuid.UUID,
+    user: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+    s3: EvidenceS3 = Depends(get_evidence_s3),
+) -> None:
+    row = await session.get(Agreement, agreement_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="agreement not found")
+    db_user = await ensure_user(session, user)
+    before = {
+        "client_id": str(row.client_id),
+        "kind": row.kind,
+        "filename": row.filename,
+    }
+    # Best-effort S3 delete; the DB row is the source of truth for existence.
+    try:
+        from app.integrations.s3_sow import _client
+
+        _client().delete_object(Bucket=s3._bucket, Key=row.file_key)  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 — the audit + row delete still succeed.
+        pass
+    await session.delete(row)
     await append_audit(
         session,
-        actor_id=actor.id,
-        action="agreement.evidence_download_url_issued",
+        actor_id=db_user.id,
+        action="agreement.deleted",
         entity="agreement",
-        entity_id=str(agreement.id),
-        before=None,
-        after={"s3_key": agreement.evidence_s3_key},
+        entity_id=str(agreement_id),
+        before=before,
+        after=None,
     )
     await session.commit()
-    return DownloadUrlResponse(url=url, expires_in=300)
-
-
-_ = current_user  # kept for future ownership checks; silences lint.
-
-
-class ExecuteDocumentBody(BaseModel):
-    document_id: uuid.UUID
-    effective_from: date
-    expiry: date
-    signed_confirmed: bool
-    correction_reason: str | None = Field(default=None, max_length=2048)
-
-
-@router.post("/{agreement_id}/extract")
-async def extract_signed_agreement(
-    agreement_id: uuid.UUID, file: UploadFile = File(...),
-    actor: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
-    session: AsyncSession = Depends(get_session),
-    s3: EvidenceS3 = Depends(get_evidence_s3),
-    bedrock: BedrockSowExtract = Depends(get_bedrock_sow),
-):
-    from app.services.agreement_documents import extract_document
-    from app.services.user_provisioning import ensure_user
-
-    agreement = await _load(session, agreement_id)
-    if file.content_type not in ("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
-        raise HTTPException(422, "Only PDF and DOCX files are accepted")
-    payload = await file.read(25 * 1024 * 1024 + 1)
-    if not payload or len(payload) > 25 * 1024 * 1024:
-        raise HTTPException(422, "Upload a nonempty file no larger than 25 MB")
-    await ensure_user(session, actor)
-    return await extract_document(session, agreement=agreement, actor_id=actor.id, payload=payload,
-        filename=file.filename or "signed-agreement", content_type=file.content_type, bedrock=bedrock, s3=s3)
-
-
-@router.post("/{agreement_id}/execute", response_model=AgreementRow)
-async def execute_signed_agreement(
-    agreement_id: uuid.UUID, body: ExecuteDocumentBody,
-    actor: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
-    session: AsyncSession = Depends(get_session),
-):
-    from app.services.agreement_documents import execute_document
-    from app.services.user_provisioning import ensure_user
-
-    if not body.signed_confirmed:
-        raise HTTPException(422, "Confirm this file is signed and belongs to the selected legal entity")
-    if body.expiry < body.effective_from:
-        raise HTTPException(422, "Expiry must not precede the effective date")
-    await ensure_user(session, actor)
-    try:
-        row = await execute_document(session, agreement_id=agreement_id, document_id=body.document_id,
-            actor_id=actor.id, effective_from=body.effective_from, expiry=body.expiry, correction_reason=body.correction_reason)
-    except InvalidAgreementTransition as exc:
-        raise HTTPException(422, str(exc)) from exc
-    return _row(row)

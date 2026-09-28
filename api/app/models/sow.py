@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -119,3 +119,10 @@ class SowVersion(Base):
         Uuid, ForeignKey("user.id")
     )
     discard_reason: Mapped[str | None] = mapped_column(String(500))
+
+    # S17: the "NDA and MSA are signed with this client" checkbox from the
+    # SOW upload form. Purely informational — the UI shows it as a note,
+    # nothing gates on it.
+    agreements_signed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )

@@ -109,10 +109,12 @@ class PickCreateNew(BaseModel):
 class PickRequest(BaseModel):
     """Body of the resume endpoint. Exactly one of ``client_id`` or
     ``create_new`` must be present; validation is server-side so a
-    malformed body returns 422 with a clear message."""
+    malformed body returns 422 with a clear message. ``agreements_signed``
+    is the S17 checkbox — informational only, never a gate."""
 
     client_id: uuid.UUID | None = None
     create_new: PickCreateNew | None = None
+    agreements_signed: bool = False
 
 
 # --- helpers --------------------------------------------------------------
@@ -376,6 +378,7 @@ async def pick_upload_job(
             job=job,
             client_id=body.client_id,
             create_new=body.create_new.model_dump() if body.create_new else None,
+            agreements_signed=body.agreements_signed,
         )
     except UploadPipelineError as exc:
         await session.commit()

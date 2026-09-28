@@ -1,300 +1,257 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Download, Plus, Upload, Save } from "lucide-react";
+/**
+ * S17 Agreements: a flat NDA/MSA document store.
+ *
+ * One Upload button (pick client, pick NDA or MSA, attach file). Table
+ * columns: client, type, file name, uploaded by, uploaded date. Each row
+ * has Download and Delete. No states, no owners, no dates to fill in, no
+ * extraction — the file is the record.
+ */
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Download, FilePlus2, ShieldCheck, Trash2 } from "lucide-react";
 import {
-  createAgreement,
-  getClient,
-  getDownloadUrl,
-  getMe,
+  type AgreementKind,
+  type AgreementRow,
+  type ClientListRow,
+  type UUID,
+  deleteAgreement,
+  getAgreementDownloadUrl,
   listAgreements,
   listClients,
-  patchAgreement,
-  type AgreementRow,
-  type AgreementState,
+  uploadAgreement,
 } from "../../api/client";
 import { PageHeader } from "../../ui-v2/PageHeader";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { EmptyState } from "../../ui-v2/EmptyState";
-import { StatusBadge } from "../../ui-v2/StatusBadge";
 import { Button } from "../../ui-v2/primitives/button";
 import { Input } from "../../ui-v2/primitives/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "../../ui-v2/primitives/sheet";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "../../ui-v2/primitives/dialog";
-import { UploadAgreementDialog } from "./agreements/UploadAgreementDialog";
 
-const label = (state: string) =>
-  state === "sent"
-    ? "Sent for signature"
-    : state.charAt(0).toUpperCase() + state.slice(1).replace(/_/g, " ");
-const stateOf = (row: AgreementRow) => row.display_state ?? row.state;
+function DialogFooter({ children }: { children: ReactNode }) {
+  return <div className="mt-4 flex justify-end gap-2">{children}</div>;
+}
+
+const ACCEPT =
+  ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const kb = n / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
+}
+
+function formatDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+interface UploadState {
+  open: boolean;
+  clientId: UUID | "";
+  kind: AgreementKind | "";
+  file: File | null;
+  submitting: boolean;
+  error: string | null;
+}
+
+const INITIAL_UPLOAD: UploadState = {
+  open: false,
+  clientId: "",
+  kind: "",
+  file: null,
+  submitting: false,
+  error: null,
+};
 
 export function AgreementsRegisterPage() {
-  const [params] = useSearchParams();
-  const [rows, setRows] = useState<AgreementRow[]>([]);
+  const [rows, setRows] = useState<AgreementRow[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [canEdit, setCanEdit] = useState(false);
-  const [view, setView] = useState("all");
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<AgreementRow | null>(null);
-  const [upload, setUpload] = useState<AgreementRow | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [entities, setEntities] = useState<{ id: string; name: string }[]>([]);
-  const [entity, setEntity] = useState("");
-  const [kind, setKind] = useState<"NDA" | "MSA">("NDA");
-  const [busy, setBusy] = useState(false);
-  const [revision, setRevision] = useState(0);
-  const entityFilter = params.get("entity");
-  useEffect(() => {
-    let cancelled = false;
+  const [clients, setClients] = useState<ClientListRow[]>([]);
+  const [search, setSearch] = useState("");
+  const [upload, setUpload] = useState<UploadState>(INITIAL_UPLOAD);
+  const [pendingDelete, setPendingDelete] = useState<AgreementRow | null>(null);
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      listAgreements(entityFilter ? { legal_entity_id: entityFilter } : {}),
-      getMe(),
-    ])
-      .then(([response, me]) => {
-        if (!cancelled) {
-          setRows(response.items);
-          setCanEdit(
-            me.groups.some((g) => ["Legal", "SystemAdmin"].includes(g)),
-          );
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [revision, entityFilter]);
-  const reload = () => {
-    setSelected(null);
-    setUpload(null);
-    setAdding(false);
-    setRevision((n) => n + 1);
-  };
-  async function add() {
-    setBusy(true);
-    setError(null);
     try {
-      const clients = [];
-      let page = 1;
-      while (true) {
-        const response = await listClients({ page, size: 200 });
-        clients.push(...response.items);
-        if (clients.length >= response.total || !response.items.length) break;
-        page++;
-      }
-      const details = await Promise.all(clients.map((c) => getClient(c.id)));
-      const all = details.flatMap((c) =>
-        c.legal_entities.map((e) => ({
-          id: e.id,
-          name: `${c.name} / ${e.name}`,
-        })),
-      );
-      setEntities(all);
-      setEntity(entityFilter ?? all[0]?.id ?? "");
-      setAdding(true);
+      const [ags, cs] = await Promise.all([
+        listAgreements(),
+        listClients({ size: 200 }),
+      ]);
+      setRows(ags.items);
+      setClients(cs.items);
     } catch (e) {
-      setError(String(e));
+      setError(e);
+      setRows(null);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
-  }
-  async function save() {
-    if (!selected) return;
-    setBusy(true);
-    setError(null);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const filtered = useMemo(() => {
+    if (!rows) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.client_name.toLowerCase().includes(q) ||
+        r.kind.toLowerCase().includes(q) ||
+        r.filename.toLowerCase().includes(q) ||
+        r.uploaded_by_name.toLowerCase().includes(q),
+    );
+  }, [rows, search]);
+
+  const submitUpload = useCallback(async () => {
+    if (!upload.clientId || !upload.kind || !upload.file) return;
+    setUpload((s) => ({ ...s, submitting: true, error: null }));
     try {
-      await patchAgreement(selected.id, {
-        owner_email: selected.owner_email || null,
-        next_action: selected.next_action || null,
-        due_date: selected.due_date || null,
-        ...(["missing", "requested", "sent"].includes(selected.state)
-          ? { state: selected.state }
-          : {}),
-      });
-      reload();
+      await uploadAgreement(upload.clientId, upload.kind, upload.file);
+      setUpload(INITIAL_UPLOAD);
+      await load();
     } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
+      const message = e instanceof Error ? e.message : "Upload failed";
+      setUpload((s) => ({ ...s, submitting: false, error: message }));
     }
-  }
-  async function download(row: AgreementRow) {
-    setBusy(true);
-    setError(null);
+  }, [upload, load]);
+
+  const download = useCallback(async (row: AgreementRow) => {
     try {
-      const response = await getDownloadUrl(row.id);
-      window.open(response.url, "_blank", "noopener,noreferrer");
+      const { url } = await getAgreementDownloadUrl(row.id);
+      window.open(url, "_blank", "noopener,noreferrer");
     } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
+      const message = e instanceof Error ? e.message : "Download failed";
+      alert(message);
     }
-  }
-  const filtered = rows.filter(
-    (r) =>
-      (view === "all" ||
-        r.kind === view ||
-        (view === "action" &&
-          !["executed", "terminated", "superseded"].includes(stateOf(r)))) &&
-      `${r.client_name} ${r.legal_entity_name} ${r.owner_email} ${r.next_action}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    try {
+      await deleteAgreement(pendingDelete.id);
+      setPendingDelete(null);
+      await load();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Delete failed";
+      alert(message);
+    }
+  }, [pendingDelete, load]);
+
   return (
     <div>
       <PageHeader
         title="NDA & MSA"
+        subtitle="Signed documents by client. Upload, download, delete."
         actions={
-          canEdit ? (
-            <Button onClick={() => void add()} disabled={busy}>
-              <Plus className="mr-2 h-4 w-4" />
-              Track agreement
+          <div className="flex gap-2 items-center">
+            <Input
+              aria-label="Search agreements"
+              placeholder="Search by client, type, filename, uploader"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <Button
+              onClick={() =>
+                setUpload({
+                  open: true,
+                  clientId: "",
+                  kind: "",
+                  file: null,
+                  submitting: false,
+                  error: null,
+                })
+              }
+            >
+              <FilePlus2 className="h-4 w-4 mr-2" />
+              Upload
             </Button>
-          ) : undefined
+          </div>
         }
       />
-      <div className="mb-4 flex flex-wrap gap-3">
-        <select
-          aria-label="Agreement view"
-          className="rounded-control border border-divider bg-surface p-2 text-body"
-          value={view}
-          onChange={(e) => setView(e.target.value)}
-        >
-          {[
-            ["all", "All agreements"],
-            ["NDA", "NDA"],
-            ["MSA", "MSA"],
-            ["action", "Needs action"],
-          ].map(([v, name]) => (
-            <option key={v} value={v}>
-              {name}
-            </option>
-          ))}
-        </select>
-        <Input
-          className="max-w-sm"
-          aria-label="Search agreements"
-          placeholder="Search client, entity or owner"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-      {error && (
+
+      {error ? (
         <ErrorState
-          title="Agreement action failed"
-          description={error}
-          onRetry={() => setRevision((n) => n + 1)}
+          title="We couldn't load agreements"
+          description={error instanceof Error ? error.message : String(error)}
+          onRetry={() => void load()}
         />
-      )}
-      {loading ? (
-        <p role="status">Loading agreements...</p>
-      ) : !filtered.length ? (
-        <EmptyState title="No agreements match this view" />
+      ) : loading && !rows ? (
+        <EmptyState title="Loading" description="Fetching agreements." />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="No agreements yet"
+          description="Click Upload to attach a signed NDA or MSA for a client."
+        />
       ) : (
-        <div className="overflow-x-auto">
-          <table
-            aria-label="Agreement register"
-            className="w-full min-w-[760px] text-body"
-          >
-            <thead>
-              <tr className="border-b border-divider text-left text-text-secondary">
-                {[
-                  "Agreement",
-                  "Client / legal entity",
-                  "Status",
-                  "Effective / expiry",
-                  "Owner / next action",
-                  "",
-                ].map((h, i) => (
-                  <th key={i} className="px-3 py-2 font-medium">
-                    {h}
-                  </th>
-                ))}
+        <div className="overflow-x-auto border border-divider rounded-panel">
+          <table className="w-full text-body" aria-label="Agreements">
+            <thead className="bg-surface-muted text-left">
+              <tr>
+                <th className="p-3">Client</th>
+                <th className="p-3">Type</th>
+                <th className="p-3">File</th>
+                <th className="p-3">Uploaded by</th>
+                <th className="p-3">Uploaded</th>
+                <th className="p-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
-                <tr key={r.id} className="border-b border-divider">
+              {filtered.map((row) => (
+                <tr key={row.id} className="border-t border-divider">
+                  <td className="p-3">{row.client_name}</td>
                   <td className="p-3">
-                    <button
-                      className="font-medium text-primary underline"
-                      onClick={() => setSelected({ ...r })}
-                    >
-                      {r.kind}
-                    </button>
+                    <span className="inline-flex items-center gap-1">
+                      <ShieldCheck className="h-4 w-4" />
+                      {row.kind}
+                    </span>
                   </td>
                   <td className="p-3">
-                    {r.client_name ?? "Client unavailable"}
-                    <div className="text-secondary text-text-secondary">
-                      {r.legal_entity_name ?? "Entity unavailable"}
-                    </div>
+                    <span className="font-medium">{row.filename}</span>
+                    <span className="ml-2 text-secondary text-text-secondary">
+                      {formatBytes(row.file_size)}
+                    </span>
                   </td>
-                  <td className="p-3">
-                    <StatusBadge
-                      label={label(stateOf(r))}
-                      tone={
-                        stateOf(r) === "executed"
-                          ? "ok"
-                          : stateOf(r) === "expired"
-                            ? "danger"
-                            : "warn"
-                      }
-                    />
-                  </td>
-                  <td className="whitespace-nowrap p-3 tnum">
-                    {r.effective_from ?? "Not recorded"}
-                    <div>{r.expiry ?? "Not recorded"}</div>
-                  </td>
-                  <td className="p-3">
-                    {r.owner_email ?? "Unassigned"}
-                    <div className="text-secondary text-text-secondary">
-                      {r.next_action ?? "No next action"}
-                      {r.due_date ? ` · ${r.due_date}` : ""}
-                    </div>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex gap-2">
-                      {canEdit &&
-                        !["terminated", "superseded"].includes(r.state) && (
-                          <Button
-                            variant="secondary"
-                            title={`Upload signed ${r.kind}`}
-                            aria-label={`Upload signed ${r.kind}`}
-                            onClick={() => setUpload(r)}
-                          >
-                            <Upload className="h-4 w-4" />
-                          </Button>
-                        )}
-                      {r.evidence_s3_key && (
-                        <Button
-                          variant="secondary"
-                          title={`Download ${r.kind}`}
-                          aria-label={`Download ${r.kind}`}
-                          disabled={busy}
-                          onClick={() => void download(r)}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      )}
+                  <td className="p-3">{row.uploaded_by_name}</td>
+                  <td className="p-3">{formatDate(row.uploaded_at)}</td>
+                  <td className="p-3 text-right">
+                    <div className="inline-flex gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => void download(row)}
+                        aria-label={`Download ${row.filename}`}
+                      >
+                        <Download className="h-4 w-4 mr-1" />
+                        Download
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setPendingDelete(row)}
+                        aria-label={`Delete ${row.filename}`}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -303,162 +260,115 @@ export function AgreementsRegisterPage() {
           </table>
         </div>
       )}
-      <Sheet
-        open={!!selected}
-        onOpenChange={(open) => {
-          if (!open) setSelected(null);
-        }}
+
+      <Dialog
+        open={upload.open}
+        onOpenChange={(open) => setUpload((s) => (open ? s : INITIAL_UPLOAD))}
       >
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{selected?.kind} tracking</SheetTitle>
-            <SheetDescription>
-              {selected?.client_name} · {selected?.legal_entity_name}
-            </SheetDescription>
-          </SheetHeader>
-          {selected && (
-            <div className="mt-5 grid gap-4 text-body">
-              {error && <p role="alert">{error}</p>}
-              <label>
-                Status
-                <select
-                  className="mt-1 w-full border border-divider bg-surface p-2"
-                  value={selected.state}
-                  disabled={
-                    !canEdit ||
-                    [
-                      "executed",
-                      "expired",
-                      "terminated",
-                      "superseded",
-                    ].includes(selected.state)
-                  }
-                  onChange={(e) =>
-                    setSelected({
-                      ...selected,
-                      state: e.target.value as AgreementState,
-                    })
-                  }
-                >
-                  {!["missing", "requested", "sent"].includes(
-                    selected.state,
-                  ) && (
-                    <option value={selected.state}>
-                      {label(stateOf(selected))}
-                    </option>
-                  )}
-                  {[
-                    ...(rows.find((r) => r.id === selected.id)?.state ===
-                    "missing"
-                      ? ["missing"]
-                      : []),
-                    "requested",
-                    "sent",
-                  ].map((s) => (
-                    <option key={s} value={s}>
-                      {label(s)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Owner email
-                <Input
-                  type="email"
-                  value={selected.owner_email ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    setSelected({ ...selected, owner_email: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Next action
-                <Input
-                  value={selected.next_action ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    setSelected({ ...selected, next_action: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Due date
-                <Input
-                  type="date"
-                  value={selected.due_date ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    setSelected({ ...selected, due_date: e.target.value })
-                  }
-                />
-              </label>
-              {canEdit && (
-                <Button disabled={busy} onClick={() => void save()}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save tracking
-                </Button>
-              )}
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
-      {upload && (
-        <UploadAgreementDialog
-          agreement={upload}
-          onClose={() => setUpload(null)}
-          onSaved={reload}
-        />
-      )}
-      <Dialog open={adding} onOpenChange={setAdding}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Track agreement</DialogTitle>
-            <DialogDescription>Client legal entity</DialogDescription>
+            <DialogTitle>Upload NDA or MSA</DialogTitle>
           </DialogHeader>
-          {error && <p role="alert">{error}</p>}
-          <select
-            aria-label="Legal entity"
-            value={entity}
-            onChange={(e) => setEntity(e.target.value)}
-            className="w-full border border-divider bg-surface p-2"
-          >
-            {entities.map((e) => (
-              <option value={e.id} key={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Agreement kind"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as "NDA" | "MSA")}
-            className="border border-divider bg-surface p-2"
-          >
-            <option>NDA</option>
-            <option>MSA</option>
-          </select>
-          <Button
-            disabled={busy || !entity}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await createAgreement({
-                  legal_entity_id: entity,
-                  type: kind,
-                  state: "missing",
-                  next_action: `Obtain signed ${kind}`,
-                });
-                reload();
-              } catch (e) {
-                setError(String(e));
-              } finally {
-                setBusy(false);
+          <div className="space-y-4">
+            <label className="block">
+              <span className="text-secondary">Client</span>
+              <select
+                aria-label="Client"
+                value={upload.clientId}
+                onChange={(e) =>
+                  setUpload((s) => ({ ...s, clientId: e.target.value as UUID }))
+                }
+                className="mt-1 block w-full border border-divider rounded-control p-2 text-body"
+              >
+                <option value="">Pick a client…</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-secondary">Type</span>
+              <div className="mt-1 flex gap-4 text-body">
+                {(["NDA", "MSA"] as AgreementKind[]).map((k) => (
+                  <label key={k} className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="kind"
+                      value={k}
+                      checked={upload.kind === k}
+                      onChange={() => setUpload((s) => ({ ...s, kind: k }))}
+                    />
+                    {k}
+                  </label>
+                ))}
+              </div>
+            </label>
+            <label className="block">
+              <span className="text-secondary">File (PDF or DOCX)</span>
+              <input
+                aria-label="Agreement file"
+                type="file"
+                accept={ACCEPT}
+                className="mt-1 block w-full text-body"
+                onChange={(e) =>
+                  setUpload((s) => ({ ...s, file: e.target.files?.[0] ?? null }))
+                }
+              />
+            </label>
+            {upload.error ? (
+              <p role="alert" className="text-danger">
+                {upload.error}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setUpload(INITIAL_UPLOAD)}
+              disabled={upload.submitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void submitUpload()}
+              disabled={
+                !upload.clientId || !upload.kind || !upload.file || upload.submitting
               }
-            }}
-          >
-            Create tracking record
-          </Button>
+            >
+              {upload.submitting ? "Uploading…" : "Upload"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => (open ? undefined : setPendingDelete(null))}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this agreement?</DialogTitle>
+          </DialogHeader>
+          {pendingDelete ? (
+            <div className="space-y-2 text-body">
+              <p>
+                {pendingDelete.kind} ·{" "}
+                <span className="font-medium">{pendingDelete.filename}</span>
+              </p>
+              <p>Client: {pendingDelete.client_name}</p>
+              <p className="text-secondary text-text-secondary">
+                The row goes and the stored file is removed. This cannot be undone.
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void confirmDelete()}>Delete</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

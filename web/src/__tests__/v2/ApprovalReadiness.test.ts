@@ -16,9 +16,10 @@ describe("S14b workspace state", () => {
     expect(buildRail(draft).find(s => s.key === "scope_gm")?.state).toBe("current");
     expect(buildReadiness(draft).find(s => s.id === "scope")?.statusLabel).toBe("Draft");
   });
-  it("offers submission without NDA or MSA", () => {
+  it("offers submission and shows the S17 NDA/MSA note only", () => {
     expect(nextValidStep(snap())).toMatchObject({ label: "Submit for approval", action: "submit", disabled: false });
-    expect(buildReadiness(snap()).find(s => s.id === "nda")?.hint).toContain("blocks signature, not review");
+    const note = buildReadiness(snap()).find(s => s.id === "nda-msa");
+    expect(note?.statusLabel).toBe("Not marked");
   });
   it("names incomplete financial inputs", () => {
     const incomplete = snap({ gmModel: { computed: { complete: false }, completeness_issues: ["Engineer hourly cost missing"] } });

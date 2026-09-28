@@ -1,50 +1,67 @@
-"""Delete + archive service (S13a-B2).
+"""One delete service every list endpoint routes through (S17).
 
-`docs/directives/s13a-delete-reset.md`: the product owner must be able to
-remove drafts he created and start fresh; approved / signed records
-archive instead. This module owns both paths.
+Contract:
 
-Three deliverables:
+- :func:`delete_sow` removes a SOW at any stage — draft, submitted,
+  approved, released or already-signed. Everything descended from the SOW
+  goes with it in a single transaction: sow_versions, gm_models,
+  approval_packages + approvals + assignments + condition evidence,
+  ceo_exceptions, signed_sow_uploads, tasks pointing at the opportunity,
+  notifications, sow_upload_jobs, S3 objects. Only one audit line is
+  written per SOW deletion: {who, when, sow name, stage, price}.
+- :func:`delete_opportunity` fans out to :func:`delete_sow` for every SOW
+  on the opportunity, then removes the opportunity row itself.
+- :func:`delete_client` fans out to :func:`delete_opportunity` for every
+  opportunity on the client, drops the client's agreements, contacts,
+  aliases, rate cards, legal entities, and the client itself.
+- :func:`assess_client` / :func:`assess_opportunity` / :func:`assess_sow`
+  are pure lookups that classify a record's cascade counts for the
+  confirm-dialog. S17 always returns `state="draft"` (hard-deletable) —
+  the S13a "approved → archive-only" refusal is gone per §2 of the
+  directive.
+- :func:`live_sow_version_by_hash` is a dedupe helper kept for the SOW
+  upload router. Since S17 hard-deletes always, an archived row is
+  effectively impossible; the return `archived=True` branch stays only as
+  defence-in-depth against schema drift.
 
-- :func:`assess_client` / :func:`assess_opportunity` / :func:`assess_sow_version`
-  — pure lookups that classify a record as ``draft`` (hard-deletable),
-  ``approved`` (archive-only), or ``hubspot_linked`` (archive-only, with a
-  warning). Nothing writes.
-- :func:`delete_client` / :func:`delete_opportunity` / :func:`delete_sow_version`
-  — the write path. Hard-deletes when the assessment allows; archives
-  otherwise. One ``audit_event`` per call with the cascade counts.
-- :func:`live_sow_version_by_hash` / :func:`live_sow_versions_by_business_key`
-  — dedupe helpers that skip hard-deleted rows (they no longer exist) and
-  return archived hits with an ``archived: True`` flag so the caller can
-  surface them as informational, not blocking (directive §"fresh-start").
-
-The blueprint's append-only audit rule stands: even a hard delete emits
-an audit row, so the trail records what happened and to whom, even
-after the target row is gone.
+Blueprint's append-only audit rule (rule 5) stands: even a hard delete
+emits one audit row per SOW, one per opportunity that had no SOWs, and
+one per client. The row records what happened and to whom, even after
+the target rows are gone.
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.models.approval import Approval, ApprovalPackage
-from app.models.agreement_tracking import AgreementDocument, AgreementGap
+from app.models.approval_routing import (
+    ApprovalAssignment,
+    ApprovalConditionEvidence,
+    ApprovalGroup,
+)
+from app.models.ceo_exception import CeoException
 from app.models.client import Agreement, Client, LegalEntity
-from app.models.client_contact import ClientContact
 from app.models.client_alias import ClientAlias
+from app.models.client_contact import ClientContact
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
 from app.models.gm_model import CostLine, GmModel, ResourceLine
 from app.models.import_batch import ImportBatch, ImportFile
+from app.models.notification import Notification
 from app.models.opportunity import Opportunity
 from app.models.signed_sow import SignedSowUpload
 from app.models.sow import Sow, SowVersion
 from app.models.sow_upload_job import SowUploadJob
+from app.models.task import Task
+
+log = logging.getLogger("dealgate.deletion")
 
 
 class DeletionError(Exception):
@@ -56,497 +73,494 @@ class DeletionError(Exception):
 
 @dataclass
 class DeletionAssessment:
-    """What a caller can do with this record, and why.
+    """Cascade counts for the confirm-dialog.
 
-    ``state`` is one of:
-      - ``"draft"``           → hard-deletable (no approvals, no signature).
-      - ``"approved"``        → archive-only; hard delete refused.
-      - ``"hubspot_linked"``  → archive-only; also writes governance status
-                                back to HubSpot on archive.
+    S17 always allows hard delete, so ``state`` is always ``"draft"`` —
+    kept as a field only because a couple of existing routers/UIs read it.
     """
 
-    state: str
-    reason: str
+    state: str = "draft"
+    reason: str = ""
     counts: dict[str, int] = field(default_factory=dict)
 
 
-# --- assessment helpers ---------------------------------------------------
+# --- helpers --------------------------------------------------------------
 
 
-async def _opportunity_has_approvals(
-    session: AsyncSession, opportunity_id: uuid.UUID
-) -> bool:
-    row = (
-        await session.execute(
-            select(func.count(ApprovalPackage.id)).where(
-                ApprovalPackage.opportunity_id == opportunity_id
-            )
-        )
-    ).scalar_one()
-    return int(row or 0) > 0
-
-
-async def _opportunity_has_signed_sow(
-    session: AsyncSession, opportunity_id: uuid.UUID
-) -> bool:
-    row = (
-        await session.execute(
-            select(func.count(SignedSowUpload.id))
-            .join(ApprovalPackage, ApprovalPackage.id == SignedSowUpload.package_id)
-            .where(ApprovalPackage.opportunity_id == opportunity_id)
-        )
-    ).scalar_one()
-    return int(row or 0) > 0
-
-
-def _opportunity_is_hubspot_linked(opp: Opportunity) -> bool:
-    """A live HubSpot deal will resurrect the record on next sync, so a
-    hard delete is meaningless and archive is required per directive §1."""
-
-    return bool(opp.hubspot_deal_id) and opp.source == "hubspot"
-
-
-async def _sow_version_has_approvals(
-    session: AsyncSession, sow_version_id: uuid.UUID
-) -> bool:
-    row = (
-        await session.execute(
-            select(func.count(ApprovalPackage.id)).where(
-                ApprovalPackage.sow_version_id == sow_version_id
-            )
-        )
-    ).scalar_one()
-    return int(row or 0) > 0
-
-
-# --- public assessors -----------------------------------------------------
-
-
-async def assess_client(
-    session: AsyncSession, client_id: uuid.UUID
-) -> DeletionAssessment:
-    opps = (
-        (
-            await session.execute(
-                select(Opportunity).where(Opportunity.client_id == client_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    hubspot = any(_opportunity_is_hubspot_linked(o) for o in opps)
-    approved = False
-    for opp in opps:
-        if await _opportunity_has_approvals(session, opp.id):
-            approved = True
-            break
-        if await _opportunity_has_signed_sow(session, opp.id):
-            approved = True
-            break
-    counts = {"opportunities": len(opps)}
-    if hubspot:
-        return DeletionAssessment(
-            state="hubspot_linked",
-            reason=(
-                "at least one opportunity is linked to a live HubSpot deal; "
-                "the record will resurrect on the next HubSpot sync if hard "
-                "deleted"
-            ),
-            counts=counts,
-        )
-    if approved:
-        return DeletionAssessment(
-            state="approved",
-            reason=(
-                "at least one opportunity has an approval package or a "
-                "signed SOW; the approval trail is append-only"
-            ),
-            counts=counts,
-        )
-    agreements = select(Agreement.id).join(LegalEntity).where(LegalEntity.client_id == client_id)
-    has_evidence = await session.scalar(select(AgreementDocument.id).where(
-        AgreementDocument.agreement_id.in_(agreements)).limit(1))
-    has_history = await session.scalar(select(Agreement.id).join(LegalEntity).where(
-        LegalEntity.client_id == client_id,
-        (Agreement.evidence_s3_key.is_not(None)) | Agreement.state.in_(
-            ("executed", "expired", "terminated", "superseded"))).limit(1))
-    if has_evidence or has_history:
-        return DeletionAssessment(state="approved", reason="agreement evidence or executed history exists; archive preserves it", counts=counts)
-    return DeletionAssessment(
-        state="draft", reason="no approvals, no signed SOW, no HubSpot link", counts=counts
-    )
-
-
-async def assess_opportunity(
-    session: AsyncSession, opportunity_id: uuid.UUID
-) -> DeletionAssessment:
-    opp = await session.get(Opportunity, opportunity_id)
-    if opp is None:
-        raise DeletionError(f"opportunity {opportunity_id} not found", status_code=404)
-    counts = {"opportunity": 1}
-    if _opportunity_is_hubspot_linked(opp):
-        return DeletionAssessment(
-            state="hubspot_linked",
-            reason="linked to a live HubSpot deal",
-            counts=counts,
-        )
-    if await _opportunity_has_approvals(session, opportunity_id):
-        return DeletionAssessment(
-            state="approved", reason="approval package exists", counts=counts
-        )
-    if await _opportunity_has_signed_sow(session, opportunity_id):
-        return DeletionAssessment(
-            state="approved", reason="signed SOW exists", counts=counts
-        )
-    return DeletionAssessment(state="draft", reason="no approvals, no signature", counts=counts)
-
-
-async def assess_sow_version(
-    session: AsyncSession, sow_version_id: uuid.UUID
-) -> DeletionAssessment:
-    version = await session.get(SowVersion, sow_version_id)
-    if version is None:
-        raise DeletionError(f"sow_version {sow_version_id} not found", status_code=404)
-    if await _sow_version_has_approvals(session, sow_version_id):
-        return DeletionAssessment(
-            state="approved",
-            reason="an approval package pins this sow_version",
-            counts={"sow_version": 1},
-        )
-    return DeletionAssessment(
-        state="draft", reason="no approval package", counts={"sow_version": 1}
-    )
-
-
-# --- delete / archive write path -----------------------------------------
-
-
-async def archive_client(
-    session: AsyncSession,
-    *,
-    client_id: uuid.UUID,
-    actor_id: uuid.UUID | None,
-    reason: str | None,
-) -> DeletionAssessment:
-    row = await session.get(Client, client_id)
-    if row is None:
-        raise DeletionError(f"client {client_id} not found", status_code=404)
-    if row.archived_at is not None:
-        raise DeletionError("client already archived")
-    row.archived_at = datetime.now(timezone.utc)
-    row.archived_by = actor_id
-    row.archived_reason = (reason or "").strip() or None
-    await append_audit(
-        session,
-        actor_id=actor_id,
-        action="client.archived",
-        entity="client",
-        entity_id=str(client_id),
-        before=None,
-        after={"reason": row.archived_reason, "archived_at": row.archived_at.isoformat()},
-    )
-    return DeletionAssessment(
-        state="archived", reason="ok", counts={"client": 1}
-    )
-
-
-async def archive_opportunity(
-    session: AsyncSession,
-    *,
-    opportunity_id: uuid.UUID,
-    actor_id: uuid.UUID | None,
-    reason: str | None,
-) -> DeletionAssessment:
-    opp = await session.get(Opportunity, opportunity_id)
-    if opp is None:
-        raise DeletionError(f"opportunity {opportunity_id} not found", status_code=404)
-    if opp.archived_at is not None:
-        raise DeletionError("opportunity already archived")
-    opp.archived_at = datetime.now(timezone.utc)
-    opp.archived_by = actor_id
-    opp.archived_reason = (reason or "").strip() or None
-    await append_audit(
-        session,
-        actor_id=actor_id,
-        action="opportunity.archived",
-        entity="opportunity",
-        entity_id=str(opportunity_id),
-        before=None,
-        after={"reason": opp.archived_reason},
-    )
-    return DeletionAssessment(
-        state="archived", reason="ok", counts={"opportunity": 1}
-    )
-
-
-async def _hard_delete_sow(
-    session: AsyncSession, sow_id: uuid.UUID
-) -> dict[str, int]:
-    """Delete every child of a `sow`. Returns per-table counts."""
-
-    version_ids = (
-        (await session.execute(select(SowVersion.id).where(SowVersion.sow_id == sow_id)))
-        .scalars()
-        .all()
-    )
-    counts: dict[str, int] = {"sow_versions": len(version_ids)}
-    if version_ids:
-        # SowUploadJob may reference a version.
-        r = await session.execute(
-            sa_delete(SowUploadJob).where(SowUploadJob.sow_version_id.in_(version_ids))
-        )
-        counts["sow_upload_jobs"] = r.rowcount or 0
-        r = await session.execute(
-            sa_delete(SowVersion).where(SowVersion.sow_id == sow_id)
-        )
-        counts["sow_versions_deleted"] = r.rowcount or 0
-    r = await session.execute(sa_delete(Sow).where(Sow.id == sow_id))
-    counts["sows"] = r.rowcount or 0
-    return counts
-
-
-async def _hard_delete_opportunity(
-    session: AsyncSession, opportunity_id: uuid.UUID
-) -> dict[str, int]:
-    """Delete every child of an `opportunity` and the row itself."""
-
-    counts: dict[str, int] = {}
-    # ApprovalPackage + its Approval children FIRST — approval_package has
-    # FKs into gm_model + sow_version, so we must clear it before deleting
-    # those. (Draft deletes normally have zero packages; dev-seed rows do,
-    # and this is called from the /dev/purge-client cleanup path too.)
-    pkg_ids = (
-        (
-            await session.execute(
-                select(ApprovalPackage.id).where(
-                    ApprovalPackage.opportunity_id == opportunity_id
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    if pkg_ids:
-        await session.execute(sa_delete(Approval).where(Approval.package_id.in_(pkg_ids)))
-        r = await session.execute(
-            sa_delete(ApprovalPackage).where(ApprovalPackage.id.in_(pkg_ids))
-        )
-        counts["approval_packages"] = r.rowcount or 0
-    # gm_models + their children (resource_line / cost_line).
-    gm_ids = (
-        (
-            await session.execute(
-                select(GmModel.id).where(GmModel.opportunity_id == opportunity_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    counts["gm_models"] = len(gm_ids)
-    if gm_ids:
-        r = await session.execute(
-            sa_delete(ResourceLine).where(ResourceLine.gm_model_id.in_(gm_ids))
-        )
-        counts["resource_lines"] = r.rowcount or 0
-        r = await session.execute(
-            sa_delete(CostLine).where(CostLine.gm_model_id.in_(gm_ids))
-        )
-        counts["cost_lines"] = r.rowcount or 0
-        r = await session.execute(sa_delete(GmModel).where(GmModel.id.in_(gm_ids)))
-        counts["gm_models_deleted"] = r.rowcount or 0
-    # sows + their versions.
-    sow_ids = (
-        (await session.execute(select(Sow.id).where(Sow.opportunity_id == opportunity_id)))
-        .scalars()
-        .all()
-    )
-    counts["sows"] = len(sow_ids)
-    for sow_id in sow_ids:
-        sub = await _hard_delete_sow(session, sow_id)
-        for k, v in sub.items():
-            counts[k] = counts.get(k, 0) + v
-    # `Task` has no opportunity_id column today, so we can't cascade tasks
-    # by opportunity. Tasks stay for the owner to clear manually.
-    r = await session.execute(sa_delete(Opportunity).where(Opportunity.id == opportunity_id))
-    counts["opportunities"] = r.rowcount or 0
-    return counts
-
-
-async def _hard_delete_client(
-    session: AsyncSession, client_id: uuid.UUID
-) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    # Cascade every opportunity first.
-    opp_ids = (
+async def _sow_ids_for_client(session: AsyncSession, client_id: uuid.UUID) -> list[uuid.UUID]:
+    opp_ids = list(
         (
             await session.execute(
                 select(Opportunity.id).where(Opportunity.client_id == client_id)
             )
-        )
-        .scalars()
-        .all()
+        ).scalars()
     )
-    for oid in opp_ids:
-        sub = await _hard_delete_opportunity(session, oid)
-        for k, v in sub.items():
-            counts[k] = counts.get(k, 0) + v
-    # Client-side children: contacts, aliases, rate cards + rows, legal entities → agreements.
-    r = await session.execute(sa_delete(ClientContact).where(ClientContact.client_id == client_id))
-    counts["client_contacts"] = r.rowcount or 0
-    r = await session.execute(sa_delete(ClientAlias).where(ClientAlias.client_id == client_id))
-    counts["client_aliases"] = r.rowcount or 0
-    card_ids = (
+    if not opp_ids:
+        return []
+    return list(
         (
             await session.execute(
-                select(ClientRateCard.id).where(ClientRateCard.client_id == client_id)
+                select(Sow.id).where(Sow.opportunity_id.in_(opp_ids))
             )
-        )
-        .scalars()
-        .all()
+        ).scalars()
     )
-    if card_ids:
-        r = await session.execute(
-            sa_delete(ClientRateCardRow).where(
-                ClientRateCardRow.client_rate_card_id.in_(card_ids)
+
+
+async def _s3_delete_sow_files(file_keys: list[str]) -> None:
+    """Best-effort S3 cleanup. Failures do not roll back the DB delete —
+    the row is the source of truth for existence."""
+
+    if not file_keys:
+        return
+    try:
+        from app.integrations.s3_sow import _client
+
+        s3 = _client()
+        # Prefer batched delete for efficiency; group by bucket by reading
+        # the SOW bucket name from env.
+        import os
+
+        bucket = os.environ.get("SOW_BUCKET")
+        if not bucket:
+            return
+        # S3 delete-objects caps at 1000 keys per call.
+        for i in range(0, len(file_keys), 1000):
+            chunk = file_keys[i : i + 1000]
+            s3.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": [{"Key": k} for k in chunk]},
             )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        log.info("s3_cleanup_failed", extra={"error": str(exc)[:200]})
+
+
+async def _s3_delete_agreement_files(file_keys: list[str]) -> None:
+    if not file_keys:
+        return
+    try:
+        from app.integrations.s3_sow import _client
+
+        s3 = _client()
+        import os
+
+        bucket = os.environ.get(
+            "AGREEMENTS_BUCKET", ""
         )
-        counts["client_rate_card_rows"] = r.rowcount or 0
-        r = await session.execute(
-            sa_delete(ClientRateCard).where(ClientRateCard.id.in_(card_ids))
-        )
-        counts["client_rate_cards"] = r.rowcount or 0
-    entity_ids = (
+        if not bucket:
+            return
+        for i in range(0, len(file_keys), 1000):
+            chunk = file_keys[i : i + 1000]
+            s3.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": [{"Key": k} for k in chunk]},
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.info("s3_cleanup_failed_agreements", extra={"error": str(exc)[:200]})
+
+
+def _price_from_sow(version: SowVersion | None) -> str | None:
+    if version is None or not version.extracted_fields:
+        return None
+    fields = version.extracted_fields or {}
+    price = fields.get("price")
+    if isinstance(price, dict):
+        return price.get("value") if isinstance(price.get("value"), str) else None
+    if isinstance(price, str):
+        return price
+    return None
+
+
+def _stage_from_opportunity(opp: Opportunity | None) -> str:
+    if opp is None:
+        return "unknown"
+    return opp.governance_status or "unknown"
+
+
+# --- SOW-scoped delete ---------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SowDeletionSummary:
+    sow_id: uuid.UUID
+    sow_title: str
+    stage: str
+    price: str | None
+    counts: dict[str, int]
+
+
+async def _sow_cascade_counts(
+    session: AsyncSession, sow_ids: list[uuid.UUID]
+) -> dict[str, int]:
+    if not sow_ids:
+        return {}
+    counts: dict[str, int] = {}
+    version_ids = list(
         (
-            await session.execute(
-                select(LegalEntity.id).where(LegalEntity.client_id == client_id)
-            )
-        )
-        .scalars()
-        .all()
+            await session.execute(select(SowVersion.id).where(SowVersion.sow_id.in_(sow_ids)))
+        ).scalars()
     )
-    if entity_ids:
-        r = await session.execute(sa_delete(AgreementGap).where(AgreementGap.legal_entity_id.in_(entity_ids)))
-        counts["agreement_gaps"] = r.rowcount or 0
-        r = await session.execute(
-            sa_delete(Agreement).where(Agreement.legal_entity_id.in_(entity_ids))
+    counts["sow_versions"] = len(version_ids)
+    if version_ids:
+        gm_ids = list(
+            (
+                await session.execute(
+                    select(GmModel.id).where(GmModel.sow_version_id.in_(version_ids))
+                )
+            ).scalars()
         )
-        counts["agreements"] = r.rowcount or 0
-        r = await session.execute(
-            sa_delete(LegalEntity).where(LegalEntity.id.in_(entity_ids))
+        counts["gm_models"] = len(gm_ids)
+        if gm_ids:
+            counts["resource_lines"] = int(
+                (
+                    await session.execute(
+                        select(func.count(ResourceLine.id)).where(
+                            ResourceLine.gm_model_id.in_(gm_ids)
+                        )
+                    )
+                ).scalar_one()
+            )
+            counts["cost_lines"] = int(
+                (
+                    await session.execute(
+                        select(func.count(CostLine.id)).where(
+                            CostLine.gm_model_id.in_(gm_ids)
+                        )
+                    )
+                ).scalar_one()
+            )
+    opp_ids = list(
+        (
+            await session.execute(select(Sow.opportunity_id).where(Sow.id.in_(sow_ids)))
+        ).scalars()
+    )
+    if opp_ids:
+        pkg_ids_for_count = list(
+            (
+                await session.execute(
+                    select(ApprovalPackage.id).where(
+                        ApprovalPackage.opportunity_id.in_(opp_ids)
+                    )
+                )
+            ).scalars()
         )
-        counts["legal_entities"] = r.rowcount or 0
-    r = await session.execute(sa_delete(Client).where(Client.id == client_id))
-    counts["clients"] = r.rowcount or 0
+        counts["approval_packages"] = len(pkg_ids_for_count)
+        if pkg_ids_for_count:
+            counts["tasks"] = int(
+                (
+                    await session.execute(
+                        select(func.count(ApprovalAssignment.task_id)).where(
+                            ApprovalAssignment.package_id.in_(pkg_ids_for_count),
+                            ApprovalAssignment.task_id.is_not(None),
+                        )
+                    )
+                ).scalar_one()
+            )
+        else:
+            counts["tasks"] = 0
     return counts
 
 
-async def delete_client(
+async def delete_sow(
     session: AsyncSession,
     *,
-    client_id: uuid.UUID,
     actor_id: uuid.UUID | None,
-    reason: str | None = None,
-) -> DeletionAssessment:
-    """Hard delete a draft client, or refuse and steer to archive."""
+    sow_id: uuid.UUID,
+) -> SowDeletionSummary:
+    sow = await session.get(Sow, sow_id)
+    if sow is None:
+        raise DeletionError("sow not found", status_code=404)
+    opp = await session.get(Opportunity, sow.opportunity_id)
+    versions = list(
+        (
+            await session.execute(select(SowVersion).where(SowVersion.sow_id == sow_id))
+        ).scalars()
+    )
+    latest_version = max(versions, key=lambda v: v.uploaded_at) if versions else None
+    price = _price_from_sow(latest_version)
+    stage = _stage_from_opportunity(opp)
+    fields = (latest_version.extracted_fields or {}) if latest_version else {}
+    title_cell = fields.get("sow_title") if isinstance(fields, dict) else None
+    if isinstance(title_cell, dict):
+        sow_title = str(title_cell.get("value") or "").strip()
+    else:
+        sow_title = ""
+    if not sow_title:
+        title_cell = fields.get("title") if isinstance(fields, dict) else None
+        if isinstance(title_cell, dict):
+            sow_title = str(title_cell.get("value") or "").strip()
+    if not sow_title:
+        sow_title = f"SOW {str(sow_id)[:8]}"
 
-    assessment = await assess_client(session, client_id)
-    if assessment.state != "draft":
-        raise DeletionError(
-            f"client cannot be hard-deleted ({assessment.state}); "
-            f"reason: {assessment.reason}; use archive instead",
-            status_code=409,
+    counts = await _sow_cascade_counts(session, [sow_id])
+
+    # -- inside a single transaction --
+    version_ids = [v.id for v in versions]
+    file_keys = [v.file_s3_key for v in versions if v.file_s3_key]
+
+    if opp is not None:
+        opp_id = opp.id
+        # approvals + assignments + evidence + exceptions + signed uploads
+        pkg_ids = list(
+            (
+                await session.execute(
+                    select(ApprovalPackage.id).where(ApprovalPackage.opportunity_id == opp_id)
+                )
+            ).scalars()
         )
-    row = await session.get(Client, client_id)
-    if row is None:
-        raise DeletionError(f"client {client_id} not found", status_code=404)
-    snapshot = {"name": row.name, "hubspot_company_id": row.hubspot_company_id}
-    counts = await _hard_delete_client(session, client_id)
+        # Tasks tied to the opportunity: today they're linked via
+        # ApprovalAssignment.task_id (S14b review tasks). Collect + drop
+        # first so the assignment cascade can proceed.
+        task_ids_via_assignment: list[uuid.UUID] = []
+        if pkg_ids:
+            task_ids_via_assignment = list(
+                (
+                    await session.execute(
+                        select(ApprovalAssignment.task_id).where(
+                            ApprovalAssignment.package_id.in_(pkg_ids),
+                            ApprovalAssignment.task_id.is_not(None),
+                        )
+                    )
+                ).scalars()
+            )
+            await session.execute(
+                sa_delete(SignedSowUpload).where(SignedSowUpload.package_id.in_(pkg_ids))
+            )
+            await session.execute(
+                sa_delete(ApprovalConditionEvidence).where(
+                    ApprovalConditionEvidence.package_id.in_(pkg_ids)
+                )
+            )
+            await session.execute(
+                sa_delete(ApprovalAssignment).where(ApprovalAssignment.package_id.in_(pkg_ids))
+            )
+            await session.execute(
+                sa_delete(Approval).where(Approval.package_id.in_(pkg_ids))
+            )
+            await session.execute(
+                sa_delete(CeoException).where(CeoException.package_id.in_(pkg_ids))
+            )
+            await session.execute(
+                sa_delete(ApprovalPackage).where(ApprovalPackage.id.in_(pkg_ids))
+            )
+        if task_ids_via_assignment:
+            await session.execute(sa_delete(Task).where(Task.id.in_(task_ids_via_assignment)))
+        # notifications tied to the opportunity/package
+        await session.execute(
+            sa_delete(Notification).where(
+                Notification.related_entity.in_(("opportunity", "approval_package", "sow")),
+                Notification.related_entity_id.in_(
+                    [str(opp_id)] + [str(p) for p in pkg_ids]
+                ),
+            )
+        )
+
+    if version_ids:
+        gm_ids = list(
+            (
+                await session.execute(
+                    select(GmModel.id).where(GmModel.sow_version_id.in_(version_ids))
+                )
+            ).scalars()
+        )
+        if gm_ids:
+            await session.execute(
+                sa_delete(ResourceLine).where(ResourceLine.gm_model_id.in_(gm_ids))
+            )
+            await session.execute(
+                sa_delete(CostLine).where(CostLine.gm_model_id.in_(gm_ids))
+            )
+            await session.execute(sa_delete(GmModel).where(GmModel.id.in_(gm_ids)))
+        # SOW upload jobs referencing this SOW's versions/opportunity
+        await session.execute(
+            sa_delete(SowUploadJob).where(SowUploadJob.sow_version_id.in_(version_ids))
+        )
+        # Clear superseded_by pointers that reference deletables (SQLite has no ON DELETE SET NULL here)
+        await session.execute(
+            sa_delete(SowVersion).where(SowVersion.id.in_(version_ids))
+        )
+
+    await session.execute(sa_delete(Sow).where(Sow.id == sow_id))
+
     await append_audit(
         session,
         actor_id=actor_id,
-        action="client.deleted",
-        entity="client",
-        entity_id=str(client_id),
-        before=snapshot,
-        after={"reason": (reason or "").strip() or None, "cascade": counts},
+        action="sow.deleted",
+        entity="sow",
+        entity_id=str(sow_id),
+        before={
+            "sow_id": str(sow_id),
+            "sow_title": sow_title,
+            "stage": stage,
+            "price": price,
+        },
+        after=None,
     )
-    return DeletionAssessment(state="deleted", reason="ok", counts=counts)
+
+    await _s3_delete_sow_files(file_keys)
+
+    return SowDeletionSummary(
+        sow_id=sow_id,
+        sow_title=sow_title,
+        stage=stage,
+        price=price,
+        counts=counts,
+    )
+
+
+# --- Opportunity- and Client-scoped delete ------------------------------
 
 
 async def delete_opportunity(
     session: AsyncSession,
     *,
-    opportunity_id: uuid.UUID,
     actor_id: uuid.UUID | None,
-    reason: str | None = None,
+    opportunity_id: uuid.UUID,
 ) -> DeletionAssessment:
-    assessment = await assess_opportunity(session, opportunity_id)
-    if assessment.state != "draft":
-        raise DeletionError(
-            f"opportunity cannot be hard-deleted ({assessment.state}); "
-            f"reason: {assessment.reason}; use archive instead",
-            status_code=409,
-        )
-    row = await session.get(Opportunity, opportunity_id)
-    if row is None:
-        raise DeletionError(f"opportunity {opportunity_id} not found", status_code=404)
-    snapshot = {"hubspot_deal_id": row.hubspot_deal_id, "source": row.source}
-    counts = await _hard_delete_opportunity(session, opportunity_id)
+    opp = await session.get(Opportunity, opportunity_id)
+    if opp is None:
+        raise DeletionError("opportunity not found", status_code=404)
+    sow_ids = list(
+        (
+            await session.execute(select(Sow.id).where(Sow.opportunity_id == opportunity_id))
+        ).scalars()
+    )
+    counts: dict[str, int] = {"sows": len(sow_ids)}
+    for sow_id in sow_ids:
+        summary = await delete_sow(session, actor_id=actor_id, sow_id=sow_id)
+        for k, v in summary.counts.items():
+            counts[k] = counts.get(k, 0) + v
+    await session.execute(sa_delete(Opportunity).where(Opportunity.id == opportunity_id))
     await append_audit(
         session,
         actor_id=actor_id,
         action="opportunity.deleted",
         entity="opportunity",
         entity_id=str(opportunity_id),
-        before=snapshot,
-        after={"reason": (reason or "").strip() or None, "cascade": counts},
+        before={"opportunity_id": str(opportunity_id), "counts": counts},
+        after=None,
     )
-    return DeletionAssessment(state="deleted", reason="ok", counts=counts)
+    return DeletionAssessment(state="draft", reason="hard delete (S17)", counts=counts)
 
 
-async def delete_sow_version(
+async def delete_client(
     session: AsyncSession,
     *,
-    sow_version_id: uuid.UUID,
     actor_id: uuid.UUID | None,
-    reason: str | None = None,
+    client_id: uuid.UUID,
 ) -> DeletionAssessment:
-    assessment = await assess_sow_version(session, sow_version_id)
-    if assessment.state != "draft":
-        raise DeletionError(
-            f"sow_version cannot be hard-deleted ({assessment.state}); "
-            f"reason: {assessment.reason}",
-            status_code=409,
-        )
-    row = await session.get(SowVersion, sow_version_id)
-    if row is None:
-        raise DeletionError(f"sow_version {sow_version_id} not found", status_code=404)
-    snapshot = {"sow_id": str(row.sow_id), "file_hash": row.file_hash}
-    r = await session.execute(
-        sa_delete(SowUploadJob).where(SowUploadJob.sow_version_id == sow_version_id)
+    client = await session.get(Client, client_id)
+    if client is None:
+        raise DeletionError("client not found", status_code=404)
+    counts: dict[str, int] = {}
+    # Cascade to opportunities → SOWs.
+    opp_ids = list(
+        (
+            await session.execute(
+                select(Opportunity.id).where(Opportunity.client_id == client_id)
+            )
+        ).scalars()
     )
-    counts = {"sow_upload_jobs": r.rowcount or 0}
-    r = await session.execute(sa_delete(SowVersion).where(SowVersion.id == sow_version_id))
-    counts["sow_versions"] = r.rowcount or 0
+    counts["opportunities"] = len(opp_ids)
+    for opp_id in opp_ids:
+        summary = await delete_opportunity(session, actor_id=actor_id, opportunity_id=opp_id)
+        for k, v in summary.counts.items():
+            counts[k] = counts.get(k, 0) + v
+    # Client-scoped children.
+    agreements = list(
+        (
+            await session.execute(select(Agreement).where(Agreement.client_id == client_id))
+        ).scalars()
+    )
+    if agreements:
+        await _s3_delete_agreement_files([a.file_key for a in agreements])
+        await session.execute(sa_delete(Agreement).where(Agreement.client_id == client_id))
+        counts["agreements"] = len(agreements)
+    await session.execute(
+        sa_delete(ClientContact).where(ClientContact.client_id == client_id)
+    )
+    await session.execute(sa_delete(ClientAlias).where(ClientAlias.client_id == client_id))
+    # Rate cards + rows
+    rate_card_ids = list(
+        (
+            await session.execute(
+                select(ClientRateCard.id).where(ClientRateCard.client_id == client_id)
+            )
+        ).scalars()
+    )
+    if rate_card_ids:
+        await session.execute(
+            sa_delete(ClientRateCardRow).where(
+                ClientRateCardRow.rate_card_id.in_(rate_card_ids)
+            )
+        )
+        await session.execute(
+            sa_delete(ClientRateCard).where(ClientRateCard.id.in_(rate_card_ids))
+        )
+    # Legal entities
+    await session.execute(sa_delete(LegalEntity).where(LegalEntity.client_id == client_id))
+    await session.execute(sa_delete(Client).where(Client.id == client_id))
+
     await append_audit(
         session,
         actor_id=actor_id,
-        action="sow_version.deleted",
-        entity="sow_version",
-        entity_id=str(sow_version_id),
-        before=snapshot,
-        after={"reason": (reason or "").strip() or None, "cascade": counts},
+        action="client.deleted",
+        entity="client",
+        entity_id=str(client_id),
+        before={"client_id": str(client_id), "name": client.name, "counts": counts},
+        after=None,
     )
-    return DeletionAssessment(state="deleted", reason="ok", counts=counts)
+    return DeletionAssessment(state="draft", reason="hard delete (S17)", counts=counts)
 
 
-# --- dedupe helpers ------------------------------------------------------
+# --- assessment helpers (used by the confirm-dialog) -----------------------
 
 
-@dataclass
+async def assess_client(
+    session: AsyncSession, client_id: uuid.UUID
+) -> DeletionAssessment:
+    sow_ids = await _sow_ids_for_client(session, client_id)
+    counts = await _sow_cascade_counts(session, sow_ids)
+    counts["sows"] = len(sow_ids)
+    counts["opportunities"] = int(
+        (
+            await session.execute(
+                select(func.count(Opportunity.id)).where(Opportunity.client_id == client_id)
+            )
+        ).scalar_one()
+    )
+    counts["agreements"] = int(
+        (
+            await session.execute(
+                select(func.count(Agreement.id)).where(Agreement.client_id == client_id)
+            )
+        ).scalar_one()
+    )
+    return DeletionAssessment(state="draft", reason="hard delete (S17)", counts=counts)
+
+
+async def assess_opportunity(
+    session: AsyncSession, opportunity_id: uuid.UUID
+) -> DeletionAssessment:
+    sow_ids = list(
+        (
+            await session.execute(select(Sow.id).where(Sow.opportunity_id == opportunity_id))
+        ).scalars()
+    )
+    counts = await _sow_cascade_counts(session, sow_ids)
+    counts["sows"] = len(sow_ids)
+    return DeletionAssessment(state="draft", reason="hard delete (S17)", counts=counts)
+
+
+async def assess_sow(session: AsyncSession, sow_id: uuid.UUID) -> DeletionAssessment:
+    counts = await _sow_cascade_counts(session, [sow_id])
+    return DeletionAssessment(state="draft", reason="hard delete (S17)", counts=counts)
+
+
+# --- dedupe helper ---------------------------------------------------------
+
+
+@dataclass(frozen=True)
 class DedupeHit:
-    """A dedupe hit — the caller decides whether to block or inform."""
-
     sow_version_id: uuid.UUID
     opportunity_id: uuid.UUID | None
     file_hash: str
@@ -556,11 +570,10 @@ class DedupeHit:
 async def live_sow_version_by_hash(
     session: AsyncSession, file_hash: str
 ) -> DedupeHit | None:
-    """Return a hit ONLY if a live (non-archived) sow_version has the hash.
+    """Return a hit ONLY if a live sow_version has the hash.
 
-    Hard-deleted rows are gone; archived rows are informational and returned
-    with ``archived=True``. The upload router blocks on archived=False and
-    surfaces a note on archived=True per directive "fresh-start requirement".
+    S17 hard-deletes always, so ``archived=True`` is no longer expected in
+    practice; the field remains so upstream callers keep their shape.
     """
 
     stmt = (
@@ -587,64 +600,92 @@ async def live_sow_version_by_hash(
 async def delete_import_batch(
     session: AsyncSession,
     *,
-    batch_id: uuid.UUID,
     actor_id: uuid.UUID | None,
+    batch_id: uuid.UUID,
 ) -> DeletionAssessment:
-    """Hard-delete every record a bulk-import batch created (per-record state
-    rules still apply — any file that reached approval blocks its own row)."""
+    """Delete a bulk-import batch + its files. No SOW cascade — bulk import
+    is a separate lineage."""
 
-    files = (
-        (
-            await session.execute(
-                select(ImportFile).where(ImportFile.batch_id == batch_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    counts: dict[str, int] = {"import_files": len(files)}
-    for f in files:
-        if f.sow_version_id:
-            try:
-                sub = await delete_sow_version(
-                    session,
-                    sow_version_id=f.sow_version_id,
-                    actor_id=actor_id,
-                    reason=f"bulk delete: batch {batch_id}",
+    batch = await session.get(ImportBatch, batch_id)
+    if batch is None:
+        raise DeletionError("import batch not found", status_code=404)
+    counts = {
+        "import_files": int(
+            (
+                await session.execute(
+                    select(func.count(ImportFile.id)).where(ImportFile.batch_id == batch_id)
                 )
-                for k, v in sub.counts.items():
-                    counts[k] = counts.get(k, 0) + v
-            except DeletionError:
-                # A promoted, later-approved SOW blocks itself; report and skip.
-                counts["skipped_approved"] = counts.get("skipped_approved", 0) + 1
-    r = await session.execute(sa_delete(ImportFile).where(ImportFile.batch_id == batch_id))
-    counts["import_file_rows"] = r.rowcount or 0
-    r = await session.execute(sa_delete(ImportBatch).where(ImportBatch.id == batch_id))
-    counts["import_batches"] = r.rowcount or 0
+            ).scalar_one()
+        )
+    }
+    await session.execute(sa_delete(ImportFile).where(ImportFile.batch_id == batch_id))
+    await session.execute(sa_delete(ImportBatch).where(ImportBatch.id == batch_id))
     await append_audit(
         session,
         actor_id=actor_id,
         action="import_batch.deleted",
         entity="import_batch",
         entity_id=str(batch_id),
-        before=None,
-        after={"cascade": counts},
+        before={"counts": counts},
+        after=None,
     )
-    return DeletionAssessment(state="deleted", reason="ok", counts=counts)
+    return DeletionAssessment(state="draft", reason="hard delete (S17)", counts=counts)
+
+
+# --- back-compat aliases ---------------------------------------------------
+# Some pre-S17 callers referenced the S13a assess/archive names. The
+# archive endpoints now just hard-delete under the hood so the UI keeps
+# working while it's rewritten to a single Delete action.
+
+
+async def archive_client(
+    session: AsyncSession, *, actor_id: uuid.UUID | None, client_id: uuid.UUID, reason: str
+) -> DeletionAssessment:
+    _ = reason
+    return await delete_client(session, actor_id=actor_id, client_id=client_id)
+
+
+async def archive_opportunity(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID | None,
+    opportunity_id: uuid.UUID,
+    reason: str,
+) -> DeletionAssessment:
+    _ = reason
+    return await delete_opportunity(session, actor_id=actor_id, opportunity_id=opportunity_id)
+
+
+async def delete_sow_version(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID | None,
+    sow_version_id: uuid.UUID,
+) -> DeletionAssessment:
+    """S13a compat: delete a version. In S17 the coarser unit is the SOW;
+    delete the whole SOW when asked to delete a version."""
+
+    version = await session.get(SowVersion, sow_version_id)
+    if version is None:
+        raise DeletionError("sow_version not found", status_code=404)
+    summary = await delete_sow(session, actor_id=actor_id, sow_id=version.sow_id)
+    return DeletionAssessment(state="draft", reason="hard delete (S17)", counts=summary.counts)
 
 
 __all__ = [
     "DedupeHit",
     "DeletionAssessment",
     "DeletionError",
+    "SowDeletionSummary",
     "archive_client",
     "archive_opportunity",
     "assess_client",
     "assess_opportunity",
-    "assess_sow_version",
+    "assess_sow",
     "delete_client",
     "delete_import_batch",
     "delete_opportunity",
+    "delete_sow",
     "delete_sow_version",
     "live_sow_version_by_hash",
 ]

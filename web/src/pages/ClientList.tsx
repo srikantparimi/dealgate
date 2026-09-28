@@ -5,22 +5,9 @@ import { listClients } from "../api/client";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { PageHeader } from "../ui/PageHeader";
-import { StatusChip } from "../ui/StatusChip";
 import { Table, type Column } from "../ui/Table";
 
 type OwnerFilter = "me" | "all";
-
-/**
- * Mirror `coverageTone` from `DealList.tsx` so a client row + a deal row
- * with the same coverage state render the same chip colour.
- */
-export function coverageTone(coverage: string): "ok" | "warn" | "block" | "neutral" {
-  if (coverage === "Complete") return "ok";
-  if (coverage.includes("expired")) return "block";
-  if (coverage.includes("missing")) return "warn";
-  if (coverage === "Awaiting signature") return "warn";
-  return "neutral";
-}
 
 export function ClientListPage() {
   const navigate = useNavigate();
@@ -61,20 +48,13 @@ export function ClientListPage() {
       header: "Opportunities",
       render: (r) => String(r.opportunity_count),
     },
-    {
-      key: "coverage",
-      header: "Coverage",
-      render: (r) => (
-        <StatusChip tone={coverageTone(r.coverage_state)}>{r.coverage_state}</StatusChip>
-      ),
-    },
   ];
 
   return (
     <div>
       <PageHeader
         title="Clients"
-        subtitle="NDA/MSA coverage, entities, opportunities."
+        subtitle="Entities and opportunities. NDA/MSA lives on the Agreements page."
         right={
           <div style={{ display: "flex", gap: 8 }}>
             <input

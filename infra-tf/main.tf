@@ -122,6 +122,7 @@ module "api" {
   db_url_secret_arn      = module.secrets.db_url_secret_arn
   jwt_signing_secret_arn = module.secrets.jwt_signing_secret_arn
   cognito_user_pool_id   = module.auth.user_pool_id
+  cognito_user_pool_arn  = module.auth.user_pool_arn
   cognito_client_id      = module.auth.client_id
   kms_key_arn            = module.kms.key_arn
   # S15: SOW bucket ARN feeds the sow_and_bedrock IAM policy (was hand-set

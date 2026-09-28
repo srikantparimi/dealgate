@@ -206,7 +206,8 @@ async def test_get_detail_owner_can_read(app_with_session, seeded, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["hubspot_deal_id"] == "H-100"
-    assert body["coverage_state"] == "No client linked"
+    # S17: coverage_state removed from the /deals response entirely.
+    assert "coverage_state" not in body
     assert body["tasks"] == []
     assert body["audit"] == []
 
@@ -356,7 +357,6 @@ def test_response_schemas_accept_a_sow_uploaded_opportunity():
         governance_status="Intake",
         next_client_action=None,
         next_client_date=None,
-        coverage_state="missing",
     )
     assert row.hubspot_deal_id is None
 

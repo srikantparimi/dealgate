@@ -12,12 +12,10 @@ import { getIdTokenClaims } from "../auth/cognito";
 import { EmptyState } from "../ui/EmptyState";
 import { ErrorState } from "../ui/ErrorState";
 import { PageHeader } from "../ui/PageHeader";
-import { StatusChip } from "../ui/StatusChip";
 import { Table, type Column } from "../ui/Table";
 import { DeletionConfirmationDialog } from "../ui-v2/DeletionConfirmationDialog";
 import { Button } from "../ui-v2/primitives/button";
 import { AgreementsPanel } from "./AgreementsPanel";
-import { coverageTone } from "./ClientList";
 
 // S5 E10: "SOWs & GM" tab visibility mirrors the governance read set that
 // the ``/dashboards/client/{id}`` API enforces. The API is the source of
@@ -155,9 +153,6 @@ export function ClientDetailPage() {
         title={client.name}
         subtitle={
           <span>
-            <StatusChip tone={coverageTone(client.coverage_state)}>
-              {client.coverage_state}
-            </StatusChip>{" "}
             {client.hubspot_company_id ? (
               <span style={{ color: "#6b7280" }}>
                 HubSpot: {client.hubspot_company_id}

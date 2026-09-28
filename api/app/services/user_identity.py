@@ -13,7 +13,7 @@ def is_identity_placeholder(value: str | None) -> bool:
     return True
 
 
-def display_user_name(name: str | None, email: str | None, *, fallback: str = "Name unavailable") -> str:
+def display_user_name(name: str | None, email: str | None, *, fallback: str = "Unassigned") -> str:
     for value in (name, email):
         if not is_identity_placeholder(value):
             return value.strip()

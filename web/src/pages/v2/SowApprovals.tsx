@@ -5,8 +5,8 @@
  * two per row on tablet; single column on phone. Cards are never
  * draggable across lanes — every gate transition is server-enforced.
  *
- * Data source: `listApprovalPackages()`. NDA/MSA badges come from
- * `listAgreements()` and are matched by legal entity via the surrounding
+ * Data source: `listApprovalPackages()`. S17 removed the NDA/MSA chips —
+ * the row-level detail lives on the Agreements page. The surrounding
  * opportunity + deal metadata when available.
  */
 import { useEffect, useMemo, useState } from "react";
@@ -335,15 +335,23 @@ function LaneColumn({ lane, packages, agreements }: LaneColumnProps) {
  */
 function buildMeta(
   pkg: ApprovalPackage,
-  agreements: AgreementRow[],
+  _agreements: AgreementRow[],
 ): CardMeta {
-  const nda = agreements.find((a) => a.kind === "NDA");
-  const msa = agreements.find((a) => a.kind === "MSA");
+  // S17: board cards show SOW title + client name — never a hash. When
+  // the join isn't loaded, prefer the workspace title fields on the
+  // package, then fall back to "Untitled SOW"; the card link takes the
+  // user to the workspace where the full context lives.
+  const pending = pkg.pending_with && pkg.pending_with.length
+    ? `Pending with ${pkg.pending_with.join(", ")}`
+    : null;
   return {
-    sowName: `SOW package ${pkg.id.slice(0, 8)}`,
-    clientName: null,
+    sowName:
+      pkg.sow_title?.trim() ||
+      pkg.opportunity_title?.trim() ||
+      "Untitled SOW",
+    clientName: pkg.client_name ?? null,
     engagementType: null,
-    ownerName: null,
+    ownerName: pkg.owner?.name ?? null,
     ownerEmail: null,
     proposedValue: null,
     currency: "USD",
@@ -353,15 +361,15 @@ function buildMeta(
         : "within floor"
       : null,
     completeness: pkg.status.replace(/_/g, " "),
-    nextAction: pkg.released_at
-      ? "Distribution live"
-      : pkg.status === "ready_to_sign"
-      ? "Send envelope"
-      : pkg.status === "pending_ceo_exception"
-      ? "CEO decision"
-      : "Await reviewer",
-    ndaAgreement: nda ?? null,
-    msaAgreement: msa ?? null,
+    nextAction:
+      pending ??
+      (pkg.released_at
+        ? "Distribution live"
+        : pkg.status === "ready_to_sign"
+        ? "Send envelope"
+        : pkg.status === "pending_ceo_exception"
+        ? "CEO decision"
+        : "Await reviewer"),
     dueDate: null,
   };
 }

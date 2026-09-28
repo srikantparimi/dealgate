@@ -491,3 +491,95 @@ resource "aws_cloudwatch_event_target" "audit_export" {
     }
   }
 }
+
+# ------------------------------------------------------------------
+# S17 addendum: nightly (hourly) sweep of e2e/smoke residue.
+# ------------------------------------------------------------------
+
+resource "aws_ecs_task_definition" "e2e_cleanup" {
+  family                   = "${var.name_prefix}-e2e-cleanup"
+  cpu                      = tostring(var.cpu)
+  memory                   = tostring(var.memory)
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  execution_role_arn       = var.task_execution_role_arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name        = "e2e-cleanup"
+      image       = "${var.ecr_repository_url}:${var.image_tag}"
+      essential   = true
+      command     = ["python", "-m", "worker.e2e_cleanup"]
+      environment = local.base_env
+      secrets = [
+        { name = "POSTGRES_URL", valueFrom = var.db_url_secret_arn },
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.schedulers.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "e2e-cleanup"
+        }
+      }
+    }
+  ])
+}
+
+data "aws_iam_policy_document" "events_runtask_e2e_cleanup" {
+  statement {
+    effect    = "Allow"
+    actions   = ["ecs:RunTask"]
+    resources = [aws_ecs_task_definition.e2e_cleanup.arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "ecs:cluster"
+      values   = [var.ecs_cluster_arn]
+    }
+  }
+
+  statement {
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = [aws_iam_role.task.arn, var.task_execution_role_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "events_runtask_e2e_cleanup" {
+  name   = "${var.name_prefix}-schedulers-events-runtask-e2e-cleanup"
+  role   = aws_iam_role.events.id
+  policy = data.aws_iam_policy_document.events_runtask_e2e_cleanup.json
+}
+
+resource "aws_cloudwatch_event_rule" "e2e_cleanup" {
+  name                = "${var.name_prefix}-e2e-cleanup"
+  description         = "S17: sweep e2e/smoke residue every hour so it never surfaces in Kanna's lists."
+  schedule_expression = "rate(1 hour)"
+}
+
+resource "aws_cloudwatch_event_target" "e2e_cleanup" {
+  rule      = aws_cloudwatch_event_rule.e2e_cleanup.name
+  target_id = "e2e-cleanup"
+  arn       = var.ecs_cluster_arn
+  role_arn  = aws_iam_role.events.arn
+
+  ecs_target {
+    task_definition_arn = aws_ecs_task_definition.e2e_cleanup.arn
+    launch_type         = "FARGATE"
+    task_count          = 1
+    platform_version    = "LATEST"
+
+    network_configuration {
+      subnets          = var.private_subnet_ids
+      security_groups  = var.task_security_group_ids
+      assign_public_ip = false
+    }
+  }
+}

@@ -26,10 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from app.auth import AuthUser
-from app.models.client import Agreement, Client, LegalEntity
+from app.models.client import Client
 from app.models.gm_model import GmModel
 from app.models.opportunity import Opportunity
-from app.services.clients import coverage_state as _coverage_state
 
 # Roles that can see every deal (build-guide §3 leader roles + admin).
 LEADER_ROLES: frozenset[str] = frozenset(
@@ -135,35 +134,6 @@ def build_deal_count_query(user: AuthUser, filters: DealListFilters) -> Select:
     if filters.stage:
         stmt = stmt.where(Opportunity.sales_stage == filters.stage)
     return stmt
-
-
-async def coverage_state_summary(
-    session: AsyncSession, client_id: uuid.UUID | None, today: date | None = None
-) -> str:
-    """Return a short human string for the deal's coverage state.
-
-    Delegates to the pure :func:`app.services.clients.coverage_state` after
-    loading the client's agreements. See that function for the label set.
-    """
-
-    if client_id is None:
-        return "No client linked"
-
-    entity_ids = (
-        await session.execute(
-            select(LegalEntity.id).where(LegalEntity.client_id == client_id)
-        )
-    ).scalars().all()
-    agreements: list[Agreement] = []
-    if entity_ids:
-        agreements = list(
-            (
-                await session.execute(
-                    select(Agreement).where(Agreement.legal_entity_id.in_(entity_ids))
-                )
-            ).scalars()
-        )
-    return _coverage_state(agreements, today=today)
 
 
 async def get_client_name(session: AsyncSession, client_id: uuid.UUID | None) -> str | None:

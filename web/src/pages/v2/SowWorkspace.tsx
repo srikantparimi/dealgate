@@ -25,8 +25,25 @@ import {
 } from "./sow-workspace/readiness";
 import { formatDate, shortId } from "./sow-workspace/format";
 import { SubmitApprovalDialog } from "./sow-workspace/SubmitApprovalDialog";
-import { agreementValid, workspaceTitle } from "./sow-workspace/readiness";
-import { getMe, type MeResponse } from "../../api/client";
+import { workspaceTitle } from "./sow-workspace/readiness";
+import {
+  assessSowDeletion,
+  deleteSow,
+  getMe,
+  type DeletionAssessmentResponse,
+  type MeResponse,
+} from "../../api/client";
+import { Trash2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../../ui-v2/primitives/dialog";
+import type { ReactNode as _RN } from "react";
+function DialogFooter({ children }: { children: _RN }) {
+  return <div className="mt-4 flex justify-end gap-2">{children}</div>;
+}
 
 const TAB_ORDER = [
   "overview",
@@ -67,8 +84,39 @@ export function SowWorkspacePage() {
   const [submitOpen, setSubmitOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(Date.now());
   const [viewer, setViewer] = useState<MeResponse | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteAssessment, setDeleteAssessment] = useState<DeletionAssessmentResponse | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const requestNo = useRef(0);
   useEffect(() => { getMe().then(setViewer).catch(() => setViewer(null)); }, []);
+
+  const openDelete = useCallback(async () => {
+    if (!snap?.sow?.sow_id) return;
+    setDeleteOpen(true);
+    setDeleteError(null);
+    try {
+      const a = await assessSowDeletion(snap.sow.sow_id);
+      setDeleteAssessment(a);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Assessment failed");
+    }
+  }, [snap]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!snap?.sow?.sow_id) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteSow(snap.sow.sow_id);
+      setDeleteOpen(false);
+      nav("/sows");
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  }, [snap, nav]);
 
   const refresh = useCallback(async () => {
     if (!id) return;
@@ -171,26 +219,11 @@ export function SowWorkspacePage() {
           }
           status={
             <>
-              <StatusBadge
-                tone={
-                  snap.agreements.some(
-                    (a) => a.kind === "NDA" && agreementValid(a),
-                  )
-                    ? "ok"
-                    : "warn"
-                }
-                label="NDA"
-              />
-              <StatusBadge
-                tone={
-                  snap.agreements.some(
-                    (a) => a.kind === "MSA" && agreementValid(a),
-                  )
-                    ? "ok"
-                    : "warn"
-                }
-                label="MSA"
-              />
+              {snap.sow?.agreements_signed ? (
+                <StatusBadge tone="ok" label="NDA/MSA marked signed" />
+              ) : (
+                <StatusBadge tone="neutral" label="NDA/MSA note only" />
+              )}
               <StatusBadge
                 tone={snap.sow?.confirmed_at ? "ok" : "warn"}
                 label={snap.sow?.confirmed_at ? "Scope confirmed" : "Scope draft"}
@@ -222,20 +255,32 @@ export function SowWorkspacePage() {
             </>
           }
           primaryAction={
-            <Button
-              type="button"
-              className="whitespace-normal h-auto min-h-9 max-w-full text-left"
-              disabled={step.disabled || (step.action === "submit" && !canSubmit)}
-              onClick={() => {
-                if (step.action === "submit") setSubmitOpen(true);
-                else if (step.label === "Complete scope") nav(`/sows/new?opportunityId=${id}`);
-                else if (step.href) nav(`/sows/${id}/${step.href}`);
-              }}
-              aria-label={step.label}
-              title={step.reason}
-            >
-              {step.label}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                className="whitespace-normal h-auto min-h-9 max-w-full text-left"
+                disabled={step.disabled || (step.action === "submit" && !canSubmit)}
+                onClick={() => {
+                  if (step.action === "submit") setSubmitOpen(true);
+                  else if (step.label === "Complete scope") nav(`/sows/new?opportunityId=${id}`);
+                  else if (step.href) nav(`/sows/${id}/${step.href}`);
+                }}
+                aria-label={step.label}
+                title={step.reason}
+              >
+                {step.label}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void openDelete()}
+                aria-label="Delete SOW"
+                title="Delete this SOW at any stage"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete SOW
+              </Button>
+            </div>
           }
         />
 
@@ -284,6 +329,44 @@ export function SowWorkspacePage() {
         </aside>
       </div>
       <SubmitApprovalDialog id={id} open={submitOpen} onOpenChange={setSubmitOpen} onSubmitted={() => { void refresh(); nav(`/sows/${id}/approvals`); }} />
+      <Dialog open={deleteOpen} onOpenChange={(o) => (o ? undefined : setDeleteOpen(false))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this SOW?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-body">
+            <p>
+              {workspaceTitle(snap)} — client{" "}
+              {snap.deal?.client_name ?? "Unassigned"}
+            </p>
+            <p className="text-secondary text-text-secondary">
+              The delete is hard: SOW versions, GM, staffing, approval package,
+              tasks and files all go. An audit line records who deleted the SOW,
+              when, its title, stage and price. This cannot be undone.
+            </p>
+            {deleteAssessment ? (
+              <ul className="text-body">
+                {Object.entries(deleteAssessment.counts).map(([k, v]) => (
+                  <li key={k} data-testid={`delete-cascade-${k}`}>
+                    {k.replaceAll("_", " ")}: {v}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-secondary text-text-secondary">Assessing cascade…</p>
+            )}
+            {deleteError ? <p role="alert" className="text-danger">{deleteError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button onClick={() => void confirmDelete()} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete SOW"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

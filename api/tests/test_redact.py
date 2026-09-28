@@ -18,7 +18,7 @@ import pytest_asyncio
 
 from app.db import get_session
 from app.main import app as main_app
-from app.models.client import Agreement, Client, LegalEntity
+from app.models.client import Client, LegalEntity
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
 from app.models.user import User
@@ -128,6 +128,10 @@ def test_roles_allowed_cost_is_the_expected_five():
 
 
 async def _seed_client_with_coverage(session) -> Client:
+    """S17: `coverage` no longer exists as a concept. This helper just
+    seeds a client + legal entity so downstream tests can wire an
+    opportunity to it. Agreements are a flat doc store now."""
+
     client = Client(
         id=uuid.uuid4(),
         name=f"Client {uuid.uuid4().hex[:6]}",
@@ -137,18 +141,6 @@ async def _seed_client_with_coverage(session) -> Client:
     await session.flush()
     entity = LegalEntity(id=uuid.uuid4(), client_id=client.id, name="Entity 1")
     session.add(entity)
-    await session.flush()
-    for kind in ("NDA", "MSA"):
-        session.add(
-            Agreement(
-                id=uuid.uuid4(),
-                legal_entity_id=entity.id,
-                kind=kind,
-                state="executed",
-                effective_date=date(2026, 1, 1),
-                expiry=date(2030, 12, 31),
-            )
-        )
     await session.commit()
     return client
 

@@ -363,9 +363,7 @@ async def _create_opportunity(
             "governance_status": "Intake",
         },
     )
-    from app.services.agreement_tracking import ensure_agreement_tasks
-
-    await ensure_agreement_tasks(session, client_id=client_id, owner_id=uploader_id, actor_id=uploader_id)
+    # S17: SOW-first intake no longer auto-creates NDA/MSA tasks.
     return opp
 
 
@@ -736,6 +734,7 @@ async def resume_after_pick(
     job: SowUploadJob,
     client_id: uuid.UUID | None,
     create_new: dict[str, Any] | None,
+    agreements_signed: bool = False,
 ) -> SowUploadJob:
     """Resume a paused job once the reviewer has chosen a client.
 
@@ -799,6 +798,10 @@ async def resume_after_pick(
     job.opportunity_id = opportunity.id
     job.sow_version_id = version.id
     job.resolution = resolution
+    if agreements_signed:
+        # S17 checkbox: informational only, no gate. Stamp on the version
+        # so the confirmation payload can surface it as a note.
+        version.agreements_signed = True
     await session.flush()
 
     await _transition(session, job=job, status="deriving_gm")

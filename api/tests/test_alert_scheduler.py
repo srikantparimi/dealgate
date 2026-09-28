@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from app.audit import append_audit, verify_chain
 from app.models.audit import AuditEvent
-from app.models.client import Agreement, Client, LegalEntity
+from app.models.client import Client, LegalEntity
 from app.models.notification import Notification
 from app.models.opportunity import Opportunity
 from app.models.task import Task
@@ -26,7 +26,6 @@ from app.models.user import User
 from app.scheduler.ledger import SchedulerFired  # noqa: F401 — register mapper
 
 from worker.alert_scheduler import (
-    EXPIRY_WARNING_WINDOW_DAYS,
     _business_days_between,
     run_tick,
 )
@@ -75,24 +74,6 @@ async def sales_leader(session):
     return u
 
 
-async def _seed_agreement(
-    session, *, expiry: date, owner_email: str | None = None, state: str = "executed"
-) -> Agreement:
-    client = Client(id=uuid.uuid4(), name="Acme Corp")
-    entity = LegalEntity(id=uuid.uuid4(), client_id=client.id, name="Acme US")
-    agreement = Agreement(
-        id=uuid.uuid4(),
-        legal_entity_id=entity.id,
-        kind="MSA",
-        state=state,
-        owner_email=owner_email,
-        expiry=expiry,
-    )
-    session.add_all([client, entity, agreement])
-    await session.commit()
-    return agreement
-
-
 async def _seed_opportunity(
     session, *, owner: User, next_client_date: date
 ) -> Opportunity:
@@ -132,100 +113,12 @@ def test_business_days_between_handles_weekend_wraparound():
     assert _business_days_between(date(2026, 9, 18), date(2026, 9, 17)) == 0
 
 
-# ---- agreement expiry warning -----------------------------------------
-
-
-async def test_expiry_within_window_creates_task_and_notifies_owner(
-    session, legal_user
-):
-    expiry = FIXED_NOW.date() + timedelta(days=EXPIRY_WARNING_WINDOW_DAYS)
-    agreement = await _seed_agreement(session, expiry=expiry, owner_email=LEGAL_LEADER)
-
-    result = await run_tick(session)
-
-    assert result.tasks_created == 1
-    tasks = list(
-        (
-            await session.execute(
-                select(Task).where(Task.category == "agreement.expiry_warning")
-            )
-        )
-        .scalars()
-        .all()
-    )
-    assert len(tasks) == 1
-    assert tasks[0].owner_id == legal_user.id
-    assert tasks[0].due_date == expiry
-
-    notifs = list(
-        (
-            await session.execute(
-                select(Notification).where(
-                    Notification.related_entity == "agreement",
-                    Notification.related_entity_id == str(agreement.id),
-                    Notification.category == "expiry_warning",
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    # Fan-out across the four channels (email, teams, slack, inapp).
-    assert {n.channel for n in notifs} == {"email", "teams", "slack", "inapp"}
-    assert all(n.user_id == legal_user.id for n in notifs)
-    assert await verify_chain(session) is True
-
-
-async def test_expiry_trigger_is_idempotent_across_ticks(session, legal_user):
-    expiry = FIXED_NOW.date() + timedelta(days=30)
-    await _seed_agreement(session, expiry=expiry, owner_email=LEGAL_LEADER)
-
-    first = await run_tick(session)
-    second = await run_tick(session)
-
-    assert first.tasks_created == 1
-    assert second.tasks_created == 0
-    assert second.triggers_skipped >= 1
-
-    tasks = list((await session.execute(select(Task))).scalars().all())
-    assert len(tasks) == 1
-
-
-async def test_expiry_outside_window_creates_nothing(session, legal_user):
-    expiry = FIXED_NOW.date() + timedelta(days=90)
-    await _seed_agreement(session, expiry=expiry, owner_email=LEGAL_LEADER)
-
-    result = await run_tick(session)
-    assert result.tasks_created == 0
-    tasks = list((await session.execute(select(Task))).scalars().all())
-    assert tasks == []
-
-
-async def test_expired_agreement_creates_expired_task(session, legal_user):
-    expiry = FIXED_NOW.date() - timedelta(days=1)
-    await _seed_agreement(session, expiry=expiry, owner_email=LEGAL_LEADER)
-
-    result = await run_tick(session)
-    assert result.tasks_created == 1
-    task = (
-        await session.execute(select(Task).where(Task.category == "agreement.expired"))
-    ).scalar_one()
-    assert task.owner_id == legal_user.id
-    # Second tick does not re-create.
-    again = await run_tick(session)
-    assert again.tasks_created == 0
-
-
-async def test_non_executed_agreement_is_ignored(session, legal_user):
-    # `drafting` should never enter the expiry pipeline even with a near date.
-    await _seed_agreement(
-        session,
-        expiry=FIXED_NOW.date() + timedelta(days=10),
-        owner_email=LEGAL_LEADER,
-        state="drafting",
-    )
-    result = await run_tick(session)
-    assert result.tasks_created == 0
+# ---- agreement expiry warning (S17: gone) -----------------------------
+#
+# Agreements are a flat NDA/MSA doc store in S17: no expiry column, no
+# state machine, no owner_email. The five agreement-scheduler tests that
+# used to live here (expiry-within-window, idempotence, outside-window,
+# expired, non-executed) went with them.
 
 
 # ---- opportunity overdue check-in --------------------------------------
@@ -402,19 +295,8 @@ async def test_task_escalation_stops_at_max_level(session, sales_leader):
     assert result.tasks_created == 0
 
 
-# ---- time-travel via DEALGATE_NOW --------------------------------------
-
-
-async def test_dealgate_now_env_controls_the_tick_clock(
-    session, legal_user, monkeypatch
-):
-    # Move the clock 30 days forward — an agreement expiring in 80 days is
-    # then inside the 60-day window and must fire.
-    monkeypatch.setenv("DEALGATE_NOW", (FIXED_NOW + timedelta(days=30)).isoformat())
-    await _seed_agreement(
-        session,
-        expiry=FIXED_NOW.date() + timedelta(days=80),
-        owner_email=LEGAL_LEADER,
-    )
-    result = await run_tick(session)
-    assert result.tasks_created == 1
+# ---- time-travel via DEALGATE_NOW (S17: agreement clock removed) ------
+#
+# The former test used a synthetic agreement expiry to prove the clock
+# override. S17 removes agreement expiry entirely; the DEALGATE_NOW override
+# is exercised by every other tick test through the FIXED_NOW fixture.
