@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# S18 §1 · hard gate.
+#
+# After every e2e run, every smoke run and (via CI) every deploy, this
+# script asks the deployed API to enumerate clients whose name matches
+# any known e2e/smoke run-tag prefix. Exit 0 iff the count is 0. Exit 1
+# otherwise, with the offending rows printed so someone can chase down
+# the leaky spec.
+#
+# The list of prefixes lives here (not in the API) so a new test tag can
+# be added without a deploy. Keep it in sync with the nightly worker at
+# worker/e2e_cleanup.py::_PREFIX_RE.
+#
+# Usage:
+#   scripts/check-test-data-clean.sh                 # against staging default
+#   BASE_URL=... scripts/check-test-data-clean.sh    # against any other env
+
+set -euo pipefail
+
+BASE_URL="${BASE_URL:-https://app.dealgateapp.com}"
+E2E_SECRET_ID="${E2E_SECRET_ID:-officeapp-dev-e2e-user}"
+AWS_REGION_="${AWS_REGION:-us-east-2}"
+
+CREDS_JSON=$(aws --region "$AWS_REGION_" secretsmanager get-secret-value \
+  --secret-id "$E2E_SECRET_ID" --query SecretString --output text 2>/dev/null || true)
+[ -n "$CREDS_JSON" ] || { echo "[gate] cannot read e2e Cognito creds" >&2; exit 2; }
+POOL=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["user_pool_id"])')
+CLIENT=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["client_id"])')
+USER=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["username"])')
+PASS=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])')
+AUTH_JSON=$(aws --region "$AWS_REGION_" cognito-idp admin-initiate-auth \
+  --user-pool-id "$POOL" --client-id "$CLIENT" \
+  --auth-flow ADMIN_USER_PASSWORD_AUTH \
+  --auth-parameters USERNAME="$USER",PASSWORD="$PASS" 2>/dev/null)
+ID_TOKEN=$(printf '%s' "$AUTH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["AuthenticationResult"]["IdToken"])')
+
+TAG_PYTHON=$(cat <<'PY'
+import json, re, sys
+prefix_re = re.compile(
+    r"^(?:s1[2-9]-|s17-|s18-|"
+    r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
+    r"S17 e2e |S18 e2e |"
+    r"smoke |Peppermill Casino \(smoke fixture\)|"
+    r"S17 delete-everywhere)",
+    re.IGNORECASE,
+)
+data = json.load(sys.stdin)
+leaky = [c for c in data.get("items", []) if prefix_re.match(c.get("name") or "")]
+print(len(leaky))
+for c in leaky:
+    print(f"LEAK\t{c['id']}\t{c['name']}")
+PY
+)
+
+RESP=$(curl -sS -H "Authorization: Bearer $ID_TOKEN" "$BASE_URL/api/clients?size=200")
+OUT=$(printf '%s' "$RESP" | python3 -c "$TAG_PYTHON")
+COUNT=$(printf '%s\n' "$OUT" | head -1)
+LEAKS=$(printf '%s\n' "$OUT" | tail -n +2)
+
+if [ "$COUNT" = "0" ]; then
+  echo "[gate] clean · 0 test-tagged clients on $BASE_URL"
+  exit 0
+fi
+
+echo "[gate] FAIL · $COUNT test-tagged clients still on $BASE_URL" >&2
+printf '%s\n' "$LEAKS" >&2
+exit 1

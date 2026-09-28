@@ -17,11 +17,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { test, expect, request as pwRequest } from "@playwright/test";
 import { authStaging, mintStagingTokens } from "../fixtures/staging-auth";
+import { registerRunTag } from "../fixtures/tag-teardown";
 
 const BASE = process.env.E2E_BASE_URL ?? "https://app.dealgateapp.com";
 const REPORT_DIR = path.resolve(__dirname, "..", "..", "..", "docs", "reports", "s17");
 fs.mkdirSync(REPORT_DIR, { recursive: true });
 const RUN_TAG = `s17-e2e-${new Date().toISOString().replaceAll(/[-:T.Z]/g, "")}`;
+registerRunTag(RUN_TAG);
 const FIXTURE = path.resolve(
   __dirname,
   "..",

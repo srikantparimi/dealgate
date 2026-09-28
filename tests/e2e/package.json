@@ -4,7 +4,8 @@
   "private": true,
   "description": "Playwright end-to-end suite for DealGate (blueprint § 11 scenarios).",
   "scripts": {
-    "test": "playwright test",
+    "test": "playwright test && ../../scripts/check-test-data-clean.sh",
+    "test:no-gate": "playwright test",
     "test:ui": "playwright test --ui",
     "install-browsers": "playwright install --with-deps chromium",
     "typecheck": "tsc --noEmit"

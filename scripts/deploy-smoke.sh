@@ -19,17 +19,42 @@ AWS_REGION_="${AWS_REGION:-us-east-2}"
 RUN_TAG="smoke $(date -u +%Y%m%dT%H%M%SZ)"
 FIXTURE_FILE="${S17_FIXTURE_FILE:-docs/reports/s15/input/Peppermill_Casino_AI_Assessment_SOW.docx}"
 
-CLIENT_ID_TO_DELETE=""
-
 log() { printf '[smoke] %s\n' "$*" >&2; }
 fail() { printf '[smoke] FAIL: %s\n' "$*" >&2; exit 1; }
 
+# S18 §1: tag-based cleanup + hard gate. Every exit path (success, fail,
+# early crash) sweeps the run's own tag first, then invokes the gate
+# script which fails the run if any e2e/smoke row survives anywhere on
+# staging. Nothing test-tagged is allowed to persist after a smoke run.
+export RUN_TAG
+GATE_SCRIPT="$(cd "$(dirname "$0")" && pwd)/check-test-data-clean.sh"
 cleanup() {
   status=$?
-  if [ -n "$CLIENT_ID_TO_DELETE" ]; then
-    log "cleanup · DELETE client $CLIENT_ID_TO_DELETE"
-    curl -sS -o /dev/null -X DELETE "${AUTH_H[@]}" \
-      "$BASE_URL/api/clients/$CLIENT_ID_TO_DELETE?reason=smoke%20fixture" || true
+  if [ -n "${AUTH_H+x}" ]; then
+    local body ids id
+    body=$(curl -sS -o - "${AUTH_H[@]}" "$BASE_URL/api/clients?size=200" || echo '{}')
+    ids=$(printf '%s' "$body" | python3 -c "
+import json, sys, os
+tag = os.environ.get('RUN_TAG', '')
+try:
+  data = json.load(sys.stdin)
+except Exception:
+  sys.exit(0)
+for c in data.get('items', []):
+  if tag and tag in (c.get('name') or ''):
+    print(c['id'])
+" || true)
+    for id in $ids; do
+      log "cleanup · DELETE client $id"
+      curl -sS -o /dev/null -X DELETE "${AUTH_H[@]}" \
+        "$BASE_URL/api/clients/$id?reason=smoke%20teardown" || true
+    done
+  fi
+  if [ -x "$GATE_SCRIPT" ]; then
+    if ! "$GATE_SCRIPT"; then
+      log "gate FAIL — a test-tagged row survived the run"
+      status=1
+    fi
   fi
   exit "$status"
 }
@@ -126,4 +151,4 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' \
   "$BASE_URL/api/sows/drafts?mine=false" || true)
 [ "$status" = "200" ] || fail "drafts list returned $status"
 
-log "GREEN — deploy is safe to keep. (cleanup runs next)"
+log "GREEN — deploy is safe to keep. (cleanup + gate run next)"
