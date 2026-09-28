@@ -54,6 +54,12 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     that the signatories-picker fix was a one-off; the pattern was the
     requirement.
 
+14. **Branch discipline.** All work happens on a feature branch. The branch
+    deploys to staging, `scripts/deploy-smoke.sh` is green, the slice's own
+    proof passes, and for user-facing slices the product owner has clicked
+    through it. Only then does it squash-merge to main. Main is always
+    releasable. Adopted with S16.
+
 ## Where things live
 
 - `docs/blueprint.md` — the governance policy (source of truth for rules).

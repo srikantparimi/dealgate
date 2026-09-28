@@ -1,224 +1,178 @@
-/**
- * UploadAgreementDialog — the six-step upload flow from spec §12:
- *   Select file + type → Associate entity/opportunity → Extract →
- *   Review + uncertainty → Save draft → Submit for review.
- *
- * The evidence PUT is deferred until the agreement row exists, so the
- * dialog collects metadata and hands the file to the parent's
- * `onSubmit`. Real S3 uploads reuse `getUploadUrl` from `AgreementsPanel`
- * once the row is created — this dialog keeps the intake honest without
- * duplicating that logic.
- */
-
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { Upload } from "lucide-react";
+import {
+  extractAgreement,
+  executeAgreement,
+  type AgreementRow,
+  type AgreementDocumentDraft,
+} from "../../../api/client";
 import { Button } from "../../../ui-v2/primitives/button";
+import { Input } from "../../../ui-v2/primitives/input";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "../../../ui-v2/primitives/dialog";
-import { Input } from "../../../ui-v2/primitives/input";
-import { Label } from "../../../ui-v2/primitives/label";
-import type { AgreementKind } from "../../../api/client";
 
-export interface UploadDraft {
-  file: File | null;
-  kind: AgreementKind;
-  entity: string;
-  linkedOpportunity: string;
-  ownerEmail: string;
-  reviewNote: string;
+function field(draft: AgreementDocumentDraft, key: string) {
+  const raw = draft.fields[key];
+  return raw && typeof raw === "object" ? raw : { value: "", page_ref: null };
 }
-
-export interface UploadAgreementDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (draft: UploadDraft) => void;
-}
-
-const EMPTY: UploadDraft = {
-  file: null,
-  kind: "NDA",
-  entity: "",
-  linkedOpportunity: "",
-  ownerEmail: "",
-  reviewNote: "",
-};
 
 export function UploadAgreementDialog({
-  open,
-  onOpenChange,
-  onSubmit,
-}: UploadAgreementDialogProps) {
-  const [draft, setDraft] = useState<UploadDraft>(EMPTY);
-  const [step, setStep] = useState(0);
-
-  function update<K extends keyof UploadDraft>(key: K, value: UploadDraft[K]) {
-    setDraft((d) => ({ ...d, [key]: value }));
+  agreement,
+  onClose,
+  onSaved,
+}: {
+  agreement: AgreementRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState<AgreementDocumentDraft | null>(null);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const corrected =
+    draft &&
+    (start !== field(draft, "effective_from").value ||
+      end !== field(draft, "expiry").value);
+  async function upload(file: File) {
+    setBusy(true);
+    setError(null);
+    setDraft(null);
+    setConfirmed(false);
+    try {
+      const result = await extractAgreement(agreement.id, file);
+      setDraft(result);
+      setStart(field(result, "effective_from").value ?? "");
+      setEnd(field(result, "expiry").value ?? "");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
-
-  function reset() {
-    setDraft(EMPTY);
-    setStep(0);
+  async function save() {
+    if (!draft) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await executeAgreement(agreement.id, {
+        document_id: draft.id,
+        effective_from: start,
+        expiry: end,
+        signed_confirmed: confirmed,
+        correction_reason: reason || undefined,
+      });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
-
-  function handleClose(next: boolean) {
-    if (!next) reset();
-    onOpenChange(next);
-  }
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    onSubmit(draft);
-    reset();
-    onOpenChange(false);
-  }
-
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent aria-label="Upload agreement">
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Upload agreement</DialogTitle>
+          <DialogTitle>File signed {agreement.kind}</DialogTitle>
           <DialogDescription>
-            Select the file and type, associate an entity, and submit for
-            Legal review. Extraction confidence is never legal
-            verification (spec §12).
+            {agreement.client_name} ·{" "}
+            {agreement.legal_entity_name ?? "Legal entity"}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {step === 0 ? (
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-secondary text-text-secondary">
-                Step 1 · Select file &amp; type
-              </legend>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="agr-file">Document</Label>
-                <input
-                  id="agr-file"
-                  type="file"
-                  accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={(e) =>
-                    update("file", e.target.files?.[0] ?? null)
-                  }
-                  className="text-body text-text"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="agr-kind">Type</Label>
-                <select
-                  id="agr-kind"
-                  value={draft.kind}
-                  onChange={(e) => update("kind", e.target.value as AgreementKind)}
-                  className="h-10 rounded-control border border-input-border bg-surface px-3 text-body text-text focus-visible:outline-focus"
-                >
-                  <option value="NDA">NDA</option>
-                  <option value="MSA">MSA</option>
-                </select>
-              </div>
-            </fieldset>
-          ) : null}
-
-          {step === 1 ? (
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-secondary text-text-secondary">
-                Step 2 · Associate entity &amp; opportunity
-              </legend>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="agr-entity">Legal entity</Label>
+        <label className="grid gap-2 text-body">
+          Signed PDF or DOCX
+          <Input
+            type="file"
+            accept=".pdf,.docx"
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void upload(f);
+            }}
+          />
+        </label>
+        {busy && <p role="status">Processing...</p>}
+        {error && (
+          <p role="alert" className="text-danger">
+            {error}
+          </p>
+        )}
+        {draft && (
+          <div className="grid gap-4 text-body">
+            <p>
+              Extracted entity:{" "}
+              {field(draft, "client_legal_name").value || "Not found"}
+            </p>
+            <label className="grid gap-1">
+              Effective date
+              <Input
+                type="date"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+              <span className="text-secondary text-text-secondary">
+                Source {String(draft.fields.ref_unit ?? "page")}{" "}
+                {field(draft, "effective_from").page_ref ?? "unavailable"}
+              </span>
+            </label>
+            <label className="grid gap-1">
+              Expiry date
+              <Input
+                type="date"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+              <span className="text-secondary text-text-secondary">
+                Source {String(draft.fields.ref_unit ?? "page")}{" "}
+                {field(draft, "expiry").page_ref ?? "unavailable"}
+              </span>
+            </label>
+            {corrected && (
+              <label className="grid gap-1">
+                Reason for date correction
                 <Input
-                  id="agr-entity"
-                  value={draft.entity}
-                  onChange={(e) => update("entity", e.target.value)}
-                  required
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
                 />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="agr-opp">Linked opportunity (optional)</Label>
-                <Input
-                  id="agr-opp"
-                  value={draft.linkedOpportunity}
-                  onChange={(e) =>
-                    update("linkedOpportunity", e.target.value)
-                  }
-                  placeholder="HubSpot deal id or SOW ref"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="agr-owner">Legal owner</Label>
-                <Input
-                  id="agr-owner"
-                  type="email"
-                  value={draft.ownerEmail}
-                  onChange={(e) => update("ownerEmail", e.target.value)}
-                  placeholder="legal@smartek21.com"
-                />
-              </div>
-            </fieldset>
-          ) : null}
-
-          {step === 2 ? (
-            <fieldset className="flex flex-col gap-3">
-              <legend className="text-secondary text-text-secondary">
-                Step 3 · Review &amp; submit
-              </legend>
-              <p className="text-body text-text-secondary">
-                Extraction runs after Legal accepts the draft. The row is
-                created in <em>Drafting</em> state so the register shows a
-                real audit trail before signature.
-              </p>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="agr-note">Reviewer note (optional)</Label>
-                <Input
-                  id="agr-note"
-                  value={draft.reviewNote}
-                  onChange={(e) => update("reviewNote", e.target.value)}
-                  placeholder="Anything the Legal reviewer should see first"
-                />
-              </div>
-            </fieldset>
-          ) : null}
-
-          <div className="flex items-center justify-between pt-2">
-            <div className="text-secondary text-text-secondary">
-              Step {step + 1} of 3
-            </div>
-            <div className="flex gap-2">
-              {step > 0 ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setStep((s) => s - 1)}
-                >
-                  Back
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => handleClose(false)}
-                >
-                  Cancel
-                </Button>
-              )}
-              {step < 2 ? (
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={() => setStep((s) => s + 1)}
-                  disabled={step === 0 && !draft.file}
-                >
-                  Next
-                </Button>
-              ) : (
-                <Button type="submit" variant="primary">
-                  Submit for review
-                </Button>
-              )}
-            </div>
+              </label>
+            )}
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              I confirm this document is signed, belongs to this legal entity,
+              and these dates match the document.
+            </label>
+            <Button
+              onClick={() => void save()}
+              disabled={
+                busy ||
+                !confirmed ||
+                !start ||
+                !end ||
+                end < start ||
+                Boolean(corrected && !reason.trim())
+              }
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              File as executed
+            </Button>
           </div>
-        </form>
+        )}
       </DialogContent>
     </Dialog>
   );

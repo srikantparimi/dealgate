@@ -80,7 +80,7 @@ describe("AppShell", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("link", { name: /settings & controls/i }),
+      screen.queryByRole("link", { name: /^settings$/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -96,7 +96,7 @@ describe("AppShell", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("link", { name: /settings & controls/i }),
+        screen.getByRole("link", { name: /^settings$/i }),
       ).toBeInTheDocument();
     });
   });

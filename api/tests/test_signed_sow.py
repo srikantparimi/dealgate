@@ -168,6 +168,10 @@ async def _seed_ready_to_sign_package(
     )
     session.add(opp)
     await session.flush()
+    from tests.test_coverage_gate import _seed_client_with_agreements
+
+    client, _ = await _seed_client_with_agreements(session)
+    opp.client_id = client.id
 
     sow = Sow(id=uuid.uuid4(), opportunity_id=opp.id)
     session.add(sow)

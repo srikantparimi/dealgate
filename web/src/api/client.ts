@@ -124,7 +124,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(await authHeaders()),
       ...(init.headers ?? {}),
     },
@@ -404,6 +404,9 @@ export interface AgreementRow {
   signatories: Signatory[] | null;
   created_at: ISODateTime;
   updated_at: ISODateTime;
+  client_name?: string | null;
+  legal_entity_name?: string | null;
+  display_state?: string | null;
 }
 
 export interface AgreementListResponse {
@@ -427,6 +430,7 @@ export interface CreateAgreementBody {
 }
 
 export interface PatchAgreementBody {
+  owner_email?: string | null;
   state?: AgreementState;
   next_action?: string | null;
   due_date?: ISODate | null;
@@ -501,6 +505,35 @@ export function getUploadUrl(
 
 export function getDownloadUrl(id: UUID): Promise<DownloadUrlResponse> {
   return request<DownloadUrlResponse>(`/agreements/${id}/evidence-download-url`);
+}
+
+export interface AgreementDocumentDraft {
+  id: UUID;
+  agreement_id: UUID;
+  confirmed: boolean;
+  fields: Record<string, { value: string | null; page_ref: number } | string | null>;
+}
+
+export function extractAgreement(id: UUID, file: File): Promise<AgreementDocumentDraft> {
+  const body = new FormData();
+  body.append("file", file);
+  return request(`/agreements/${id}/extract`, { method: "POST", body });
+}
+
+export function executeAgreement(id: UUID, body: { document_id: UUID; effective_from: string; expiry: string; signed_confirmed: boolean; correction_reason?: string }): Promise<AgreementRow> {
+  return request(`/agreements/${id}/execute`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export interface ProjectRow {
+  id: UUID; package_id: UUID; gm_model_id: UUID; title: string; client_name: string | null;
+  owner_name: string; sow_version: number; gm_version: number; released_at: string; term_end: string | null;
+  approved: { us: string | null; india: string | null };
+  forecast: { us: string | null; india: string | null; as_of: string | null };
+  resources: { id: UUID; name: string | null; role: string; location: string; allocation: string; hours: string; start_date: string; end_date: string }[];
+}
+
+export function listProjects(): Promise<{ items: ProjectRow[] }> {
+  return request("/projects");
 }
 
 // --- clients (S2 E3) -------------------------------------------------------
@@ -602,6 +635,7 @@ export function getClient(id: UUID): Promise<ClientDetail> {
 // --- tasks (S2-E3) ---------------------------------------------------------
 
 export interface TaskInboxRow {
+  record_url?: string | null;
   id: UUID;
   owner_id: UUID | null;
   subject: string;
@@ -915,30 +949,6 @@ export function getGmSchema(type: EngagementType): Promise<SandboxSchema> {
   return request<SandboxSchema>(`/gm/sandbox/schema/${type}`);
 }
 
-/**
- * Ask the API for the .xlsx of a sandbox scenario. Returns the raw Blob so
- * the page can drive a download without re-encoding the bytes.
- */
-export async function exportGmXlsx(body: SandboxRequest): Promise<Blob> {
-  const res = await fetch(`${BASE_URL}/gm/sandbox/export`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(await authHeaders()),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    const errBody = text ? safeJson(text) : null;
-    const message =
-      errBody && typeof errBody === "object" && "detail" in errBody
-        ? String((errBody as { detail: unknown }).detail)
-        : `API error ${res.status}`;
-    throw new ApiError(res.status, errBody, message);
-  }
-  return await res.blob();
-}
 
 // --- Opportunity Adviser (S3 E11) -----------------------------------------
 

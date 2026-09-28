@@ -363,6 +363,9 @@ async def _create_opportunity(
             "governance_status": "Intake",
         },
     )
+    from app.services.agreement_tracking import ensure_agreement_tasks
+
+    await ensure_agreement_tasks(session, client_id=client_id, owner_id=uploader_id, actor_id=uploader_id)
     return opp
 
 

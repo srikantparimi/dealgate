@@ -25,6 +25,11 @@ variable "sow_bucket_arn" {
   type        = string
 }
 
+variable "agreements_bucket_arn" {
+  description = "Agreement evidence bucket; the API may read/write only the agreements prefix."
+  type        = string
+}
+
 variable "region" {
   description = "AWS region; forwarded to task env as AWS_REGION."
   type        = string

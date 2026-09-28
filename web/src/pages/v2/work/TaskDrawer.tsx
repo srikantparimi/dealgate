@@ -153,6 +153,7 @@ export function TaskDrawer({
             </div>
 
             <div className="mt-6 flex flex-col gap-2 border-t border-divider pt-4">
+              {task.record_url && <Button variant="secondary" asChild><Link to={task.record_url}>Open agreement</Link></Button>}
               {workflowOnly ? (
                 <>
                   <p className="text-body text-text-secondary">

@@ -35,7 +35,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -62,6 +62,16 @@ from app.services.notifications import queue_notification
 
 class SignedSowError(HTTPException):
     """Base error surfaced by the router as-is."""
+
+
+async def _require_coverage(session, package):
+    from app.services.coverage_gate import check_msa_and_nda_executed
+
+    opportunity = await session.get(Opportunity, package.opportunity_id)
+    try:
+        await check_msa_and_nda_executed(session, opportunity)
+    except ApprovalError as exc:
+        raise SignedSowError(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 # ---- diff engine ---------------------------------------------------------
@@ -305,6 +315,7 @@ async def create_upload(
         )
 
     previous = await latest_upload_for(session, package_id)
+    await _require_coverage(session, package)
 
     upload = SignedSowUpload(
         id=uuid.uuid4(),
@@ -593,6 +604,7 @@ async def release(
     if opp is None:
         raise SignedSowError(status_code=404, detail="opportunity not found")
     owner_id = opp.owner_id or actor_id
+    await _require_coverage(session, package)
 
     # 1. SES fan-out. A missing recipient is silently skipped — the log
     # entry in the audit row records the actual recipient set.

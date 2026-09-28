@@ -12,10 +12,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
+from app.models.agreement_tracking import AgreementGap
 from app.services.tasks import (
     TaskListFilters,
     list_tasks,
@@ -44,6 +46,7 @@ class TaskRow(BaseModel):
     completed_at: datetime | None = None
     completed_by: uuid.UUID | None = None
     escalation_level: int
+    record_url: str | None = None
 
 
 class TaskListResponse(BaseModel):
@@ -85,8 +88,14 @@ async def list_tasks_endpoint(
         size=size,
     )
     rows, total = await list_tasks(session, user, filters)
+    gaps = dict((await session.execute(select(AgreementGap.task_id, AgreementGap.legal_entity_id)
+        .where(AgreementGap.task_id.in_([row.id for row in rows])))).all()) if rows else {}
+    items = [TaskRow.model_validate(row) for row in rows]
+    for item in items:
+        if item.id in gaps:
+            item.record_url = f"/agreements?entity={gaps[item.id]}"
     return TaskListResponse(
-        items=[TaskRow.model_validate(t) for t in rows],
+        items=items,
         page=page,
         size=size,
         total=total,

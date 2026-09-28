@@ -21,7 +21,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,9 +34,11 @@ from app.integrations.s3_evidence import (
     UnsupportedContentType,
     get_evidence_s3,
 )
-from app.models.client import Agreement, LegalEntity
+from app.models.client import Agreement, Client, LegalEntity
+from app.integrations.bedrock_sow_extract import BedrockSowExtract, get_bedrock_sow
 from app.services.agreement_state import (
     ALLOWED_STATES,
+    LEGACY_STATES,
     InvalidAgreementTransition,
     transition,
 )
@@ -84,6 +86,9 @@ class AgreementRow(BaseModel):
     signatories: list[dict[str, Any]] | None
     created_at: datetime
     updated_at: datetime
+    client_name: str | None = None
+    legal_entity_name: str | None = None
+    display_state: str | None = None
 
 
 class AgreementListResponse(BaseModel):
@@ -102,6 +107,7 @@ class AgreementCreateBody(BaseModel):
 
 class AgreementPatchBody(BaseModel):
     state: str | None = None
+    owner_email: EmailStr | None = None
     next_action: str | None = Field(default=None, max_length=255)
     due_date: date | None = None
     effective_from: date | None = None
@@ -142,7 +148,18 @@ def _serialize(value: Any) -> Any:
 
 
 def _row(agreement: Agreement) -> AgreementRow:
-    return AgreementRow.model_validate(agreement)
+    row = AgreementRow.model_validate(agreement)
+    row.effective_from = agreement.effective_from or agreement.effective_date
+    row.expiry = agreement.expiry or agreement.expiry_date
+    row.display_state = agreement.state
+    if agreement.state in ("drafting", "under_review"):
+        row.display_state = "requested"
+    elif agreement.state == "partially_signed":
+        row.display_state = "sent"
+    elif agreement.state == "executed" and row.expiry:
+        remaining = (row.expiry - date.today()).days
+        row.display_state = "expired" if remaining < 0 else "expiring" if remaining <= 60 else "executed"
+    return row
 
 
 async def _load(session: AsyncSession, agreement_id: uuid.UUID) -> Agreement:
@@ -175,6 +192,8 @@ async def create_agreement(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"state must be one of {list(ALLOWED_STATES)}",
         )
+    if body.state in ("executed", "expired"):
+        raise HTTPException(422, "Upload and confirm signed evidence before marking executed")
     # `legal_entity_id` must exist. Reject 404 rather than letting the FK
     # error bubble up as a 500 at flush time.
     legal_entity = (
@@ -232,7 +251,7 @@ async def list_agreements(
     if legal_entity_id is not None:
         stmt = stmt.where(Agreement.legal_entity_id == legal_entity_id)
     if state is not None:
-        if state not in ALLOWED_STATES:
+        if state not in (*ALLOWED_STATES, *LEGACY_STATES):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"state must be one of {list(ALLOWED_STATES)}",
@@ -250,10 +269,18 @@ async def list_agreements(
 
     # Agreements carry no cost fields — the response shape reflects that;
     # nothing further to strip.
-    return AgreementListResponse(items=[_row(r) for r in rows])
+    entities = {e.id: (e.name, name) for e, name in (await session.execute(
+        select(LegalEntity, Client.name).join(Client, Client.id == LegalEntity.client_id))).all()}
+    result = []
+    for agreement in rows:
+        row = _row(agreement)
+        row.legal_entity_name, row.client_name = entities.get(agreement.legal_entity_id, (None, None))
+        result.append(row)
+    return AgreementListResponse(items=result)
 
 
 _PATCH_TRACKED: tuple[str, ...] = (
+    "owner_email",
     "next_action",
     "due_date",
     "effective_from",
@@ -275,6 +302,10 @@ async def patch_agreement(
     provided = body.model_dump(exclude_unset=True)
     if not provided:
         return _row(agreement)
+    if provided.get("state") == "executed" and agreement.state != "executed":
+        raise HTTPException(422, "Upload and confirm signed evidence before marking executed")
+    if agreement.state in ("executed", "expired", "terminated", "superseded") and any(k in provided for k in ("effective_from", "expiry", "evidence_s3_key")):
+        raise HTTPException(422, "Upload replacement signed evidence to change executed dates or file")
 
     # Apply non-state fields FIRST so `expiry` is set before we validate the
     # `executed` transition inside `transition()`.
@@ -373,7 +404,7 @@ async def create_evidence_upload_url(
 )
 async def get_evidence_download_url(
     agreement_id: uuid.UUID,
-    actor: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
+    actor: AuthUser = Depends(require_role(*_READ_ROLES)),
     session: AsyncSession = Depends(get_session),
     s3: EvidenceS3 = Depends(get_evidence_s3),
 ) -> DownloadUrlResponse:
@@ -398,3 +429,55 @@ async def get_evidence_download_url(
 
 
 _ = current_user  # kept for future ownership checks; silences lint.
+
+
+class ExecuteDocumentBody(BaseModel):
+    document_id: uuid.UUID
+    effective_from: date
+    expiry: date
+    signed_confirmed: bool
+    correction_reason: str | None = Field(default=None, max_length=2048)
+
+
+@router.post("/{agreement_id}/extract")
+async def extract_signed_agreement(
+    agreement_id: uuid.UUID, file: UploadFile = File(...),
+    actor: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+    s3: EvidenceS3 = Depends(get_evidence_s3),
+    bedrock: BedrockSowExtract = Depends(get_bedrock_sow),
+):
+    from app.services.agreement_documents import extract_document
+    from app.services.user_provisioning import ensure_user
+
+    agreement = await _load(session, agreement_id)
+    if file.content_type not in ("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
+        raise HTTPException(422, "Only PDF and DOCX files are accepted")
+    payload = await file.read(25 * 1024 * 1024 + 1)
+    if not payload or len(payload) > 25 * 1024 * 1024:
+        raise HTTPException(422, "Upload a nonempty file no larger than 25 MB")
+    await ensure_user(session, actor)
+    return await extract_document(session, agreement=agreement, actor_id=actor.id, payload=payload,
+        filename=file.filename or "signed-agreement", content_type=file.content_type, bedrock=bedrock, s3=s3)
+
+
+@router.post("/{agreement_id}/execute", response_model=AgreementRow)
+async def execute_signed_agreement(
+    agreement_id: uuid.UUID, body: ExecuteDocumentBody,
+    actor: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.services.agreement_documents import execute_document
+    from app.services.user_provisioning import ensure_user
+
+    if not body.signed_confirmed:
+        raise HTTPException(422, "Confirm this file is signed and belongs to the selected legal entity")
+    if body.expiry < body.effective_from:
+        raise HTTPException(422, "Expiry must not precede the effective date")
+    await ensure_user(session, actor)
+    try:
+        row = await execute_document(session, agreement_id=agreement_id, document_id=body.document_id,
+            actor_id=actor.id, effective_from=body.effective_from, expiry=body.expiry, correction_reason=body.correction_reason)
+    except InvalidAgreementTransition as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return _row(row)

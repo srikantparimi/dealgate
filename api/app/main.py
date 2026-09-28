@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from app.middleware import ErrorCacheControlMiddleware
 from app.routers import (
     actuals,
+    projects,
     admin_bulk_imports,
     admin_function_owners,
     admin_policy,
@@ -163,6 +164,7 @@ app.include_router(admin_users.router)
 app.include_router(clients.router)
 app.include_router(client_rate_cards.router)
 app.include_router(agreements.router)
+app.include_router(projects.router)
 app.include_router(tasks.router)
 app.include_router(notifications.router)
 app.include_router(admin_rate_cards.router)

@@ -31,6 +31,8 @@ def _fresh(state: str, *, with_expiry: bool = True) -> Agreement:
         kind="NDA",
         state=state,
         expiry=date.today() + timedelta(days=365) if with_expiry else None,
+        effective_from=date.today(),
+        evidence_s3_key="agreements/fixture/signed.pdf",
     )
 
 

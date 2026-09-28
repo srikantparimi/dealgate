@@ -1,21 +1,7 @@
-"""Agreement state machine (build-guide §6.2).
+"""NDA/MSA tracking transitions. Legacy states remain readable without data rewrites.
 
-Ten states cover the NDA / MSA lifecycle from "we haven't started" to
-"replaced by a newer version". The transition graph is intentionally strict:
-Legal must move an agreement forward one step at a time so the audit trail
-matches the paperwork.
-
-`transition()` is the single mutation point. It:
-
-- rejects moves that are not in `ALLOWED_TRANSITIONS` (422 via
-  `InvalidAgreementTransition`);
-- refuses to promote to ``executed`` without an ``expiry`` set — the alert
-  scheduler needs the date and the blueprint requires it;
-- mutates the ORM row in-place. The caller owns the transaction and the
-  paired ``append_audit`` call (rule 5).
-
-Keep the states / transitions in lock-step with the CHECK constraint in
-`alembic/versions/20260918_0004_agreement_state.py`.
+Execution requires signed evidence and dates. Callers own the transaction and
+paired audit event; no internal review or approval cycle is involved.
 """
 
 from __future__ import annotations
@@ -28,47 +14,16 @@ if TYPE_CHECKING:
 
 # --- states ---------------------------------------------------------------
 
-# Order matches build-guide §6.2. Do not re-order — the migration CHECK
-# constraint stores the same list and downstream reports assume this order.
-ALLOWED_STATES: tuple[str, ...] = (
-    "missing",
-    "requested",
-    "drafting",
-    "under_review",
-    "sent",
-    "partially_signed",
-    "executed",
-    "expired",
-    "terminated",
-    "superseded",
-)
+# The database also retains legacy states for historical records.
+ALLOWED_STATES: tuple[str, ...] = ("missing", "requested", "sent", "executed", "expired")
 
-_ALLOWED_SET: frozenset[str] = frozenset(ALLOWED_STATES)
-
-
-# --- transitions ---------------------------------------------------------
-
-# Forward path is linear from `missing` through `executed`. Terminal states
-# (`expired`, `terminated`, `superseded`) are only reachable from `executed`.
-# `superseded` may be reached from any live state so a re-signed agreement
-# can retire the old row without waiting for it to expire.
-#
-# The wording of §6.2 is: Legal drives the lifecycle; the system enforces
-# that a state cannot skip the review + signature stages.
-ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "missing": {"requested", "drafting"},
-    "requested": {"drafting", "terminated"},
-    "drafting": {"under_review", "sent", "terminated"},
-    "under_review": {"drafting", "sent", "terminated"},
-    "sent": {"partially_signed", "executed", "drafting", "terminated"},
-    "partially_signed": {"executed", "terminated"},
-    "executed": {"expired", "terminated", "superseded"},
-    # Terminal states — no outgoing transitions. Legal must create a fresh
-    # agreement row to replace an expired / terminated / superseded one.
-    "expired": set(),
-    "terminated": set(),
-    "superseded": set(),
+LEGACY_STATES = ("drafting", "under_review", "partially_signed", "terminated", "superseded")
+_ALLOWED_SET = frozenset(ALLOWED_STATES)
+ALLOWED_TRANSITIONS = {
+    state: {"requested", "sent", "executed"} - {state}
+    for state in ("missing", "requested", "sent", "drafting", "under_review", "partially_signed")
 }
+ALLOWED_TRANSITIONS.update(executed={"expired"}, expired=set(), terminated=set(), superseded=set())
 
 
 # --- errors ---------------------------------------------------------------
@@ -101,7 +56,7 @@ def is_allowed(from_state: str, to_state: str) -> bool:
         return False
     if from_state == to_state:
         # No-op moves are not "transitions" — the router filters these before
-        # reaching us, but return False so the graph stays a strict DAG.
+        # reaching us).
         return False
     return to_state in ALLOWED_TRANSITIONS.get(from_state, set())
 
@@ -136,12 +91,15 @@ def transition(
             to_state=to_state,
         )
 
-    if to_state == "executed" and agreement.expiry is None:
+    if to_state == "executed" and (not agreement.expiry or not agreement.effective_from or not agreement.evidence_s3_key):
         raise InvalidAgreementTransition(
             from_state=agreement.state,
             to_state=to_state,
-            reason="`expiry` must be set before marking an agreement executed",
+            reason="signed evidence, effective_from and expiry are required for executed agreements",
         )
+    if to_state == "executed" and agreement.expiry < agreement.effective_from:
+        raise InvalidAgreementTransition(from_state=agreement.state, to_state=to_state,
+                                         reason="expiry must not precede effective_from")
 
     agreement.state = to_state
 

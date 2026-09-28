@@ -7,12 +7,13 @@ Importing this package registers every mapper on `Base.metadata` — Alembic's
 from app.models.actual import ActualImportBatch, ActualPeriod
 from app.models.adviser_estimate import AdviserEstimate
 from app.models.approval import Approval, ApprovalPackage
+from app.models.agreement_tracking import AgreementDocument, AgreementGap
 from app.models.audit import AuditEvent
 from app.models.capability import CapabilityCatalog
 from app.models.ceo_exception import CeoDelegate, CeoException
 from app.models.client import Agreement, Client, LegalEntity
 from app.models.client_alias import ClientAlias
-from app.models.client_contact import ClientContact
+from app.models.client_contact import ClientContact as ClientContact
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
 from app.models.direct_cost_settings import DirectCostSettings
 from app.models.embedding import SowEmbedding
@@ -49,6 +50,8 @@ __all__ = [
     "ActualPeriod",
     "AdviserEstimate",
     "Agreement",
+    "AgreementDocument",
+    "AgreementGap",
     "Approval",
     "ApprovalPackage",
     "AuditEvent",

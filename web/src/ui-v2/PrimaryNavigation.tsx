@@ -1,12 +1,8 @@
 import {
-  Activity,
-  Award,
-  Banknote,
   Building2,
   ClipboardList,
   FileCheck2,
   FilePlus2,
-  Gauge,
   Handshake,
   LayoutDashboard,
   LineChart,
@@ -15,7 +11,6 @@ import {
   ShieldCheck,
   Sparkles,
   Truck,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -65,14 +60,13 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/sows", label: "SOW approvals", icon: FileCheck2 },
       { to: "/sows/new", label: "New SOW studio", icon: FilePlus2 },
-      { to: "/margin-lab", label: "Margin lab", icon: Gauge },
     ],
   },
   {
     id: "operations",
     label: "Operations",
     items: [
-      { to: "/projects", label: "Delivery & actuals", icon: Truck },
+      { to: "/projects", label: "Projects", icon: Truck },
       { to: "/renewals", label: "Renewals", icon: RefreshCcw },
       { to: "/handoffs", label: "Signed handoff", icon: Handshake },
       { to: "/reports", label: "Reporting", icon: LineChart },
@@ -84,21 +78,12 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         to: "/settings",
-        label: "Settings & controls",
+        label: "Settings",
         icon: Settings,
         requireAny: ["SystemAdmin", "Finance", "Legal", "CEO"],
       },
     ],
   },
-];
-
-// Ancillary items so legacy routes surface until Wave 2 pages arrive.
-export const LEGACY_ITEMS: NavItemDef[] = [
-  { to: "/tasks", label: "Tasks (legacy)", icon: ClipboardList },
-  { to: "/deals", label: "Deals (legacy)", icon: Award },
-  { to: "/clients", label: "Clients (legacy)", icon: Users },
-  { to: "/gm/sandbox", label: "GM sandbox (legacy)", icon: Banknote },
-  { to: "/audit", label: "Audit (legacy)", icon: Activity },
 ];
 
 export function filterItems(
@@ -115,16 +100,12 @@ export interface PrimaryNavigationProps {
   groups: readonly string[];
   workspaceName?: string;
   className?: string;
-  /** Optional legacy list rendered under an "Other" heading — kept until
-   *  Wave 2 finishes migrating pages away from `/deals` etc. */
-  showLegacy?: boolean;
 }
 
 export function PrimaryNavigation({
   groups,
   workspaceName = "SmarTek21",
   className,
-  showLegacy = true,
 }: PrimaryNavigationProps) {
   return (
     <nav
@@ -175,33 +156,6 @@ export function PrimaryNavigation({
           );
         })}
 
-        {showLegacy ? (
-          <li>
-            <p className="px-2 pb-1 text-secondary text-text-secondary uppercase tracking-wide">
-              Legacy shortcuts
-            </p>
-            <ul className="flex flex-col gap-[2px]">
-              {LEGACY_ITEMS.map((item) => (
-                <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    className={({ isActive }) =>
-                      cn(
-                        "flex min-h-9 items-center gap-2 rounded-control px-2 py-1.5 text-body",
-                        "text-text-secondary hover:bg-primary-subtle hover:text-text",
-                        "focus-visible:outline-focus transition-motion",
-                        isActive && "bg-primary-subtle text-primary font-medium",
-                      )
-                    }
-                  >
-                    <item.icon className="h-4 w-4 shrink-0" aria-hidden />
-                    <span className="truncate">{item.label}</span>
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ) : null}
       </ul>
     </nav>
   );

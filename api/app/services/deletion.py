@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.models.approval import Approval, ApprovalPackage
+from app.models.agreement_tracking import AgreementDocument, AgreementGap
 from app.models.client import Agreement, Client, LegalEntity
 from app.models.client_contact import ClientContact
 from app.models.client_alias import ClientAlias
@@ -162,6 +163,15 @@ async def assess_client(
             ),
             counts=counts,
         )
+    agreements = select(Agreement.id).join(LegalEntity).where(LegalEntity.client_id == client_id)
+    has_evidence = await session.scalar(select(AgreementDocument.id).where(
+        AgreementDocument.agreement_id.in_(agreements)).limit(1))
+    has_history = await session.scalar(select(Agreement.id).join(LegalEntity).where(
+        LegalEntity.client_id == client_id,
+        (Agreement.evidence_s3_key.is_not(None)) | Agreement.state.in_(
+            ("executed", "expired", "terminated", "superseded"))).limit(1))
+    if has_evidence or has_history:
+        return DeletionAssessment(state="approved", reason="agreement evidence or executed history exists; archive preserves it", counts=counts)
     return DeletionAssessment(
         state="draft", reason="no approvals, no signed SOW, no HubSpot link", counts=counts
     )
@@ -415,6 +425,8 @@ async def _hard_delete_client(
         .all()
     )
     if entity_ids:
+        r = await session.execute(sa_delete(AgreementGap).where(AgreementGap.legal_entity_id.in_(entity_ids)))
+        counts["agreement_gaps"] = r.rowcount or 0
         r = await session.execute(
             sa_delete(Agreement).where(Agreement.legal_entity_id.in_(entity_ids))
         )

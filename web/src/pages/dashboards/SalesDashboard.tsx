@@ -40,7 +40,7 @@ export function SalesDashboardPage() {
       key: "deal",
       header: "Deal",
       render: (r) => (
-        <Link to={`/deals/${r.id}`} style={{ color: "#1d4ed8" }}>
+        <Link to={`/sows/${r.id}`} style={{ color: "#1d4ed8" }}>
           {r.hubspot_deal_id}
         </Link>
       ),

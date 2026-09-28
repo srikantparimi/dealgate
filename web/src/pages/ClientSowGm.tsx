@@ -99,7 +99,7 @@ export function ClientSowGmPage() {
               >
                 <td style={{ padding: "8px 12px" }}>
                   <Link
-                    to={`/deals/${r.opportunity_id}`}
+                    to={`/sows/${r.opportunity_id}`}
                     style={{ color: "#1d4ed8" }}
                   >
                     {r.hubspot_deal_id}

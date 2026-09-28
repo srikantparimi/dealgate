@@ -113,7 +113,7 @@ export function ApprovalPackageDetailPage() {
 
       <Panel title="Frozen snapshot">
         <Field label="Opportunity">
-          <Link to={`/deals/${pkg.opportunity_id}`}>{pkg.opportunity_id}</Link>
+          <Link to={`/sows/${pkg.opportunity_id}`}>SOW workspace</Link>
         </Field>
         <Field label="SOW version">{pkg.sow_version_id}</Field>
         <Field label="GM model">{pkg.gm_model_id}</Field>

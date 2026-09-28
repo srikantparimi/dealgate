@@ -130,7 +130,8 @@ module "api" {
   # exists in AWS but is not yet in Terraform state (import is s14a.1b
   # scope). The bucket name is deterministic — same pattern as the
   # storage module writes.
-  sow_bucket_arn = "arn:aws:s3:::${local.name_prefix}-sows-${data.aws_caller_identity.current.account_id}"
+  sow_bucket_arn        = "arn:aws:s3:::${local.name_prefix}-sows-${data.aws_caller_identity.current.account_id}"
+  agreements_bucket_arn = "arn:aws:s3:::${local.name_prefix}-agreements-${data.aws_caller_identity.current.account_id}"
 }
 
 module "data" {
