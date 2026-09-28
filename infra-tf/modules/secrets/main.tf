@@ -62,3 +62,13 @@ resource "aws_secretsmanager_secret_version" "jwt_signing" {
   secret_id     = aws_secretsmanager_secret.jwt_signing.id
   secret_string = random_password.jwt_signing.result
 }
+
+# S18 · HubSpot private-app read token. The secret itself is provisioned
+# out of band (Kanna owns the HubSpot side); this module only references it
+# so TF never sees the value. A ``data`` source is intentional — a
+# ``resource`` would want to manage the version, which would put the token
+# through state. Kept in the same "secrets" module so every task-def that
+# needs one Secrets Manager ARN gets both together.
+data "aws_secretsmanager_secret" "hubspot_token" {
+  name = "dealgate/staging/hubspot_token"
+}

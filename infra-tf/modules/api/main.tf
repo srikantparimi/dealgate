@@ -138,6 +138,7 @@ data "aws_iam_policy_document" "secrets_read" {
     resources = [
       var.db_url_secret_arn,
       var.jwt_signing_secret_arn,
+      var.hubspot_token_secret_arn,
     ]
   }
 }
@@ -376,12 +377,20 @@ resource "aws_ecs_task_definition" "api" {
         # register.
         { name = "SOW_BUCKET", value = "${var.name_prefix}-sows-${data.aws_caller_identity.current.account_id}" },
         { name = "AGREEMENTS_BUCKET", value = "${var.name_prefix}-agreements-${data.aws_caller_identity.current.account_id}" },
+        # S18: mirror of the ARN so services that need to log which secret
+        # backs a request (never the value) can point at it. Reading the
+        # actual token still goes through the ``secrets`` block above.
+        { name = "HUBSPOT_TOKEN_SECRET_ARN", value = var.hubspot_token_secret_arn },
         ], var.env == "staging" && var.allow_dev_seed_endpoint ? [
         { name = "ALLOW_DEV_SEED_ENDPOINT", value = "1" },
       ] : [])
       secrets = [
         { name = "POSTGRES_URL", valueFrom = var.db_url_secret_arn },
         { name = "JWT_SIGNING_KEY", valueFrom = var.jwt_signing_secret_arn },
+        # S18: HubSpot private-app token. ECS resolves the SecretsManager
+        # ARN at task start; the value never sits in the task-def or an
+        # env dump.
+        { name = "HUBSPOT_TOKEN", valueFrom = var.hubspot_token_secret_arn },
       ]
       logConfiguration = {
         logDriver = "awslogs"

@@ -80,6 +80,11 @@ variable "cognito_user_pool_arn" {
   type        = string
 }
 
+variable "hubspot_token_secret_arn" {
+  description = "ARN of the HubSpot private-app token in Secrets Manager. Injected as HUBSPOT_TOKEN via the ECS task's secrets block; the raw value never touches TF."
+  type        = string
+}
+
 variable "cognito_client_id" {
   description = "Cognito app client ID (env var on the task)."
   type        = string
