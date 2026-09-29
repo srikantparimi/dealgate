@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -71,3 +72,11 @@ class Opportunity(Base):
         Uuid, ForeignKey("user.id"), nullable=True
     )
     archived_reason: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # S18 §2 — HubSpot cache. Populated on backfill / webhook / reconcile.
+    # Pipeline reads these directly; SOW-upload opportunities leave them null.
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    close_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    stage_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hubspot_last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

@@ -4,12 +4,15 @@ Blueprint §6.1: never trust the webhook payload — re-read the deal via the
 CRM v3 API before touching state.
 
 The real client uses `httpx.AsyncClient` and a bearer token loaded from
-`HUBSPOT_ACCESS_TOKEN`. `StubHubSpotClient` returns canned fixtures for
-tests and local dev; wire it in via FastAPI's `dependency_overrides`.
+`HUBSPOT_TOKEN` (the name Terraform uses when injecting the secret) with
+a fall-back to the older `HUBSPOT_ACCESS_TOKEN` name for tests and local
+dev. `StubHubSpotClient` returns canned fixtures for tests; wire it in
+via FastAPI's `dependency_overrides`.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -21,12 +24,21 @@ log = structlog.get_logger("hubspot")
 
 HUBSPOT_API_BASE = "https://api.hubapi.com"
 
+# S18 §2 · F7 — HubSpot's public rate limit is 100 req / 10s per portal.
+# We respect Retry-After when present, otherwise back off exponentially.
+_RATE_LIMIT_MAX_RETRIES = 4
+_RATE_LIMIT_BASE_DELAY = 1.0
+
 
 class HubSpotClient:
     """Thin async wrapper over the HubSpot CRM v3 REST API."""
 
     def __init__(self, access_token: str | None = None, base_url: str = HUBSPOT_API_BASE) -> None:
-        token = access_token or os.environ.get("HUBSPOT_ACCESS_TOKEN", "")
+        token = (
+            access_token
+            or os.environ.get("HUBSPOT_TOKEN", "")
+            or os.environ.get("HUBSPOT_ACCESS_TOKEN", "")
+        )
         if not token:
             # Loud but not fatal: unit tests always use the stub. Production
             # deployments fail-fast on the first request rather than at import.
@@ -41,12 +53,39 @@ class HubSpotClient:
         }
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(
-                f"{self._base_url}{path}",
-                headers=self._headers(),
-                params=params,
-            )
+        """GET with 429 retry (S18 §2 F7).
+
+        HubSpot returns 429 with a ``Retry-After`` header (seconds) when the
+        portal exceeds 100 req / 10s. We honour it; if the header is missing
+        we back off exponentially (1s, 2s, 4s, 8s) up to
+        ``_RATE_LIMIT_MAX_RETRIES``. On the final failure we re-raise the
+        ``HTTPStatusError`` so the caller (backfill / webhook worker) can
+        count it as an error rather than silently dropping the deal.
+        """
+
+        attempts = 0
+        while True:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    f"{self._base_url}{path}",
+                    headers=self._headers(),
+                    params=params,
+                )
+            if r.status_code == 429 and attempts < _RATE_LIMIT_MAX_RETRIES:
+                retry_after = r.headers.get("Retry-After")
+                try:
+                    delay = float(retry_after) if retry_after else _RATE_LIMIT_BASE_DELAY * (2 ** attempts)
+                except ValueError:
+                    delay = _RATE_LIMIT_BASE_DELAY * (2 ** attempts)
+                log.info(
+                    "hubspot_429_backoff",
+                    attempt=attempts + 1,
+                    delay=delay,
+                    path=path,
+                )
+                await asyncio.sleep(delay)
+                attempts += 1
+                continue
             r.raise_for_status()
             return r.json()
 
@@ -61,16 +100,39 @@ class HubSpotClient:
             r.raise_for_status()
             return r.json() if r.content else {}
 
+    # S18 §2: Pipeline cache columns (amount, close_date, stage label) need
+    # to arrive on every read path, so both single-deal and paged list share
+    # this projection.
+    _DEAL_PROPERTIES: str = (
+        "dealname,dealstage,dealstage_label,pipeline,hubspot_owner_id,"
+        "engagement_type,amount,closedate"
+    )
+
     async def get_deal(self, deal_id: str) -> dict[str, Any]:
         """Return the deal record including hubspot_owner_id and associated company."""
 
         return await self._get(
             f"/crm/v3/objects/deals/{deal_id}",
             params={
-                "properties": "dealname,dealstage,pipeline,hubspot_owner_id,engagement_type",
+                "properties": self._DEAL_PROPERTIES,
                 "associations": "companies",
             },
         )
+
+    async def list_deals_page(
+        self, *, after: str | None = None, limit: int = 100
+    ) -> dict[str, Any]:
+        """Paged deal fetch for the backfill worker. Returns raw payload —
+        caller handles ``.results`` and ``.paging.next.after``."""
+
+        params: dict[str, Any] = {
+            "properties": self._DEAL_PROPERTIES,
+            "associations": "companies",
+            "limit": limit,
+        }
+        if after:
+            params["after"] = after
+        return await self._get("/crm/v3/objects/deals", params=params)
 
     async def get_deal_owner(self, owner_id: str) -> dict[str, Any]:
         """Return the owner record for a HubSpot user id."""
@@ -133,6 +195,24 @@ class StubHubSpotClient(HubSpotClient):
 
     async def get_deal(self, deal_id: str) -> dict[str, Any]:
         return self.deals[deal_id]
+
+    async def list_deals_page(
+        self, *, after: str | None = None, limit: int = 100
+    ) -> dict[str, Any]:
+        deal_ids = sorted(self.deals.keys())
+        start = 0
+        if after:
+            try:
+                start = deal_ids.index(after) + 1
+            except ValueError:
+                start = 0
+        page = deal_ids[start : start + limit]
+        results = [self.deals[did] for did in page]
+        next_after = page[-1] if len(page) == limit and start + limit < len(deal_ids) else None
+        payload: dict[str, Any] = {"results": results}
+        if next_after:
+            payload["paging"] = {"next": {"after": next_after}}
+        return payload
 
     async def get_deal_owner(self, owner_id: str) -> dict[str, Any]:
         owner = self.owners.get(owner_id)

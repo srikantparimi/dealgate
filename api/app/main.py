@@ -36,6 +36,7 @@ from app.routers import (
     legacy,
     me,
     notifications,
+    pipeline,
     renewals,
     settings,
     signatories,
@@ -167,6 +168,7 @@ app.include_router(agreements.router)
 app.include_router(projects.router)
 app.include_router(tasks.router)
 app.include_router(notifications.router)
+app.include_router(pipeline.router)
 app.include_router(admin_rate_cards.router)
 app.include_router(admin_policy.router)
 app.include_router(gm.router)

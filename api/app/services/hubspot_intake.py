@@ -46,12 +46,28 @@ def _next_business_day(from_date: date, business_days: int) -> date:
     return d
 
 
-def _sales_leader_email() -> str:
-    email = os.environ.get("SALES_LEADER_EMAIL", "").strip()
-    if not email:
-        # Loud failure: leaving intake tasks unassigned violates AC #5.
-        raise RuntimeError("SALES_LEADER_EMAIL is not configured")
-    return email
+UNASSIGNED_USER_EMAIL = "unassigned@dealgate.local"
+UNASSIGNED_USER_NAME = "Unassigned"
+
+
+def _sales_leader_email() -> str | None:
+    """Return the configured Sales-leader email, or ``None`` when unset.
+
+    Historically this raised — the pre-S18 intake made an intake Task
+    against the Sales leader, and losing that assignment was a defect.
+    S18 §2 F2 replaces that behaviour with an Unassigned sentinel user
+    for HubSpot backfill / webhook paths, so the leader email is now
+    optional and callers must handle the ``None`` case.
+    """
+
+    return os.environ.get("SALES_LEADER_EMAIL", "").strip() or None
+
+
+async def _unassigned_user(session: AsyncSession) -> User:
+    """Upsert the shared Unassigned sentinel used when no HubSpot owner
+    can be resolved. F2 checklist requirement."""
+
+    return await _find_or_create_user(session, UNASSIGNED_USER_EMAIL, UNASSIGNED_USER_NAME)
 
 
 async def _find_or_create_user(session: AsyncSession, email: str, name: str) -> User:
@@ -84,11 +100,31 @@ async def _resolve_owner(
                 name = " ".join(p for p in [first, last] if p).strip() or email
                 return await _find_or_create_user(session, email, name)
         except KeyError:
-            # Owner id present in webhook but missing/inactive in HubSpot API.
+            # Stub client raises KeyError; real HubSpot returns 404.
             log.info("hubspot_owner_missing", owner_id=hubspot_owner_id)
+        except Exception as exc:  # httpx.HTTPStatusError etc.
+            # Live portals do return 404 for deactivated owners — F2 edge case
+            # observed during the first §2a backfill run (owner 76287123).
+            # Log the specific status when we can, otherwise the type. Never
+            # bubble: a missing owner falls back to the Sales leader.
+            import httpx as _httpx
+
+            if isinstance(exc, _httpx.HTTPStatusError) and exc.response.status_code == 404:
+                log.info("hubspot_owner_missing", owner_id=hubspot_owner_id, status=404)
+            else:
+                log.warning(
+                    "hubspot_owner_lookup_failed",
+                    owner_id=hubspot_owner_id,
+                    error_type=type(exc).__name__,
+                )
 
     leader_email = _sales_leader_email()
-    return await _find_or_create_user(session, leader_email, "Sales Leader")
+    if leader_email:
+        return await _find_or_create_user(session, leader_email, "Sales Leader")
+    # F2: no HubSpot owner and no configured Sales leader — assign to the
+    # shared Unassigned sentinel. Backfill / webhook / reconcile all share
+    # the same user, so the Pipeline UI can filter on it later.
+    return await _unassigned_user(session)
 
 
 def _deal_props(deal_payload: dict[str, Any]) -> dict[str, Any]:
@@ -170,6 +206,37 @@ async def _resolve_client(
     )
 
 
+def _parse_amount(raw: Any) -> Any:
+    """HubSpot returns amount as string; coerce to Decimal, tolerate empty."""
+
+    from decimal import Decimal, InvalidOperation
+
+    if raw is None or raw == "":
+        return None
+    try:
+        return Decimal(str(raw))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _parse_close_date(raw: Any) -> Any:
+    """HubSpot returns closedate as ISO8601 or ms-epoch string."""
+
+    if not raw:
+        return None
+    s = str(raw)
+    # ISO8601 first
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+    except ValueError:
+        pass
+    # ms-epoch fallback
+    try:
+        return datetime.fromtimestamp(int(s) / 1000, tz=UTC).date()
+    except (ValueError, OSError):
+        return None
+
+
 async def _upsert_opportunity(
     session: AsyncSession,
     deal_id: str,
@@ -188,6 +255,10 @@ async def _upsert_opportunity(
     props = _deal_props(deal_payload)
     stage = props.get("dealstage")
     engagement = props.get("engagement_type")
+    amount = _parse_amount(props.get("amount"))
+    close_date = _parse_close_date(props.get("closedate"))
+    stage_label = props.get("dealstage_label") or stage
+    seen_at = datetime.now(UTC)
 
     result = await session.execute(
         select(Opportunity).where(Opportunity.hubspot_deal_id == deal_id)
@@ -197,10 +268,15 @@ async def _upsert_opportunity(
     if opp is None:
         opp = Opportunity(
             hubspot_deal_id=deal_id,
+            source="hubspot",
             owner_id=owner.id,
             client_id=client_row.id,
             engagement_type=engagement,
             sales_stage=stage,
+            stage_label=stage_label,
+            amount=amount,
+            close_date=close_date,
+            hubspot_last_seen_at=seen_at,
             governance_status="Intake",
         )
         session.add(opp)
@@ -214,10 +290,14 @@ async def _upsert_opportunity(
             before=None,
             after={
                 "hubspot_deal_id": deal_id,
+                "source": "hubspot",
                 "owner_id": str(owner.id),
                 "client_id": str(client_row.id),
                 "engagement_type": engagement,
                 "sales_stage": stage,
+                "stage_label": stage_label,
+                "amount": str(amount) if amount is not None else None,
+                "close_date": close_date.isoformat() if close_date else None,
                 "governance_status": "Intake",
             },
             correlation_id=correlation_id,
@@ -229,6 +309,10 @@ async def _upsert_opportunity(
         "client_id": str(opp.client_id) if opp.client_id else None,
         "engagement_type": opp.engagement_type,
         "sales_stage": opp.sales_stage,
+        "stage_label": opp.stage_label,
+        "amount": str(opp.amount) if opp.amount is not None else None,
+        "close_date": opp.close_date.isoformat() if opp.close_date else None,
+        "archived_at": opp.archived_at.isoformat() if opp.archived_at else None,
     }
     changed = False
     if opp.owner_id != owner.id:
@@ -243,6 +327,24 @@ async def _upsert_opportunity(
     if stage is not None and opp.sales_stage != stage:
         opp.sales_stage = stage
         changed = True
+    if stage_label is not None and opp.stage_label != stage_label:
+        opp.stage_label = stage_label
+        changed = True
+    if amount != opp.amount:
+        opp.amount = amount
+        changed = True
+    if close_date != opp.close_date:
+        opp.close_date = close_date
+        changed = True
+    # A HubSpot event on an archived opportunity un-archives it — the deal
+    # came back (undelete or reconcile-after-outage). Log the change.
+    if opp.archived_at is not None:
+        opp.archived_at = None
+        opp.archived_by = None
+        opp.archived_reason = None
+        changed = True
+    # Always bump last-seen so the reconcile job knows the row is fresh.
+    opp.hubspot_last_seen_at = seen_at
 
     if changed:
         await session.flush()
@@ -258,6 +360,10 @@ async def _upsert_opportunity(
                 "client_id": str(opp.client_id) if opp.client_id else None,
                 "engagement_type": opp.engagement_type,
                 "sales_stage": opp.sales_stage,
+                "stage_label": opp.stage_label,
+                "amount": str(opp.amount) if opp.amount is not None else None,
+                "close_date": opp.close_date.isoformat() if opp.close_date else None,
+                "archived_at": None,
             },
             correlation_id=correlation_id,
         )

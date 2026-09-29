@@ -119,6 +119,25 @@ async def hubspot_webhook(
     }
 
 
+@router.post("/backfill")
+async def run_hubspot_backfill(
+    client: HubSpotClient = Depends(get_hubspot_client),
+    user: AuthUser = Depends(require_role("SystemAdmin")),
+) -> dict[str, object]:
+    """Trigger a synchronous backfill. SystemAdmin only.
+
+    Runs the full pagination loop inline — for the staging portal (a few
+    dozen deals) this returns in under a minute. Prod-scale portals would
+    dispatch to a background worker; that is a later slice.
+    """
+
+    from app.services.hubspot_backfill import run_backfill
+
+    counts = await run_backfill(client)
+    log.info("hubspot_backfill_router_complete", user=user.email)
+    return {"status": "complete", "counts": counts.as_dict()}
+
+
 @router.post("/events/{event_id}/replay")
 async def replay_hubspot_event(
     event_id: str,
