@@ -50,7 +50,9 @@ from app.routers import (
     sows_staffing,
     sows_upload,
     tasks,
+    timeline,
     tracking_groups,
+    watchlist,
 )
 
 log = logging.getLogger("dealgate.api")
@@ -206,6 +208,8 @@ app.include_router(next_actions.router)
 app.include_router(deal_comments.router)
 app.include_router(tracking_groups.router)
 app.include_router(saved_views.router)
+app.include_router(watchlist.router)
+app.include_router(timeline.router)
 
 # `dev_seed` bypasses the S12 approval ceremony so E2E specs can browser-prove
 # S13a DoD #4. Never registered in prod (see is_dev_seed_enabled).

@@ -24,14 +24,17 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   getClient,
+  getClientTimeline,
   listPipelineOpportunities,
   type ClientDetail,
   type ClientRecentActivity,
   type PipelineOpportunityRow,
+  type TimelineEntry,
 } from "../../api/client";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
+import { WatchStar } from "../../ui-v2/WatchStar";
 import { Badge } from "../../ui-v2/primitives/badge";
 import { Button } from "../../ui-v2/primitives/button";
 
@@ -104,6 +107,7 @@ export function ClientDetailPageV2() {
   const navigate = useNavigate();
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [deals, setDeals] = useState<PipelineOpportunityRow[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
 
@@ -117,13 +121,19 @@ export function ClientDetailPageV2() {
         const c = await getClient(id as string);
         if (cancelled) return;
         setClient(c);
-        const dealsPage = await listPipelineOpportunities({
-          client: [id as string],
-          include_closed: true,
-          page_size: 100,
-        });
+        const [dealsPage, tl] = await Promise.all([
+          listPipelineOpportunities({
+            client: [id as string],
+            include_closed: true,
+            page_size: 100,
+          }),
+          getClientTimeline(id as string).catch(() => ({
+            items: [] as TimelineEntry[],
+          })),
+        ]);
         if (cancelled) return;
         setDeals(dealsPage.items);
+        setTimeline(tl.items);
       } catch (err) {
         if (!cancelled) setError(err);
       } finally {
@@ -217,6 +227,7 @@ export function ClientDetailPageV2() {
         }
         actions={
           <>
+            <WatchStar kind="client" itemId={client.id} />
             <Button variant="secondary" onClick={() => navigate("/pipeline")}>
               <ArrowLeft className="mr-1 h-4 w-4" aria-hidden />
               Pipeline
@@ -406,14 +417,40 @@ export function ClientDetailPageV2() {
         )}
       </section>
 
-      {/* Recent activity — prose, not JSON (L07). */}
+      {/* S20 W6 · combined timeline (comments + next-action events +
+        * approvals + SOW versions) — prose, not JSON (L07). Falls back
+        * to the ClientDetail.recent_activity feed when the timeline
+        * endpoint returns empty (e.g. no deal-level events yet). */}
       <section
         aria-label="Recent activity"
         className="rounded-panel border border-divider bg-surface p-4"
         data-testid="client-activity"
       >
         <h2 className="mb-3 text-heading-3 text-text">Recent activity</h2>
-        {client.recent_activity.length === 0 ? (
+        {timeline.length > 0 ? (
+          <ol className="space-y-2">
+            {timeline.slice(0, 10).map((t, i) => (
+              <li
+                key={`${t.ts}-${i}`}
+                className="border-b border-divider py-2 last:border-0"
+                data-testid={`timeline-${t.source}-${i}`}
+              >
+                <div className="text-body text-text">
+                  <span className="mr-2 rounded bg-primary-subtle px-1.5 py-0.5 text-secondary text-primary">
+                    {t.source}
+                  </span>
+                  {t.actor_name ? (
+                    <span className="font-medium">{t.actor_name} </span>
+                  ) : null}
+                  {t.body}
+                </div>
+                <div className="text-secondary text-text-secondary">
+                  {formatAgo(t.ts)}
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : client.recent_activity.length === 0 ? (
           <p className="text-body text-text-secondary">
             No recent activity for this client.
           </p>

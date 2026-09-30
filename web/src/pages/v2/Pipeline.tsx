@@ -39,6 +39,9 @@ import {
   getSyncStatus,
   listPipelineClients,
   listPipelineOpportunities,
+  listSavedViews,
+  listTrackingGroups,
+  listWatchlist,
   type PipelineClientRow,
   type PipelineFacets,
   type PipelineFilters,
@@ -46,7 +49,10 @@ import {
   type PipelineListPage,
   type PipelineStageCount,
   type PipelineSummary,
+  type SavedView,
   type SyncStatusRow,
+  type TrackingGroup,
+  type WatchedList,
 } from "../../api/client";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
@@ -228,6 +234,8 @@ function readFiltersFromURL(sp: URLSearchParams): PipelineFilters & {
     date_preset: (sp.get("date_preset") as PipelineFilters["date_preset"]) || undefined,
     open_closed: (sp.get("open_closed") as PipelineFilters["open_closed"]) || undefined,
     include_closed: sp.get("include_closed") === "true" || undefined,
+    group: sp.getAll("group"),
+    watching: sp.get("watching") === "true" || undefined,
     page,
     page_size,
     sort: sp.get("sort") || undefined,
@@ -255,6 +263,8 @@ function writeFiltersToURL(
   if (filters.date_preset) p.set("date_preset", filters.date_preset);
   if (filters.open_closed) p.set("open_closed", filters.open_closed);
   if (filters.include_closed) p.set("include_closed", "true");
+  filters.group?.forEach((g) => p.append("group", g));
+  if (filters.watching) p.set("watching", "true");
   if (filters.page && filters.page > 1) p.set("page", String(filters.page));
   if (filters.page_size !== 25) p.set("page_size", String(filters.page_size));
   if (filters.sort) p.set("sort", filters.sort);
@@ -274,6 +284,8 @@ function countActiveFilters(f: PipelineFilters): number {
   if (f.missing?.length) n++;
   if (f.open_closed) n++;
   if (f.date_field && (f.date_from || f.date_to || f.date_preset)) n++;
+  if (f.group?.length) n++;
+  if (f.watching) n++;
   return n;
 }
 
@@ -296,6 +308,12 @@ export function PipelinePage() {
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [sync, setSync] = useState<SyncStatusRow[]>([]);
   const [facets, setFacets] = useState<PipelineFacets>({ owners: [], business_units: [] });
+  const [groups, setGroups] = useState<TrackingGroup[]>([]);
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [watchlist, setWatchlist] = useState<WatchedList>({
+    items: [],
+    counts: {},
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const navigate = useNavigate();
@@ -306,10 +324,17 @@ export function PipelinePage() {
     getPipelineFacets()
       .then(setFacets)
       .catch(() => {
-        // Facets endpoint 401/403/404 shouldn't blank the page; the
-        // filter selects just render empty and the axes remain visible.
         setFacets({ owners: [], business_units: [] });
       });
+    listTrackingGroups({ member_kind: "opportunity" })
+      .then((r) => setGroups(r.items))
+      .catch(() => setGroups([]));
+    listSavedViews()
+      .then((r) => setSavedViews(r.items))
+      .catch(() => setSavedViews([]));
+    listWatchlist()
+      .then(setWatchlist)
+      .catch(() => setWatchlist({ items: [], counts: {} }));
   }, []);
 
   // Local UI-only echo of search + open_closed so typing doesn't rebuild
@@ -515,6 +540,11 @@ export function PipelinePage() {
         commitFilters={commitFilters}
         businessTz={businessTz}
         facets={facets}
+        groups={groups}
+        savedViews={savedViews}
+        watchCount={
+          (watchlist.counts.opportunity || 0) + (watchlist.counts.client || 0)
+        }
       />
 
       {stageCounts.length ? (
@@ -667,6 +697,9 @@ function FilterBar({
   commitFilters,
   businessTz,
   facets,
+  groups,
+  savedViews,
+  watchCount,
 }: {
   filters: PipelineFilters & { page: number; page_size: PageSize };
   activeCount: number;
@@ -676,6 +709,9 @@ function FilterBar({
   clear: () => void;
   setOpenClosed: (v: PipelineFilters["open_closed"]) => void;
   facets: PipelineFacets;
+  groups: TrackingGroup[];
+  savedViews: SavedView[];
+  watchCount: number;
   commitFilters: (
     updater: (
       prev: PipelineFilters & { page: number; page_size: PageSize },
@@ -871,6 +907,85 @@ function FilterBar({
             </option>
           ))}
         </select>
+      </label>
+
+      {/* S20 W6 · Group select. Manual + rule-based tracking groups
+        * (opportunity-scope) come from `/tracking-groups`. */}
+      <label className="inline-flex items-center gap-2 text-body text-text-secondary">
+        Group
+        <select
+          className="rounded border border-divider bg-surface px-2 py-1 text-body"
+          value={filters.group?.[0] ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            commitFilters((prev) => ({
+              ...prev,
+              group: v ? [v] : undefined,
+            }));
+          }}
+          data-testid="filter-group"
+          disabled={groups.length === 0}
+        >
+          <option value="">
+            {groups.length === 0 ? "— no groups yet —" : "— any group —"}
+          </option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+              {g.filter_json ? " (rule)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {/* S20 W6 · Saved view picker. Sets filter_json onto URL. */}
+      <label className="inline-flex items-center gap-2 text-body text-text-secondary">
+        View
+        <select
+          className="rounded border border-divider bg-surface px-2 py-1 text-body"
+          value=""
+          onChange={(e) => {
+            const viewId = e.target.value;
+            if (!viewId) return;
+            const view = savedViews.find((v) => v.id === viewId);
+            if (!view) return;
+            commitFilters((prev) => ({
+              ...prev,
+              ...(view.filter_json as Partial<PipelineFilters>),
+              page: 1,
+              page_size: prev.page_size,
+            }));
+          }}
+          data-testid="filter-saved-view"
+          disabled={savedViews.length === 0}
+        >
+          <option value="">
+            {savedViews.length === 0 ? "— no saved views —" : "— apply a view —"}
+          </option>
+          {savedViews.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name}
+              {v.is_builtin ? " (built-in)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {/* S20 W6 · Watching toggle. Scopes list to the caller's stars. */}
+      <label className="inline-flex items-center gap-2 text-body text-text-secondary">
+        <input
+          type="checkbox"
+          checked={filters.watching === true}
+          onChange={(e) => {
+            const on = e.target.checked;
+            commitFilters((prev) => ({
+              ...prev,
+              watching: on ? true : undefined,
+            }));
+          }}
+          data-testid="filter-watching"
+        />
+        Watching ({watchCount})
       </label>
 
       <label className="inline-flex items-center gap-2 text-body text-text-secondary">

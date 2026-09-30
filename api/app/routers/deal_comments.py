@@ -10,12 +10,13 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
+from app.services.deals import LEADER_ROLES
 from app.services.deal_comment import (
     CommentCreate,
     CommentPatch,
@@ -29,6 +30,27 @@ from app.services.deal_comment import (
 
 
 router = APIRouter(tags=["deal-comments"])
+
+
+# S20 W6 Session 4 · Item 9. Read set matches the pipeline read set
+# (leader roles + Sales + Presales). Write set is Sales/Presales/leader
+# — a user with zero governance groups is a Viewer and gets 403 on
+# create / patch / delete while GET returns an empty list rather than
+# a 403 so the deal page doesn't blank on them.
+COMMENT_READ_ROLES: frozenset[str] = frozenset(LEADER_ROLES | {"Sales", "Presales"})
+COMMENT_WRITE_ROLES: frozenset[str] = frozenset(LEADER_ROLES | {"Sales", "Presales"})
+
+
+def _can_read_comments(user: AuthUser) -> bool:
+    return any(g in COMMENT_READ_ROLES for g in user.groups)
+
+
+def _require_comment_writer(user: AuthUser) -> None:
+    if not any(g in COMMENT_WRITE_ROLES for g in user.groups):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="comment write requires a sales, presales or leader role",
+        )
 
 
 class CommentRow(BaseModel):
@@ -75,6 +97,9 @@ async def list_comments_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> CommentList:
+    if not _can_read_comments(user):
+        # Item 9 · a user without comment rights sees no comments.
+        return CommentList(items=[], latest=None)
     rows = await list_comments(
         session,
         opportunity_id=opportunity_id,
@@ -98,6 +123,7 @@ async def create_comment_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> CommentRow:
+    _require_comment_writer(user)
     c = await create_comment(
         session,
         actor=user,
@@ -118,6 +144,7 @@ async def patch_comment_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> CommentRow:
+    _require_comment_writer(user)
     c = await load_comment(session, comment_id)
     c = await patch_comment(
         session,
@@ -137,6 +164,7 @@ async def delete_comment_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> None:
+    _require_comment_writer(user)
     c = await load_comment(session, comment_id)
     await delete_comment(session, actor=user, comment=c)
     await session.commit()

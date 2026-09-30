@@ -27,6 +27,7 @@ import { AlertTriangle, ArrowLeft, ExternalLink, Upload } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
+  getDealTimeline,
   getPipelineOpportunity,
   listDealComments,
   listNextActions,
@@ -35,10 +36,12 @@ import {
   type NextActionRow,
   type PipelineOpportunityRow,
   type PipelineStageCount,
+  type TimelineEntry,
 } from "../../api/client";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
+import { WatchStar } from "../../ui-v2/WatchStar";
 import { Badge } from "../../ui-v2/primitives/badge";
 import { Button } from "../../ui-v2/primitives/button";
 
@@ -114,6 +117,7 @@ export function DealDetailPage() {
   const [latestComment, setLatestComment] = useState<DealCommentRow | null>(
     null,
   );
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -128,17 +132,21 @@ export function DealDetailPage() {
         if (cancelled) return;
         setDeal(d);
 
-        const [stageList, actions, comments] = await Promise.all([
+        const [stageList, actions, comments, tl] = await Promise.all([
           d.hubspot_pipeline_id
             ? listPipelineStages(d.hubspot_pipeline_id)
             : Promise.resolve([] as PipelineStageCount[]),
           listNextActions({ opportunity_id: d.opportunity_id }),
           listDealComments(d.opportunity_id),
+          getDealTimeline(d.opportunity_id).catch(() => ({
+            items: [] as TimelineEntry[],
+          })),
         ]);
         if (cancelled) return;
         setStages(stageList);
         setNextActions(actions.items);
         setLatestComment(comments.latest);
+        setTimeline(tl.items);
       } catch (err) {
         if (!cancelled) setError(err);
       } finally {
@@ -257,6 +265,7 @@ export function DealDetailPage() {
         }
         actions={
           <>
+            <WatchStar kind="opportunity" itemId={deal.opportunity_id} />
             <Button variant="secondary" onClick={() => navigate("/pipeline")}>
               <ArrowLeft className="mr-1 h-4 w-4" aria-hidden />
               Pipeline
@@ -498,6 +507,46 @@ export function DealDetailPage() {
               View SOW list →
             </Link>
           </div>
+        )}
+      </section>
+
+      {/* S20 W6 · combined timeline (comments + next-action events + approval + SOW). */}
+      <section
+        aria-label="Activity timeline"
+        className="mt-6 rounded-panel border border-divider bg-surface p-4"
+        data-testid="deal-timeline"
+      >
+        <h2 className="mb-3 text-heading-3 text-text">Activity</h2>
+        {timeline.length === 0 ? (
+          <p className="text-body text-text-secondary">
+            Nothing has happened on this deal yet — no comments, actions or
+            SOW events.
+          </p>
+        ) : (
+          <ol className="space-y-2">
+            {timeline.map((t, i) => (
+              <li
+                key={`${t.ts}-${i}`}
+                className="border-b border-divider py-2 last:border-0"
+                data-testid={`timeline-${t.source}-${i}`}
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="text-body text-text">
+                    <span className="mr-2 rounded bg-primary-subtle px-1.5 py-0.5 text-secondary text-primary">
+                      {t.source}
+                    </span>
+                    {t.actor_name ? (
+                      <span className="font-medium">{t.actor_name} </span>
+                    ) : null}
+                    {t.body}
+                  </div>
+                  <div className="text-secondary text-text-secondary tnum">
+                    {formatAgo(t.ts)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
         )}
       </section>
     </div>

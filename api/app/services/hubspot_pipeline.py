@@ -531,6 +531,19 @@ class PipelineFilters:
     account_owner: tuple[str, ...] = ()  # client hubspot_owner_id list (D2 separate axis)
     business_unit: tuple[str, ...] = ()  # D10
     client: tuple[uuid.UUID, ...] = ()  # S20 W2 Session 3b · scope to a specific client (client detail page)
+    # S20 W6 Session 4 · tracking group scope. Router resolves group id
+    # → opportunity id set (manual or rule-based via `filter_json`) and
+    # passes the ids down on `opportunity_id`. Directive: "rule-based
+    # groups evaluated by the same engine — no second implementation".
+    group: tuple[uuid.UUID, ...] = ()
+    # S20 W6 Session 4 · direct opportunity id scope, used by the group
+    # resolver + watchlist filter. `None` = axis not requested; empty
+    # tuple = an intentional zero-match (e.g. watchlist with no stars).
+    opportunity_id: tuple[uuid.UUID, ...] | None = None
+    # S20 W6 Session 4 · per-user watchlist scope. Alias for
+    # `opportunity_id` populated by the router from the caller's own
+    # `WatchedItem` rows; keeps the source axis distinct in filter echo.
+    watching_ids: tuple[uuid.UUID, ...] | None = None
     group: uuid.UUID | None = None  # slice 2 wires tracking_group; slice 1 no-op
     readiness: tuple[str, ...] = ()  # subset of READINESS_STATES (a.k.a sow_state)
     attention: tuple[str, ...] = ()  # subset of ATTENTION_FLAGS
@@ -753,6 +766,19 @@ def _base_opportunity_filter(filters: PipelineFilters):
         # deal list — the client page shows every deal the client owns,
         # matching the same filter/sort semantics the /pipeline page uses.
         conditions.append(Opportunity.client_id.in_(filters.client))
+    if filters.opportunity_id is not None:
+        # S20 W6 · Direct opportunity-id scope (groups + watchlist). Empty
+        # tuple = intentional zero-match; non-empty = subset scope.
+        if filters.opportunity_id:
+            conditions.append(Opportunity.id.in_(filters.opportunity_id))
+        else:
+            conditions.append(Opportunity.id == uuid.UUID(int=0))
+    if filters.watching_ids is not None and filters.opportunity_id is None:
+        # Legacy path when the router set watching_ids without pre-merging.
+        if filters.watching_ids:
+            conditions.append(Opportunity.id.in_(filters.watching_ids))
+        else:
+            conditions.append(Opportunity.id == uuid.UUID(int=0))
     if filters.account_owner:
         client_owner = _client_hubspot_owner_column()
         if client_owner is not None:

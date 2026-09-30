@@ -18,6 +18,7 @@ Read-only in this slice (S18 §2). No POST/PATCH here.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -312,6 +313,8 @@ def _parse_filters(
     open_closed: str | None = None,
     missing: list[str] | None = None,
     client: list[uuid.UUID] | None = None,
+    group: list[uuid.UUID] | None = None,
+    watching_ids: tuple[uuid.UUID, ...] | None = None,
 ) -> PipelineFilters:
     if date_field is not None and date_field not in VALID_DATE_FIELDS:
         raise HTTPException(
@@ -351,6 +354,8 @@ def _parse_filters(
         open_closed=open_closed,
         missing=tuple(missing or ()),
         client=tuple(client or ()),
+        group=tuple(group or ()),
+        watching_ids=watching_ids,
     )
 
 
@@ -411,6 +416,101 @@ async def _load_freshness(session: AsyncSession, *, now: datetime | None = None)
         reconciled_at=reconciled.last_success_at if reconciled else None,
         state=state,
     )
+
+
+async def _resolve_scope(
+    session: AsyncSession,
+    *,
+    user: AuthUser,
+    group_ids: list[uuid.UUID] | None,
+    watching: bool,
+) -> dict[str, Any]:
+    """S20 W6 · resolve group + watching axes into an opportunity-id scope.
+
+    - Manual opportunity groups → their member ids.
+    - Manual client groups → the client_ids, funneled via `filters.client`.
+    - Rule-based groups → the group's `filter_json` is evaluated by
+      `list_opportunities` (directive: no second engine) and the returned
+      row ids become the scope.
+    - Watchlist → the caller's own `WatchedItem` rows for kind=opportunity
+      (+ client ids as extra `filters.client` scope).
+
+    Returns a dict with the axes to apply on top of the caller's filters:
+    `{"opportunity_id": tuple | None, "client": tuple | None,
+    "watching_ids": tuple | None}`.
+    """
+
+    from sqlalchemy import select as _select
+
+    from app.models.tracking_group import TrackingGroup, TrackingGroupMember
+    from app.models.watchlist import WatchedItem
+
+    opp_scope: set[uuid.UUID] = set()
+    client_scope: set[uuid.UUID] = set()
+    watching_ids: set[uuid.UUID] | None = None
+    axis_used = False
+
+    if group_ids:
+        axis_used = True
+        groups = (
+            await session.execute(
+                _select(TrackingGroup).where(TrackingGroup.id.in_(group_ids))
+            )
+        ).scalars().all()
+        for grp in groups:
+            if grp.filter_json:
+                # Rule-based: evaluate through the same engine.
+                sub_filters = PipelineFilters(
+                    stage=tuple(grp.filter_json.get("stage") or ()),
+                    owner=tuple(uuid.UUID(o) for o in (grp.filter_json.get("owner") or [])),
+                    business_unit=tuple(grp.filter_json.get("business_unit") or ()),
+                    readiness=tuple(grp.filter_json.get("readiness") or ()),
+                    attention=tuple(grp.filter_json.get("attention") or ()),
+                    open_closed=grp.filter_json.get("open_closed"),
+                    include_closed=bool(grp.filter_json.get("include_closed")),
+                )
+                page = await _list_opportunities(
+                    session, filters=sub_filters, page=1, page_size=200
+                )
+                for r in page.items:
+                    opp_scope.add(r.opportunity_id)
+            else:
+                members = (
+                    await session.execute(
+                        _select(TrackingGroupMember).where(
+                            TrackingGroupMember.group_id == grp.id
+                        )
+                    )
+                ).scalars().all()
+                if grp.member_kind == "opportunity":
+                    for m in members:
+                        opp_scope.add(m.member_id)
+                elif grp.member_kind == "client":
+                    for m in members:
+                        client_scope.add(m.member_id)
+
+    if watching:
+        axis_used = True
+        rows = (
+            await session.execute(
+                _select(WatchedItem).where(WatchedItem.user_id == user.id)
+            )
+        ).scalars().all()
+        watching_ids = set()
+        for r in rows:
+            if r.kind == "opportunity":
+                watching_ids.add(r.item_id)
+            elif r.kind == "client":
+                client_scope.add(r.item_id)
+
+    return {
+        "opportunity_id": (
+            tuple(opp_scope) if (group_ids and not watching) else
+            (tuple(opp_scope | (watching_ids or set())) if axis_used else None)
+        ),
+        "client": tuple(client_scope) if client_scope else None,
+        "watching_ids": tuple(watching_ids) if watching_ids is not None else None,
+    }
 
 
 def _parse_sort(raw: str | None, default: tuple[SortSpec, ...]) -> tuple[SortSpec, ...]:
@@ -532,12 +632,16 @@ async def list_opportunities_endpoint(
     open_closed: str | None = Query(None),
     missing: list[str] | None = Query(None),
     client: list[uuid.UUID] | None = Query(None),
+    group: list[uuid.UUID] | None = Query(None),
+    watching: bool = Query(False),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     sort: str | None = Query(None),
 ) -> OpportunityListOut:
     _require_reader(user)
     _validate_page_size(page_size)
+    # S20 W6 · resolve group + watching axes into opportunity_id scope.
+    scope = await _resolve_scope(session, user=user, group_ids=group, watching=watching)
     filters = _parse_filters(
         pipeline, stage, owner, readiness, attention,
         date_field, date_from, date_to, date_preset, search, include_closed,
@@ -545,8 +649,11 @@ async def list_opportunities_endpoint(
         business_unit=business_unit,
         open_closed=open_closed,
         missing=missing,
-        client=client,
+        client=tuple((client or []) + list(scope["client"] or ())) or None,
+        watching_ids=scope["watching_ids"],
     )
+    if scope["opportunity_id"] is not None:
+        filters = replace(filters, opportunity_id=scope["opportunity_id"])
     sort_spec = _parse_sort(sort, DEFAULT_SORT_OPPS)
     result = await _list_opportunities(
         session, filters=filters, page=page, page_size=page_size, sort=sort_spec

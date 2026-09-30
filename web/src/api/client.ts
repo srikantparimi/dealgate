@@ -4042,6 +4042,10 @@ export interface PipelineFilters {
   missing?: string[];
   // S20 W2 Session 3b · scope to one or more client UUIDs (client detail page).
   client?: UUID[];
+  // S20 W6 Session 4 · tracking-group scope (manual or rule-based).
+  group?: UUID[];
+  // S20 W6 Session 4 · per-user watchlist axis. `true` = only starred rows.
+  watching?: boolean;
   page?: number;
   page_size?: number;
   sort?: string;
@@ -4058,6 +4062,8 @@ function pipelineParams(filters: PipelineFilters): URLSearchParams {
   filters.attention?.forEach((a) => p.append("attention", a));
   filters.missing?.forEach((m) => p.append("missing", m));
   filters.client?.forEach((c) => p.append("client", c));
+  filters.group?.forEach((g) => p.append("group", g));
+  if (filters.watching) p.set("watching", "true");
   if (filters.date_field) p.set("date_field", filters.date_field);
   if (filters.date_from) p.set("date_from", filters.date_from);
   if (filters.date_to) p.set("date_to", filters.date_to);
@@ -4132,6 +4138,106 @@ export interface PipelineFacets {
 
 export function getPipelineFacets(): Promise<PipelineFacets> {
   return request<PipelineFacets>(`/pipeline/facets`);
+}
+
+// S20 W6 Session 4 · tracking groups (manual + rule-based).
+export interface TrackingGroup {
+  id: UUID;
+  owner_id: UUID;
+  name: string;
+  visibility: "private" | "team";
+  member_kind: "client" | "opportunity";
+  filter_json: Record<string, unknown> | null;
+  include_future_deals: boolean;
+  archived_at: ISODateTime | null;
+}
+
+export function listTrackingGroups(params: {
+  member_kind?: "client" | "opportunity";
+  visibility?: "private" | "team";
+} = {}): Promise<{ items: TrackingGroup[] }> {
+  const p = new URLSearchParams();
+  if (params.member_kind) p.set("member_kind", params.member_kind);
+  if (params.visibility) p.set("visibility", params.visibility);
+  return request<{ items: TrackingGroup[] }>(
+    `/tracking-groups${p.toString() ? "?" + p.toString() : ""}`,
+  );
+}
+
+// S20 W6 Session 4 · saved views.
+export interface SavedView {
+  id: UUID;
+  owner_id: UUID;
+  key: string;
+  name: string;
+  filter_json: Record<string, unknown>;
+  sort_json: unknown | null;
+  visibility: "private" | "team";
+  is_builtin: boolean;
+  display_order: number;
+  archived_at: ISODateTime | null;
+}
+
+export function listSavedViews(): Promise<{ items: SavedView[] }> {
+  return request<{ items: SavedView[] }>(`/saved-views`);
+}
+
+// S20 W6 Session 4 · watchlist.
+export interface WatchedItemRow {
+  id: UUID;
+  kind: "opportunity" | "client";
+  item_id: UUID;
+}
+
+export interface WatchedList {
+  items: WatchedItemRow[];
+  counts: { opportunity?: number; client?: number };
+}
+
+export function listWatchlist(): Promise<WatchedList> {
+  return request<WatchedList>(`/watchlist`);
+}
+
+export function addWatch(
+  kind: "opportunity" | "client",
+  itemId: UUID,
+): Promise<WatchedItemRow> {
+  return request<WatchedItemRow>(`/watchlist`, {
+    method: "POST",
+    body: JSON.stringify({ kind, item_id: itemId }),
+  });
+}
+
+export function removeWatch(
+  kind: "opportunity" | "client",
+  itemId: UUID,
+): Promise<void> {
+  const p = new URLSearchParams({ kind, item_id: itemId });
+  return request<void>(`/watchlist?${p.toString()}`, { method: "DELETE" });
+}
+
+// S20 W6 Session 4 · timeline on /deals/:id and /clients/:id.
+export interface TimelineEntry {
+  ts: ISODateTime;
+  source: string;
+  kind: string;
+  actor_name: string | null;
+  body: string;
+  entity_id: UUID | null;
+}
+
+export function getDealTimeline(
+  opportunityId: UUID,
+): Promise<{ items: TimelineEntry[] }> {
+  return request<{ items: TimelineEntry[] }>(
+    `/deals/${opportunityId}/timeline`,
+  );
+}
+
+export function getClientTimeline(
+  clientId: UUID,
+): Promise<{ items: TimelineEntry[] }> {
+  return request<{ items: TimelineEntry[] }>(`/clients/${clientId}/timeline`);
 }
 
 // S20 W6 · deal comments (latest + list) for /deals/:id and client page.
