@@ -1,0 +1,13 @@
+[smoke] target: https://app.dealgateapp.com
+[smoke] run tag: smoke 20260930T043213Z
+[smoke] step 0 · mint Cognito token for e2e user
+[smoke] step 0.5 · single-truth grep gate
+single-truth guarantee ok — every router lists deals through hubspot_pipeline
+[smoke] step 1 · /healthz
+[smoke] step 2 · bedrock inference profile in region
+[smoke] step 3 · POST /sows/upload
+[smoke] step 4 · POST /sows/jobs/6bcf7714-35a0-4aa0-a463-01acd28bb8f4/pick (create_new: smoke 20260930T043213Z)
+[smoke] step 5 · confirmation.extract_status
+[smoke] step 6 · GET /sows/drafts?mine=false
+[smoke] GREEN — deploy is safe to keep. (cleanup + gate run next)
+[gate] clean · 0 test-tagged clients on https://app.dealgateapp.com
