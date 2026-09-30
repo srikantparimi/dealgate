@@ -52,3 +52,24 @@ Format: `## <id> · <one-line title> · <UTC timestamp> · <owner>` then:
 ---
 
 Workers append below this line as their scope surfaces choices.
+
+## D-COG-01 · Multi-role Cognito approvers TF partition deferred · 2026-09-30 05:22 UTC · Lead
+
+- **Decision:** Do not stand up 5 new Cognito users + `officeapp-dev-e2e-approvers` Secrets Manager JSON tonight. T27 (permissions uniform across surfaces) + T44 (12-step full journey with role hand-offs) stay `xfail` with reason "multi-role users pending TF slice"; every other test in the harness runs against the fallback smoke-bot user.
+- **Options considered:**
+  1. Create the users via `aws cognito-idp admin-create-user` + `admin-add-user-to-group` + `admin-set-user-password`, drop the JSON into Secrets Manager via `aws secretsmanager put-secret-value` — a rule-12 violation (Cognito state not in TF); reversible via delete but fights the same policy S20 is trying to reinforce.
+  2. Write the TF module tonight in `infra-tf/modules/e2e-approvers/` and apply → adds ~30 min of TF work + a broader-drift apply during D5's controlled window; the approvers are not on the S20 critical path, and the Lead's D5 tonight already carries a 38-add/9-change/6-destroy drift context (`docs/directives/s20-terraform-drift.md`). Adding another module tonight compounds the risk profile.
+  3. Defer to a dedicated multi-role TF slice + fall back to SystemAdmin smoke bot with a WARN → **chosen**.
+- **Chosen because:** The smoke bot has every governance group (see `isolation.md` §Test-user tags), so functional coverage of the *state machine* still runs. What we lose is proof that role gating rejects the wrong role — which is a real gap and is captured in the matrix as `missing` with next action = "spin up TF slice S20-01a". Zero effect on the truthfulness of the morning matrix: T27 + T44 are marked `blocked` (multi-role approver secret) with owner Lead + next action.
+- **How to reverse:** Write `infra-tf/modules/e2e-approvers/` per `requests.md::W5-02`, `terraform apply`, populate secret, run `tests/e2e/fixtures/multi-role-auth.ts` — `mintRoleTokens("delivery")` starts returning a Delivery-tagged token instead of the SystemAdmin fallback, xfails flip to real assertions.
+
+## D-INT-01 · W5 integrates first because non-conflicting · 2026-09-30 05:20 UTC · Lead
+
+- **Decision:** Merge W5 into `integrate/s20` immediately on receipt, before waiting for the other six workers.
+- **Options considered:**
+  1. Batch-integrate all workers at the end → matches the directive's ~2h cadence but leaves the harness sitting in a branch nobody else can see; W2/W3 don't get a chance to see the T-skeletons growing.
+  2. Serialize alphabetically → arbitrary.
+  3. Integrate as workers return, with priority for non-conflicting scopes (W5, W6) → **chosen**.
+- **Chosen because:** W5's ownership is `tests/**` + `scripts/**` (non-deploy) + `docs/reports/s20/matrix.md, tests.md`. Zero overlap with any other worker's files. Merging W5 first surfaces the test scaffolding to the rest of the pipeline (Lead can now inspect what will need to flip from xfail to real) without delaying anyone. The directive says "every ~2 hours" — I read that as a maximum interval, not a mandatory batching.
+- **How to reverse:** `git revert 5852098` on `integrate/s20`; W5's work stays on `origin/s20/W5` untouched.
+
