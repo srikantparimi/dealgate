@@ -23,7 +23,10 @@ from app.models.gm_model import CostLine, GmModel, ResourceLine
 from app.models.hubspot_pipeline import HubspotPipeline, HubspotStage
 from app.models.hubspot_writeback import HubspotWritebackJob
 from app.models.integration import IntegrationEvent
-from app.models.next_action import NextAction
+from app.models.deal_comment import DealComment
+from app.models.next_action import NextAction, NextActionEvent
+from app.models.saved_view import SavedView
+from app.models.tracking_group import TrackingGroup, TrackingGroupMember
 from app.models.notification import Notification, NotificationSetting
 from app.models.opportunity import Opportunity
 from app.models.policy import PolicyVersion
@@ -68,6 +71,7 @@ __all__ = [
     "ClientRateCard",
     "ClientRateCardRow",
     "CostLine",
+    "DealComment",
     "DirectCostSettings",
     "ForecastPeriod",
     "FunctionOwner",
@@ -81,6 +85,7 @@ __all__ = [
     "LegacyImportBatch",
     "LegalEntity",
     "NextAction",
+    "NextActionEvent",
     "Notification",
     "NotificationSetting",
     "Opportunity",
@@ -89,6 +94,7 @@ __all__ = [
     "RateCardVersion",
     "Renewal",
     "ResourceLine",
+    "SavedView",
     "SignedSowUpload",
     "Sow",
     "SowEmbedding",
@@ -96,6 +102,8 @@ __all__ = [
     "SowVersion",
     "SyncStatus",
     "Task",
+    "TrackingGroup",
+    "TrackingGroupMember",
     "User",
     "UserPreference",
 ]
