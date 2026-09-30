@@ -100,6 +100,27 @@ downgraded here.
 a staging assertion. Session 2–6 per-worker cycles lift specific rows
 to `verified working` by running the harness on the same staging
 deploy without another D5 roll.
+
+---
+
+## Session 2 W1 update · 2026-09-30 20:00 UTC · staging on api rev 55
+
+Session 2 = W1 scope (data truth & sync) run against `integrate/s20`
+@ `d21d18c9`. Deploy: rev 55 · image `s20-d21d18c9` · migrations
+0044 + 0045 applied (adds `hubspot_owner`, `hubspot_property_mapping`
+tables; W1 model classes now have their schema on Postgres).
+
+| W1 line | Before Session 2 | After Session 2 | Evidence |
+| --- | --- | --- | --- |
+| L05 owner mirror (D2) | `fixed and tested (unit)` | **`fixed and tested (staging)`** | `docs/reports/s20/t03-parity/venetian_60275608921/` rows for `owner_name`, `owner_email`, `owner_id`. Owner id 86147613 resolves to Roger Scalzi through the mirror. D2 wording helper `services.hubspot_owners.owner_display_label` exports `Unassigned` (empty source) vs `Owner details unavailable` (unresolved id). |
+| A2 continuous consumer / watermarks (D4) | `missing` | **`fixed and tested (staging, watermark side)`** — continuous consumer TF written but not applied | `curl /api/sync-status` returns `hubspot_reconcile` + `hubspot_webhook` rows with populated `last_success_at`. Continuous consumer TF (`infra-tf/modules/schedulers/hubspot_intake_service.tf`) staged for a later apply; the 5-min scheduled tick is still what runs today. |
+| A3 scan generation | `fixed and tested (unit)` | **`fixed and tested (unit)`** — no staging chaos test | 22 pytest cases in `test_hubspot_backfill_scan_generation.py`. Mid-scan crash test on staging deferred (needs a controlled ECS kill; recorded as S2-D). |
+| A4 source-event dedupe + atomic commit | `fixed and tested (unit)` | **`fixed and tested (staging shape)`** | Watermark advance visible on `/api/sync-status`; unit tests cover the `IntegrityError` catch on unique `(source, source_event_id)`. Live duplicate-message injection test deferred to Session 4 continuous-consumer cutover. |
+| D9 stage aggregation by (pipeline_id, stage_id) | (silent — assumed) | **`verified working (staging)`** | T03 parity: `stage_id=1038193692` + `hubspot_pipeline_id=710688094` on the row; every mirror grouping is by ids (line 998 of `services/hubspot_pipeline.py`). |
+| D10 Business Unit discovery | `fixed and tested (unit)` | **`verified working (staging shape)` + `blocked (evidence: property absent)`** | `discover_business_unit` looks up the property; the staging portal's deal schema does not carry a "Business Unit" enumeration property. `business_unit=null` on every row is the honest answer. Recorded in `docs/reports/s20/t03-parity/venetian_60275608921/comparison.md`. |
+| T28 event edge cases | 7 xfail | **5 pass / 3 xfail** | `test_s20_sync_edge_cases.py`: out-of-order, property-clear, owner-rename, unresolved-owner-label, deletion-archives-preserves-SOW all pass on unit. Stage-rename + association-change + worker-crash-cursor-resume xfail with sharpened next-actions (Sessions 3 + 4). |
+| T03 parity · Venetian 60275608921 | not_run | **14/15 fields match; 1 known L04 defect** | `docs/reports/s20/t03-parity/venetian_60275608921/comparison.md`. `name` column shows stage label instead of `dealname` (L04, W2 request open); every other field byte-matches or intentional formatting. |
+| Freshness alarms (CloudWatch) | `missing` | `missing` (TF written, not applied) | `infra-tf/modules/schedulers/hubspot_freshness_alarms.tf` with 3 alarms (backlog age, DLQ non-zero, processing lag) + 1 metric filter. Not applied tonight — the broader-drift plan cluster in `docs/directives/s20-terraform-drift.md` needs the S14a-import work first, and we don't roll new alarms into that context without a controlled apply. |
 | T20 · CEO exception "Not required" | fixed and tested | `SignatureTab.tsx` + `readiness.ts` always emit the CEO row: "Not required" when `!floors.requires_ceo`, full detail otherwise | T20 |
 | T21 · Material change invalidation | verified working | `approvals_hooks.on_sow_version_created` + `on_gm_model_created` already fire `void_on_change` (existing S4 wiring) | T21 |
 | D3 · NDA/MSA per D3 in signature | fixed and tested | `SignatureTab.tsx` drops NDA/MSA row; `require_signature_eligibility` verified read-only (no gating logic exists to preserve) | T15, T41 |

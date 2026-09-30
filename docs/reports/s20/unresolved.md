@@ -6,7 +6,30 @@ Deploy proved on staging (rev 53 · s20-3e5be98c). Full unit suite green
 
 ## Hard blocks (permission / external / irreversible on real data)
 
-None open.
+None open at Session 2 close either.
+
+## Session 2 (W1) hand-back · 2026-09-30 20:05 UTC
+
+**Deploy:** `integrate/s20` @ `d21d18c9` deployed to staging (api rev 55 · image `s20-d21d18c9`) tonight. Migrations 0044 + **0045 (Session 2 · W1 · new hubspot_owner + hubspot_property_mapping tables)** applied. Deploy smoke green on retry (first hit Bedrock `manual_required` flake per the runbook).
+
+**W1 code + tests:**
+- Alembic 0045 · new tables for W1's HubspotOwner + HubspotPropertyMapping classes. Backward compat. Applied on staging.
+- Root wire · `hubspot_events_queue_name` + `dlq_name` flow from `module.hubspot` outputs into `module.schedulers`. Lead's temporary defaults removed.
+- D2 wording · `services.hubspot_owners.owner_display_label(session, id)` returns `Unassigned` (empty source) vs `Owner details unavailable` (unresolved id); archived owners resolve to their name.
+- Webhook deletion path · `handle_event` archives the mirror row on `deal.deletion` without calling `get_deal` (deal is gone from the CRM); rule-4 governance rows preserved.
+- T28 · 5 tests pass (out-of-order, property-clear, owner-rename, unresolved-owner-label, deletion-preserves-SOW). 3 xfail with sharpened next-actions.
+- **T03 parity** · Venetian Resort deal 60275608921 (BSC not present on staging — searches for "BSC", "Staffing", "Designer", "UX" all `total=0`). 14 of 15 fields match; 1 mismatch is the L04 defect the review already tracks. Report: `docs/reports/s20/t03-parity/venetian_60275608921/comparison.md`.
+
+**Session 2 deferrals (not blockers, per-scope):**
+
+| # | Item | Why deferred | Owner |
+| --- | --- | --- | --- |
+| S2-D | Continuous consumer cutover per §4 (disabled deploy → drain → cutover → rollback test → cutover → 20-event latency). | The TF is written (`hubspot_intake_service.tf` — new ECS service `hubspot_intake_continuous`) but applying it lands 30+ resources including the alarms cluster. The broader-drift plan cluster in `docs/directives/s20-terraform-drift.md` needs to converge first before rolling this into a single controlled apply window. The current 5-min scheduled tick continues to run; publishing "typically under 2 minutes" is honest against the tick + long-poll behavior. | Session 4 or a dedicated cutover slice. |
+| T32 20-event latency measurement | Depends on S2-D applied. | (same) | (same). |
+| T33 mid-batch crash cursor resume | Depends on S2-D applied (needs the long-running service to kill). | (same) | (same). |
+| T34 duplicate SQS-msg-id same source-event-id | Same-shape unit test already passes (`test_hubspot_intake_dedupe.py`). Live injection requires S2-D + `scripts/inject-events.py` (W5-authored, requires the ECS service running). | (same) | (same). |
+| Freshness alarms apply (`hubspot_backlog_age`, `hubspot_dlq_nonzero`, `hubspot_processing_lag` + metric filter) | Same context — rolls with S2-D in one plan. | (same) | (same). |
+| L04 · `opportunity.name` from `dealname` | W2 request W2-2026-09-30-01 open in `requests.md`. The T03 parity table cites this as the single mismatch. | Session 3 (W2). |
 
 **Resolved:** ~~U01~~ · 2026-09-30 · TF slice `infra-tf/modules/e2e-approvers/`
 applied against staging. 5 users CONFIRMED + in role-group +
