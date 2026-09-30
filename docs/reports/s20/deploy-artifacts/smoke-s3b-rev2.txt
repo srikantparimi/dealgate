@@ -1,0 +1,31 @@
+[smoke] target: https://app.dealgateapp.com
+[smoke] run tag: smoke 20260930T221857Z (Session 3b Rev-2 · api rev 58 · image s20-c253f011)
+[smoke] step 0 · mint Cognito token for e2e user
+[smoke] step 0.5 · single-truth grep gate
+single-truth guarantee ok — every router lists deals through hubspot_pipeline
+[smoke] step 1 · /healthz
+[smoke] step 2 · bedrock inference profile in region
+[smoke] step 3 · POST /sows/upload
+[smoke] step 4 · POST /sows/jobs/10df43aa-6266-4783-afd2-55183a63930b/pick
+[smoke] step 5 · confirmation.extract_status
+[smoke] step 6 · GET /sows/drafts?mine=false
+[smoke] GREEN (second run — first run tripped the known Bedrock manual_required flake, retry passed)
+[gate] clean · 0 test-tagged clients on https://app.dealgateapp.com
+
+Playwright S20 specs against staging rev 58:
+  ✓ t01-sidebar-navigation.spec.ts · each NAV_GROUPS item lands (26.8s)
+  ✓ t09-names-not-ids.spec.ts · 5 tests (deal-col, stage-cell, chips, deal-heading, client-heading)
+  ✓ t40-live-repro.spec.ts · 8 tests:
+    · L02 chip URL, L03 pagination controls, L04 name-vs-stage
+    · L05 client owner, L06 chip counts, L06b chip value line (S3b Rev-2)
+    · Owner + BU filter selects present (S3b Rev-2)
+    · L07 74 Sky Closed Lost callout
+  - t01b + t44 skipped
+  14 passed / 13 skipped in 1.2m
+
+T35 pytest (test_s20_pagination_vs_totals.py) — 5/5 pass locally:
+  · total on page 1 == seeded 137
+  · total stable across pages 1..6
+  · chip counts sum to total (L06 reconciliation)
+  · chips carry open_value_by_currency (S3b Rev-2 chip-value contract)
+  · page_size 25/50/100 all respected

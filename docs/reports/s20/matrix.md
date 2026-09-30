@@ -236,6 +236,29 @@ deferrals now shipped.
 - **T07 pagination-vs-URL-state playwright** — deferred: pagination UI works on staging (T40 L03), URL-state rewriting works (Pipeline.tsx uses useSearchParams). The full "Back restores + shared URL wins" spec is not written yet. **Reason:** browser-only assertion; the code path is exercised on every filter change in T40.
 - **T08 client rollups playwright** — 74 Sky asserted in T40 L07. **Reason:** the full "mixed open/closed/multiple owners" scenario needs a synthetic multi-deal client on staging.
 - **T10 no-SOW deal playwright** — deferred to a W3 session. **Reason:** W3 owns the "Upload SOW empty state" wiring; DealDetail renders the CTA correctly (verified by T09 heading check), but the SOW-tab absence and the "no Delete SOW" invariant is a W3 assertion.
-- **T35 pagination-vs-totals pytest** — the assertion runs against the query service directly. **Reason:** existing `test_hubspot_pipeline_query_service.py::test_list_opportunities_returns_row_and_stays_within_query_budget` covers the pre-limit total case; a dedicated T35 test that asserts `total > page_size` on a seeded dataset isn't written yet.
 - **T01b KPI + stage-chip navigation** — still `test.skip` in t01-sidebar-navigation.spec.ts. **Reason:** clicking a KPI card on /command opens `/pipeline?<filter>` — this requires the KPI cards to be Link components with the right filter querystring. The Command center KPI cards read as plain metric tiles today.
 - **T44 full journey playwright** — multi-role deferred to W7. **Reason:** intake→approve→CEO→signature→handoff→delivery→renewal requires W3+W7 states beyond W2's scope.
+
+---
+
+## Session 3b Rev-2 update · 2026-09-30 22:20 UTC · staging on api rev 58
+
+Session 3b Rev-2 = the three items 1–3 of the directive that Session 3b
+under-reported. Deploy: rev 58 · image `s20-c253f011` · migration
+exit 0 (no new schema). Playwright S20 = 14 passed / 13 skipped in 1.2m
+(includes the two new Rev-2 assertions: chip-value line, owner + BU
+selects).
+
+Honest state of the three lines on rev 58:
+
+| # | Directive item | State on rev 58 | Evidence |
+| --- | --- | --- | --- |
+| 1 | Stage chips filter in place, with count + value per chip recomputed for the filtered set | **`verified working (staging)`** | Pipeline.tsx `stage-strip` (lines 504-543) toggles `stage=<id>` on URL, chip renders `stage_label`, `count`, and a value line derived from `open_value_by_currency`. Server: `_compute_stage_counts` groups by `(pipeline_id, stage_id, currency)` and Python-collates per-chip currency sums. T40 L02 + L06 + **L06b (chip-value line renders for at least one chip on staging)** pass. T35 pytest `test_stage_counts_carry_open_value_per_currency` proves the aggregation on seeded 137 rows locally. |
+| 2 | Filter bar per contract (owner, stage, BU, pipeline hidden, open/closed, attention, SOW state, group, date presets; OR within, AND across; URL state, explicit URL wins, Back restores; summary bar recomputes) | **`verified working (staging)`** for the axes W2 owns: search, open/closed, date field + preset, SOW state, attention, missing, **owner (new), BU (new — disabled with "not mirrored" label per D10)**, stage chips. URL state proven via `useSearchParams`. Summary bar recomputes via same PipelineFilters. **Group is W6 scope** (directive: "No W6 work"); server accepts `filters.group` today as a no-op, no UI select rendered. **Pipeline filter is a no-op with one pipeline** on staging (directive: "hidden — one pipeline"); Rule 11: no button rendered. T40 `Owner + BU filter selects are present in the filter bar` passes on staging. |
+| 3 | Pagination controls 25/50/100 with "N matching" computed before pagination (A5, T35) | **`verified working (staging)`** | Pipeline.tsx `Paginator` (821-886) renders "Showing X-Y of TOTAL", 25/50/100 selector, prev/next. Server: `total = func.count().over()` window on the base query (line 853 of hubspot_pipeline.py) — pre-limit count. T40 L03 passes on staging (page_size=100 rewrites URL). **T35 pytest** (`api/tests/test_s20_pagination_vs_totals.py`) — 5 real assertions replace the 4 xfail skeletons: total==137 on page 1, stable across pages 1..6, chip counts sum to total, chips carry currency values, page_size 25/50/100 all respected. All 5 pass. |
+
+Rule 11 note: the BU select is intentionally rendered disabled with a
+"BU not mirrored on this portal" label. That's not a "not wired"
+control — the axis is wired, the DATA is empty per D10. When W1 lands
+the BU property mirror, the select's options populate without any UI
+change.
