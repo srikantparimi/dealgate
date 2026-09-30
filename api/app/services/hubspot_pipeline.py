@@ -202,6 +202,142 @@ async def get_pipeline_deal(
     return _row_to_deal(opp, client, owner, linked.get(opp.id, ()))
 
 
+async def get_opportunity_row(
+    session: AsyncSession,
+    *,
+    opportunity_id: uuid.UUID,
+    now: datetime | None = None,
+) -> OpportunityRow | None:
+    """S20 W2 · single-opportunity in the S19 OpportunityRow shape.
+
+    Powers /deals/{id} in the SPA. Reuses the same correlated subqueries
+    the list endpoint uses so the field shape is identical (name,
+    stage_id, sow_state, attention_flags, next_action counts, BU,
+    pipeline_id, is_closed_*).
+    """
+
+    now = now or datetime.now(tz=UTC)
+
+    subq_next_open = _next_action_open_count_subq().label("na_open")
+    subq_next_due = _next_action_min_due_subq().label("na_due")
+    subq_latest_pkg = _latest_package_status_subq().label("pkg_status")
+    subq_sow_id = _sow_id_subq().label("sow_id")
+    subq_signed = _signed_sow_exists_subq().label("signed_ct")
+    subq_sow_ct = _sow_count_subq().label("sow_ct")
+
+    stmt = (
+        select(
+            Opportunity,
+            Client,
+            User,
+            subq_next_open,
+            subq_next_due,
+            subq_latest_pkg,
+            subq_sow_id,
+            subq_signed,
+            subq_sow_ct,
+        )
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
+        .join(User, User.id == Opportunity.owner_id, isouter=True)
+        .where(
+            Opportunity.id == opportunity_id,
+            Opportunity.source == "hubspot",
+            Opportunity.archived_at.is_(None),
+        )
+    )
+    row = (await session.execute(stmt)).one_or_none()
+    if row is None:
+        return None
+
+    opp, client, owner, na_open, na_due, pkg_status, sow_id, signed_ct, sow_ct = row
+    signed_count = int(signed_ct or 0)
+    state = _derive_sow_state(
+        sow_id=sow_id, latest_status=pkg_status, signed_count=signed_count
+    )
+    flags = _derive_attention(
+        owner_email=owner.email if owner else None,
+        is_closed_won=opp.is_closed_won,
+        is_closed_lost=opp.is_closed_lost,
+        hubspot_last_activity_at=opp.hubspot_last_activity_at,
+        next_action_min_due=na_due,
+        latest_status=pkg_status,
+        signed_count=signed_count,
+        sow_id=sow_id,
+        now=now,
+    )
+    raw_name = getattr(opp, "name", None)
+    display_name = raw_name or opp.stage_label or opp.hubspot_deal_id
+    return OpportunityRow(
+        opportunity_id=opp.id,
+        hubspot_deal_id=opp.hubspot_deal_id,
+        name=display_name,
+        client_id=client.id if client else None,
+        client_name=client.name if client else None,
+        stage_id=opp.hubspot_stage_id,
+        stage_label=opp.stage_label,
+        is_closed_won=opp.is_closed_won,
+        is_closed_lost=opp.is_closed_lost,
+        amount=opp.amount,
+        currency=opp.currency,
+        close_date=opp.close_date,
+        owner_id=owner.id if owner else None,
+        owner_name=owner.name if owner else None,
+        owner_email=owner.email if owner else None,
+        hubspot_last_activity_at=opp.hubspot_last_activity_at,
+        sow_approval_state=state.value,
+        attention_flags=tuple(f.value for f in flags),
+        next_action_open_count=int(na_open or 0),
+        next_action_min_due=na_due,
+        sow_count=int(sow_ct or 0),
+        hubspot_pipeline_id=opp.hubspot_pipeline_id,
+        business_unit=(
+            getattr(opp, "hubspot_business_unit", None)
+            or (getattr(client, "hubspot_business_unit", None) if client else None)
+        ),
+    )
+
+
+async def list_pipeline_stages(
+    session: AsyncSession, *, pipeline_id: str
+) -> tuple[StageCount, ...]:
+    """S20 W2 · ordered stages for a single pipeline, non-archived only.
+
+    Powers the ordered stage strip on /deals/{id}. Uses the mirror in
+    `hubspot_stage` (D9). Zero-count stages included so the strip shows
+    every stage the deal could sit in, in mirror order.
+    """
+
+    rows = (
+        await session.execute(
+            select(
+                HubspotStage.id,
+                HubspotStage.label,
+                HubspotStage.display_order,
+                HubspotStage.is_closed,
+                HubspotStage.probability,
+            )
+            .where(
+                HubspotStage.pipeline_id == pipeline_id,
+                HubspotStage.archived.is_(False),
+            )
+            .order_by(HubspotStage.display_order.asc())
+        )
+    ).all()
+
+    return tuple(
+        StageCount(
+            pipeline_id=pipeline_id,
+            stage_id=stage_id,
+            stage_label=label,
+            stage_order=order,
+            count=0,
+            is_closed_won=bool(is_closed) and (probability is not None and probability >= Decimal("1.0")),
+            is_closed_lost=bool(is_closed) and (probability is not None and probability <= Decimal("0.0")),
+        )
+        for stage_id, label, order, is_closed, probability in rows
+    )
+
+
 async def search_pipeline_deals(
     session: AsyncSession, *, q: str, limit: int = 10
 ) -> list[PipelineDeal]:
@@ -316,6 +452,7 @@ class PipelineFilters:
     owner: tuple[uuid.UUID, ...] = ()  # deal sales owner (D2)
     account_owner: tuple[str, ...] = ()  # client hubspot_owner_id list (D2 separate axis)
     business_unit: tuple[str, ...] = ()  # D10
+    client: tuple[uuid.UUID, ...] = ()  # S20 W2 Session 3b · scope to a specific client (client detail page)
     group: uuid.UUID | None = None  # slice 2 wires tracking_group; slice 1 no-op
     readiness: tuple[str, ...] = ()  # subset of READINESS_STATES (a.k.a sow_state)
     attention: tuple[str, ...] = ()  # subset of ATTENTION_FLAGS
@@ -528,6 +665,11 @@ def _base_opportunity_filter(filters: PipelineFilters):
         conditions.append(Opportunity.hubspot_stage_id.in_(filters.stage))
     if filters.owner:
         conditions.append(Opportunity.owner_id.in_(filters.owner))
+    if filters.client:
+        # S20 W2 Session 3b · scope to specific client(s). Powers /clients/:id
+        # deal list — the client page shows every deal the client owns,
+        # matching the same filter/sort semantics the /pipeline page uses.
+        conditions.append(Opportunity.client_id.in_(filters.client))
     if filters.account_owner:
         client_owner = _client_hubspot_owner_column()
         if client_owner is not None:

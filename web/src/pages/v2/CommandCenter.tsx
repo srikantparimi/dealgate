@@ -704,6 +704,13 @@ export function CommandCenterPage() {
     <div className="flex flex-col gap-6">
       <ExecutiveBanner
         eyebrow={eyebrow}
+        title={
+          <>
+            Command center.
+            <br />
+            <em className="italic text-lime">Every commitment in view.</em>
+          </>
+        }
         metrics={metrics}
         freshness={freshness}
         actionHref="/sows"

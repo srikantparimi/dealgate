@@ -40,10 +40,10 @@ const NAV_ITEMS: Array<{
   label: RegExp;
   destinationMarker: RegExp;
 }> = [
-  // /command renders ExecutiveBanner with editorial h1 "Every commitment. In view."
-  // — that is the command-center identity, not a boring page title. The URL check
-  // above is the routing assertion; this marker just proves the banner rendered.
-  { to: "/command", label: /command center/i, destinationMarker: /every commitment/i },
+  // /command's h1 renders "Command center. Every commitment in view." —
+  // Command-center-specific identity per S20 Session 3b directive, not the
+  // generic banner default that any page might reuse.
+  { to: "/command", label: /command center/i, destinationMarker: /command center/i },
   { to: "/work", label: /my work/i, destinationMarker: /my work/i },
   { to: "/pipeline", label: /pipeline clients/i, destinationMarker: /pipeline|opportunities|clients/i },
   // Sidebar labels the slot "AI discovery"; the page's PageHeader title is

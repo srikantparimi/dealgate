@@ -4038,6 +4038,8 @@ export interface PipelineFilters {
   include_closed?: boolean;
   open_closed?: "open" | "closed_won" | "closed_lost" | "any";
   missing?: string[];
+  // S20 W2 Session 3b · scope to one or more client UUIDs (client detail page).
+  client?: UUID[];
   page?: number;
   page_size?: number;
   sort?: string;
@@ -4053,6 +4055,7 @@ function pipelineParams(filters: PipelineFilters): URLSearchParams {
   filters.readiness?.forEach((r) => p.append("readiness", r));
   filters.attention?.forEach((a) => p.append("attention", a));
   filters.missing?.forEach((m) => p.append("missing", m));
+  filters.client?.forEach((c) => p.append("client", c));
   if (filters.date_field) p.set("date_field", filters.date_field);
   if (filters.date_from) p.set("date_from", filters.date_from);
   if (filters.date_to) p.set("date_to", filters.date_to);
@@ -4088,6 +4091,84 @@ export function getPipelineSummary(filters: PipelineFilters = {}): Promise<Pipel
   const params = pipelineParams(filters);
   return request<PipelineSummary>(
     `/pipeline/summary${params.toString() ? "?" + params.toString() : ""}`,
+  );
+}
+
+// S20 W2 Session 3b · single-opportunity for /deals/:id. Returns the
+// same OpportunityRow shape as the list endpoint so the deal page and
+// the pipeline table stay column-aligned.
+export function getPipelineOpportunity(
+  opportunityId: UUID,
+): Promise<PipelineOpportunityRow> {
+  return request<PipelineOpportunityRow>(
+    `/pipeline/opportunities/${opportunityId}`,
+  );
+}
+
+// S20 W2 Session 3b · ordered stage strip for /deals/:id. Uses the
+// hubspot_stage mirror; every non-archived stage in this pipeline in
+// display order (zero-count stages included).
+export function listPipelineStages(
+  pipelineId: string,
+): Promise<PipelineStageCount[]> {
+  return request<PipelineStageCount[]>(
+    `/pipeline/pipelines/${encodeURIComponent(pipelineId)}/stages`,
+  );
+}
+
+// S20 W6 · deal comments (latest + list) for /deals/:id and client page.
+export interface DealCommentRow {
+  id: UUID;
+  opportunity_id: UUID;
+  author_id: UUID | null;
+  author_name_fallback: string | null;
+  body: string;
+  pinned: boolean;
+  source: string;
+  hubspot_note_id: string | null;
+  created_at: ISODateTime;
+  edited_at: ISODateTime | null;
+  deleted_at: ISODateTime | null;
+}
+
+export interface DealCommentList {
+  items: DealCommentRow[];
+  latest: DealCommentRow | null;
+}
+
+export function listDealComments(
+  opportunityId: UUID,
+): Promise<DealCommentList> {
+  return request<DealCommentList>(`/deals/${opportunityId}/comments`);
+}
+
+// S20 W6 · next actions per opportunity (used by /deals/:id and Pipeline).
+export interface NextActionRow {
+  id: UUID;
+  opportunity_id: UUID;
+  title: string | null;
+  description: string;
+  assignee_user_id: UUID | null;
+  owner_user_id: UUID;
+  due_date: ISODate | null;
+  status: string;
+  blocker: string | null;
+  outcome: string | null;
+  approval_package_id: UUID | null;
+}
+
+export function listNextActions(params: {
+  opportunity_id?: UUID;
+  assignee_user_id?: UUID;
+  status?: string;
+}): Promise<{ items: NextActionRow[] }> {
+  const p = new URLSearchParams();
+  if (params.opportunity_id) p.set("opportunity_id", params.opportunity_id);
+  if (params.assignee_user_id)
+    p.set("assignee_user_id", params.assignee_user_id);
+  if (params.status) p.set("status", params.status);
+  return request<{ items: NextActionRow[] }>(
+    `/next-actions${p.toString() ? "?" + p.toString() : ""}`,
   );
 }
 

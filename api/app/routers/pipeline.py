@@ -44,10 +44,12 @@ from app.services.hubspot_pipeline import (
     VALID_DATE_FIELDS,
     VALID_MISSING_FIELDS,
     VALID_OPEN_CLOSED,
+    get_opportunity_row,
     get_pipeline_deal,
     list_clients as _list_clients,
     list_opportunities as _list_opportunities,
     list_pipeline_deals,
+    list_pipeline_stages,
     resolve_date_preset,
     search_pipeline_deals,
     summary as _summary,
@@ -306,6 +308,7 @@ def _parse_filters(
     business_unit: list[str] | None = None,
     open_closed: str | None = None,
     missing: list[str] | None = None,
+    client: list[uuid.UUID] | None = None,
 ) -> PipelineFilters:
     if date_field is not None and date_field not in VALID_DATE_FIELDS:
         raise HTTPException(
@@ -344,6 +347,7 @@ def _parse_filters(
         include_closed=include_closed,
         open_closed=open_closed,
         missing=tuple(missing or ()),
+        client=tuple(client or ()),
     )
 
 
@@ -523,6 +527,7 @@ async def list_opportunities_endpoint(
     include_closed: bool = Query(False),
     open_closed: str | None = Query(None),
     missing: list[str] | None = Query(None),
+    client: list[uuid.UUID] | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     sort: str | None = Query(None),
@@ -536,6 +541,7 @@ async def list_opportunities_endpoint(
         business_unit=business_unit,
         open_closed=open_closed,
         missing=missing,
+        client=client,
     )
     sort_spec = _parse_sort(sort, DEFAULT_SORT_OPPS)
     result = await _list_opportunities(
@@ -653,6 +659,39 @@ async def summary_endpoint(
         pending_approvals=result.pending_approvals,
         agreement_gaps=result.agreement_gaps,
     )
+
+
+# S20 W2 · single-opportunity for the /deals/:id detail page. Returns
+# the same shape /pipeline/opportunities returns per row so the SPA
+# reuses OpportunityRow (name, stage_id, sow_state, attention_flags,
+# next_action counts, BU, pipeline_id, is_closed_won/lost).
+@router.get("/opportunities/{opportunity_id}", response_model=OpportunityRowOut)
+async def get_opportunity_endpoint(
+    opportunity_id: uuid.UUID,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> OpportunityRowOut:
+    _require_reader(user)
+    row = await get_opportunity_row(session, opportunity_id=opportunity_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="opportunity not found"
+        )
+    return _opp_to_out(row)
+
+
+# S20 W2 · ordered stage strip on /deals/:id. Powered by the mirror in
+# `hubspot_stage`; zero-count stages included so the strip shows every
+# stage the deal could sit in, in mirror display order.
+@router.get("/pipelines/{pipeline_id}/stages", response_model=list[StageCountOut])
+async def list_pipeline_stages_endpoint(
+    pipeline_id: str,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[StageCountOut]:
+    _require_reader(user)
+    stages = await list_pipeline_stages(session, pipeline_id=pipeline_id)
+    return _stage_counts_to_out(stages)
 
 
 # S19 slice 1 H1/H2: sync_status feed for the amber banner. Every worker

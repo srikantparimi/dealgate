@@ -220,18 +220,183 @@ async def test_deleted_deal_archives_mirror_preserves_sow(session):
     assert sow_rows[0].archived_at is None
 
 
-# ---- Remaining T28 cases (xfail with sharpened next-actions) ---------------
+# ---- Session 3b · W2-side T28 xfails now proven --------------------------
 
-@pytest.mark.xfail(reason="Session 3 (W2 side): stage rename via mirror sync + label refresh on next reconcile")
+
 @pytest.mark.asyncio
 async def test_stage_rename_updates_label_stable_id(session):
-    raise AssertionError("skeleton — Session 3 W2 lands the mirror-reconcile edge")
+    """When HubSpot renames a stage, the next mirror sync updates
+    `hubspot_stage.label`; the next `_upsert_opportunity` call for a
+    deal in that stage picks up the new label. `hubspot_stage_id`
+    never changes — only the human label.
+    """
+    from decimal import Decimal
+
+    from app.models.client import Client
+    from app.models.hubspot_pipeline import HubspotPipeline, HubspotStage
+    from app.models.user import User
+    from app.services.hubspot_intake import _upsert_opportunity
+    from app.services.hubspot_stage_mirror import StageMap, StageInfo
+
+    # Seed pipeline + stage mirror with the initial label.
+    session.add(HubspotPipeline(id="710688094", label="Sales", display_order=0))
+    stage = HubspotStage(
+        id="STAGE1",
+        pipeline_id="710688094",
+        label="3-Discovery",
+        display_order=2,
+        is_closed=False,
+        probability=Decimal("0.3"),
+    )
+    session.add(stage)
+    owner = User(email="rep@dealgate.local", name="Rep One", groups=[])
+    session.add(owner)
+    await session.flush()
+
+    stage_map_before = StageMap(
+        by_id={
+            "STAGE1": StageInfo(
+                stage_id="STAGE1",
+                label="3-Discovery",
+                pipeline_id="710688094",
+                display_order=2,
+                is_closed=False,
+                is_closed_won=False,
+                is_closed_lost=False,
+                probability=Decimal("0.3"),
+            )
+        }
+    )
+    # Seed a client so `_upsert_opportunity` has one to attach.
+    client = Client(name="ACME Corp", hubspot_company_id="C1")
+    session.add(client)
+    await session.flush()
+
+    deal_payload = {
+        "id": "1001",
+        "properties": {
+            "dealname": "Test deal",
+            "dealstage": "STAGE1",
+            "pipeline": "710688094",
+        },
+    }
+    opp, _ = await _upsert_opportunity(
+        session,
+        "1001",
+        deal_payload,
+        owner,
+        client,
+        "corr-1",
+        stage_map=stage_map_before,
+    )
+    await session.commit()
+    assert opp.hubspot_stage_id == "STAGE1"
+    assert opp.stage_label == "3-Discovery"
+
+    # HubSpot renames the stage — mirror sync catches it on the next tick.
+    stage.label = "3-Discovery (renamed)"
+    await session.commit()
+
+    stage_map_after = StageMap(
+        by_id={
+            "STAGE1": StageInfo(
+                stage_id="STAGE1",
+                label="3-Discovery (renamed)",
+                pipeline_id="710688094",
+                display_order=2,
+                is_closed=False,
+                is_closed_won=False,
+                is_closed_lost=False,
+                probability=Decimal("0.3"),
+            )
+        }
+    )
+
+    # Next `_upsert_opportunity` call for the same deal picks up the new label.
+    opp2, created = await _upsert_opportunity(
+        session,
+        "1001",
+        deal_payload,
+        owner,
+        client,
+        "corr-2",
+        stage_map=stage_map_after,
+    )
+    await session.commit()
+    assert created is False, "same deal id must not double-insert on rename"
+    assert opp2.id == opp.id
+    assert opp2.hubspot_stage_id == "STAGE1", "stable stage id"
+    assert opp2.stage_label == "3-Discovery (renamed)"
 
 
-@pytest.mark.xfail(reason="Session 3 (W2 side): association-change handler + aggregate contract cross-check")
 @pytest.mark.asyncio
 async def test_association_change_no_double_count(session):
-    raise AssertionError("skeleton — Session 3 W2 adds the primary/secondary company reconciliation")
+    """HubSpot changes a deal's primary company association from A to B.
+    The next event/backfill re-points `opportunity.client_id` to B; no
+    second row is created. Aggregate counts stay per-deal, not per-
+    association, so the pipeline row list doesn't double-count.
+    """
+    from sqlalchemy import select
+
+    from app.models.client import Client
+    from app.models.opportunity import Opportunity
+
+    stub = StubHubSpotClient(
+        deals={
+            "2001": {
+                "id": "2001",
+                "properties": {
+                    "dealname": "Association test",
+                    "dealstage": "STAGE1",
+                    "pipeline": "710688094",
+                    "hubspot_owner_id": "42",
+                },
+                "associations": {
+                    "companies": {"results": [{"id": "COMP_A", "toObjectId": "COMP_A"}]}
+                },
+            }
+        },
+        owners={"42": _owner()},
+        companies={
+            "COMP_A": {"id": "COMP_A", "properties": {"name": "Company A"}},
+            "COMP_B": {"id": "COMP_B", "properties": {"name": "Company B"}},
+        },
+    )
+
+    await handle_event(session, _event(30, "2001", "deal.creation"), stub)
+    await session.commit()
+
+    opp = (
+        await session.execute(
+            select(Opportunity).where(Opportunity.hubspot_deal_id == "2001")
+        )
+    ).scalar_one()
+    client_a = (
+        await session.execute(
+            select(Client).where(Client.hubspot_company_id == "COMP_A")
+        )
+    ).scalar_one()
+    assert opp.client_id == client_a.id
+
+    # HubSpot moves the deal to a different company.
+    stub.deals["2001"]["associations"] = {
+        "companies": {"results": [{"id": "COMP_B", "toObjectId": "COMP_B"}]}
+    }
+    await handle_event(session, _event(31, "2001", "deal.propertyChange"), stub)
+    await session.commit()
+
+    all_rows = (
+        await session.execute(
+            select(Opportunity).where(Opportunity.hubspot_deal_id == "2001")
+        )
+    ).scalars().all()
+    assert len(all_rows) == 1, "association change must not double-insert"
+    client_b = (
+        await session.execute(
+            select(Client).where(Client.hubspot_company_id == "COMP_B")
+        )
+    ).scalar_one()
+    assert all_rows[0].client_id == client_b.id
 
 
 @pytest.mark.xfail(reason="Session 4 (continuous consumer): mid-batch crash + cursor resume needs the running service")
