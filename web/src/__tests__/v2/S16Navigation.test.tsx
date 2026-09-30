@@ -30,7 +30,11 @@ it("S16 exposes only the current navigation destinations", () => {
 it.each([
   ["/tasks", "/work"],
   ["/deals", "/pipeline"],
-  ["/deals/record", "/sows/record"],
+  // S20 W3: `/deals/:id` no longer forwards into `/sows/:id` (L09/L11).
+  // Until W2 ships a real deal detail page the retired page sends the
+  // user to Pipeline; see `docs/reports/s20/requests.md`
+  // #W3-2026-09-30-02.
+  ["/deals/record", "/pipeline"],
   ["/gm/sandbox", "/sows"],
   ["/margin-lab", "/sows"],
 ])("%s has a friendly replacement link", (path, target) => {

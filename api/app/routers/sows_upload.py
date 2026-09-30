@@ -200,6 +200,15 @@ async def _other_open_sows(
 async def upload_sow(
     file: UploadFile = File(...),
     client_hint: str | None = Form(default=None),
+    # S20 W3 T11/T37: the caller may pre-bind the upload to a client +
+    # deal (opportunity). Both are required together — passing one but
+    # not the other is a 422. When both are supplied the client-match
+    # step is skipped and the SOW is created under the named opportunity
+    # directly. Extraction failure preserves the file *and* the binding,
+    # so the confirm page never asks the user to re-enter what the deal
+    # already knows.
+    client_id: uuid.UUID | None = Form(default=None),
+    opportunity_id: uuid.UUID | None = Form(default=None),
     user: AuthUser = Depends(require_role(*_UPLOAD_ROLES)),
     session: AsyncSession = Depends(get_session),
     s3: SowS3 = Depends(get_sow_s3),
@@ -209,7 +218,48 @@ async def upload_sow(
 
     Duplicate file → 200 with ``duplicate=true``. Non-SOW → 422 with
     ``{detected_type, message}``. Success → 200 with the job envelope.
+
+    T11: when ``client_id`` + ``opportunity_id`` are both supplied and
+    match (i.e., the opportunity's ``client_id`` equals the argument),
+    the pipeline binds the SOW to that opportunity directly. Mismatched
+    arguments yield 422 — the caller is asserting a binding, and the
+    server won't let a wrong assertion slip through.
     """
+
+    # T11: both or neither.
+    if (client_id is None) != (opportunity_id is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "client_id and opportunity_id must be provided together "
+                "(both or neither). To skip the picker, pass both."
+            ),
+        )
+
+    # T11: verify the binding on the server. The frontend already knows
+    # them from the deal page, but we never trust the client.
+    if client_id is not None and opportunity_id is not None:
+        from app.models.opportunity import Opportunity
+
+        bound_opp = (
+            await session.execute(
+                select(Opportunity).where(Opportunity.id == opportunity_id)
+            )
+        ).scalar_one_or_none()
+        if bound_opp is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"opportunity {opportunity_id} not found",
+            )
+        if bound_opp.client_id != client_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"opportunity {opportunity_id} is bound to client "
+                    f"{bound_opp.client_id}, not {client_id} — refresh "
+                    "the deal page and re-upload."
+                ),
+            )
 
     if file.filename is None:
         raise HTTPException(
@@ -277,6 +327,8 @@ async def upload_sow(
             filename=file.filename,
             content_type=content_type,
             client_hint=client_hint,
+            bound_client_id=client_id,
+            bound_opportunity_id=opportunity_id,
             s3=s3,
             bedrock_sow=bedrock,
         )

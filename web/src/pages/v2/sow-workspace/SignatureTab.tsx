@@ -24,46 +24,12 @@ interface Check {
 export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
   const pkgSuperseded = snap.approvalPackage?.superseded_by ?? null;
   const checks: Check[] = [];
-
-  if (pkgSuperseded) {
-    // Render the notice first — every check below is moot until the
-    // reviewer switches to the newer package.
-    return (
-      <div className="space-y-4" style={{ maxWidth: "960px" }}>
-        <section
-          aria-label="Superseded package"
-          className="rounded-panel border border-danger/40 bg-danger-subtle/20 p-4"
-          data-testid="signature-superseded-notice"
-        >
-          <h2 className="text-section text-danger">Package superseded</h2>
-          <p className="text-body text-text mt-2">
-            A newer approved package for this opportunity has replaced this
-            one. Signature can only be prepared for the current approved
-            package. Switch to package{" "}
-            <code className="tnum">{pkgSuperseded}</code> to continue.
-          </p>
-          <div className="mt-3">
-            <Button
-              type="button"
-              disabled
-              aria-label="Send for signature (disabled — package superseded)"
-            >
-              Send for signature — disabled
-            </Button>
-          </div>
-        </section>
-      </div>
-    );
-  }
-  // S17: NDA/MSA are no longer signature gates. Show a note reflecting
-  // the SOW's upload checkbox; never blocks Send.
-  const marked = snap.sow?.agreements_signed === true;
-  checks.push({
-    id: "nda-msa",
-    label: "NDA & MSA",
-    status: marked ? "ok" : "neutral",
-    statusLabel: marked ? "Marked signed on upload" : "Not marked",
-  });
+  // S20 W3 D3: NDA/MSA is *not* a signature check. The upload marker is
+  // client-scoped context (rendered in the workspace header) and the
+  // authoritative "signed/verified" fact lives on the client, not this
+  // workspace. `require_signature_eligibility` in
+  // `services/approval_workflow.py` does not gate on NDA/MSA; listing a
+  // row here would misrepresent that. Review L13.
 
   const pkg = snap.approvalPackage;
   const approvedFns = new Set(
@@ -81,17 +47,32 @@ export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
     });
   }
 
+  // S20 W3 T20 · CEO exception is conditional. When the policy does NOT
+  // require it we still render the row with the wording "Not required"
+  // so the reader sees the check ran (never blank, never absent — that
+  // would be indistinguishable from a rendering bug). When required, we
+  // check for the exception decision and record status.
   const ceoRequired = pkg?.floors?.requires_ceo === true;
-  if (ceoRequired) {
-    const ceoDone =
-      pkg?.status === "ready_to_sign" || pkg?.status === "released";
-    checks.push({
-      id: "ceo",
-      label: "CEO exception on file",
-      status: ceoDone ? "ok" : "danger",
-      statusLabel: ceoDone ? "Recorded" : "Missing",
-      hint: ceoDone ? undefined : "Route to the CEO exception decision page.",
-    });
+  if (pkg) {
+    if (ceoRequired) {
+      const ceoDone =
+        pkg.status === "ready_to_sign" || pkg.status === "released";
+      checks.push({
+        id: "ceo",
+        label: "CEO exception on file",
+        status: ceoDone ? "ok" : "danger",
+        statusLabel: ceoDone ? "Recorded" : "Missing",
+        hint: ceoDone ? undefined : "Route to the CEO exception decision page.",
+      });
+    } else {
+      checks.push({
+        id: "ceo",
+        label: "CEO exception on file",
+        status: "ok",
+        statusLabel: "Not required",
+        hint: "Margin passes the floor — no exception is required.",
+      });
+    }
   }
 
   const signed = snap.signedSow;

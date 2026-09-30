@@ -702,6 +702,7 @@ async def decide(
     function: str,
     decision: str,
     reason: str | None = None,
+    expected_package_hash: str | None = None,
 ) -> ApprovalPackage:
     """Record a decision on ``package_id`` for ``function``.
 
@@ -712,6 +713,11 @@ async def decide(
     * 409 when the actor (or any actor) has already recorded an approval
       for this (package, function) or when the actor already recorded any
       approval on this package.
+    * 409 when ``expected_package_hash`` is supplied and does not match
+      the package's current hash — the caller's tab is stale (T19). A
+      material change (`void_on_change`) between load and submit is the
+      most common cause. The endpoint always sends the hash; older
+      callers without one still work but do not get the stale-check.
     """
 
     _validate_function(function)
@@ -720,6 +726,20 @@ async def decide(
     # Serialize sibling decisions so the final parallel reviewer advances once.
     await session.execute(select(ApprovalPackage).where(ApprovalPackage.id == package_id).with_for_update().execution_options(populate_existing=True))
     package = await load_package(session, package_id)
+
+    # S20 W3 T19: stale-tab refusal. The client loaded the package,
+    # rendered the decision UI, and by the time they clicked Approve the
+    # package may have been voided by a material change (`void_on_change`
+    # runs on any new sow_version or gm_model). Refuse with 409 so the
+    # UI reloads and the reviewer sees the new version before deciding.
+    if expected_package_hash is not None and expected_package_hash != package.package_hash:
+        raise ApprovalError(
+            status_code=409,
+            detail=(
+                "package_hash mismatch — this tab is out of date. "
+                "Refresh and review the current package before deciding."
+            ),
+        )
 
     if package.status in _TERMINAL_STATUSES:
         raise ApprovalError(

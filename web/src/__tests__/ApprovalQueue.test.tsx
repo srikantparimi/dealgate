@@ -133,7 +133,13 @@ describe("ApprovalQueue", () => {
     });
     expect(decide.mock.calls[0][0]).toBe(PACKAGE_ID);
     expect(decide.mock.calls[0][1]).toBe("delivery");
-    expect(decide.mock.calls[0][2]).toEqual({ decision: "approve", reason: "Reviewed scope" });
+    // S20 W3 T19: the queue now sends the loaded package_hash for the
+    // stale-tab refusal check.
+    expect(decide.mock.calls[0][2]).toEqual({
+      decision: "approve",
+      reason: "Reviewed scope",
+      expected_package_hash: "a".repeat(64),
+    });
   });
 
   it("shows empty state when nothing pending for this role", async () => {

@@ -136,14 +136,31 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
     });
   }
 
-  if (pkg?.floors?.requires_ceo) {
-    items.push({
-      id: "ceo",
-      label: "CEO margin exception",
-      status: pkg.ceo_exception?.decision === "approve" ? "ok" : "warn",
-      statusLabel:
-        pkg.ceo_exception?.decision === "approve" ? "Recorded" : pkg.status === "pending_ceo_exception" ? "Pending" : "Queued",
-    });
+  // S20 W3 T20: the CEO exception row always renders when a package is
+  // submitted. "Not required" is the honest verified-negative answer
+  // when the margin passes the floor.
+  if (pkg) {
+    if (pkg.floors?.requires_ceo) {
+      items.push({
+        id: "ceo",
+        label: "CEO margin exception",
+        status: pkg.ceo_exception?.decision === "approve" ? "ok" : "warn",
+        statusLabel:
+          pkg.ceo_exception?.decision === "approve"
+            ? "Recorded"
+            : pkg.status === "pending_ceo_exception"
+              ? "Pending"
+              : "Queued",
+      });
+    } else {
+      items.push({
+        id: "ceo",
+        label: "CEO margin exception",
+        status: "ok",
+        statusLabel: "Not required",
+        hint: "Margin passes the floor — no exception is required.",
+      });
+    }
   }
 
   const signed = snap.signedSow;

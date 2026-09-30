@@ -508,6 +508,216 @@ async def _run_downstream_from_version(
     }
 
 
+# --- pre-bound upload (S20 W3 T11/T37) ------------------------------------
+
+
+async def _finish_bound_upload(
+    session: AsyncSession,
+    *,
+    job: SowUploadJob,
+    uploader_id: uuid.UUID,
+    file_bytes: bytes,
+    content_type: str,
+    s3_key: str,
+    bound_client_id: uuid.UUID,
+    bound_opportunity_id: uuid.UUID,
+    bedrock_caller: BedrockSowExtract,
+) -> SowUploadJob:
+    """T11/T37 short-circuit — the caller pre-bound client + deal.
+
+    Skips the pipeline's client-match step, creates the ``sow_version``
+    under the named opportunity, and preserves the file + any extract
+    result even when extraction failed. The job's
+    ``needs_pick_payload`` records the binding (``binding.client_id``,
+    ``binding.opportunity_id``) so the D1 migration can move the values
+    into first-class columns without changing the router contract.
+    """
+
+    from app.models.opportunity import Opportunity
+    from app.services.document_text import extract_document_text
+    from app.services.sow_extract import _to_provenance_fields
+    from app.services.sow_upload_pipeline import _run_extract
+
+    # Load + validate the binding again — the router checked already,
+    # but we don't trust anything between here and there.
+    opp = (
+        await session.execute(
+            select(Opportunity).where(Opportunity.id == bound_opportunity_id)
+        )
+    ).scalar_one_or_none()
+    if opp is None or opp.client_id != bound_client_id:
+        await _transition(
+            session,
+            job=job,
+            status="failed",
+            error=(
+                f"binding rejected: opportunity {bound_opportunity_id} not "
+                f"found or client mismatch"
+            ),
+        )
+        raise UploadPipelineError(
+            f"opportunity {bound_opportunity_id} not bound to client "
+            f"{bound_client_id}"
+        )
+
+    # Extract now — reuse the same helper `apply_pipeline` uses. This
+    # path returns the extracted fields (or a failure reason) without
+    # invoking the client-matcher.
+    try:
+        text_doc = extract_document_text(file_bytes, content_type=content_type)
+        extract_outcome = await _run_extract(text_doc, bedrock=bedrock_caller)
+    except Exception as exc:  # noqa: BLE001 — always preserve the file
+        extract_outcome = None
+        extract_error = f"extract crashed: {exc}"
+    else:
+        extract_error = extract_outcome.error
+
+    fields_out: dict[str, Any] = {"metadata": {"extract_source": "sow_upload_pipeline"}}
+    extract_status = "manual_required"
+    model: str | None = None
+    prompt_version: str | None = None
+    suggested = None
+
+    if extract_outcome is not None and extract_outcome.fields is not None:
+        try:
+            fields_out = _to_provenance_fields(
+                extract_outcome.fields,
+                model=extract_outcome.model,
+                prompt_version=extract_outcome.prompt_version,
+            )
+            fields_out["metadata"] = {"extract_source": "sow_upload_pipeline"}
+            model = extract_outcome.model
+            prompt_version = extract_outcome.prompt_version
+            suggested = (
+                extract_outcome.fields.get("engagement_type_suggested", {}) or {}
+            ).get("value")
+            extract_status = "complete"
+            extract_error = None
+        except Exception as exc:  # noqa: BLE001
+            extract_error = f"extract returned invalid schema: {exc}"
+
+    # Create the sow (or reuse the existing one — the D1 uniqueness
+    # relax landing later will allow multiple SOWs per deal).
+    sow_row = (
+        await session.execute(
+            select(Sow).where(Sow.opportunity_id == bound_opportunity_id)
+        )
+    ).scalar_one_or_none()
+    if sow_row is None:
+        sow_row = Sow(id=uuid.uuid4(), opportunity_id=bound_opportunity_id)
+        session.add(sow_row)
+        await session.flush()
+
+    from app.services.sow_lifecycle import reserve_version_no
+
+    version = SowVersion(
+        id=uuid.uuid4(),
+        sow_id=sow_row.id,
+        uploaded_by=uploader_id,
+        file_s3_key=s3_key,
+        file_hash=job.file_hash,
+        extract_status=extract_status,
+        extract_error=extract_error if extract_status != "complete" else None,
+        extracted_fields=fields_out,
+        extract_model=model,
+        extract_prompt_version=prompt_version,
+        engagement_type_suggested=(
+            str(suggested) if suggested is not None else None
+        ),
+        version_no=await reserve_version_no(session, sow_row.id),
+    )
+    session.add(version)
+    await session.flush()
+
+    await append_audit(
+        session,
+        actor_id=uploader_id,
+        action="sow.uploaded",
+        entity="sow_version",
+        entity_id=str(version.id),
+        before=None,
+        after={
+            "opportunity_id": str(bound_opportunity_id),
+            "sow_id": str(sow_row.id),
+            "file_s3_key": s3_key,
+            "file_hash": job.file_hash,
+            "binding": {
+                "source": "explicit",
+                "client_id": str(bound_client_id),
+                "opportunity_id": str(bound_opportunity_id),
+            },
+        },
+    )
+    await append_audit(
+        session,
+        actor_id=uploader_id,
+        action=(
+            "sow.extracted"
+            if extract_status == "complete"
+            else "sow.extract_failed"
+        ),
+        entity="sow_version",
+        entity_id=str(version.id),
+        before={"extract_status": "pending"},
+        after={
+            "extract_status": extract_status,
+            "model": model,
+            "prompt_version": prompt_version,
+            "error": extract_error,
+        },
+    )
+
+    job.opportunity_id = bound_opportunity_id
+    job.sow_version_id = version.id
+    job.resolution = "matched"
+    # Preserve the binding on the job envelope so a later migration can
+    # promote it to first-class columns without another network hop.
+    job.needs_pick_payload = {
+        "binding": {
+            "source": "explicit",
+            "client_id": str(bound_client_id),
+            "opportunity_id": str(bound_opportunity_id),
+        }
+    }
+    await session.flush()
+
+    # If extraction failed, stop here — the file is safe on S3, the
+    # binding is recorded, and the confirm page will show the extract
+    # error banner + manual-entry form (T12).
+    if extract_status != "complete":
+        await _transition(
+            session,
+            job=job,
+            status="done",
+            extra={
+                "opportunity_id": str(bound_opportunity_id),
+                "sow_version_id": str(version.id),
+                "extract_status": extract_status,
+                "extract_error": extract_error,
+            },
+        )
+        return job
+
+    await _transition(session, job=job, status="deriving_gm")
+    downstream = await _run_downstream_from_version(
+        session,
+        opportunity=opp,
+        version=version,
+        actor_id=uploader_id,
+    )
+    await _transition(
+        session,
+        job=job,
+        status="done",
+        extra={
+            "opportunity_id": str(bound_opportunity_id),
+            "sow_version_id": str(version.id),
+            **downstream,
+        },
+    )
+    return job
+
+
 # --- public entrypoints ---------------------------------------------------
 
 
@@ -521,12 +731,22 @@ async def start_upload(
     client_hint: str | None,
     s3: SowS3,
     bedrock_sow: BedrockSowExtract | None = None,
+    bound_client_id: uuid.UUID | None = None,
+    bound_opportunity_id: uuid.UUID | None = None,
 ) -> SowUploadJob:
     """Kick off the pipeline for a fresh single-file upload.
 
     Returns the ``sow_upload_job`` row in its terminal-or-paused state.
     Raises :class:`RejectedDocumentType` when the doc-type gate rejects
     the file — no DB rows are created in that case (per story AC).
+
+    S20 W3 T11/T37: when ``bound_client_id`` and ``bound_opportunity_id``
+    are supplied, the pipeline skips the fuzzy-match/picker step. Both
+    are stashed on the job's ``needs_pick_payload`` under a ``binding``
+    key until the D1 migration adds real columns (see
+    `docs/reports/s20/requests.md#W3-2026-09-30-03`). The pipeline
+    creates the SOW under the named opportunity directly; extraction
+    failure preserves the file + the binding + any entered corrections.
     """
 
     file_hash = sha256_hex(file_bytes)
@@ -627,6 +847,25 @@ async def start_upload(
     # Per-step audits framing the shared pipeline call.
     await _transition(session, job=job, status="classifying")
     await _transition(session, job=job, status="matching_client")
+
+    # S20 W3 T11/T37: pre-bound path. The caller has already declared
+    # the client + opportunity — the pipeline skips its fuzzy-match /
+    # picker step and creates the SOW under the named opportunity. If
+    # extraction fails the binding is still preserved on the job so the
+    # confirm page can offer manual entry without asking the user to
+    # re-pick the client.
+    if bound_client_id is not None and bound_opportunity_id is not None:
+        return await _finish_bound_upload(
+            session,
+            job=job,
+            uploader_id=uploader_id,
+            file_bytes=file_bytes,
+            content_type=content_type,
+            s3_key=s3_key,
+            bound_client_id=bound_client_id,
+            bound_opportunity_id=bound_opportunity_id,
+            bedrock_caller=bedrock_caller,
+        )
 
     result = await apply_pipeline(
         session,
