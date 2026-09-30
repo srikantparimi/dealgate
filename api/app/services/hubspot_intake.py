@@ -341,6 +341,9 @@ async def _upsert_opportunity(
     amount = _parse_amount(props.get("amount"))
     close_date = _parse_close_date(props.get("closedate"))
     currency = props.get("deal_currency_code") or None
+    # S20 W2 L04 · dealname → opportunity.name. Trim + None-guard.
+    raw_dealname = props.get("dealname")
+    dealname = raw_dealname.strip() if isinstance(raw_dealname, str) and raw_dealname.strip() else None
     seen_at = datetime.now(UTC)
     # S19 slice 1 B2 — resolve label + closed flags + order from the mirror.
     stage_info = stage_map.resolve(stage) if stage_map is not None else None
@@ -370,6 +373,7 @@ async def _upsert_opportunity(
             engagement_type=engagement,
             sales_stage=stage,
             stage_label=stage_label,
+            name=dealname,
             amount=amount,
             close_date=close_date,
             hubspot_last_seen_at=seen_at,
@@ -448,6 +452,11 @@ async def _upsert_opportunity(
         changed = True
     if stage_label is not None and opp.stage_label != stage_label:
         opp.stage_label = stage_label
+        changed = True
+    # S20 W2 L04 · dealname update. `getattr` guard so a partial-migrated
+    # schema (name column not yet applied) is safe.
+    if hasattr(opp, "name") and opp.name != dealname:
+        opp.name = dealname
         changed = True
     if amount != opp.amount:
         opp.amount = amount

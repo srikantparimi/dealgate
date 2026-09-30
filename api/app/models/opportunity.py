@@ -93,6 +93,13 @@ class Opportunity(Base):
     amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     close_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     stage_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # S20 W2 · L04. `name` mirrors HubSpot's `dealname` so the Pipeline
+    # + list surfaces render the real deal title instead of the stage
+    # label fallback (S19 slice-1 renderer used stage_label when name
+    # was missing; that path is now the true fallback for non-HubSpot
+    # sources like SOW-upload). Nullable because SOW-upload records can
+    # still legitimately have no dealname.
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hubspot_last_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
