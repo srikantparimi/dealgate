@@ -3794,15 +3794,22 @@ export interface PipelineOpportunityRow {
   next_action_open_count: number;
   next_action_min_due: ISODate | null;
   sow_count: number;
+  hubspot_pipeline_id?: string | null;
+  business_unit?: string | null;
 }
 
 export interface PipelineClientRow {
   client_id: UUID;
   client_name: string;
   hubspot_company_id: string | null;
+  account_owner_id?: string | null;
+  account_owner_name?: string | null;
+  account_owner_email?: string | null;
   owner_id: UUID | null;
   owner_name: string | null;
   owner_email: string | null;
+  matching_deal_count?: number;
+  total_open_deal_count?: number;
   open_opp_count: number;
   open_value_by_currency: Record<string, DecimalStr>;
   stage_breakdown: Record<string, number>;
@@ -3815,11 +3822,38 @@ export interface PipelineClientRow {
   next_action_open_count: number;
 }
 
+export interface PipelineStageCount {
+  pipeline_id: string | null;
+  stage_id: string | null;
+  stage_label: string | null;
+  stage_order: number | null;
+  count: number;
+  is_closed_won?: boolean;
+  is_closed_lost?: boolean;
+}
+
+export interface PipelineFreshness {
+  source: string;
+  received_at: ISODateTime | null;
+  processed_at: ISODateTime | null;
+  reconciled_at: ISODateTime | null;
+  state: string;
+}
+
+export interface PipelineListMeta {
+  freshness: PipelineFreshness;
+  unknown_bucket: number;
+  stage_counts: PipelineStageCount[];
+  filters_echo: Record<string, unknown>;
+  business_timezone?: string;
+}
+
 export interface PipelineListPage<T> {
   items: T[];
   total: number;
   page: number;
   page_size: number;
+  meta?: PipelineListMeta;
 }
 
 export interface PipelineSummary {
@@ -3835,13 +3869,32 @@ export interface PipelineFilters {
   pipeline?: string | null;
   stage?: string[];
   owner?: UUID[];
+  account_owner?: string[];
+  business_unit?: string[];
   readiness?: string[];
   attention?: string[];
-  date_field?: "created" | "close" | "last_activity" | "action_due";
+  date_field?:
+    | "created"
+    | "close"
+    | "last_activity"
+    | "action_due"
+    | "last_contacted";
   date_from?: ISODate;
   date_to?: ISODate;
+  date_preset?:
+    | "last7"
+    | "last30"
+    | "last90"
+    | "next7"
+    | "next30"
+    | "next90"
+    | "this_month"
+    | "this_quarter"
+    | "custom";
   search?: string;
   include_closed?: boolean;
+  open_closed?: "open" | "closed_won" | "closed_lost" | "any";
+  missing?: string[];
   page?: number;
   page_size?: number;
   sort?: string;
@@ -3852,13 +3905,18 @@ function pipelineParams(filters: PipelineFilters): URLSearchParams {
   if (filters.pipeline) p.set("pipeline", filters.pipeline);
   filters.stage?.forEach((s) => p.append("stage", s));
   filters.owner?.forEach((o) => p.append("owner", o));
+  filters.account_owner?.forEach((o) => p.append("account_owner", o));
+  filters.business_unit?.forEach((b) => p.append("business_unit", b));
   filters.readiness?.forEach((r) => p.append("readiness", r));
   filters.attention?.forEach((a) => p.append("attention", a));
+  filters.missing?.forEach((m) => p.append("missing", m));
   if (filters.date_field) p.set("date_field", filters.date_field);
   if (filters.date_from) p.set("date_from", filters.date_from);
   if (filters.date_to) p.set("date_to", filters.date_to);
+  if (filters.date_preset) p.set("date_preset", filters.date_preset);
   if (filters.search) p.set("search", filters.search);
   if (filters.include_closed) p.set("include_closed", "true");
+  if (filters.open_closed) p.set("open_closed", filters.open_closed);
   if (filters.page) p.set("page", String(filters.page));
   if (filters.page_size) p.set("page_size", String(filters.page_size));
   if (filters.sort) p.set("sort", filters.sort);
