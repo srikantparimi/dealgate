@@ -46,3 +46,60 @@ Ready to spawn W1–W7.
 | W5-04 · `GET /api/pipeline/opportunities/export.csv` | W2 | Pending W2's cycle-1 push (W2 still running). |
 
 Workers still in flight: W1, W2, W3, W4, W6, W7. Lead continues waiting.
+
+## Cycle 1 all-hands · 2026-09-30 07:45–08:20 UTC · six workers returned session-limited
+
+**Overall result:** all six code-workers returned with "You've hit your
+session limit · resets 1:40am (America/Los_Angeles)". Token usage per
+worker was 1916–3661 (of a much larger nominal budget), which suggests
+the limit is shared across the parent + all agents at the account level
+rather than allocated per spawn. W1 and W2 each committed one substantive
+commit before hitting the wall; W3, W4, W6, W7 had substantial
+uncommitted WIP.
+
+**Lead actions:**
+
+1. **Salvaged WIP** — committed every worker's uncommitted `git status`
+   as `S20 <Wn> · session-limit salvage` on their respective branches.
+   Renamed W7's migration `20260930_0042_s20_w7.py` → `_0043_` to avoid
+   multi-head with W6's `20260930_0042_s20_tracking.py`.
+2. **Serial merge into `integrate/s20`:**
+   - `a1895e4` — W1 (data truth + sync). Conflict: `requests.md` union.
+   - Lead cycle-1a bookkeeping commit already at `91cdb9c`.
+   - W6 (tracking features) merged clean.
+   - `1f5653d` — W7 (approval-to-delivery). Conflicts: `models/__init__.py` (both DealComment + DeliveryAcceptance kept), `requests.md` union.
+   - `66e7a17` — W2 (Pipeline). Conflict: `requests.md` union.
+   - `dc50fbd` — W3 (SOW workflow). Conflicts: `decisions.md` + `requests.md` union, `SignatureTab.tsx` prefer W3 side (their scope per contracts §6).
+   - `4bfd9d4` — W4 (reports + runbook). Conflict: `main.py` imports (both `reports` + `saved_views` kept).
+3. **Verified api boots** at cycle end: `from app.main import app; len(app.routes) == 47`.
+4. **Applied D1 model relaxation** (`sow.opportunity_id.unique = False`) as Lead-owned per contracts §6 — W3's rollup tests required it. Alembic migration owed for Postgres (`sow_rollup` requests block in `requests.md`).
+5. **Fixed two W3 test-fixture bugs** (`User(...)` missing `name=`).
+6. **Commit `9a2ebc2`** captures both fixes.
+7. **Pushed `origin/integrate/s20`** at `9a2ebc2`.
+
+**Regression state after all cycle-1 merges + Lead fixes:**
+
+| Suite | Status | Notes |
+| --- | --- | --- |
+| `test_sow_rollup.py` (7 tests) | passing after D1 relaxation + fixture fix | Requires alembic revision for Postgres |
+| `test_deletion_by_state.py` (6 tests) | passing after fixture fix | D6 correctness proved |
+| `test_sow_upload_binding.py::test_upload_with_both_bound_creates_sow_under_deal` | **failing** | W3 cycle 2. Two other cases in the file pass |
+| `test_delete_everywhere.py::test_delete_sow_removes_it_from_every_list` | **failing** | Test asserts pre-D6 behavior; must be updated to use `archive_sow` |
+
+**Cycle-2 spawn: not attempted** — same session-token cap that killed
+cycle 1 remains in effect; a fresh spawn would land in the same wall.
+
+**Cycle-1a request routing update:**
+
+| Request | Landed? |
+| --- | --- |
+| W5-01 · `_PREFIX_RE` extension | **not landed.** Owner W1 was interrupted before touching `worker/e2e_cleanup.py`. Follow-up owed. |
+| W5-02 · TF Cognito approvers | deferred to a dedicated TF slice per D-COG-01. T27 + T44 stay xfail. |
+| W5-03 · `/api/dev/mirror/opportunities/{id}` | **not landed.** |
+| W5-04 · pipeline export CSV | **not landed.** |
+| W1-...-01 · sync_status watermark migration | **model change landed on W1's commit; alembic revision owed for Postgres.** |
+| W3-...-01 · relax `sow.opportunity_id` uniqueness | **model change applied by Lead at `9a2ebc2`; alembic revision owed for Postgres.** |
+| W7-...-01 · new migrations for `delivery_acceptance` + `project` | present in `alembic/versions/20260930_0043_s20_w7.py`. Not yet run on staging. |
+
+**Deploy state:** see `deploy.md`. Not executed tonight. Runbook ready
+at `docs/runbooks/deploy.md`.

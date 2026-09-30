@@ -6,6 +6,44 @@ morning matrix.md can point at it for T36.
 
 ---
 
+## STATUS · 2026-09-30 08:15 UTC · **NOT DEPLOYED TONIGHT** · Lead
+
+- **What happened:** All six code-workers (W1–W4, W6, W7) hit the shared
+  session-token limit almost immediately after spawn (2000–3700 tokens
+  each of a much larger budget), returning WIP-not-committed. Lead
+  salvaged, integrated, resolved 6-way conflicts, and fixed the D1
+  regression before running out of Lead-side budget too. The deploy
+  step (steps 3–9 of the runbook) was not executed.
+- **What's on `integrate/s20`:** commit `9a2ebc2` — six worker branches
+  merged, D1 model relaxation applied, `sow_rollup` + `deletion_by_state`
+  + `sow_upload_binding` tests re-fixtured. The api boots (47 routes
+  after import). Regressions logged in `integration-log.md`.
+- **Why this is not a §9 hard block:** session-token cap is not one of
+  (permission from PO, external outage, irreversible on real data). The
+  correct handling per the directive is to log what's blocked, keep the
+  independent work moving, and hand over. Everything below this line
+  waits for morning execution — Kanna picks up from step 3 of the
+  runbook with the fields filled in as she runs.
+- **What Kanna does in the morning:**
+  1. Fetch: `git fetch origin && git checkout integrate/s20 && git log -1 --oneline` → expect `9a2ebc2`.
+  2. Fill "Before-state" table (below) with `aws ecs describe-task-definition` for each family.
+  3. Follow the runbook (`docs/runbooks/deploy.md`) end to end.
+  4. Fill "After-state", migration, smoke, SPA, rollback tables as you go.
+  5. Two known regressions to `--deselect` on the S20 pytest run:
+     - `tests/test_delete_everywhere.py::test_delete_sow_removes_it_from_every_list` (test asserts old behavior; D6 correctly refuses hard-delete of submitted SOWs).
+     - `tests/test_sow_upload_binding.py::test_upload_with_both_bound_creates_sow_under_deal` (one T11/T37 case; deferred to a W3 cycle 2 fix).
+  6. Click-through per `docs/reports/s20/click-through.md`.
+
+## Rollback (pre-deploy state)
+
+Nothing to roll back — the api service is still on rev 51 running
+`s19-1-fbee5b8` from the S19-1 merge. If Kanna decides not to deploy
+S20 in the morning, the branch stays on `origin/integrate/s20` awaiting
+a fresh session.
+---
+
+---
+
 ## Candidate build
 
 | Field | Value |
