@@ -24,7 +24,8 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-revision: str = "20260930_0045_s20_w1_owner_property"
+# Alembic's version_num column is VARCHAR(32); keep revision <=32 chars.
+revision: str = "20260930_0045_w1_own"
 down_revision: str | Sequence[str] | None = "20260930_0044_s20_lead_d1_d4"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
