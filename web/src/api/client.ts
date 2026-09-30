@@ -3901,3 +3901,69 @@ export interface SyncStatusRow {
 export function getSyncStatus(): Promise<{ items: SyncStatusRow[] }> {
   return request<{ items: SyncStatusRow[] }>(`/sync-status`);
 }
+
+// -----------------------------------------------------------------------------
+// S20 · reports (owner: W4)
+//
+// L18/T42 approval turnaround, L17 portfolio basis. These map 1:1 to the
+// `/reports/*` endpoints in api/app/routers/reports.py; unavailability
+// on either side must degrade to "Unknown" on the UI, never a fake zero.
+// -----------------------------------------------------------------------------
+
+export interface StageTurnaround {
+  stage: string;
+  sample_size: number;
+  avg_hours: number | null;
+  median_hours: number | null;
+  p90_hours: number | null;
+}
+
+export interface TurnaroundReport {
+  window: string;
+  window_from: ISODateTime;
+  window_to: ISODateTime;
+  total_transitions: number;
+  per_stage: StageTurnaround[];
+  overall_median_hours: number | null;
+  generated_at: ISODateTime;
+  meta: {
+    freshness?: {
+      source?: string;
+      processed_at?: string;
+      state?: string;
+    };
+    filters_echo?: Record<string, unknown>;
+  };
+}
+
+export function getApprovalTurnaround(
+  window = "30d",
+): Promise<TurnaroundReport> {
+  return request<TurnaroundReport>(
+    `/reports/approvals/turnaround?window=${encodeURIComponent(window)}`,
+  );
+}
+
+export interface PortfolioBasis {
+  population: {
+    included: number;
+    excluded_archived: number;
+    excluded_non_hubspot: number;
+    reasons: Record<string, string>;
+  };
+  basis: {
+    as_of: ISODateTime;
+    watermarks: Record<
+      string,
+      {
+        last_success_at: ISODateTime | null;
+        last_error: string | null;
+        lag_seconds: number | null;
+      }
+    >;
+  };
+}
+
+export function getPortfolioBasis(): Promise<PortfolioBasis> {
+  return request<PortfolioBasis>(`/reports/portfolio/basis`);
+}
