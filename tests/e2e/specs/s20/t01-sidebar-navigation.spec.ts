@@ -40,10 +40,15 @@ const NAV_ITEMS: Array<{
   label: RegExp;
   destinationMarker: RegExp;
 }> = [
-  { to: "/command", label: /command center/i, destinationMarker: /command center/i },
+  // /command renders ExecutiveBanner with editorial h1 "Every commitment. In view."
+  // — that is the command-center identity, not a boring page title. The URL check
+  // above is the routing assertion; this marker just proves the banner rendered.
+  { to: "/command", label: /command center/i, destinationMarker: /every commitment/i },
   { to: "/work", label: /my work/i, destinationMarker: /my work/i },
   { to: "/pipeline", label: /pipeline clients/i, destinationMarker: /pipeline|opportunities|clients/i },
-  { to: "/discovery", label: /ai discovery/i, destinationMarker: /discovery/i },
+  // Sidebar labels the slot "AI discovery"; the page's PageHeader title is
+  // "AI adviser" (the feature name). Both should match a common word.
+  { to: "/discovery", label: /ai discovery/i, destinationMarker: /adviser|discovery/i },
   { to: "/agreements", label: /nda & msa|agreements/i, destinationMarker: /nda|msa|agreements/i },
   { to: "/sows", label: /sow approvals/i, destinationMarker: /sow|approvals/i },
   { to: "/sows/new", label: /new sow studio/i, destinationMarker: /new sow|upload sow|studio/i },

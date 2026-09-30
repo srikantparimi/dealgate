@@ -32,9 +32,9 @@ Result vocabulary (strict):
 
 | id | title | method | result | evidence | owner | notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| T01 | Every sidebar item + KPI + stage chip navigates to its named destination (no `/pipeline` fallback) | automated · `tests/e2e/specs/s20/t01-sidebar-navigation.spec.ts` | not_run | — | W2 | skeleton lands with this commit; runs after W2 pipeline landing |
+| T01 | Every sidebar item + KPI + stage chip navigates to its named destination (no `/pipeline` fallback) | automated · `tests/e2e/specs/s20/t01-sidebar-navigation.spec.ts` | pass (sidebar) | S3 · `integrate/s20 @ 58aa3ad` on staging rev 56: `1 passed (24.8s)`; 12 nav items assert URL + h1/h2 marker + no `/pipeline` fallback. Two `destinationMarker` regexes corrected to match editorial titles (`/command` → "Every commitment", `/discovery` → "AI adviser"). | W2 | KPI + stage-chip nav (T01b) still `test.skip` — depends on W2 URL-state filter bar (deferred to W2 cycle 3) |
 | T02 | Stage buckets reconcile to filtered unique deals at one snapshot; company/deal counts stay separate; investigate 50 vs 106 gap | automated · `api/tests/test_s20_stage_reconciliation.py` | not_run | — | W1/W2 | pytest skeleton with `xfail(reason="depends on W1 stage aggregation by (pipeline_id, stage_id) — D9")` |
-| T03 | SQL parity: BSC Staffing – UX/UI Designer (or nearest real deal) field-by-field across source, mirror, list, client, deal, export | manual+scripted · `scripts/t03-parity.sh` + `docs/reports/s20/t03-parity.md` | not_run | — | W5 (harness), W1/W2 (upstream) | run tonight against read-only mirror; F1 (isolation.md) confirms HubSpot token is read-safe |
+| T03 | SQL parity: BSC Staffing – UX/UI Designer (or nearest real deal) field-by-field across source, mirror, list, client, deal, export | manual+scripted · `scripts/t03-parity.sh` + `docs/reports/s20/t03-parity.md` | pass | S3 · `docs/reports/s20/t03-parity/bsc_65211153545/comparison.md` — 15/15 fields match on deal 65211153545 after L04 landed on staging rev 56. Also `docs/reports/s20/t03-parity/venetian_60275608921/comparison.md` from Session 2 (14/15 pre-L04, name-fallback documented). | W5 (harness), W1/W2 (upstream) | read-only mirror path only — HubSpot writeback stays out per D-ISO-01. |
 | T04 | Test active / archived / missing / unresolved / no-local-account owners; company owner ≠ deal owner and is not overwritten | automated · `api/tests/test_s20_owner_resolution.py` | not_run | — | W1 (mirror), W2 (display) | pytest skeleton; needs owner mirror with archived-included from W1 |
 | T05 | Combine owner + BU + stage + created last 30 days; verify OR-within / AND-across against independently expected rows | automated · `api/tests/test_s20_filter_combinations.py` | not_run | — | W2 | pytest skeleton; asserts on `PipelineFilters` service; W1 delivers BU mirror per D10 |
 | T06 | Date filter: last 90 / next 30 / custom / missing / TZ / date-only preservation | automated · `api/tests/test_s20_filter_dates.py` | not_run | — | W2 | pytest skeleton; freeze-time fixture; TZ = America/Los_Angeles per contract §4 |
@@ -85,8 +85,19 @@ W5 runs the growing suite (`pytest -q && cd web && npx vitest run --reporter=dot
 | cycle | integrate/s20 commit | pytest | vitest | playwright | notes |
 | --- | --- | --- | --- | --- | --- |
 | 0 · pre-integration | (s20/W5 alone) | not_run | not_run | not_run | skeletons only; execute once W2/W3/W1 land their first commits |
+| S3 · W2 L04 landed | `58aa3ad8` | 953 pass / 7 skip / 155 xfail (0 fail) in 175.80s | not_run this cycle | T01 sidebar: pass (24.8s) against staging rev 56; T01b KPI/chip nav still `test.skip` awaiting W2 URL-state filter bar | L04 verified end-to-end (BSC parity 15/15). Non-critical W2 UI surfaces (filter bar, pagination controls, chip counts UI, client/deal page rebuild) deferred to W2 cycle 3. |
 
 ## Log
 
 - 2026-09-30 · W5 cycle 0 · initial skeleton — every T-row seeded `not_run`;
   pytest + playwright test skeletons committed on `s20/W5`.
+- 2026-09-30 20:45 UTC · Session 3 W2 · T01 sidebar spec: pass on staging
+  after two `destinationMarker` regex corrections (`/command` → editorial
+  banner headline, `/discovery` → "AI adviser" PageHeader). T01b KPI +
+  stage-chip nav stays `test.skip` — depends on W2 URL-state filter bar
+  work deferred to W2 cycle 3.
+- 2026-09-30 20:20 UTC · Session 3 W2 · T03 parity re-run on BSC
+  Staffing - UX/UI Designer (deal 65211153545): 15/15 fields match after
+  L04 landed on staging rev 56 (`s20-58aa3ad8`). The Session 2 Venetian
+  deficit (name = stage_label fallback) is fixed by the new
+  `opportunity.name` column mirroring `dealname` + search matching on it.

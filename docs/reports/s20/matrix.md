@@ -93,7 +93,7 @@ downgraded here.
 | **W4 renewal 2-cm rule + integrations honesty** | `fixed and tested (unit)` — renewal_alert_date + reports_turnaround = 29 tests pass. | Staging T25 renewal alert emission, T39 command-centre reconcile, T43 integration truthfulness pending Session 5 (W4 cycle 2). |
 | **W6 next_action + deal_comment + tracking_group + saved_view** | `fixed and tested (unit)` — 30 tests pass; routers registered on app.main. | Staging T05 + T16 assertions pending Session 4 (W6 cycle 2). |
 | **W7 release gate + delivery_acceptance + project** | `fixed and tested (unit)` — 23 tests pass; migration `20260930_0043_s20_w7` applied on staging Postgres. | Staging T22 + T23 + T24 assertions pending Session 6 (W7 cycle 2). |
-| **T01 sidebar navigation (Playwright)** | **fail** — 1 nav item's destination heading not found within 15s on staging. Requires debugging before it goes green; not deploy-blocking. | Session per-worker cycle 2 owns the fix (whichever route the mismatch points to). |
+| **T01 sidebar navigation (Playwright)** | **pass** — resolved in Session 3: `/command` renders editorial h1 "Every commitment. In view." (not "Command center") and `/discovery` renders "AI adviser" (not "Discovery"). Test's `destinationMarker` regexes corrected to match. All 12 sidebar routes now assert URL + h1/h2 + no `/pipeline` fallback within 15s. See D-W2-01 in decisions.md. | — |
 | **T27 permission uniformity, T44 full-journey** | `blocked (U01)` — multi-role Cognito approvers still absent. Every other role check runs against the SystemAdmin smoke bot with a WARN. | U01 in `unresolved.md`. |
 
 **Fixed and tested (unit)** is the honest ceiling for anything without
@@ -128,3 +128,70 @@ tables; W1 model classes now have their schema on Postgres).
 | §6 · Stub migration dry run | fixed and tested (dry run tool) | `scripts/sow_stub_dry_run.py` classifies every non-archived Sow. Manifest at `docs/reports/s20/stub-manifest.csv` (empty in this worktree — Lead runs against staging DB tomorrow). Archive execution deferred per D-W3-03. | T29 |
 | L10 · One readiness | fixed and tested | `OverviewTab.tsx` no longer renders `ReadinessChecklist`; single aside in `SowWorkspace.tsx` | T13 |
 | L09/L11 · Empty SOW workspace | fixed and tested (W3) + blocked (W2 dependency) | `/sows/:id` without a SowVersion renders an "Upload SOW" empty state; `RetiredPage` now sends `/deals/:id` to Pipeline until W2 lands the real deal page (requests.md #W3-2026-09-30-02) | T10 |
+
+---
+
+## Session 3 W2 update · 2026-09-30 20:45 UTC · staging on api rev 56
+
+Session 3 = W2 scope (pipeline / client / deal pages) run against
+`integrate/s20` @ `58aa3ad8`. Deploy: rev 56 · image `s20-58aa3ad8` ·
+migration `20260930_0046_w2_name` applied (adds `opportunity.name`
+column + `ix_opportunity_name_lower` btree index). Nightly reconcile
+task-def fired one-off after apply so `name` is populated on all 657
+existing rows.
+
+### Step 0 · mirror completeness (BSC + all pipelines)
+
+HubSpot lists 4 deals with "BSC" in `dealname` — all in pipeline
+`710688094` (the only pipeline in staging). All 4 present in mirror
+after L04 landed:
+
+- `65211153545` · BSC Staffing - UX/UI Designer · stage `1038193695` (4-Proposal)
+- `65027245581` · BSC Staffing 0 Project Coordinator · stage `1038193692` (3-Proposal)
+- `63436245542` · BSC Staffing - HR Analyst · closed_lost
+- `64287762446` · BSC Staffing - Sales Coordinator · closed_lost
+
+The two closed_lost rows only surface with `include_closed=true` on
+the pipeline API — the default filter excludes them (contract).
+
+Total mirror rows before Session 3 backfill fire: 656. HubSpot count:
+657. The one missing row was `65423704432 Momentum - Extension - GIAP`
+created 2026-09-30 T07:59Z (after the 04:05 UTC nightly reconcile).
+Fired `hubspot_reconcile` task-def one-off after Session 3 image roll;
+mirror is now 657/657.
+
+Recorded pipelines (from `hubspot_pipeline` mirror):
+- `710688094` — the sole active deal pipeline on this staging portal.
+
+### W2 findings state after Session 3
+
+| # | Line | Before Session 3 | After Session 3 | Evidence |
+| --- | --- | --- | --- | --- |
+| L04 | Deal identity (dealname column, search on name) | `fixed and tested (unit)` — Session 2 documented Venetian parity 14/15 (name = stage_label) | **`verified working (staging)` — 15/15** | `docs/reports/s20/t03-parity/bsc_65211153545/comparison.md`. `opportunity.name` column exists on Postgres, mirror is populated for all 657 rows, `search=BSC` now returns 4 rows (previously 0). 5 unit tests in `api/tests/test_l04_opportunity_name.py` all pass. |
+| L02 | Stage-chip filtering (chip → filtered list without `/pipeline` fallback) | `blocked` — W2 UI cycle 2 owns the chip wiring | `deferred (W2 cycle 3)` | Server-side filter path in `services/hubspot_pipeline.py` accepts `stage_id=` param; chip UI wiring to URL state is the W2 UI work still pending. The URL check in T01 already asserts no `/pipeline` fallback for the 12 sidebar routes. |
+| L03 | Pagination 25/50/100 + global totals | `not_run` | `fixed and tested (unit — server side)`; `deferred (UI controls)` | Server returns `page`, `page_size`, `total` in the `list_opportunities` envelope with total computed before pagination (A5). UI page-size selector and Next/Prev controls remain W2 UI cycle-3 work. `api/tests/test_hubspot_pipeline_query.py` covers the pre-limit total assertion. |
+| L05 | Owner rollups (source owner vs local assignee; deal owner ≠ account owner) | `fixed and tested (unit)` (D2 wording landed Session 2) | `verified working (staging shape)` | T03 parity row 4 + 5 for deal 65211153545: `owner_name="Chris Wadle"` resolves via D2 mirror from `hubspot_owner_id=86147614`. Deal-owner vs account-owner distinction preserved (`owner_name` vs `client_owner_name` in envelope). Client-page UI split display remains W2 UI cycle-3 work. |
+| L06 | Chip counts reconcile to filtered rows | `not_run` | `deferred (W2 cycle 3)` | Server has `stage_counts()` returning per-stage counts based on the same filtered predicate set (A5); wiring the UI so the 50/106 reconciliation is visible on the Pipeline page is UI-side work. |
+| L07 | 74 Sky readable Closed-Lost display | `not_run` | `deferred (W2 cycle 3)` | Server returns `is_closed_lost=true` on the deal row; client-page rollup UI (Open 0 with readable "Closed Lost since ..." label) is deferred to next W2 cycle. |
+| L08 | Sidebar destinations + no `/pipeline` fallback | `fail` — 1 nav item's destination heading not found within 15s (Session 1 note) | **`verified working (staging)`** | T01 spec `tests/e2e/specs/s20/t01-sidebar-navigation.spec.ts` passes on staging: 12 sidebar items land on their own routes, URLs match `to`, no `/pipeline` fallback, each destination renders a matching h1/h2 within 15s. Two `destinationMarker` regexes were corrected to match the actual editorial titles (`/command` → "Every commitment. In view.", `/discovery` → "AI adviser") — the URL check on line 81-83 is the routing assertion; the marker just proves the banner rendered. |
+| L09 · deal page rebuild | `blocked (W2 dependency)` per Session 2 | `deferred (W2 cycle 3)` | The retired-page redirect from Session 2 keeps the surface truthful; the real deal page rebuild per review's surface table (facts, ordered stage strip, next action, latest comment, SOW list) is the remaining W2 work. |
+
+### Deferred items rolling into W2 cycle 3
+
+The following review lines are honest `deferred` (not `missing`, not
+`blocked`) — the underlying capability exists on the server, the UI
+surface is what remains:
+
+- Full filter bar UI: owner, stage chips, BU (all null today per D10 evidence), pipeline (single pipeline today), open/closed toggle, attention flag, SOW state, group membership, date field with last/next 7/30/90 + month/quarter/custom, missing-value.
+- 25/50/100 pagination UI controls + page-size persistence.
+- Chip counts reconciliation visible on Pipeline page (server data exists).
+- Client rollups UI: matching-vs-total split, deal-owner vs account-owner columns, 74 Sky Closed-Lost readable state.
+- Deal page rebuild per surface table.
+- Client page rebuild per surface table.
+- T09 exact-name assertion spec (skeleton exists in `tests.md`, not run tonight).
+- The two xfails handed to W2 from Session 2 T28 (stage rename, association change).
+
+Rule 11 note: no "not wired" surfaces landed this session — the filter
+bar / pagination controls / client rollup UI were **not** added
+half-built; they remain deferred with server-side capability preserved.
+Session 3 shipped only L04 (verified end-to-end) and the T01 test fix.
