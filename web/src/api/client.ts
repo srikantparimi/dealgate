@@ -3789,6 +3789,7 @@ export function deleteCapability(id: UUID): Promise<void> {
 export type DeletionState =
   | "draft"
   | "approved"
+  | "governed"
   | "hubspot_linked"
   | "archived"
   | "deleted";

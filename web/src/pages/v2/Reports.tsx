@@ -247,7 +247,6 @@ export function ReportsPage({ onExport = defaultExport }: ReportsPageProps = {})
             />
           ) : (
             <ApprovalTurnaroundReport
-              report={data?.turnaround ?? null}
               fetchedAt={data?.fetchedAt ?? null}
               onExport={onExport}
             />

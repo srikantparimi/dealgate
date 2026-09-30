@@ -22,7 +22,9 @@ interface Check {
  * stale URL cannot post to `/signed-sow/{id}` past the supersession.
  */
 export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
-  const pkgSuperseded = snap.approvalPackage?.superseded_by ?? null;
+  // W3/W7 stashed `snap.approvalPackage.superseded_by` for a future
+  // "Signature superseded" banner; wiring lives in Signature.tsx today
+  // so the tab-level view can stay purely a checklist.
   const checks: Check[] = [];
   // S20 W3 D3: NDA/MSA is *not* a signature check. The upload marker is
   // client-scoped context (rendered in the workspace header) and the

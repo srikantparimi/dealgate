@@ -29,7 +29,7 @@
  * when the URL is empty.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ExternalLink, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
