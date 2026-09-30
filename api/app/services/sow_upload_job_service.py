@@ -670,15 +670,12 @@ async def _finish_bound_upload(
     job.opportunity_id = bound_opportunity_id
     job.sow_version_id = version.id
     job.resolution = "matched"
-    # Preserve the binding on the job envelope so a later migration can
-    # promote it to first-class columns without another network hop.
-    job.needs_pick_payload = {
-        "binding": {
-            "source": "explicit",
-            "client_id": str(bound_client_id),
-            "opportunity_id": str(bound_opportunity_id),
-        }
-    }
+    # `needs_pick_payload` means "the pipeline needs a human to disambiguate";
+    # the bound path skipped the picker entirely, so it stays None. The
+    # binding is already captured on `job.opportunity_id` + the SowVersion
+    # under `Sow.opportunity_id`; a future migration can promote them to
+    # first-class columns without needing a JSON envelope here.
+    job.needs_pick_payload = None
     await session.flush()
 
     # If extraction failed, stop here — the file is safe on S3, the
