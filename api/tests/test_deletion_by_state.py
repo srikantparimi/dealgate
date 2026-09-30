@@ -31,7 +31,7 @@ from app.services.deletion import (
 
 
 async def _seed(session, *, with_package: bool):
-    owner = User(id=uuid.uuid4(), email="del-owner@example.com", groups=["Sales"])
+    owner = User(id=uuid.uuid4(), email="del-owner@example.com", name="Del Owner", groups=["Sales"])
     session.add(owner)
     client = Client(id=uuid.uuid4(), name="DelClient")
     session.add(client)

@@ -43,7 +43,7 @@ async def rollup_data(session):
     session.add(
         LegalEntity(id=uuid.uuid4(), client_id=client.id, name="Acme Ltd")
     )
-    user = User(id=uuid.uuid4(), email="owner@example.com", groups=["Sales"])
+    user = User(id=uuid.uuid4(), email="owner@example.com", name="Owner", groups=["Sales"])
     session.add(user)
     opp = Opportunity(
         id=uuid.uuid4(),
