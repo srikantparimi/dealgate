@@ -1,14 +1,35 @@
-# S20 · unresolved (Session-1 hand-back)
+# S20 · unresolved (Session-1 hand-back · U01 resolved)
 
-Session-1 stabilization complete. `integrate/s20` @ `59ba7bc` on origin.
+Session-1 stabilization + U01 slice complete. `integrate/s20` on origin.
 Deploy proved on staging (rev 53 · s20-3e5be98c). Full unit suite green
 (943 pass / 0 fail / 159 xfail). Rollback proven (T36).
 
 ## Hard blocks (permission / external / irreversible on real data)
 
-| # | Blocker | Owner | One-sentence ask |
-| --- | --- | --- | --- |
-| U01 | Multi-role Cognito approvers absent → T27 (permission uniformity) + T44 (12-step full journey with role hand-offs) cannot verify role partitioning. | Kanna | **Approve me to create 5 Cognito users (`submitter+delivery+hr+finance+legal`, ceo already exists) via a follow-up TF slice in `infra-tf/modules/e2e-approvers/` and populate the `officeapp-dev-e2e-approvers` Secrets Manager JSON — should I proceed?** |
+None open.
+
+**Resolved:** ~~U01~~ · 2026-09-30 · TF slice `infra-tf/modules/e2e-approvers/`
+applied against staging. 5 users CONFIRMED + in role-group +
+officeapp-e2e:
+
+| Role | Cognito username | Group |
+| --- | --- | --- |
+| submitter | srikanthp+submitter@smartek21.com | Sales, officeapp-e2e |
+| delivery | srikanthp+delivery@smartek21.com | Delivery, officeapp-e2e |
+| hr | srikanthp+hr@smartek21.com | HR, officeapp-e2e |
+| finance | srikanthp+finance@smartek21.com | Finance, officeapp-e2e |
+| legal | srikanthp+legal@smartek21.com | Legal, officeapp-e2e |
+
+Credentials in Secrets Manager at `officeapp-dev-e2e-approvers-multirole`
+(new secret; the pre-existing `officeapp-dev-e2e-approvers` is preserved
+so specs 22 + 23 keep working). `tests/e2e/fixtures/multi-role-auth.ts`
+updated to read the new name.
+
+**Kanna's remaining action for U01: click 5 SES verification links
+sent by AWS to srikanthp@smartek21.com** — one per role. Current status
+of all 5 identities: `Pending`. Until you click, the sandbox refuses
+notification emails to these addresses; Cognito login already works
+without SES.
 
 **Removed from the prior list:**
 - ~~U02 HubSpot write scope~~ — by design per D-ISO-01; not a block, removed.

@@ -31,7 +31,7 @@
  *
  * Secrets:
  * - `officeapp-dev-e2e-user` — SystemAdmin smoke bot creds (existing).
- * - `officeapp-dev-e2e-approvers` — JSON map of role slots to
+ * - `officeapp-dev-e2e-approvers-multirole` — JSON map of role slots to
  *   { user_pool_id, client_id, username, password, region }.
  *   Created via `terraform apply` on the S20 e2e-approvers module.
  *
@@ -98,7 +98,7 @@ function loadApproversMap(): Record<RoleSlot, StagingCreds> | null {
   if (approversMap) return approversMap;
   const profile = process.env.AWS_PROFILE_STAGING ?? "lm-arbiter-poc";
   const secretId =
-    process.env.STAGING_E2E_APPROVERS_SECRET ?? "officeapp-dev-e2e-approvers";
+    process.env.STAGING_E2E_APPROVERS_SECRET ?? "officeapp-dev-e2e-approvers-multirole";
   const region = process.env.STAGING_E2E_REGION ?? "us-east-2";
   try {
     const raw = awsCli([

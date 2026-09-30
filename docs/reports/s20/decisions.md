@@ -53,7 +53,17 @@ Format: `## <id> · <one-line title> · <UTC timestamp> · <owner>` then:
 
 Workers append below this line as their scope surfaces choices.
 
-## D-COG-01 · Multi-role Cognito approvers TF partition deferred · 2026-09-30 05:22 UTC · Lead
+## D-COG-02 · U01 resolved · new secret name to preserve backward-compat · 2026-09-30 20:15 UTC · Lead
+
+- **Decision:** New Secrets Manager secret named `officeapp-dev-e2e-approvers-multirole` (not `officeapp-dev-e2e-approvers`) to hold the 5 role-partitioned credentials. Old secret + old shape stay for specs 22 + 23.
+- **Options considered:**
+  1. Import existing `officeapp-dev-e2e-approvers` into TF and merge shapes — mixes two data models in one secret; hostile to future readers.
+  2. Overwrite existing secret with new shape — breaks specs 22 + 23 (they read `parsed.approver_delivery_username`).
+  3. New secret name + patch `multi-role-auth.ts` — **chosen**.
+- **Chosen because:** Zero risk to landed S14b + S16a proofs. One-line change to the fixture that already treats the secret name as an env-overrideable constant.
+- **How to reverse:** `terraform destroy -target=module.e2e_approvers`; revert the one-line change in the fixture. Old secret is untouched throughout.
+
+## D-COG-01 · Multi-role Cognito approvers TF partition deferred · 2026-09-30 05:22 UTC · Lead (SUPERSEDED by D-COG-02)
 
 - **Decision:** Do not stand up 5 new Cognito users + `officeapp-dev-e2e-approvers` Secrets Manager JSON tonight. T27 (permissions uniform across surfaces) + T44 (12-step full journey with role hand-offs) stay `xfail` with reason "multi-role users pending TF slice"; every other test in the harness runs against the fallback smoke-bot user.
 - **Options considered:**

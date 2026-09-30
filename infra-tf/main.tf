@@ -120,6 +120,16 @@ module "auth" {
   custom_domain     = var.domain
 }
 
+# S20 U01 · role-partitioned Cognito approvers for T27 + T44.
+# Five plus-addressed users off srikanthp@smartek21.com, one per role,
+# credentials in `officeapp-dev-e2e-approvers`.
+module "e2e_approvers" {
+  source       = "./modules/e2e-approvers"
+  name_prefix  = local.name_prefix
+  user_pool_id = module.auth.user_pool_id
+  kms_key_arn  = module.kms.key_arn
+}
+
 module "api" {
   source      = "./modules/api"
   name_prefix = local.name_prefix
