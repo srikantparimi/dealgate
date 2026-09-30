@@ -45,11 +45,37 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # ---- D1 · drop UNIQUE on sow.opportunity_id --------------------------
-    # Postgres names the constraint after the table + column by default;
-    # `if_exists` keeps the migration idempotent across environments where
-    # a prior manual fix may have already dropped it.
-    with op.batch_alter_table("sow") as batch:
-        batch.drop_constraint("sow_opportunity_id_key", type_="unique")
+    # SQLAlchemy generated the constraint at table-create time with an
+    # environment-dependent name. We look it up dynamically from
+    # information_schema and drop it if present. Idempotent — a rerun on
+    # a DB where it's already gone is a no-op. Only affects Postgres;
+    # SQLite constraints are re-materialised from metadata on each test
+    # run so no schema migration is needed there.
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        bind.execute(
+            sa.text(
+                """
+                DO $$
+                DECLARE
+                    constraint_name text;
+                BEGIN
+                    SELECT tc.constraint_name INTO constraint_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                      ON tc.constraint_name = kcu.constraint_name
+                     AND tc.table_name = kcu.table_name
+                    WHERE tc.table_name = 'sow'
+                      AND tc.constraint_type = 'UNIQUE'
+                      AND kcu.column_name = 'opportunity_id';
+                    IF constraint_name IS NOT NULL THEN
+                        EXECUTE format('ALTER TABLE sow DROP CONSTRAINT %I', constraint_name);
+                    END IF;
+                END
+                $$;
+                """
+            )
+        )
 
     # ---- D4 · watermark columns on sync_status --------------------------
     # Nullable + no default so old rows don't need backfill; every writer
@@ -103,5 +129,11 @@ def downgrade() -> None:
     # This will fail if any deal already has more than one non-archived
     # Sow — that's intentional; a downgrade is not allowed to silently
     # lose rows. Ops must archive-all-but-one per deal before downgrade.
-    with op.batch_alter_table("sow") as batch:
-        batch.create_unique_constraint("sow_opportunity_id_key", ["opportunity_id"])
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        bind.execute(
+            sa.text(
+                "ALTER TABLE sow ADD CONSTRAINT sow_opportunity_id_key "
+                "UNIQUE (opportunity_id)"
+            )
+        )
