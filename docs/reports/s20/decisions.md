@@ -198,6 +198,61 @@ Workers append below this line as their scope surfaces choices.
   `tests/e2e/specs/s20/t01-sidebar-navigation.spec.ts` (lines 43 + 46
   as of `58aa3ad`) and add h1 text to the pages.
 
+## D-W2-03 · Session 3b passes `title="Command center. Every commitment in view."` to ExecutiveBanner · 2026-09-30 22:00 UTC · Session 3b W2
+
+- **Decision:** Per S3b directive "T01 asserts a Command-center-specific
+  heading, not the banner default." CommandCenter.tsx now passes an
+  explicit `title` prop to ExecutiveBanner containing "Command center."
+  (page identity) plus the editorial "Every commitment in view."
+  clause. ExecutiveBanner's h1 renders this specifically per page;
+  DEFAULT_TITLE ("Every commitment. In view.") is untouched and would
+  apply only to any hypothetical future non-Command-center usage of
+  the component. T01 destinationMarker for /command reverts from
+  `/every commitment/i` (Session 3 tolerance) to `/command center/i`
+  (Session 3b specificity).
+- **Options considered:**
+  1. Change the banner DEFAULT_TITLE to include "Command center" →
+     couples the design system component to a page identity; a second
+     page using ExecutiveBanner would inherit the wrong title.
+  2. Add a visually-hidden h1 above the banner + demote the banner
+     to an h2 → semantic HTML but a double heading in the a11y tree.
+  3. Pass a page-specific `title` prop from CommandCenter — **chosen**.
+     ExecutiveBanner stays generic; CommandCenter states its own identity.
+- **Chosen because:** the directive explicitly wants a specific heading,
+  the component API already supports it via the `title` prop, and this
+  keeps the design-system boundary clean.
+- **How to reverse:** delete the `title={...}` prop from the
+  CommandCenter's ExecutiveBanner call; DEFAULT_TITLE resumes.
+
+## D-W2-04 · S3b closes D-W2-02 deferrals · 2026-09-30 22:00 UTC · Session 3b W2
+
+- **Decision:** All items listed in D-W2-02 as deferred to "W2 cycle 3"
+  are shipped this session: DealDetail v2 (/deals/:id), ClientDetail v2
+  (/clients/:id), T09 spec, T28 W2-side xfails, T40 assertions, and
+  the "Command-center-specific heading" T01 refinement. The Pipeline
+  stage-chip filtering, filter bar, and 25/50/100 pagination controls
+  were already deployed on Session 3 rev 56 and are re-verified this
+  session (T40 L02+L03+L06 green on staging rev 57).
+- **Options considered:**
+  1. Split DealDetail + ClientDetail across two more sessions →
+     directive said "each proven in the browser on staging before
+     moving on"; splitting would require a redeploy per page.
+  2. Ship both in one commit + one deploy → **chosen**. Rule 9
+     vertical-slice: migration + API + page + tests in one PR; both
+     pages ship with their new endpoints + T09 + T40 in one commit.
+  3. Ship only DealDetail (bigger) and defer ClientDetail → the
+     Pipeline page's Clients tab already links to /clients/:id via
+     onRow, so leaving that as v1 kept a "click leads to worse UI"
+     surface. Not honest.
+- **Chosen because:** the directive named the items in the D-W2-02
+  list as the session's scope; deferring any of them again would need
+  a documented reason. All shipped; only new deferrals are named +
+  reasoned in matrix.md's "Deferred beyond Session 3b" list.
+- **How to reverse:** none needed — the code is behind the same route
+  paths (/deals/:id, /clients/:id) that RetiredPage and the legacy
+  ClientDetailPage used before. Rolling back would restore the S18-era
+  behavior.
+
 ## D-W2-02 · Session 3 ships L04 only; other W2 review lines deferred to cycle 3 · 2026-09-30 20:45 UTC · Session 3 W2
 
 - **Decision:** Session 3 lands L04 (opportunity.name = dealname) end
