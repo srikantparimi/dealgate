@@ -268,3 +268,39 @@ async def resolve_owner_by_id(
     """
 
     return await session.get(HubspotOwner, hubspot_owner_id)
+
+
+# D2 display labels, exported so W2 / W4 / matrix asserts all share
+# the same wording without importing tests.
+OWNER_LABEL_UNASSIGNED = "Unassigned"
+OWNER_LABEL_UNRESOLVED = "Owner details unavailable"
+
+
+async def owner_display_label(
+    session: AsyncSession, hubspot_owner_id: str | None
+) -> str:
+    """D2 wording helper.
+
+    ``None`` (source is genuinely empty) → ``"Unassigned"``.
+    Non-null id that misses the mirror → ``"Owner details unavailable"``.
+    A resolved row prefers ``first + last``; falls back to ``email``,
+    then to ``"Owner details unavailable"`` (the record exists but has
+    no useful display name — treat it as an unresolved reference).
+
+    Archived owners resolve to their name too (D2 spec: "include archived
+    owners"), so a deal owned by a departed rep still renders the human's
+    name rather than the id.
+    """
+
+    if hubspot_owner_id is None or not str(hubspot_owner_id).strip():
+        return OWNER_LABEL_UNASSIGNED
+    row = await resolve_owner_by_id(session, str(hubspot_owner_id))
+    if row is None:
+        return OWNER_LABEL_UNRESOLVED
+    first = (row.first_name or "").strip()
+    last = (row.last_name or "").strip()
+    if first or last:
+        return " ".join(x for x in (first, last) if x)
+    if row.email:
+        return row.email
+    return OWNER_LABEL_UNRESOLVED

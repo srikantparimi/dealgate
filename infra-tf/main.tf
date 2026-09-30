@@ -234,6 +234,11 @@ module "schedulers" {
   # and updates sync_status.
   hubspot_event_queue_url  = module.hubspot.queue_url
   hubspot_event_queue_arn  = module.hubspot.queue_arn
+  # S20 W1 · freshness alarms consume the queue NAMES as the SQS
+  # CloudWatch dimension, so they're wired separately from the URL/ARN
+  # (which the consumer worker uses).
+  hubspot_events_queue_name = module.hubspot.queue_name
+  hubspot_events_dlq_name   = module.hubspot.dlq_name
   hubspot_token_secret_arn = module.secrets.hubspot_token_secret_arn
 }
 

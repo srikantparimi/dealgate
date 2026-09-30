@@ -715,6 +715,43 @@ async def handle_event(
     deal_id = _extract_deal_id(event)
     correlation_id = f"hubspot:{event_row.source_event_id}"
 
+    # T28 · webhook-side deletion. `deal.deletion` never has the deal
+    # available on the CRM API anymore, so we archive the mirror row
+    # locally without a `get_deal` call. Downstream governance rows
+    # (SOWs, decisions, audit) are preserved per rule 4.
+    if subscription == "deal.deletion":
+        opp = (
+            await session.execute(
+                select(Opportunity).where(Opportunity.hubspot_deal_id == deal_id)
+            )
+        ).scalar_one_or_none()
+        if opp is not None and opp.archived_at is None:
+            opp.archived_at = datetime.now(UTC)
+            opp.archived_reason = "hubspot_deleted"
+            await append_audit(
+                session,
+                actor_id=None,
+                action="opportunity.archived",
+                entity="opportunity",
+                entity_id=str(opp.id),
+                correlation_id=correlation_id,
+                before={"archived_at": None, "archived_reason": None},
+                after={
+                    "archived_at": opp.archived_at.isoformat(),
+                    "archived_reason": "hubspot_deleted",
+                },
+            )
+        event_row.processed_at = datetime.now(UTC)
+        await touch_source(
+            session,
+            source="hubspot_webhook_processed",
+            success=True,
+            error=None,
+            mark_processed=True,
+        )
+        await session.commit()
+        return
+
     deal_payload = await client.get_deal(deal_id)
     props = _deal_props(deal_payload)
     hubspot_owner_id = props.get("hubspot_owner_id")

@@ -45,16 +45,11 @@ variable "lag_alarm_seconds" {
 variable "hubspot_events_queue_name" {
   description = "Main HubSpot events queue NAME (SQS dimension), matching the queue passed into hubspot_event_queue_url. Used by CloudWatch alarms that read AWS/SQS metrics."
   type        = string
-  # S20 Lead default so root main.tf doesn't have to wire the argument
-  # until W1's freshness-alarms slice ships in Session 2. Value matches
-  # the queue name written by modules/hubspot.
-  default = "officeapp-dev-hubspot-events"
 }
 
 variable "hubspot_events_dlq_name" {
   description = "DLQ NAME for the HubSpot events pipeline (SQS dimension). Alarms when > 0 messages visible."
   type        = string
-  default     = "officeapp-dev-hubspot-events-dlq"
 }
 
 locals {
