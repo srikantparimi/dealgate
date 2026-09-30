@@ -43,7 +43,14 @@ from app.services.hubspot_intake import (
     _resolve_secondary_clients,
     _upsert_opportunity,
 )
+from app.services.hubspot_owners import sync_owner_mirror
+from app.services.hubspot_properties import discover_business_unit
 from app.services.hubspot_stage_mirror import StageMap, sync_stage_mirror
+from app.services.sync_status import (
+    claim_scan_generation,
+    mark_scan_completed,
+    touch_source,
+)
 
 log = structlog.get_logger("hubspot_backfill")
 
@@ -62,8 +69,16 @@ class BackfillCounts:
     multi_company_deals: int = 0
     errors: int = 0
     error_deal_ids: list[str] = field(default_factory=list)
+    # S20 W1 A3 · T33 — scan generation, so a failed run never archives.
+    scan_generation: int | None = None
+    scan_completed: bool = False
+    # S20 W1 D2 · D10 — auxiliary mirror counts so ops can see the whole
+    # picture without reading three tables.
+    owners_mirror_active: int = 0
+    owners_mirror_archived: int = 0
+    business_unit_property_found: bool = False
 
-    def as_dict(self) -> dict[str, int | list[str]]:
+    def as_dict(self) -> dict[str, int | list[str] | bool | None]:
         return asdict(self)
 
 
@@ -75,12 +90,23 @@ def _extract_deal_id(deal_payload: dict) -> str:
 
 
 async def _archive_missing(
-    session: AsyncSession, seen_ids: set[str], correlation_id: str, run_started: datetime
+    session: AsyncSession,
+    seen_ids: set[str],
+    correlation_id: str,
+    run_started: datetime,
+    *,
+    scan_generation: int | None = None,
 ) -> int:
     """Any HubSpot-sourced, non-archived opportunity we didn't see gets archived.
 
-    The nightly reconcile job also drives this, so backfill archiving is
-    the initial pass; incremental drift is caught later.
+    S20 W1 A3 · T33 — the caller is responsible for only calling this
+    when the scan is *known* to have completed (pagination_ok AND
+    errors == 0 AND generation matches). The generation is recorded in
+    the audit line so a post-mortem can prove which scan archived a row.
+
+    The nightly reconcile job also drives this via
+    :func:`run_backfill`, so backfill archiving is the initial pass;
+    incremental drift is caught later.
     """
 
     stmt = (
@@ -92,6 +118,16 @@ async def _archive_missing(
     for opp in (await session.execute(stmt)).scalars():
         if opp.hubspot_deal_id in seen_ids:
             continue
+        # A3 · T33 — extra safety: only archive rows that existed BEFORE
+        # this scan started. A row created mid-scan (webhook lands during
+        # the paginated fetch) is not "missing", it just wasn't in this
+        # generation's snapshot; leave it alone.
+        row_created = opp.created_at
+        if row_created is not None and row_created.tzinfo is None:
+            row_created = row_created.replace(tzinfo=UTC)
+        if row_created is not None and row_created > run_started:
+            continue
+
         opp.archived_at = run_started
         opp.archived_by = None
         opp.archived_reason = "hubspot_deleted"
@@ -103,7 +139,11 @@ async def _archive_missing(
             entity="opportunity",
             entity_id=str(opp.id),
             before={"archived_at": None},
-            after={"archived_at": run_started.isoformat(), "reason": "hubspot_deleted"},
+            after={
+                "archived_at": run_started.isoformat(),
+                "reason": "hubspot_deleted",
+                "scan_generation": scan_generation,
+            },
             correlation_id=correlation_id,
         )
         archived += 1
@@ -191,7 +231,22 @@ async def run_backfill(
     page_size: int = 100,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> BackfillCounts:
-    """Full backfill entry point. Called by the router and the smoke script."""
+    """Full backfill entry point. Called by the router and the smoke script.
+
+    S20 W1 changes vs. S18 §2:
+
+    - Claims a new ``scan_generation`` on ``sync_status`` at start so
+      overlapping / retried runs can be distinguished (A3, T33).
+    - Refreshes the owner mirror (D2) and the Business Unit property
+      mapping (D10) before the deal loop so downstream reads always see
+      current metadata.
+    - Only stamps ``scan_completed_at`` (and only then archives missing
+      rows) when pagination succeeded AND every deal upsert succeeded.
+      A single-page error skips the archive sweep for the whole
+      generation — S18 §2 F8, tightened.
+    - Advances ``hubspot_backfill`` watermark on success/failure so the
+      settings health page never falls back to "worker heartbeat".
+    """
 
     hub = client or HubSpotClient()
     factory = session_factory or default_session_factory
@@ -200,6 +255,23 @@ async def run_backfill(
     counts = BackfillCounts()
     seen_ids: set[str] = set()
 
+    # A3 · T33 — claim a fresh scan generation before any work. Persisted
+    # so the archive sweep can verify it wasn't superseded by an
+    # overlapping run.
+    async with factory() as session:
+        counts.scan_generation = await claim_scan_generation(
+            session, source="hubspot_backfill"
+        )
+        await touch_source(
+            session,
+            source="hubspot_backfill",
+            success=True,
+            error=None,
+            scan_generation=counts.scan_generation,
+            scan_started=True,
+        )
+        await session.commit()
+
     # S19 B1: sync pipeline / stage mirror before any deal upsert. The map
     # feeds every _upsert_opportunity so label / closed flags are resolved
     # from the same source every time.
@@ -207,12 +279,39 @@ async def run_backfill(
     try:
         async with factory() as session:
             stage_map = await sync_stage_mirror(session, hub)
+            await touch_source(
+                session,
+                source="hubspot_pipeline_mirror",
+                success=True,
+                error=None,
+            )
             await session.commit()
     except Exception:
         log.exception("hubspot_stage_mirror_sync_failed")
         # A stage-map failure isn't fatal — intake falls back to the naked
         # stage id (mapper bug degrades gracefully). Continue but count the
         # error.
+        counts.errors += 1
+
+    # S20 W1 D2 — refresh owner mirror (active + archived).
+    try:
+        async with factory() as session:
+            owner_counts = await sync_owner_mirror(session, hub)
+            counts.owners_mirror_active = owner_counts.active_seen
+            counts.owners_mirror_archived = owner_counts.archived_seen
+            await session.commit()
+    except Exception:
+        log.exception("hubspot_owner_mirror_sync_failed")
+        counts.errors += 1
+
+    # S20 W1 D10 — discover the Business Unit custom property.
+    try:
+        async with factory() as session:
+            discovery = await discover_business_unit(session, hub)
+            counts.business_unit_property_found = discovery.found
+            await session.commit()
+    except Exception:
+        log.exception("hubspot_bu_discovery_failed")
         counts.errors += 1
 
     pagination_ok = True
@@ -247,23 +346,61 @@ async def run_backfill(
             break
         after = next_after
 
-    # S18 §2 · F8 backend half — a partial run must never archive stale
-    # rows. If pagination failed OR any deal errored we skip the sweep so
-    # a HubSpot outage cannot mass-archive deals we simply didn't reach.
-    # The nightly reconcile (later slice) still catches drift on the next
-    # healthy pass.
+    # S18 §2 · F8 backend half tightened for S20 W1 A3 · T33 — a partial
+    # run must never archive stale rows. If pagination failed OR any deal
+    # errored, skip the archive sweep AND leave ``scan_completed_at``
+    # unset so the next successful scan is what advances the "generation
+    # completed" clock.
     if pagination_ok and counts.errors == 0:
         async with factory() as session:
             counts.deals_archived = await _archive_missing(
-                session, seen_ids, correlation_id, run_started
+                session,
+                seen_ids,
+                correlation_id,
+                run_started,
+                scan_generation=counts.scan_generation,
             )
+            # Stamp completion under the SAME generation. A concurrent
+            # newer scan would have bumped ``scan_generation`` already;
+            # ``mark_scan_completed`` no-ops if that happened.
+            if counts.scan_generation is not None:
+                await mark_scan_completed(
+                    session,
+                    source="hubspot_backfill",
+                    generation=counts.scan_generation,
+                )
+            await touch_source(
+                session,
+                source="hubspot_backfill",
+                success=True,
+                error=None,
+                scan_completed=True,
+                scan_generation=counts.scan_generation,
+            )
+            counts.scan_completed = True
             await session.commit()
     else:
+        async with factory() as session:
+            await touch_source(
+                session,
+                source="hubspot_backfill",
+                success=False,
+                error=(
+                    f"partial_run pagination_ok={pagination_ok} "
+                    f"errors={counts.errors}"
+                ),
+                scan_generation=counts.scan_generation,
+            )
+            await session.commit()
         log.warning(
             "hubspot_backfill_skipping_archive_sweep",
             errors=counts.errors,
             pagination_ok=pagination_ok,
+            scan_generation=counts.scan_generation,
         )
 
-    log.info("hubspot_backfill_complete", **{k: v for k, v in counts.as_dict().items() if isinstance(v, int)})
+    log.info(
+        "hubspot_backfill_complete",
+        **{k: v for k, v in counts.as_dict().items() if isinstance(v, (int, bool))},
+    )
     return counts
