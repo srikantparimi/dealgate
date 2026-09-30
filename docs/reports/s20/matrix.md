@@ -70,9 +70,36 @@ Each row lists Lead-owned columns filled during integration.
 
 | Capability | State | Evidence | Test ids |
 | --- | --- | --- | --- |
-| D1 SOW rollup service (headline + breakdown per deal) | fixed and tested | `services/sow_rollup.py`, wired into `GET /deals/{id}.sow_rollup`; migration to relax `sow.opportunity_id` uniqueness requested via requests.md #W3-2026-09-30-01 | T14, T31 (via `tests/test_sow_rollup.py`) |
-| T11/T37 · Upload binds client + deal | fixed and tested | `POST /sows/upload` accepts client_id+opportunity_id together; `_finish_bound_upload` short-circuits picker; extraction failure preserves file + binding | T11, T37 (via `tests/test_sow_upload_binding.py`) |
-| T19 · Stale-tab refusal on decision | fixed and tested | `decide(...)` accepts `expected_package_hash`, 409 on mismatch; UI (`ReviewStream.tsx`, `ApprovalQueue.tsx`) sends the loaded hash | T19 (via `tests/test_stale_package_hash.py`) |
+| D1 SOW rollup service (headline + breakdown per deal) | fixed and tested (unit) | `services/sow_rollup.py`, wired into `GET /deals/{id}.sow_rollup`; migration relaxing `sow.opportunity_id` uniqueness landed at `20260930_0044_s20_lead_d1_d4` (applied on staging Postgres 2026-09-30 19:00 UTC) | T14, T31 (via `tests/test_sow_rollup.py`, 7 pass) |
+| T11/T37 · Upload binds client + deal | fixed and tested (unit) | `POST /sows/upload` accepts client_id+opportunity_id together; `_finish_bound_upload` short-circuits picker; extraction failure preserves file + binding | T11, T37 (via `tests/test_sow_upload_binding.py`, 4 pass after Lead fix at `6446ae1`) |
+| T19 · Stale-tab refusal on decision | fixed and tested (unit) | `decide(...)` accepts `expected_package_hash`, 409 on mismatch; UI (`ReviewStream.tsx`, `ApprovalQueue.tsx`) sends the loaded hash | T19 (via `tests/test_stale_package_hash.py`) |
+
+---
+
+## Session-1 Lead update · 2026-09-30 19:15 UTC · staging-run truth table
+
+Per the session-1 instruction: any row previously marked "fixed and
+tested" that lacks a **test that ran on staging and passed** is
+downgraded here.
+
+| Category | Proved on staging tonight | Not proved on staging (downgrade to `fixed and tested (unit)` or `missing`) |
+| --- | --- | --- |
+| **Deploy path (T36 / A6)** | `verified working` — image `s20-3e5be98c` on 7 task-defs; migration exit 0; api rev 51→53 rolled; rollback proven 53→51→53 in 3m30s; smoke green (Bedrock retry); test-data-clean gate = 0. Log: `docs/reports/s20/deploy-artifacts/smoke.txt`. | — |
+| **Routes exist + auth-gated** | `verified working` — `/api/pipeline/opportunities`, `/api/sync-status`, `/api/dashboards/*`, `/api/reports/*` all return 401 (not 404) unauthenticated. | — |
+| **Every worker's unit tests** | `verified working` — 943 pass / 0 fail / 159 xfail (S20 skeletons). | — |
+| **W1 owner mirror, watermarks, dedupe, BU discovery** | `fixed and tested (unit)` — 22 tests pass locally; staging exercise pending W5-03 `/api/dev/mirror/opportunities/{id}` request. | Staging assertion of watermark advance on live traffic pending Session 2 (W1 cycle 2). |
+| **W2 pipeline query service (filters, envelope, paging)** | `fixed and tested (unit)` — 7 pipeline_query_service tests pass locally; endpoint 401-gated on staging. | Staging T02 chip reconciliation + T35 pagination-vs-total assertions pending Session 3 (W2 cycle 2). |
+| **W3 SOW rollup, binding, stale-hash, D6 archive** | `fixed and tested (unit)` — 16 tests pass locally; `sow.opportunity_id` UNIQUE dropped on staging Postgres. | Staging T14 (two SOWs per deal) + T19 (stale tab) assertions pending Session 6 (W7-side of full journey). |
+| **W4 renewal 2-cm rule + integrations honesty** | `fixed and tested (unit)` — renewal_alert_date + reports_turnaround = 29 tests pass. | Staging T25 renewal alert emission, T39 command-centre reconcile, T43 integration truthfulness pending Session 5 (W4 cycle 2). |
+| **W6 next_action + deal_comment + tracking_group + saved_view** | `fixed and tested (unit)` — 30 tests pass; routers registered on app.main. | Staging T05 + T16 assertions pending Session 4 (W6 cycle 2). |
+| **W7 release gate + delivery_acceptance + project** | `fixed and tested (unit)` — 23 tests pass; migration `20260930_0043_s20_w7` applied on staging Postgres. | Staging T22 + T23 + T24 assertions pending Session 6 (W7 cycle 2). |
+| **T01 sidebar navigation (Playwright)** | **fail** — 1 nav item's destination heading not found within 15s on staging. Requires debugging before it goes green; not deploy-blocking. | Session per-worker cycle 2 owns the fix (whichever route the mismatch points to). |
+| **T27 permission uniformity, T44 full-journey** | `blocked (U01)` — multi-role Cognito approvers still absent. Every other role check runs against the SystemAdmin smoke bot with a WARN. | U01 in `unresolved.md`. |
+
+**Fixed and tested (unit)** is the honest ceiling for anything without
+a staging assertion. Session 2–6 per-worker cycles lift specific rows
+to `verified working` by running the harness on the same staging
+deploy without another D5 roll.
 | T20 · CEO exception "Not required" | fixed and tested | `SignatureTab.tsx` + `readiness.ts` always emit the CEO row: "Not required" when `!floors.requires_ceo`, full detail otherwise | T20 |
 | T21 · Material change invalidation | verified working | `approvals_hooks.on_sow_version_created` + `on_gm_model_created` already fire `void_on_change` (existing S4 wiring) | T21 |
 | D3 · NDA/MSA per D3 in signature | fixed and tested | `SignatureTab.tsx` drops NDA/MSA row; `require_signature_eligibility` verified read-only (no gating logic exists to preserve) | T15, T41 |

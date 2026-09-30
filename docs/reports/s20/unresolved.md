@@ -1,38 +1,39 @@
-# S20 · unresolved (morning hand-over)
+# S20 · unresolved (Session-1 hand-back)
 
-Everything on this list is either (a) something Kanna needs to grant / decide, (b) a downstream action deferred by tonight's session-token cap, or (c) a known regression. Nothing here is silently marked "done".
+Session-1 stabilization complete. `integrate/s20` @ `59ba7bc` on origin.
+Deploy proved on staging (rev 53 · s20-3e5be98c). Full unit suite green
+(943 pass / 0 fail / 159 xfail). Rollback proven (T36).
 
-## Hard blocks (permission / external / irreversible)
+## Hard blocks (permission / external / irreversible on real data)
 
-| # | Blocker | Owner | What I need from you |
+| # | Blocker | Owner | One-sentence ask |
 | --- | --- | --- | --- |
-| U01 | Multi-role Cognito approvers do not exist. T27 (permissions uniform) + T44 (12-step full journey with role hand-offs) cannot run. | Kanna | Approve the follow-up TF slice (`infra-tf/modules/e2e-approvers/`) creating 5 Cognito users + populating `officeapp-dev-e2e-approvers` secret. Decision recorded as D-COG-01. |
-| U02 | HubSpot token is read-only. J6 creator path (from S19-1) still cannot POST deals to the portal. | Kanna | Grant `crm.objects.deals.write` on a separate token stored at `dealgate/staging/hubspot_token_write`, OR decide to keep J6 in observer mode indefinitely. Recorded as D-ISO-01. |
-| U03 | Shared session-token cap capped tonight's work. Cycle-2 spawn not attempted. | Anthropic account | Wait for reset (1:40 AM PT) OR raise the cap. |
+| U01 | Multi-role Cognito approvers absent → T27 (permission uniformity) + T44 (12-step full journey with role hand-offs) cannot verify role partitioning. | Kanna | **Approve me to create 5 Cognito users (`submitter+delivery+hr+finance+legal`, ceo already exists) via a follow-up TF slice in `infra-tf/modules/e2e-approvers/` and populate the `officeapp-dev-e2e-approvers` Secrets Manager JSON — should I proceed?** |
 
-## Deferred to Kanna's morning execution
+**Removed from the prior list:**
+- ~~U02 HubSpot write scope~~ — by design per D-ISO-01; not a block, removed.
+- ~~U03 session-token cap~~ — no longer a block for Session 1; Sessions 2–6 operate under the same cap and adapt.
+- ~~U04 D5 deploy not run~~ — done tonight (see `deploy.md`).
+- ~~U05 SOW alembic~~ — landed at `20260930_0044_s20_lead_d1_d4` (constraint drop done dynamically after first attempt failed on Postgres constraint-name mismatch).
+- ~~U06 sync_status alembic~~ — landed in the same revision (8 watermark columns).
+- ~~U07 test_delete_everywhere~~ — fixed (test now asserts D6 archive semantics).
+- ~~U08 test_sow_upload_binding~~ — fixed (needs_pick_payload cleared on bound path).
+- ~~U09 W5 cross-worker requests~~ — deferred to per-worker Session 2–6 pickups (W5-01 e2e_cleanup regex, W5-03 mirror endpoint, W5-04 export CSV).
 
-| # | Item | Where | Action |
-| --- | --- | --- | --- |
-| U04 | D5 deploy to staging not run tonight. | `docs/runbooks/deploy.md` + `docs/reports/s20/deploy.md` (empty tables ready to fill) | Kanna runs the runbook end-to-end; fills evidence tables in `deploy.md`. |
-| U05 | Alembic revision to relax `sow.opportunity_id` uniqueness on Postgres. Model already relaxed at commit `9a2ebc2` (works for SQLite tests); Postgres deploy needs migration or the running staging DB rejects multi-SOW inserts. | `api/alembic/versions/` | Kanna writes a new revision: `ALTER TABLE sow DROP CONSTRAINT sow_opportunity_id_key;`. Roll into D5 migration step. |
-| U06 | Alembic revision to add sync_status watermark columns per contracts §5. W1's `sync_status.py` feature-detects the columns so tests + partial-migrated staging both work; but production Postgres needs the new columns for the freshness watermarks to actually persist. | `api/alembic/versions/` | Fold into the same D5 migration or a companion revision. Backward-compatible (`ADD COLUMN ... DEFAULT NULL`). |
+## Deferred to Sessions 2–6 (per-scope, not blockers)
 
-## Regressions to fix (not blockers, but visible in the suite)
+The per-worker cycles finish the "verified working on staging" work
+their unit tests already covered locally. Each session runs against
+the current staging deploy (rev 53), no additional D5 roll unless the
+work touches image / migration / task-def env.
 
-| # | Test | Cause | Fix |
-| --- | --- | --- | --- |
-| U07 | `tests/test_delete_everywhere.py::test_delete_sow_removes_it_from_every_list` | Test asserts pre-D6 behavior (hard-delete a submitted SOW). D6 correctly refuses. | Update test to call `archive_sow` instead. |
-| U08 | `tests/test_sow_upload_binding.py::test_upload_with_both_bound_creates_sow_under_deal` | Unknown; T11/T37 case fails while sibling cases pass. | W3 cycle 2. |
-| U09 | W5 cross-worker requests W5-01, W5-03, W5-04 remain unrouted (owner workers didn't touch their target files before session limit). | `docs/reports/s20/requests.md` | W1 cycle 2 lands them, OR Kanna picks them up manually before deploy. |
+- **Session 2 (W1):** wire the continuous-consumer service (§4 cutover) + T32/T33/T34 injection tests on staging, W5-01 e2e_cleanup regex, W5-03 mirror endpoint.
+- **Session 3 (W2):** T02 chip reconciliation, T35 pagination-vs-total, W5-04 export CSV, T01 sidebar-nav failure (whichever route the T01 spec pointed at that missed its heading).
+- **Session 4 (W6):** T05 filter cross-cut, T16 next-action editability, groups + saved_views manual + shared visibility.
+- **Session 5 (W4):** T25 renewal alert emission, T39 command-centre reconcile, T43 integrations honesty, T42 portfolio report labels + basis, hook up the `sync_status` watermarks the migration 0044 landed columns for.
+- **Session 6 (W7):** T22 executed-doc verification, T23 three-event release, T24 baseline/forecast/actuals separation.
 
-## Blocked capabilities in the matrix (per §Vocabulary)
+## Two known regressions to fix, non-deploy-blocking
 
-- T27 permissions uniform · **blocked (U01)**
-- T44 12-step full journey · **blocked (U01, partial)** — steps 1–6 runnable; role hand-offs (delivery → hr → finance → legal → ceo → back to submitter) require U01.
-- J6 creator-mode Playwright (S19-1 carry-forward) · **blocked (U02)**.
-- D5 deploy · **deferred (U04)** — not blocked; not run tonight.
-
-## Nothing here is a synonym for "we didn't get to it"
-
-Every item on this list is either something you decide, something external is preventing, or a specific follow-up commit that's owed. The matrix marks capabilities as `verified working` / `fixed and tested` / `missing` / `blocked` / `deferred` — the honest state is on the matrix, not this file. This file is the "what needs Kanna" companion.
+- Playwright T01 sidebar navigation fails on 1 nav item on staging (heading text mismatch). Which nav item is diagnosable from the Playwright trace at `test-results/s20-t01-sidebar-navigation-a7009-item-lands-on-its-own-route-chromium/trace.zip`. Session 3 (W2) picks up.
+- W5's t40 + t44 Playwright suites are all skipped — expected, they were seeded to unblock once W2/W3/W7 land the pages the specs point at.

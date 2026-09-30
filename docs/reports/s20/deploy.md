@@ -6,7 +6,21 @@ morning matrix.md can point at it for T36.
 
 ---
 
-## STATUS · 2026-09-30 08:15 UTC · **NOT DEPLOYED TONIGHT** · Lead
+## STATUS · 2026-09-30 19:10 UTC · **DEPLOYED to staging** · Lead
+
+- Image: `s20-3e5be98c` @ digest `sha256:a21d0a6d1b5ac3c09ff291d160cd1fc592755ba5fb55945fd114b16bd37b7806`.
+- Migration: alembic head advanced to `20260930_0044_s20_lead_d1_d4` (exit 0 after fixing the D1 constraint-name lookup to be dynamic — first attempt failed on `sow_opportunity_id_key` not existing under that name in Postgres; fix at commit `3e5be98`).
+- api service: rev 51 → **rev 53** (rev 52 was replaced by 53 when the migration fix required a rebuild). Rollout `COMPLETED` in ~1m45s.
+- Worker task-defs re-registered on the same image: alert_scheduler rev 7, notification_sender rev 7, renewals_scheduler rev 7, audit_export rev 7, hubspot_intake rev 5, hubspot_reconcile rev 5.
+- SPA build fixes committed (DeletionState 'governed', TurnaroundReport prop, two unused imports), rebuilt, `s3 sync` complete, CloudFront invalidation `I90HPL9MZAQQVT79Q0F398QH1` → `Completed` in ~30s.
+- Deploy smoke `2026-09-30T19:08Z`: **GREEN** on the second run (first run tripped the known Bedrock `manual_required` flake per the runbook; retry passed). Test-data-clean gate: 0 leaked clients. Log: `docs/reports/s20/deploy-artifacts/smoke.txt`.
+- Rollback proof (T36): rev 53 → 51 (7 polls to `COMPLETED`) → 53 (7 polls). `healthz` green at both endpoints. Total round-trip ~3m30s.
+
+Everything below this line is the fill-in template W4 authored; the sections above supersede.
+
+---
+
+## (Legacy) 2026-09-30 08:15 UTC · not deployed at the earlier attempt · Lead
 
 - **What happened:** All six code-workers (W1–W4, W6, W7) hit the shared
   session-token limit almost immediately after spawn (2000–3700 tokens
