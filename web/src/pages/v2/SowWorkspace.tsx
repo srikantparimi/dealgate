@@ -27,6 +27,7 @@ import { formatDate, shortId } from "./sow-workspace/format";
 import { SubmitApprovalDialog } from "./sow-workspace/SubmitApprovalDialog";
 import { workspaceTitle } from "./sow-workspace/readiness";
 import {
+  archiveSow,
   assessSowDeletion,
   deleteSow,
   getMe,
@@ -90,6 +91,13 @@ export function SowWorkspacePage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const requestNo = useRef(0);
   useEffect(() => { getMe().then(setViewer).catch(() => setViewer(null)); }, []);
+  // S20 W3 D6: fetch the deletion assessment so the Delete/Archive
+  // button renders the right label from first render. Assessment is
+  // cheap (a single count query) and idempotent.
+  useEffect(() => {
+    if (!snap?.sow?.sow_id) return;
+    assessSowDeletion(snap.sow.sow_id).then(setDeleteAssessment).catch(() => setDeleteAssessment(null));
+  }, [snap?.sow?.sow_id]);
 
   const openDelete = useCallback(async () => {
     if (!snap?.sow?.sow_id) return;
@@ -108,15 +116,23 @@ export function SowWorkspacePage() {
     setDeleting(true);
     setDeleteError(null);
     try {
-      await deleteSow(snap.sow.sow_id);
+      // S20 W3 D6: state-aware action. A governed SOW (submitted /
+      // approved / released) is archived instead of hard-deleted so
+      // the decision history survives (CLAUDE.md rule 4).
+      const governed = deleteAssessment?.state === "governed";
+      if (governed) {
+        await archiveSow(snap.sow.sow_id);
+      } else {
+        await deleteSow(snap.sow.sow_id);
+      }
       setDeleteOpen(false);
       nav("/sows");
     } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : "Delete failed");
+      setDeleteError(e instanceof Error ? e.message : "Action failed");
     } finally {
       setDeleting(false);
     }
-  }, [snap, nav]);
+  }, [snap, nav, deleteAssessment]);
 
   const refresh = useCallback(async () => {
     if (!id) return;
@@ -180,6 +196,67 @@ export function SowWorkspacePage() {
         title="No workspace data"
         description="The record has no data yet."
       />
+    );
+  }
+
+  // S20 W3 L09/L11: a deal with no SowVersion is a valid tracking record
+  // — it must not render the SOW workspace shell (which would imply a
+  // SOW exists, and expose the Delete button). Show a bordered empty
+  // state with "Upload SOW" (pre-bound to this opportunity) and a Back
+  // link to the deal (or Pipeline if the deal page isn't ready yet).
+  if (!snap.sow) {
+    return (
+      <div className="space-y-4">
+        <RecordHeader
+          eyebrow={snap.deal?.client_name ?? "Client"}
+          title="No SOW draft for this deal yet"
+          identity={
+            <>
+              <span>ID {shortId(id)}</span>
+              {snap.deal?.owner?.name && <span>Owner {snap.deal.owner.name}</span>}
+              {snap.deal?.engagement_type && <span>Type {snap.deal.engagement_type.replaceAll("_", " ")}</span>}
+            </>
+          }
+          primaryAction={
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={() =>
+                  nav(
+                    `/sows/new?bindOppId=${id}${snap.deal?.client_id ? `&bindClientId=${snap.deal.client_id}` : ""}`,
+                  )
+                }
+                aria-label="Upload SOW"
+              >
+                Upload SOW
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => nav(snap.deal ? `/deals/${id}` : "/pipeline")}
+                aria-label="Back to deal"
+              >
+                Back
+              </Button>
+            </div>
+          }
+        />
+        <section
+          aria-label="No SOW yet"
+          className="rounded-panel border border-divider bg-surface p-6"
+        >
+          <p className="text-body text-text">
+            This deal has no uploaded SOW. Upload the draft to start the
+            scope, GM and approvals path. The deal itself keeps its
+            comments, actions and reporting whether or not a SOW exists.
+          </p>
+          <p className="text-secondary text-text-secondary mt-3">
+            No SOW is created automatically. Only the file you upload
+            here starts a workspace — Delete SOW does not appear until a
+            draft actually exists.
+          </p>
+        </section>
+      </div>
     );
   }
 
@@ -270,15 +347,32 @@ export function SowWorkspacePage() {
               >
                 {step.label}
               </Button>
+              {/* S20 W3 D6: the SOW workspace exposes Delete only for
+                  drafts with no submitted package. Governed SOWs
+                  (submitted / approved / released) get Archive
+                  instead. The assessment endpoint is cheap; we render
+                  the correct label after the first render — Delete is
+                  the default while we haven't fetched the assessment
+                  yet, so the button is honest at every moment. */}
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => void openDelete()}
-                aria-label="Delete SOW"
-                title="Delete this SOW at any stage"
+                aria-label={
+                  deleteAssessment?.state === "governed"
+                    ? "Archive SOW"
+                    : "Delete SOW"
+                }
+                title={
+                  deleteAssessment?.state === "governed"
+                    ? "This SOW has been submitted — archive it to keep its history."
+                    : "Delete this draft SOW. Only allowed before submission."
+                }
               >
                 <Trash2 className="h-4 w-4 mr-1" />
-                Delete SOW
+                {deleteAssessment?.state === "governed"
+                  ? "Archive SOW"
+                  : "Delete SOW"}
               </Button>
             </div>
           }
@@ -332,18 +426,35 @@ export function SowWorkspacePage() {
       <Dialog open={deleteOpen} onOpenChange={(o) => (o ? undefined : setDeleteOpen(false))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete this SOW?</DialogTitle>
+            <DialogTitle>
+              {/* S20 W3 D6: title reflects the actual action. */}
+              {deleteAssessment?.state === "governed"
+                ? "Archive this SOW?"
+                : "Delete this SOW?"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-body">
             <p>
               {workspaceTitle(snap)} — client{" "}
               {snap.deal?.client_name ?? "Unassigned"}
             </p>
-            <p className="text-secondary text-text-secondary">
-              The delete is hard: SOW versions, GM, staffing, approval package,
-              tasks and files all go. An audit line records who deleted the SOW,
-              when, its title, stage and price. This cannot be undone.
-            </p>
+            {deleteAssessment?.state === "governed" ? (
+              <p className="text-secondary text-text-secondary">
+                This SOW has been submitted for approval — its decision
+                history must survive. Archiving marks it as archived and
+                excludes it from open lists and the deal rollup, but the
+                SOW versions, approvals, and audit trail remain
+                queryable. Only a system administrator can unarchive.
+              </p>
+            ) : (
+              <p className="text-secondary text-text-secondary">
+                This SOW is a draft with no submitted approval package —
+                a hard delete is permitted. SOW versions, GM, staffing,
+                tasks and files go together. An audit line records who
+                deleted the SOW, when, its title, stage and price. This
+                cannot be undone.
+              </p>
+            )}
             {deleteAssessment ? (
               <ul className="text-body">
                 {Object.entries(deleteAssessment.counts).map(([k, v]) => (
@@ -353,7 +464,7 @@ export function SowWorkspacePage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-secondary text-text-secondary">Assessing cascade…</p>
+              <p className="text-secondary text-text-secondary">Assessing state…</p>
             )}
             {deleteError ? <p role="alert" className="text-danger">{deleteError}</p> : null}
           </div>
@@ -362,7 +473,13 @@ export function SowWorkspacePage() {
               Cancel
             </Button>
             <Button onClick={() => void confirmDelete()} disabled={deleting}>
-              {deleting ? "Deleting…" : "Delete SOW"}
+              {deleting
+                ? deleteAssessment?.state === "governed"
+                  ? "Archiving…"
+                  : "Deleting…"
+                : deleteAssessment?.state === "governed"
+                  ? "Archive SOW"
+                  : "Delete SOW"}
             </Button>
           </DialogFooter>
         </DialogContent>

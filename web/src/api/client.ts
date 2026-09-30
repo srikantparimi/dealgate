@@ -1309,10 +1309,21 @@ export interface SowUploadRejected422 {
 export async function uploadSow(input: {
   file: File;
   clientHint?: string;
+  // S20 W3 T11/T37: pre-bind the upload to a client + deal so the
+  // pipeline skips the picker. Both must be supplied together; the
+  // server 422s if only one is set. The Deal page always sends both;
+  // the global "New SOW studio" leaves them undefined and takes the
+  // fuzzy-match/picker path.
+  clientId?: UUID;
+  opportunityId?: UUID;
 }): Promise<UploadSowResponse> {
   const form = new FormData();
   form.append("file", input.file);
   if (input.clientHint) form.append("client_hint", input.clientHint);
+  if (input.clientId && input.opportunityId) {
+    form.append("client_id", input.clientId);
+    form.append("opportunity_id", input.opportunityId);
+  }
   const res = await fetch(`${BASE_URL}/sows/upload`, {
     method: "POST",
     headers: { ...(await authHeaders()) },
@@ -2672,7 +2683,16 @@ export function getApprovalPackage(packageId: UUID): Promise<ApprovalPackage> {
 export function decideApprovalPackage(
   packageId: UUID,
   fn: ApprovalFunction,
-  body: { decision: ApprovalDecision; reason?: string | null },
+  body: {
+    decision: ApprovalDecision;
+    reason?: string | null;
+    // S20 W3 T19: send the package_hash the client loaded. The server
+    // rejects with 409 if it doesn't match — a material change (new
+    // sow_version / gm_model) voided the package between load and
+    // submit. The UI must reload and re-render the current package
+    // before letting the reviewer decide again.
+    expected_package_hash?: string;
+  },
 ): Promise<ApprovalPackage> {
   return request<ApprovalPackage>(
     `/approvals/packages/${packageId}/decisions/${fn}`,
@@ -3719,6 +3739,18 @@ export function deleteSow(
   const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
   return request<DeletionAssessmentResponse>(`/sows/${sowId}${qs}`, {
     method: "DELETE",
+  });
+}
+
+// S20 W3 D6: archive a governed SOW (any SOW that reached approval).
+// The server 409s hard-delete on governed SOWs; use this instead.
+export function archiveSow(
+  sowId: UUID,
+  reason?: string,
+): Promise<DeletionAssessmentResponse> {
+  return request<DeletionAssessmentResponse>(`/sows/${sowId}/archive`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason ?? null }),
   });
 }
 

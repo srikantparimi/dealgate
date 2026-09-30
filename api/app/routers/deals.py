@@ -121,6 +121,11 @@ class DealDetail(BaseModel):
     # or None. Lets the deal detail page show "current package: X" without
     # a second /approvals request. Detail lives at /approvals/packages/{id}.
     latest_package: dict[str, Any] | None = None
+    # S20 W3 D1 · SOW rollup headline + breakdown for this deal. The deal
+    # card shows `sow_rollup.headline` (never a single SOW's state, so
+    # "one released SOW cannot conceal another pending package"). See
+    # `services/sow_rollup.py` for the ordering rule.
+    sow_rollup: dict[str, Any] | None = None
 
 
 class DealPatch(BaseModel):
@@ -211,6 +216,12 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
     gm_model_summary = await latest_gm_model_summary(session, opp.id)
     package_summary = await latest_approval_package_summary(session, opp.id)
 
+    # S20 W3 D1: SOW rollup headline + breakdown per deal. Works today
+    # for one-Sow-per-deal and continues to work after the D1 uniqueness
+    # relax lands (see requests.md #W3-2026-09-30-01).
+    from app.services.sow_rollup import compute_headline, serialize as sow_rollup_serialize
+    headline = await compute_headline(session, opp.id)
+
     return DealDetail(
         id=opp.id,
         hubspot_deal_id=opp.hubspot_deal_id,
@@ -227,6 +238,7 @@ async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
         audit=[AuditRow.model_validate(a) for a in audit_rows],
         gm_model=gm_model_summary,
         latest_package=package_summary,
+        sow_rollup=sow_rollup_serialize(headline),
     )
 
 

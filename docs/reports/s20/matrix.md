@@ -16,12 +16,12 @@ for unknown.
 | L06 | Counts + search parity (chips = 50/106) | W2 (chip) + W5 (assert) | | `/pipeline` | T02, T40 | |
 | L07 | 74 Sky renders Closed Lost cleanly + human activity | W2 | | `/clients/{74Sky uuid}` | T08, T40 | |
 | L08 | Navigation destinations + groups/watchlists present | W6 | | `/pipeline` + sidebar | T01 | |
-| L09 | No-file workspace renders as a deal detail, not a fake SOW | W3 | | `/deals/{id}` (new route or existing repurposed) | T10 | |
-| L10 | Broken workspace: single readiness, no phantom fixed-fee | W3 | | `/sows/{id}` | T13 | |
-| L11 | Intake binding: client + deal carried through upload | W3 | | `POST /sows/upload` | T11, T37 | |
-| L12 | Existing uploaded SOW (Peppermill): full submit + review path exercised | W3 | | Peppermill flow | T14, T19 | |
-| L13 | NDA/MSA per D3 across client + workspace + signature | W3 + W2 | | consistency | T15, T41 | |
-| L14 | Approval usability: role visible before submission; drafts vs submitted split | W3 | | `/sows/approvals` | T44 | |
+| L09 | No-file workspace renders as a deal detail, not a fake SOW | W3 | fixed and tested (W3 side); missing (W2 deal page) | `/sows/:id` renders Upload-SOW empty state; `/deals/:id` RetiredPage → Pipeline (real deal page requested via requests.md #W3-2026-09-30-02) | T10 | W2: land `/deals/:id` per requests.md |
+| L10 | Broken workspace: single readiness, no phantom fixed-fee | W3 | fixed and tested | `SowWorkspace.tsx` aside renders the only readiness; `OverviewTab.tsx` no longer duplicates. "Unknown" is rendered when engagement_type is null (never "fixed fee") | T13 | click-through |
+| L11 | Intake binding: client + deal carried through upload | W3 | fixed and tested | `POST /sows/upload` accepts `client_id`+`opportunity_id`; server validates the pair; pipeline short-circuits picker via `_finish_bound_upload` | T11, T37 | Lead applies migration W3-2026-09-30-03 for first-class columns |
+| L12 | Existing uploaded SOW (Peppermill): full submit + review path exercised | W3 | verified working | S15/S17 code paths unchanged; `void_on_change` invalidates on material change (T21) already wired | T14, T19 | W5 e2e |
+| L13 | NDA/MSA per D3 across client + workspace + signature | W3 + W2 | fixed and tested (W3 side) | `SignatureTab.tsx` drops the NDA/MSA row; `require_signature_eligibility` verified not gated on NDA/MSA | T15, T41 | W2 propagate to client page |
+| L14 | Approval usability: role visible before submission; drafts vs submitted split | W3 | verified working (uses existing `SubmitApprovalDialog` + `submission_plan`) | `/sows/approvals` | T44 | click-through |
 | L15 | Delivery + renewals: term_end - 2cm (not -60d) | W4 + W7 | | `/renewals`, `/projects` | T25 | |
 | L16 | My work + AI discovery finish out (present but not certified) | W4 (audit) | | `/my-work` | T44 | |
 | L17 | Portfolio report: named stages + explicit population/basis | W4 | | `/reports/portfolio` | T42 | |
@@ -33,13 +33,13 @@ for unknown.
 
 | # | Requirement | Owner | State | Test ids |
 | --- | --- | --- | --- | --- |
-| A1 | Source owner (HubSpot id) vs local assignee; many SOWs per deal with per-package gate; deal binding through upload | W1 (owner) + W3 (SOW) | | T31, T37 |
+| A1 | Source owner (HubSpot id) vs local assignee; many SOWs per deal with per-package gate; deal binding through upload | W1 (owner) + W3 (SOW) | fixed and tested (W3 side); missing (multi-SOW schema — Lead migration W3-2026-09-30-01) | T31, T37 |
 | A2 | Continuous consumer (not 5-min tick); measured freshness; watermarks separate heartbeat / received / processed / oldest queued / last reconcile | W1 | | T32 |
 | A3 | Backfill scan generation + resume without premature archive | W1 | | T33 |
 | A4 | Source-event dedupe + atomic commit before ack | W1 | | T34 |
 | A5 | Global-set predicates before pagination; measured query plans (not just call count) | W2 (query) + W5 (plan) | | T35 |
 | A6 | Release delivery: workers on tested image; compatible UI/API; rollback proved | W4 (runbook) + Lead (exec) | | T36 |
-| A7 | Extraction lifecycle: match actual sync/async path; polling if long; immutability preserved | W3 | | T37 |
+| A7 | Extraction lifecycle: match actual sync/async path; polling if long; immutability preserved | W3 | verified working | T37 |
 | A8 | Production-claim honesty: WAF / SES sandbox / single-AZ / caching / OIDC labelled current-vs-planned | W4 | | T38 |
 
 ## Full product capabilities (review §"Full product requirements to retain")
@@ -65,3 +65,18 @@ for unknown.
 
 Workers add capability rows below this line as their scope surfaces them.
 Each row lists Lead-owned columns filled during integration.
+
+### W3 rows
+
+| Capability | State | Evidence | Test ids |
+| --- | --- | --- | --- |
+| D1 SOW rollup service (headline + breakdown per deal) | fixed and tested | `services/sow_rollup.py`, wired into `GET /deals/{id}.sow_rollup`; migration to relax `sow.opportunity_id` uniqueness requested via requests.md #W3-2026-09-30-01 | T14, T31 (via `tests/test_sow_rollup.py`) |
+| T11/T37 · Upload binds client + deal | fixed and tested | `POST /sows/upload` accepts client_id+opportunity_id together; `_finish_bound_upload` short-circuits picker; extraction failure preserves file + binding | T11, T37 (via `tests/test_sow_upload_binding.py`) |
+| T19 · Stale-tab refusal on decision | fixed and tested | `decide(...)` accepts `expected_package_hash`, 409 on mismatch; UI (`ReviewStream.tsx`, `ApprovalQueue.tsx`) sends the loaded hash | T19 (via `tests/test_stale_package_hash.py`) |
+| T20 · CEO exception "Not required" | fixed and tested | `SignatureTab.tsx` + `readiness.ts` always emit the CEO row: "Not required" when `!floors.requires_ceo`, full detail otherwise | T20 |
+| T21 · Material change invalidation | verified working | `approvals_hooks.on_sow_version_created` + `on_gm_model_created` already fire `void_on_change` (existing S4 wiring) | T21 |
+| D3 · NDA/MSA per D3 in signature | fixed and tested | `SignatureTab.tsx` drops NDA/MSA row; `require_signature_eligibility` verified read-only (no gating logic exists to preserve) | T15, T41 |
+| D6 · Deletion by state | fixed and tested | `delete_sow` refuses 409 when a package exists; `archive_sow` marks `Sow.archived_at`; `assess_sow` returns state=`draft` or `governed`; UI Delete button renames to Archive for governed SOWs | T29 (via `tests/test_deletion_by_state.py`) |
+| §6 · Stub migration dry run | fixed and tested (dry run tool) | `scripts/sow_stub_dry_run.py` classifies every non-archived Sow. Manifest at `docs/reports/s20/stub-manifest.csv` (empty in this worktree — Lead runs against staging DB tomorrow). Archive execution deferred per D-W3-03. | T29 |
+| L10 · One readiness | fixed and tested | `OverviewTab.tsx` no longer renders `ReadinessChecklist`; single aside in `SowWorkspace.tsx` | T13 |
+| L09/L11 · Empty SOW workspace | fixed and tested (W3) + blocked (W2 dependency) | `/sows/:id` without a SowVersion renders an "Upload SOW" empty state; `RetiredPage` now sends `/deals/:id` to Pipeline until W2 lands the real deal page (requests.md #W3-2026-09-30-02) | T10 |
