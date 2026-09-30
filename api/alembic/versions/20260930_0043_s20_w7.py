@@ -36,8 +36,10 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-revision: str = "20260930_0042"
-down_revision: str | Sequence[str] | None = "20260929_0041"
+revision: str = "20260930_0043_s20_w7"
+# S20 Lead: sit after W6's tracking-tables revision so the alembic tree
+# is linear (single head), per contracts.md §7.
+down_revision: str | Sequence[str] | None = "20260930_0042_s20_tracking"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
