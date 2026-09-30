@@ -262,3 +262,32 @@ Rule 11 note: the BU select is intentionally rendered disabled with a
 control — the axis is wired, the DATA is empty per D10. When W1 lands
 the BU property mirror, the select's options populate without any UI
 change.
+
+---
+
+## Session 4 W6 update · 2026-09-30 23:20 UTC · staging on api rev 60
+
+Session 4 = W6 tracking against `integrate/s20` @ `19301a4f`. Deploy:
+rev 60 · image `s20-19301a4f` · migration `20260930_0047_w6_watch`
+applied (adds `watched_item` table).
+
+Per rule 16, every numbered item of the directive is stated in one of
+the five states (`verified working (staging)` / `fixed and tested` /
+`missing` / `blocked` / `deferred`). See `progress-W6.md` for full
+per-item proof; a summary of the state landing:
+
+| # | Item (short) | State on rev 60 |
+| --- | --- | --- |
+| 1 | Next actions (edit, audit, overdue sort) | `fixed and tested (staging shape)` — inline edit UI + sort-to-top spec deferred |
+| 2 | Comments (scope, pinned, latest preview, role) | `fixed and tested (staging shape)` — latest-comment preview on Pipeline row + pinned-wins spec deferred |
+| 3 | Combined timeline | **`verified working (staging)`** — new `/deals/{id}/timeline` + `/clients/{id}/timeline`, endpoint 401-gated, UI section rendered |
+| 4 | Manual groups + filter axis | `fixed and tested (staging)` — Group `<select>` in FilterBar; pinned-tabs picker deferred |
+| 5 | Rule-based groups (same engine) | `fixed and tested (unit)` — `_resolve_scope` calls `list_opportunities`; "why is this here" predicate reveal deferred |
+| 6 | Saved views | `fixed and tested (staging shape)` — View `<select>` merges filter_json; last-view remembered deferred |
+| 7 | Watchlist + Command center count | **`verified working (staging)`** for watchlist; CommandCenter count metric deferred |
+| 8 | Deals count once, not memberships | `fixed and tested (unit)` — `test_deal_in_multiple_groups_counts_once` |
+| 9 | Comment permissions | **`verified working (staging)`** — router role guards + `test_comment_viewer_gets_empty_list_and_403_on_write` |
+
+Session 4 does NOT declare "complete" per rule 16 — three items are
+`verified working (staging)`; six are `fixed and tested`. Session 5
+picks up the deferrals named in `progress-W6.md` §Next.
