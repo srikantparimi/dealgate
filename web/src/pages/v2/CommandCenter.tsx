@@ -29,6 +29,7 @@ import {
   getCeoDashboard,
   getDeals,
   getFinanceDashboard,
+  getPipelineSummary,
   getSalesDashboard,
   listAgreements,
   listApprovalPackages,
@@ -40,6 +41,7 @@ import {
   type DealRow,
   type FinanceDashboard,
   type PipelineClientRow,
+  type PipelineSummary,
   type RenewalRow,
   type SalesDashboard,
 } from "../../api/client";
@@ -104,6 +106,10 @@ interface CommandData {
   ceo: CeoDashboard | null;
   sales: SalesDashboard | null;
   finance: FinanceDashboard | null;
+  // S20 L01/T39: Pipeline summary is the single source of truth for
+  // open-count + open-value-by-currency. Command centre reads the same
+  // aggregate so the two screens reconcile row-for-row.
+  pipelineSummary: PipelineSummary | null;
   deals: DealRow[];
   clients: PipelineClientRow[];
   agreements: AgreementRow[];
@@ -172,9 +178,26 @@ function bannerMetrics(
   data: CommandData,
   isCeo: boolean,
 ): BannerMetric[] {
+  // L01/T39: reconcile pipeline value with the Pipeline screen.
+  //
+  // Order of preference:
+  //   1. `pipelineSummary` (same query base as /pipeline)
+  //   2. `ceo.pipeline_value` (CEO dashboard rollup)
+  //   3. null → banner tile renders "Unavailable" with an error reason.
+  //
+  // If both are non-null but disagree by more than $1, we still display
+  // the Pipeline-summary value (it is the authoritative row set). A
+  // future story surfaces the disagreement in the freshness pill.
+  const pipelineFromSummary = (() => {
+    const byCurr = data.pipelineSummary?.open_value_by_currency;
+    if (!byCurr) return null;
+    // USD-only for the tile — the summary carries the currency breakdown
+    // separately for the Pipeline page's own header.
+    return byCurr.USD ?? null;
+  })();
   const pipelineValue = isCeo
-    ? formatMoney(data.ceo?.pipeline_value ?? null)
-    : null;
+    ? formatMoney(pipelineFromSummary ?? data.ceo?.pipeline_value ?? null)
+    : formatMoney(pipelineFromSummary);
   const sowsInProgress =
     data.approvalsDelivery.length +
     data.approvalsFinance.length +
@@ -192,7 +215,13 @@ function bannerMetrics(
       label: "Open pipeline, proposed value",
       value: pipelineValue,
       href: "/pipeline",
-      description: isCeo ? "Uncontracted proposed" : "CEO view required",
+      description:
+        pipelineValue === null
+          ? // L01/T39: honest state when the Pipeline source is unreachable.
+            "Unavailable — Pipeline summary did not respond. Retry to refetch."
+          : isCeo
+            ? "Reconciles with Pipeline"
+            : "Reconciles with Pipeline (role-scoped)",
     },
     {
       id: "sows_in_progress",
@@ -515,6 +544,7 @@ export function CommandCenterPage() {
         ceo,
         sales,
         finance,
+        pipelineSummary,
         dealsPage,
         clientsPage,
         agreementsList,
@@ -533,6 +563,10 @@ export function CommandCenterPage() {
           ? safe(getSalesDashboard(), "Sales dashboard", failures)
           : Promise.resolve(null),
         safe(getFinanceDashboard(), "Finance dashboard", failures),
+        // L01/T39: same query base as Pipeline. The tile falls back to
+        // ceo.pipeline_value if this call fails, and to "Unavailable"
+        // with the error message if both fail — never a fake zero.
+        safe(getPipelineSummary(), "Pipeline summary", failures),
         safe(getDeals({ size: 25 }), "Pipeline", failures),
         safe(
           listPipelineClients({ page_size: 25 }),
@@ -562,6 +596,7 @@ export function CommandCenterPage() {
         ceo: ceo,
         sales: sales,
         finance: finance,
+        pipelineSummary: pipelineSummary,
         deals: dealsPage?.items ?? [],
         clients: clientsPage?.items ?? [],
         agreements: agreementsList?.items ?? [],

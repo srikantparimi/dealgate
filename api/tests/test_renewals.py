@@ -168,7 +168,14 @@ async def test_open_at_lead_creates_renewal_task_and_notifications(
     assert len(renewals) == 1
     assert renewals[0].status == "open"
     assert renewals[0].term_end == term_end
-    assert renewals[0].trigger_date == term_end - timedelta(days=RENEWAL_LEAD_DAYS)
+    # S20/D8: two-calendar-month rule replaces the old 60-day lead. The
+    # test's FIXED_NOW.date() + RENEWAL_LEAD_DAYS anchor happens to be
+    # 2026-11-16, whose two-month alert is 2026-09-16 (Sept has 30 days,
+    # no clamp needed). Import compute_alert_date to make the intent
+    # visible instead of hard-coding the value.
+    from app.services.renewals import compute_alert_date
+
+    assert renewals[0].trigger_date == compute_alert_date(term_end)
 
     tasks = list(
         (

@@ -17,14 +17,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
+  getApprovalTurnaround,
   getCeoDashboard,
   getDeals,
   getFinanceDashboard,
+  getPortfolioBasis,
+  listPipelineOpportunities,
   listRenewals,
   type CeoDashboard,
   type DealRow,
   type FinanceDashboard,
+  type PipelineOpportunityRow,
+  type PortfolioBasis,
   type RenewalRow,
+  type TurnaroundReport,
 } from "../../api/client";
 import { useAuth } from "../../auth/AuthProvider";
 import { ErrorState } from "../../ui-v2/ErrorState";
@@ -72,6 +78,12 @@ interface ReportsData {
   ceo: CeoDashboard | null;
   finance: FinanceDashboard | null;
   deals: DealRow[];
+  // S20 L17/L18/T42: opportunities carry `stage_label`; deals carry
+  // `sales_stage` which is often a numeric HubSpot id. Portfolio uses
+  // pipeline opportunities for the stage chart so labels are human.
+  pipelineOpps: PipelineOpportunityRow[];
+  basis: PortfolioBasis | null;
+  turnaround: TurnaroundReport | null;
   renewals: RenewalRow[];
   fetchedAt: Date;
 }
@@ -104,16 +116,30 @@ export function ReportsPage({ onExport = defaultExport }: ReportsPageProps = {})
     setLoading(true);
     setError(null);
     try {
-      const [ceo, finance, deals, renewals] = await Promise.all([
+      const [
+        ceo,
+        finance,
+        deals,
+        pipelineOpps,
+        basis,
+        turnaround,
+        renewals,
+      ] = await Promise.all([
         isCeo ? safe(getCeoDashboard()) : Promise.resolve(null),
         safe(getFinanceDashboard()),
         safe(getDeals({ size: 100 })),
+        safe(listPipelineOpportunities({ page_size: 100 })),
+        safe(getPortfolioBasis()),
+        safe(getApprovalTurnaround("30d")),
         safe(listRenewals({ size: 100 })),
       ]);
       setData({
         ceo,
         finance,
         deals: deals?.items ?? [],
+        pipelineOpps: pipelineOpps?.items ?? [],
+        basis,
+        turnaround,
         renewals: renewals?.items ?? [],
         fetchedAt: new Date(),
       });
@@ -192,6 +218,8 @@ export function ReportsPage({ onExport = defaultExport }: ReportsPageProps = {})
               ceo={data?.ceo ?? null}
               finance={data?.finance ?? null}
               deals={data?.deals ?? []}
+              pipelineOpps={data?.pipelineOpps ?? []}
+              basis={data?.basis ?? null}
               fetchedAt={data?.fetchedAt ?? null}
               onExport={onExport}
             />
@@ -219,6 +247,7 @@ export function ReportsPage({ onExport = defaultExport }: ReportsPageProps = {})
             />
           ) : (
             <ApprovalTurnaroundReport
+              report={data?.turnaround ?? null}
               fetchedAt={data?.fetchedAt ?? null}
               onExport={onExport}
             />

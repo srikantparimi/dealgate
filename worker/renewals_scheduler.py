@@ -1,21 +1,25 @@
-"""Renewals scheduler worker (S5 E9 — Agent Y2).
+"""Renewals scheduler worker (S5 E9 — Agent Y2; S20/D8 amendments).
 
 Companion to :mod:`worker.alert_scheduler`. This tick walks SOW versions
-and renewal rows and fires the six blueprint §9 triggers:
+and renewal rows and fires the blueprint §9 triggers:
 
-1. ``term_end - now = 60 days`` and no open renewal:
+1. ``today >= compute_alert_date(term_end)`` and no open renewal:
    open the renewal + owner task + notification.
+   The alert date is two calendar months before term end, month-end
+   clamped, in the business timezone (D8, T25). Replaces the old
+   ``term_end - 60d`` rule that live-finding L15 flagged.
 2. Any renewal ``open`` with no substantive update in the last 7 days:
-   nudge notification to the owner.
-3. Contractual ``notice_date`` earlier than ``term_end - 60d``:
+   nudge notification to the owner. Continues weekly until two weeks
+   before term end (D8 weekly-repeat clause).
+3. Contractual ``notice_date`` earlier than ``term_end`` two months:
    Legal-owned task filed at ``notice_date - 60`` (independent alert).
 4. ``term_end - now = 30 days`` and renewal still ``open``:
    first escalation to the Sales leader.
 5. ``term_end - now = 14 days`` and renewal still ``open``:
    second escalation.
 6. ``term_end < now`` with no extension: ``mark_churn`` + block flag.
-7. Short assessment (term ≤ 28 days) signed within 60 days of end:
-   open a renewal review immediately.
+7. Short engagement (term duration < 90 days, i.e. < 3 months) —
+   fires on start AND on close (D8 short-engagement clause).
 
 Idempotency comes from :func:`app.scheduler.record_trigger` (the
 ``scheduler_fired`` unique-key table). Time is injected via
@@ -52,6 +56,8 @@ from app.scheduler import (
 from app.services.notifications import queue_notification
 from app.services.renewals import (
     active_renewals_for,
+    business_today,
+    compute_alert_date,
     mark_churn,
     open_renewal,
 )
@@ -206,22 +212,26 @@ async def _walk_confirmed_versions(
     return [(v, o) for (v, o) in rows]
 
 
-# ---- trigger 1: open renewal at term_end - 60d -------------------------
+# ---- trigger 1: open renewal at compute_alert_date(term_end) -----------
 
 
 async def _process_open_at_lead(
     session: AsyncSession, now: datetime, result: TickResult
 ) -> None:
-    today = now.date()
-    lead_from = today + timedelta(days=RENEWAL_LEAD_DAYS)
+    # D8/T25: business timezone drives the calendar day the alert fires
+    # on. A tick at 2026-01-31T20:00Z is 2026-01-31T12:00 PT, so we still
+    # look at the local day, not the UTC one.
+    today = business_today(now)
 
     for version, opp in await _walk_confirmed_versions(session):
         term_end = _term_end(version)
         if term_end is None:
             continue
-        # Fire once we are inside the 60-day window (today >= term_end - 60d)
-        # so a clock drift or missed tick still catches the deal.
-        if today < (term_end - timedelta(days=RENEWAL_LEAD_DAYS)):
+        # D8: fire once we are on or past the two-calendar-month alert
+        # date (month-end clamped by compute_alert_date). A missed tick
+        # or clock drift still catches the deal because we check `>=`.
+        alert_date = compute_alert_date(term_end)
+        if today < alert_date:
             continue
         if term_end < today:
             # Handled by the churn trigger below.

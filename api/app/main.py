@@ -41,6 +41,7 @@ from app.routers import (
     notifications,
     pipeline,
     renewals,
+    reports,
     saved_views,
     settings,
     signatories,
@@ -192,6 +193,7 @@ app.include_router(settings.router)
 app.include_router(signed_sow.router)
 app.include_router(handoff.router)
 app.include_router(renewals.router)
+app.include_router(reports.router)
 app.include_router(dashboards.router)
 app.include_router(forecast.router)
 app.include_router(actuals.router)
