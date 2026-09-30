@@ -34,11 +34,13 @@ import { AlertTriangle, ExternalLink, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ApiError,
+  getPipelineFacets,
   getPipelineSummary,
   getSyncStatus,
   listPipelineClients,
   listPipelineOpportunities,
   type PipelineClientRow,
+  type PipelineFacets,
   type PipelineFilters,
   type PipelineOpportunityRow,
   type PipelineListPage,
@@ -293,9 +295,22 @@ export function PipelinePage() {
   const [oppsPage, setOppsPage] = useState<PipelineListPage<PipelineOpportunityRow> | null>(null);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [sync, setSync] = useState<SyncStatusRow[]>([]);
+  const [facets, setFacets] = useState<PipelineFacets>({ owners: [], business_units: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const navigate = useNavigate();
+
+  // Facets are portal-static-ish (owners + BUs). Fetch once per mount;
+  // no need to hit the endpoint on every filter change.
+  useEffect(() => {
+    getPipelineFacets()
+      .then(setFacets)
+      .catch(() => {
+        // Facets endpoint 401/403/404 shouldn't blank the page; the
+        // filter selects just render empty and the axes remain visible.
+        setFacets({ owners: [], business_units: [] });
+      });
+  }, []);
 
   // Local UI-only echo of search + open_closed so typing doesn't rebuild
   // the URL on every keystroke. Committed to URL on blur / Enter.
@@ -499,6 +514,7 @@ export function PipelinePage() {
         setOpenClosed={setOpenClosed}
         commitFilters={commitFilters}
         businessTz={businessTz}
+        facets={facets}
       />
 
       {stageCounts.length ? (
@@ -514,20 +530,40 @@ export function PipelinePage() {
               : sc.is_closed_won
                 ? "border-success text-success"
                 : "border-divider text-text-secondary";
+            // S3b Rev-2 · chip value: sum across currencies rendered as
+            // "$X · €Y" so leaders see both count + value at a glance.
+            const valueLines = sc.open_value_by_currency
+              ? formatCurrencyMap(sc.open_value_by_currency)
+              : [];
             return (
               <button
                 key={`${sc.pipeline_id}:${sc.stage_id}`}
                 type="button"
                 onClick={() => toggleStage(sc.stage_id)}
-                className={`rounded-panel border px-3 py-1 text-secondary transition-colors ${
+                className={`flex flex-col items-start rounded-panel border px-3 py-1 text-secondary transition-colors ${
                   active ? "bg-primary-subtle text-primary" : `bg-surface ${tone}`
                 }`}
                 data-testid={`stage-chip-${sc.stage_id}`}
               >
-                <span className="font-medium">
-                  {sc.stage_label || "Unknown stage"}
+                <span>
+                  <span className="font-medium">
+                    {sc.stage_label || "Unknown stage"}
+                  </span>
+                  <span
+                    className="ml-2 text-text-secondary"
+                    data-testid={`stage-chip-count-${sc.stage_id}`}
+                  >
+                    {sc.count}
+                  </span>
                 </span>
-                <span className="ml-2 text-text-secondary">{sc.count}</span>
+                {valueLines.length > 0 ? (
+                  <span
+                    className="text-[10px] text-text-secondary tnum"
+                    data-testid={`stage-chip-value-${sc.stage_id}`}
+                  >
+                    {valueLines.map((v) => v.formatted).join(" · ")}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -630,6 +666,7 @@ function FilterBar({
   setOpenClosed,
   commitFilters,
   businessTz,
+  facets,
 }: {
   filters: PipelineFilters & { page: number; page_size: PageSize };
   activeCount: number;
@@ -638,6 +675,7 @@ function FilterBar({
   commitSearch: () => void;
   clear: () => void;
   setOpenClosed: (v: PipelineFilters["open_closed"]) => void;
+  facets: PipelineFacets;
   commitFilters: (
     updater: (
       prev: PipelineFilters & { page: number; page_size: PageSize },
@@ -770,6 +808,66 @@ function FilterBar({
           {Object.entries(ATTENTION_LABELS).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {/* S3b Rev-2 · Owner select. Options come from `/pipeline/facets`
+        * (distinct users owning ≥1 HubSpot deal). Multi-value URL state
+        * (`owner=A&owner=B`). Empty option = clear the filter. */}
+      <label className="inline-flex items-center gap-2 text-body text-text-secondary">
+        Owner
+        <select
+          className="rounded border border-divider bg-surface px-2 py-1 text-body"
+          value={filters.owner?.[0] ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            commitFilters((prev) => ({
+              ...prev,
+              owner: v ? [v] : undefined,
+            }));
+          }}
+          data-testid="filter-owner"
+          disabled={facets.owners.length === 0}
+        >
+          <option value="">— any owner —</option>
+          {facets.owners.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {/* S3b Rev-2 · BU select. Options from `/pipeline/facets`
+        * (distinct opportunity/client `hubspot_business_unit`). Empty
+        * on portals that don't mirror BU today (D10 evidence — property
+        * absent on the deal schema). Axis stays visible with an honest
+        * "not mirrored" hint per Rule 11. */}
+      <label className="inline-flex items-center gap-2 text-body text-text-secondary">
+        BU
+        <select
+          className="rounded border border-divider bg-surface px-2 py-1 text-body"
+          value={filters.business_unit?.[0] ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            commitFilters((prev) => ({
+              ...prev,
+              business_unit: v ? [v] : undefined,
+            }));
+          }}
+          data-testid="filter-business-unit"
+          disabled={facets.business_units.length === 0}
+        >
+          <option value="">
+            {facets.business_units.length === 0
+              ? "— BU not mirrored on this portal —"
+              : "— any BU —"}
+          </option>
+          {facets.business_units.map((b) => (
+            <option key={b} value={b}>
+              {b}
             </option>
           ))}
         </select>

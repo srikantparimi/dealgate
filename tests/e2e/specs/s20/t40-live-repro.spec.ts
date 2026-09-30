@@ -117,6 +117,60 @@ test.describe("T40 · L02-L07 live reproductions (S20)", () => {
     }
   });
 
+  test("L06b: at least one chip with count > 0 also carries a value line (S3b Rev-2)", async ({
+    page,
+  }) => {
+    // Chip value is the "count + value per chip" review contract. On
+    // staging portals with real deals, at least one non-closed chip has
+    // count > 0 and a currency-formatted value line under it.
+    await page.goto(`${BASE}/pipeline`);
+    const strip = page.getByTestId("stage-strip");
+    await expect(strip).toBeVisible({ timeout: 15_000 });
+    const chips = strip.locator("button");
+    const count = await chips.count();
+
+    let sawValue = false;
+    for (let i = 0; i < count; i += 1) {
+      const chip = chips.nth(i);
+      const testid = await chip.getAttribute("data-testid");
+      if (!testid) continue;
+      const stageId = testid.replace(/^stage-chip-/, "");
+      const value = chip.getByTestId(`stage-chip-value-${stageId}`);
+      if (await value.count()) {
+        const text = (await value.textContent()) ?? "";
+        if (text.trim().length > 0) {
+          sawValue = true;
+          break;
+        }
+      }
+    }
+    expect(
+      sawValue,
+      "at least one chip on staging should carry a value line — chip-value contract missing",
+    ).toBeTruthy();
+  });
+
+  test("Owner + BU filter selects are present in the filter bar (S3b Rev-2)", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/pipeline`);
+    await expect(page.getByTestId("filter-bar")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("filter-owner")).toBeVisible();
+    await expect(page.getByTestId("filter-business-unit")).toBeVisible();
+    // The BU select on this staging portal is disabled — D10 evidence
+    // says the BU property isn't mirrored yet, so the axis is present
+    // but honestly named "not mirrored".
+    const buDisabled = await page.getByTestId("filter-business-unit").isDisabled();
+    if (buDisabled) {
+      const buOption = await page
+        .getByTestId("filter-business-unit")
+        .locator("option")
+        .first()
+        .textContent();
+      expect(buOption).toContain("not mirrored");
+    }
+  });
+
   test("L07: client detail with only closed-lost deals renders Closed Lost readably", async ({
     page,
   }) => {

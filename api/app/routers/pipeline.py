@@ -49,6 +49,7 @@ from app.services.hubspot_pipeline import (
     list_clients as _list_clients,
     list_opportunities as _list_opportunities,
     list_pipeline_deals,
+    list_pipeline_facets,
     list_pipeline_stages,
     resolve_date_preset,
     search_pipeline_deals,
@@ -239,6 +240,8 @@ class StageCountOut(BaseModel):
     count: int
     is_closed_won: bool = False
     is_closed_lost: bool = False
+    # S20 W2 Session 3b Rev-2 · per-chip value totals (L06).
+    open_value_by_currency: dict[str, Decimal] = Field(default_factory=dict)
 
 
 class FreshnessOut(BaseModel):
@@ -489,6 +492,7 @@ def _stage_counts_to_out(counts) -> list[StageCountOut]:
             count=c.count,
             is_closed_won=c.is_closed_won,
             is_closed_lost=c.is_closed_lost,
+            open_value_by_currency=dict(getattr(c, "open_value_by_currency", {})),
         )
         for c in counts
     ]
@@ -692,6 +696,37 @@ async def list_pipeline_stages_endpoint(
     _require_reader(user)
     stages = await list_pipeline_stages(session, pipeline_id=pipeline_id)
     return _stage_counts_to_out(stages)
+
+
+class OwnerFacetOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str | None
+
+
+class PipelineFacetsOut(BaseModel):
+    owners: list[OwnerFacetOut]
+    business_units: list[str]
+
+
+# S20 W2 Session 3b Rev-2 · facets for the Pipeline filter bar.
+# `owners` populates the Owner multi-select; `business_units` populates
+# the BU select. Both are empty tuples on portals that haven't mirrored
+# the source axis — the UI renders an "unmirrored on this portal" note
+# rather than silently omitting the axis.
+@router.get("/facets", response_model=PipelineFacetsOut)
+async def list_pipeline_facets_endpoint(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PipelineFacetsOut:
+    _require_reader(user)
+    facets = await list_pipeline_facets(session)
+    return PipelineFacetsOut(
+        owners=[
+            OwnerFacetOut(id=o.id, name=o.name, email=o.email) for o in facets.owners
+        ],
+        business_units=list(facets.business_units),
+    )
 
 
 # S19 slice 1 H1/H2: sync_status feed for the amber banner. Every worker

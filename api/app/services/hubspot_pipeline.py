@@ -297,6 +297,84 @@ async def get_opportunity_row(
     )
 
 
+@dataclass(frozen=True)
+class OwnerFacet:
+    """S20 W2 Session 3b Rev-2 · deal-owner option for the pipeline filter bar.
+
+    Populated from distinct ``Opportunity.owner_id → User`` joins so the
+    filter shows only owners that actually own a HubSpot deal today.
+    A HubSpot owner with no local deals doesn't render.
+    """
+    id: uuid.UUID
+    name: str
+    email: str | None
+
+
+@dataclass(frozen=True)
+class PipelineFacets:
+    owners: tuple[OwnerFacet, ...]
+    business_units: tuple[str, ...]
+
+
+async def list_pipeline_facets(session: AsyncSession) -> PipelineFacets:
+    """Return the facet lists the Pipeline filter bar renders as selects.
+
+    - ``owners`` = distinct users who own at least one non-archived
+      HubSpot opportunity. Sorted by name for a stable UI.
+    - ``business_units`` = distinct non-null BU values across the
+      opportunity + client mirrors. Empty on staging today (D10 evidence
+      — property not on the deal schema); rendered as an empty-select
+      note in the UI so the axis is present but honest.
+    """
+
+    owner_rows = (
+        await session.execute(
+            select(User.id, User.name, User.email)
+            .join(Opportunity, Opportunity.owner_id == User.id)
+            .where(
+                Opportunity.source == "hubspot",
+                Opportunity.archived_at.is_(None),
+                User.name.is_not(None),
+            )
+            .group_by(User.id, User.name, User.email)
+            .order_by(User.name.asc())
+        )
+    ).all()
+    owners = tuple(
+        OwnerFacet(id=row.id, name=row.name, email=row.email) for row in owner_rows
+    )
+
+    bus: set[str] = set()
+    opp_bu = _opportunity_bu_column()
+    client_bu = _client_bu_column()
+    if opp_bu is not None:
+        for (v,) in (
+            await session.execute(
+                select(opp_bu)
+                .where(
+                    Opportunity.source == "hubspot",
+                    Opportunity.archived_at.is_(None),
+                    opp_bu.is_not(None),
+                )
+                .distinct()
+            )
+        ).all():
+            if v:
+                bus.add(str(v))
+    if client_bu is not None:
+        for (v,) in (
+            await session.execute(
+                select(client_bu)
+                .where(client_bu.is_not(None))
+                .distinct()
+            )
+        ).all():
+            if v:
+                bus.add(str(v))
+
+    return PipelineFacets(owners=owners, business_units=tuple(sorted(bus)))
+
+
 async def list_pipeline_stages(
     session: AsyncSession, *, pipeline_id: str
 ) -> tuple[StageCount, ...]:
@@ -576,6 +654,11 @@ class StageCount:
     count: int
     is_closed_won: bool = False
     is_closed_lost: bool = False
+    # S20 W2 Session 3b Rev-2 · per-chip value totals. Same
+    # `sum(amount)` semantics as the summary card, but grouped by
+    # (pipeline_id, stage_id). Keeps the "count + value per chip"
+    # contract the review's L06 line called out.
+    open_value_by_currency: dict[str, Decimal] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1127,12 +1210,18 @@ async def _compute_stage_counts(
     # Aggregation joins Client so the search filter (which touches
     # client name) resolves properly. NULL client rows must survive as
     # unknown-bucket candidates when the search is empty.
+    # S20 W2 Session 3b Rev-2 · also aggregate `sum(amount)` per
+    # currency so each chip carries a per-chip value (L06 review line:
+    # "count + value per chip"). Group-by adds currency; Python-side
+    # collates by (pipeline_id, stage_id) with a per-currency dict.
     stmt = (
         select(
             Opportunity.hubspot_pipeline_id.label("pipeline_id"),
             Opportunity.hubspot_stage_id.label("stage_id"),
             func.coalesce(Opportunity.stage_label, "").label("stage_label"),
+            Opportunity.currency.label("currency"),
             func.count(Opportunity.id).label("count"),
+            func.coalesce(func.sum(Opportunity.amount), 0).label("value_sum"),
         )
         .join(Client, Client.id == Opportunity.client_id, isouter=True)
         .where(*conditions)
@@ -1140,6 +1229,7 @@ async def _compute_stage_counts(
             Opportunity.hubspot_pipeline_id,
             Opportunity.hubspot_stage_id,
             Opportunity.stage_label,
+            Opportunity.currency,
         )
     )
     rows = (await session.execute(stmt)).all()
@@ -1167,28 +1257,44 @@ async def _compute_stage_counts(
             "is_closed_lost": bool(is_closed) and (prob is not None and prob <= Decimal("0.0")),
         }
 
-    counts: list[StageCount] = []
+    # Collate the currency-broken groups back to (pipeline_id, stage_id):
+    # {key: {"count": int, "value_by_currency": {ccy: Decimal},
+    #        "stage_label": str}}
+    per_key: dict[tuple[str | None, str | None], dict[str, Any]] = {}
     unknown = 0
-    seen: set[tuple[str | None, str | None]] = set()
-    for pid, sid, stage_label, count in rows:
-        key = (pid, sid)
-        seen.add(key)
-        # Unknown stage bucket = rows without either a pipeline_id or a
-        # stage_id (the mirror can't resolve them). Zero-count stages are
-        # kept in the strip separately.
+    for pid, sid, stage_label, currency, count, value_sum in rows:
         if pid is None and sid is None:
             unknown += int(count or 0)
             continue
-        mirror = mirror_map.get(key, {})
+        key = (pid, sid)
+        bucket = per_key.setdefault(
+            key,
+            {
+                "count": 0,
+                "value_by_currency": {},
+                "stage_label": stage_label or None,
+            },
+        )
+        bucket["count"] += int(count or 0)
+        if value_sum is not None and int(count or 0) > 0:
+            ccy = currency or "USD"
+            existing = bucket["value_by_currency"].get(ccy, Decimal("0"))
+            bucket["value_by_currency"][ccy] = existing + Decimal(str(value_sum))
+
+    counts: list[StageCount] = []
+    seen: set[tuple[str | None, str | None]] = set(per_key.keys())
+    for (pid, sid), bucket in per_key.items():
+        mirror = mirror_map.get((pid, sid), {})
         counts.append(
             StageCount(
                 pipeline_id=pid,
                 stage_id=sid,
-                stage_label=mirror.get("label") or (stage_label or None),
+                stage_label=mirror.get("label") or bucket["stage_label"],
                 stage_order=mirror.get("order"),
-                count=int(count or 0),
+                count=bucket["count"],
                 is_closed_won=bool(mirror.get("is_closed_won")),
                 is_closed_lost=bool(mirror.get("is_closed_lost")),
+                open_value_by_currency=bucket["value_by_currency"],
             )
         )
 

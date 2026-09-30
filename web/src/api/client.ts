@@ -3973,6 +3973,8 @@ export interface PipelineStageCount {
   count: number;
   is_closed_won?: boolean;
   is_closed_lost?: boolean;
+  // S20 W2 Session 3b Rev-2 · per-chip currency totals (L06).
+  open_value_by_currency?: Record<string, DecimalStr>;
 }
 
 export interface PipelineFreshness {
@@ -4114,6 +4116,22 @@ export function listPipelineStages(
   return request<PipelineStageCount[]>(
     `/pipeline/pipelines/${encodeURIComponent(pipelineId)}/stages`,
   );
+}
+
+// S20 W2 Session 3b Rev-2 · facets for the Pipeline filter bar.
+export interface PipelineOwnerFacet {
+  id: UUID;
+  name: string;
+  email: string | null;
+}
+
+export interface PipelineFacets {
+  owners: PipelineOwnerFacet[];
+  business_units: string[];
+}
+
+export function getPipelineFacets(): Promise<PipelineFacets> {
+  return request<PipelineFacets>(`/pipeline/facets`);
 }
 
 // S20 W6 · deal comments (latest + list) for /deals/:id and client page.

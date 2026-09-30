@@ -178,3 +178,53 @@ async def test_list_pipeline_stages_returns_ordered_mirror(session):
 async def test_list_pipeline_stages_empty_when_pipeline_unknown(session):
     stages = await list_pipeline_stages(session, pipeline_id="99999")
     assert stages == ()
+
+
+@pytest.mark.asyncio
+async def test_list_pipeline_facets_returns_owners_from_deal_owners(session):
+    """S3b Rev-2 · owners facet lists users with at least one non-archived
+    HubSpot opportunity — never a HubSpot owner without a local deal."""
+    from app.services.hubspot_pipeline import list_pipeline_facets
+
+    owner_a = User(email="a@dealgate.local", name="Alice Owner", groups=[])
+    owner_b = User(email="b@dealgate.local", name="Bob Owner", groups=[])
+    owner_c = User(email="c@dealgate.local", name="Charlie NoDeals", groups=[])
+    session.add_all([owner_a, owner_b, owner_c])
+    client = Client(name="Facets Corp")
+    session.add(client)
+    await session.flush()
+    session.add_all(
+        [
+            Opportunity(
+                source="hubspot",
+                hubspot_deal_id="F1",
+                owner_id=owner_a.id,
+                client_id=client.id,
+                sales_stage="1-Discovery",
+                stage_label="1-Discovery",
+                hubspot_pipeline_id="710688094",
+                hubspot_stage_id="STAGE",
+                governance_status="Intake",
+            ),
+            Opportunity(
+                source="hubspot",
+                hubspot_deal_id="F2",
+                owner_id=owner_b.id,
+                client_id=client.id,
+                sales_stage="1-Discovery",
+                stage_label="1-Discovery",
+                hubspot_pipeline_id="710688094",
+                hubspot_stage_id="STAGE",
+                governance_status="Intake",
+            ),
+        ]
+    )
+    await session.commit()
+
+    facets = await list_pipeline_facets(session)
+    names = [o.name for o in facets.owners]
+    assert names == ["Alice Owner", "Bob Owner"], (
+        f"expected only owners with deals; got {names}"
+    )
+    # BUs are empty in this seed (D10 evidence — property absent).
+    assert facets.business_units == ()
