@@ -160,3 +160,30 @@ variable "audit_export_bucket_arn" {
   description = "S3 bucket ARN for the nightly audit export. Used to scope the task role IAM policy to only this bucket."
   type        = string
 }
+
+variable "hubspot_event_queue_url" {
+  description = "SQS queue URL for the HubSpot events pipeline. Fed to the consumer task-def as HUBSPOT_EVENT_QUEUE_URL."
+  type        = string
+}
+
+variable "hubspot_event_queue_arn" {
+  description = "SQS queue ARN for the HubSpot events pipeline. Scopes the consumer task-role Receive/Delete grant."
+  type        = string
+}
+
+variable "hubspot_token_secret_arn" {
+  description = "ARN of the HubSpot private-app token secret. Injected as HUBSPOT_TOKEN into the consumer + reconcile task-defs so they can re-read deals from the CRM API."
+  type        = string
+}
+
+variable "hubspot_reconcile_schedule_expression" {
+  description = "EventBridge schedule for the nightly HubSpot reconcile task. Default fires at 04:00 UTC daily — one hour after audit-export so the nightly window doesn't overlap."
+  type        = string
+  default     = "cron(0 4 * * ? *)"
+}
+
+variable "hubspot_intake_schedule_expression" {
+  description = "EventBridge schedule for the HubSpot SQS intake consumer. Rate(5 minutes) matches the alert/notification cadence and keeps webhook-to-DealGate latency well under the 2-minute Playwright bound in J6."
+  type        = string
+  default     = "rate(5 minutes)"
+}

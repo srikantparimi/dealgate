@@ -32,14 +32,14 @@ import {
   getSalesDashboard,
   listAgreements,
   listApprovalPackages,
-  listClients,
+  listPipelineClients,
   listRenewals,
   type AgreementRow,
   type ApprovalPackage,
   type CeoDashboard,
-  type ClientListRow,
   type DealRow,
   type FinanceDashboard,
+  type PipelineClientRow,
   type RenewalRow,
   type SalesDashboard,
 } from "../../api/client";
@@ -105,7 +105,7 @@ interface CommandData {
   sales: SalesDashboard | null;
   finance: FinanceDashboard | null;
   deals: DealRow[];
-  clients: ClientListRow[];
+  clients: PipelineClientRow[];
   agreements: AgreementRow[];
   renewals: RenewalRow[];
   approvalsDelivery: ApprovalPackage[];
@@ -290,60 +290,51 @@ function firstPrioritySignals(data: CommandData): PrioritySignal[] {
 }
 
 function readinessRows(data: CommandData): ReadinessRow[] {
-  const dealByClient = new Map<string, DealRow>();
-  for (const d of data.deals) {
-    if (d.client_id && !dealByClient.has(d.client_id)) {
-      dealByClient.set(d.client_id, d);
-    }
-  }
-  const agreementsByClient = new Map<string, AgreementRow[]>();
-  for (const a of data.agreements) {
-    const list = agreementsByClient.get(a.client_id) ?? [];
-    list.push(a);
-    agreementsByClient.set(a.client_id, list);
-  }
-
+  // S19 slice 1 E13: single source-of-truth for the pipeline card.
+  // `listPipelineClients` already aggregates open opp count, has_nda,
+  // has_msa, worst_sow_approval_state and per-stage breakdown, so we no
+  // longer join client + deal + agreement client-side.
   const rows: ReadinessRow[] = [];
   for (const c of data.clients.slice(0, READINESS_LIMIT)) {
-    const deal = dealByClient.get(c.id) ?? null;
-    const clientAgreements = agreementsByClient.get(c.id) ?? [];
-    const ndaCount = clientAgreements.filter((a) => a.kind === "NDA").length;
-    const msaCount = clientAgreements.filter((a) => a.kind === "MSA").length;
-
+    const topStage = Object.entries(c.stage_breakdown).sort(
+      (a, b) => b[1] - a[1],
+    )[0];
     rows.push({
-      id: c.id,
-      clientName: c.name,
-      clientHref: `/clients/${c.id}`,
-      ownerName: null,
-      commercialStage: deal?.sales_stage ?? null,
-      // S17: agreements are documents, not states. Show a count-badge and
-      // link to the register.
+      id: c.client_id,
+      clientName: c.client_name,
+      clientHref: `/clients/${c.client_id}`,
+      ownerName: c.owner_name,
+      commercialStage: topStage ? topStage[0] : null,
       nda: {
-        label: ndaCount ? `${ndaCount} doc${ndaCount === 1 ? "" : "s"}` : "None",
-        tone: ndaCount ? "ok" : "primarySubtle",
+        label: c.has_nda ? "NDA on file" : "None",
+        tone: c.has_nda ? "ok" : "primarySubtle",
         href: `/agreements`,
       },
       msa: {
-        label: msaCount ? `${msaCount} doc${msaCount === 1 ? "" : "s"}` : "None",
-        tone: msaCount ? "ok" : "primarySubtle",
+        label: c.has_msa ? "MSA on file" : "None",
+        tone: c.has_msa ? "ok" : "primarySubtle",
         href: `/agreements`,
       },
-      sowGate: deal
-        ? {
-            label: (deal.governance_status ?? "unknown").replace(/_/g, " "),
-            tone:
-              deal.governance_status === "released"
-                ? "ok"
-                : deal.governance_status === "rejected"
-                  ? "danger"
-                  : "primarySubtle",
-            href: `/sows`,
-          }
-        : null,
+      sowGate:
+        c.worst_sow_approval_state !== "none"
+          ? {
+              label: c.worst_sow_approval_state.replace(/_/g, " "),
+              tone:
+                c.worst_sow_approval_state === "signed"
+                  ? "ok"
+                  : c.worst_sow_approval_state === "changes_requested"
+                    ? "danger"
+                    : "primarySubtle",
+              href: `/sows`,
+            }
+          : null,
       packageVersion: null,
       nextAction: {
-        text: deal?.next_client_action ?? null,
-        date: deal?.next_client_date ?? null,
+        text:
+          c.next_action_open_count > 0
+            ? `${c.next_action_open_count} open action${c.next_action_open_count === 1 ? "" : "s"}`
+            : null,
+        date: c.next_action_min_due,
       },
     });
   }
@@ -543,7 +534,11 @@ export function CommandCenterPage() {
           : Promise.resolve(null),
         safe(getFinanceDashboard(), "Finance dashboard", failures),
         safe(getDeals({ size: 25 }), "Pipeline", failures),
-        safe(listClients({ size: 25 }), "Clients", failures),
+        safe(
+          listPipelineClients({ page_size: 25 }),
+          "Clients",
+          failures,
+        ),
         safe(listAgreements(), "Agreements", failures),
         safe(listRenewals({ status: "open", size: 25 }), "Renewals", failures),
         safe(

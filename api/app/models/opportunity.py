@@ -3,12 +3,28 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, func, text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    Numeric,
+    String,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from app.db.base import Base
+
+_JsonB = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Opportunity(Base):
@@ -79,4 +95,32 @@ class Opportunity(Base):
     stage_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
     hubspot_last_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # S19 slice 1 — pipeline mirror keys + closed flags + currency +
+    # HubSpot timestamps + multi-company support. Every non-boolean nullable
+    # so SOW-upload opportunities can leave them all empty.
+    hubspot_pipeline_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    hubspot_stage_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    stage_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_closed_won: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    is_closed_lost: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    hubspot_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    hubspot_last_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    hubspot_last_modified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    primary_client_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("client.id"), nullable=True
+    )
+    hubspot_secondary_client_ids: Mapped[Any | None] = mapped_column(
+        _JsonB, nullable=True
     )

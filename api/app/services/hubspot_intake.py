@@ -237,6 +237,86 @@ def _parse_close_date(raw: Any) -> Any:
         return None
 
 
+def _parse_timestamp(raw: Any) -> datetime | None:
+    """S19 slice 1: HubSpot ISO8601 or ms-epoch string → tz-aware datetime."""
+
+    if not raw:
+        return None
+    s = str(raw)
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+    try:
+        return datetime.fromtimestamp(int(s) / 1000, tz=UTC)
+    except (ValueError, OSError):
+        return None
+
+
+def _dedup_company_ids(deal_payload: dict[str, Any]) -> list[str]:
+    """S19 G3: HubSpot lists each company association twice (labeled +
+    unlabeled). Return ordered unique company ids preserving the labeled
+    row first when both types are present.
+    """
+
+    associations = deal_payload.get("associations") or {}
+    companies = associations.get("companies") if isinstance(associations, dict) else None
+    if not isinstance(companies, dict):
+        return []
+    results = companies.get("results") or []
+    labeled_ids: list[str] = []
+    unlabeled_ids: list[str] = []
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        cid = row.get("id") or row.get("toObjectId")
+        if cid is None:
+            continue
+        cid = str(cid)
+        t = row.get("type") or ""
+        if t.endswith("_unlabeled"):
+            unlabeled_ids.append(cid)
+        else:
+            labeled_ids.append(cid)
+    seen: set[str] = set()
+    out: list[str] = []
+    for cid in labeled_ids + unlabeled_ids:
+        if cid in seen:
+            continue
+        seen.add(cid)
+        out.append(cid)
+    return out
+
+
+async def _resolve_secondary_clients(
+    session: AsyncSession,
+    client: HubSpotClient,
+    company_ids: list[str],
+    correlation_id: str,
+) -> list[str]:
+    """Return DealGate client UUIDs (as strings) for every additional
+    company beyond the primary. Never raises; missing companies are
+    skipped and logged.
+    """
+
+    out: list[str] = []
+    for cid in company_ids:
+        try:
+            payload = await client.get_company(cid)
+        except Exception as exc:  # noqa: BLE001
+            log.info(
+                "hubspot_secondary_company_missing",
+                company_id=cid,
+                error_type=type(exc).__name__,
+            )
+            continue
+        row = await upsert_client_from_hubspot(
+            session, company_payload=payload, correlation_id=correlation_id
+        )
+        out.append(str(row.id))
+    return out
+
+
 async def _upsert_opportunity(
     session: AsyncSession,
     deal_id: str,
@@ -244,6 +324,8 @@ async def _upsert_opportunity(
     owner: User,
     client_row: Client,
     correlation_id: str,
+    stage_map: Any | None = None,
+    secondary_client_ids: list[str] | None = None,
 ) -> tuple[Opportunity, bool]:
     """Insert or update the `opportunity` row keyed by `hubspot_deal_id`.
 
@@ -257,8 +339,21 @@ async def _upsert_opportunity(
     engagement = props.get("engagement_type")
     amount = _parse_amount(props.get("amount"))
     close_date = _parse_close_date(props.get("closedate"))
-    stage_label = props.get("dealstage_label") or stage
+    currency = props.get("deal_currency_code") or None
     seen_at = datetime.now(UTC)
+    # S19 slice 1 B2 — resolve label + closed flags + order from the mirror.
+    stage_info = stage_map.resolve(stage) if stage_map is not None else None
+    stage_label = stage_info.label if stage_info else stage
+    is_closed_won = bool(stage_info.is_closed_won) if stage_info else False
+    is_closed_lost = bool(stage_info.is_closed_lost) if stage_info else False
+    stage_order = stage_info.display_order if stage_info else None
+    pipeline_id = stage_info.pipeline_id if stage_info else (props.get("pipeline") or None)
+    hubspot_created_at = _parse_timestamp(props.get("createdate"))
+    hubspot_last_modified_at = _parse_timestamp(props.get("hs_lastmodifieddate"))
+    hubspot_last_activity_at = (
+        _parse_timestamp(props.get("notes_last_updated")) or hubspot_last_modified_at
+    )
+    secondary_ids = list(secondary_client_ids or [])
 
     result = await session.execute(
         select(Opportunity).where(Opportunity.hubspot_deal_id == deal_id)
@@ -278,6 +373,17 @@ async def _upsert_opportunity(
             close_date=close_date,
             hubspot_last_seen_at=seen_at,
             governance_status="Intake",
+            hubspot_pipeline_id=pipeline_id,
+            hubspot_stage_id=stage,
+            stage_order=stage_order,
+            is_closed_won=is_closed_won,
+            is_closed_lost=is_closed_lost,
+            currency=currency,
+            hubspot_created_at=hubspot_created_at,
+            hubspot_last_activity_at=hubspot_last_activity_at,
+            hubspot_last_modified_at=hubspot_last_modified_at,
+            primary_client_id=client_row.id,
+            hubspot_secondary_client_ids=secondary_ids or None,
         )
         session.add(opp)
         await session.flush()
@@ -299,6 +405,14 @@ async def _upsert_opportunity(
                 "amount": str(amount) if amount is not None else None,
                 "close_date": close_date.isoformat() if close_date else None,
                 "governance_status": "Intake",
+                "hubspot_pipeline_id": pipeline_id,
+                "hubspot_stage_id": stage,
+                "stage_order": stage_order,
+                "is_closed_won": is_closed_won,
+                "is_closed_lost": is_closed_lost,
+                "currency": currency,
+                "primary_client_id": str(client_row.id),
+                "secondary_client_ids": secondary_ids or [],
             },
             correlation_id=correlation_id,
         )
@@ -313,6 +427,10 @@ async def _upsert_opportunity(
         "amount": str(opp.amount) if opp.amount is not None else None,
         "close_date": opp.close_date.isoformat() if opp.close_date else None,
         "archived_at": opp.archived_at.isoformat() if opp.archived_at else None,
+        "is_closed_won": opp.is_closed_won,
+        "is_closed_lost": opp.is_closed_lost,
+        "currency": opp.currency,
+        "primary_client_id": str(opp.primary_client_id) if opp.primary_client_id else None,
     }
     changed = False
     if opp.owner_id != owner.id:
@@ -335,6 +453,40 @@ async def _upsert_opportunity(
         changed = True
     if close_date != opp.close_date:
         opp.close_date = close_date
+        changed = True
+    if opp.hubspot_pipeline_id != pipeline_id:
+        opp.hubspot_pipeline_id = pipeline_id
+        changed = True
+    if opp.hubspot_stage_id != stage:
+        opp.hubspot_stage_id = stage
+        changed = True
+    if opp.stage_order != stage_order:
+        opp.stage_order = stage_order
+        changed = True
+    if opp.is_closed_won != is_closed_won:
+        opp.is_closed_won = is_closed_won
+        changed = True
+    if opp.is_closed_lost != is_closed_lost:
+        opp.is_closed_lost = is_closed_lost
+        changed = True
+    if currency is not None and opp.currency != currency:
+        opp.currency = currency
+        changed = True
+    if hubspot_created_at and opp.hubspot_created_at != hubspot_created_at:
+        opp.hubspot_created_at = hubspot_created_at
+        changed = True
+    if hubspot_last_activity_at and opp.hubspot_last_activity_at != hubspot_last_activity_at:
+        opp.hubspot_last_activity_at = hubspot_last_activity_at
+        changed = True
+    if hubspot_last_modified_at and opp.hubspot_last_modified_at != hubspot_last_modified_at:
+        opp.hubspot_last_modified_at = hubspot_last_modified_at
+        changed = True
+    if opp.primary_client_id != client_row.id:
+        opp.primary_client_id = client_row.id
+        changed = True
+    existing_secondary = list(opp.hubspot_secondary_client_ids or [])
+    if secondary_ids != existing_secondary:
+        opp.hubspot_secondary_client_ids = secondary_ids or None
         changed = True
     # A HubSpot event on an archived opportunity un-archives it — the deal
     # came back (undelete or reconcile-after-outage). Log the change.
@@ -364,6 +516,10 @@ async def _upsert_opportunity(
                 "amount": str(opp.amount) if opp.amount is not None else None,
                 "close_date": opp.close_date.isoformat() if opp.close_date else None,
                 "archived_at": None,
+                "is_closed_won": opp.is_closed_won,
+                "is_closed_lost": opp.is_closed_lost,
+                "currency": opp.currency,
+                "primary_client_id": str(opp.primary_client_id) if opp.primary_client_id else None,
             },
             correlation_id=correlation_id,
         )

@@ -100,12 +100,14 @@ class HubSpotClient:
             r.raise_for_status()
             return r.json() if r.content else {}
 
-    # S18 §2: Pipeline cache columns (amount, close_date, stage label) need
-    # to arrive on every read path, so both single-deal and paged list share
-    # this projection.
+    # S18 §2 + S19 slice 1: every column the Pipeline surface caches on
+    # `opportunity` gets pulled in one CRM read. The label itself lives on
+    # the pipelines endpoint (see `list_pipelines`) — the mapper resolves
+    # `dealstage` (id) to its label via the mirror.
     _DEAL_PROPERTIES: str = (
-        "dealname,dealstage,dealstage_label,pipeline,hubspot_owner_id,"
-        "engagement_type,amount,closedate"
+        "dealname,dealstage,pipeline,hubspot_owner_id,engagement_type,"
+        "amount,closedate,deal_currency_code,createdate,"
+        "hs_lastmodifieddate,notes_last_updated"
     )
 
     async def get_deal(self, deal_id: str) -> dict[str, Any]:
@@ -138,6 +140,17 @@ class HubSpotClient:
         """Return the owner record for a HubSpot user id."""
 
         return await self._get(f"/crm/v3/owners/{owner_id}")
+
+    async def list_pipelines(self) -> dict[str, Any]:
+        """S19 slice 1 B1 — pull every deal pipeline + its stages.
+
+        The mapper caches this once per backfill / webhook run and resolves
+        deal stage ids to labels + closed flags. Portals with more than one
+        pipeline get one row each; a single-pipeline portal like SmarTek21
+        still uses the mirror so unknown-stage drift raises loudly (G11).
+        """
+
+        return await self._get("/crm/v3/pipelines/deals")
 
     async def get_company(self, company_id: str) -> dict[str, Any]:
         """Return the company record."""
@@ -179,6 +192,7 @@ class StubHubSpotClient(HubSpotClient):
         deals: dict[str, dict[str, Any]] | None = None,
         owners: dict[str, dict[str, Any] | None] | None = None,
         companies: dict[str, dict[str, Any]] | None = None,
+        pipelines: list[dict[str, Any]] | None = None,
     ) -> None:
         # Skip the parent __init__ so we don't require the env var in tests.
         self._token = "stub"
@@ -186,6 +200,7 @@ class StubHubSpotClient(HubSpotClient):
         self.deals: dict[str, dict[str, Any]] = deals or {}
         self.owners: dict[str, dict[str, Any] | None] = owners or {}
         self.companies: dict[str, dict[str, Any]] = companies or {}
+        self.pipelines: list[dict[str, Any]] = pipelines or []
         # Records every ``update_deal`` call so write-back tests can assert
         # on the exact HubSpot payload the service sent.
         self.updates: list[dict[str, Any]] = []
@@ -195,6 +210,9 @@ class StubHubSpotClient(HubSpotClient):
 
     async def get_deal(self, deal_id: str) -> dict[str, Any]:
         return self.deals[deal_id]
+
+    async def list_pipelines(self) -> dict[str, Any]:
+        return {"results": list(getattr(self, "pipelines", []))}
 
     async def list_deals_page(
         self, *, after: str | None = None, limit: int = 100

@@ -39,6 +39,17 @@ module "secrets" {
   kms_key_arn = module.kms.key_arn
 }
 
+# S19 slice 1 §B3: SQS queue that carries verified HubSpot events from the
+# webhook receiver to the consumer worker. Sits between api (SendMessage) and
+# schedulers.hubspot_intake_consumer (ReceiveMessage/DeleteMessage). Grants
+# live in api/ and schedulers/ so the dep graph runs one-way — hubspot has no
+# knowledge of who calls it.
+module "hubspot" {
+  source      = "./modules/hubspot"
+  name_prefix = local.name_prefix
+  kms_key_arn = module.kms.key_arn
+}
+
 # S14a.3b (22 Sep 2026): DNS + SES + ACM cert for the app-owned Route 53 zone.
 # Replaces the smartek21.com Cloudflare-hosted flow that required a hand-added
 # CNAME and stranded the previous cert in PENDING_VALIDATION for weeks. See
@@ -110,21 +121,31 @@ module "auth" {
 }
 
 module "api" {
-  source                 = "./modules/api"
-  name_prefix            = local.name_prefix
-  env                    = var.env
+  source      = "./modules/api"
+  name_prefix = local.name_prefix
+  env         = var.env
+  # S19 slice 1: the staging Playwright suite calls /internal/seed. The api
+  # module's container_definitions used to gate the env on
+  # `var.env == "staging"` too, but this root's `env` is `dev` (the
+  # name_prefix / log-group scheme predates the staging/prod split — see
+  # docs/adr/0001-infra-tf-is-staging.md), which stripped ALLOW_DEV_SEED
+  # from every TF-registered task-def. Setting it on the module here + the
+  # env-check drop in the container_definitions block is now the single
+  # switch. Prod will get its own root without this line.
+  allow_dev_seed_endpoint = true
   region                 = var.region
   vpc_id                 = module.network.vpc_id
   public_subnet_ids      = module.network.public_subnet_ids
   private_subnet_ids     = module.network.private_subnet_ids
   ecr_repository_url     = module.ecr.repository_url
   image_tag              = var.image_tag
-  db_url_secret_arn      = module.secrets.db_url_secret_arn
-  jwt_signing_secret_arn = module.secrets.jwt_signing_secret_arn
-  cognito_user_pool_id   = module.auth.user_pool_id
-  cognito_user_pool_arn  = module.auth.user_pool_arn
-  cognito_client_id      = module.auth.client_id
-  kms_key_arn            = module.kms.key_arn
+  db_url_secret_arn        = module.secrets.db_url_secret_arn
+  jwt_signing_secret_arn   = module.secrets.jwt_signing_secret_arn
+  hubspot_token_secret_arn = module.secrets.hubspot_token_secret_arn
+  cognito_user_pool_id     = module.auth.user_pool_id
+  cognito_user_pool_arn    = module.auth.user_pool_arn
+  cognito_client_id        = module.auth.client_id
+  kms_key_arn              = module.kms.key_arn
   # S15: SOW bucket ARN feeds the sow_and_bedrock IAM policy (was hand-set
   # on the task role, now TF-owned per rule 12). Computed inline instead of
   # referencing module.storage.sows_bucket_arn because the sows bucket
@@ -133,6 +154,12 @@ module "api" {
   # storage module writes.
   sow_bucket_arn        = "arn:aws:s3:::${local.name_prefix}-sows-${data.aws_caller_identity.current.account_id}"
   agreements_bucket_arn = "arn:aws:s3:::${local.name_prefix}-agreements-${data.aws_caller_identity.current.account_id}"
+
+  # S19 slice 1 §B4: api enqueues verified HubSpot webhook events to this
+  # queue and returns 200. The consumer worker (schedulers.hubspot_intake)
+  # drains it. HUBSPOT_EVENT_QUEUE_URL is the env the router reads.
+  hubspot_event_queue_url = module.hubspot.queue_url
+  hubspot_event_queue_arn = module.hubspot.queue_arn
 }
 
 module "data" {
@@ -190,6 +217,14 @@ module "schedulers" {
   # srikanthp+dealgate-staging@smartek21.com is verified from S14a.3
   # batch 1 and is the test inbox for the proofs below.
   ses_from_address         = module.dns.ses_from_address
+
+  # S19 slice 1 §B5 / §B6: hubspot_intake consumer + hubspot_reconcile
+  # nightly job. Consumer long-polls the SQS queue and needs the HubSpot
+  # token to re-read deals from CRM API; reconcile walks the CRM listing
+  # and updates sync_status.
+  hubspot_event_queue_url  = module.hubspot.queue_url
+  hubspot_event_queue_arn  = module.hubspot.queue_arn
+  hubspot_token_secret_arn = module.secrets.hubspot_token_secret_arn
 }
 
 module "github_oidc" {

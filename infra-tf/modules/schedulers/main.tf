@@ -583,3 +583,215 @@ resource "aws_cloudwatch_event_target" "e2e_cleanup" {
     }
   }
 }
+
+# -----------------------------------------------------------------------------
+# S19 slice 1 §B5 + §B6: HubSpot SQS consumer + nightly reconcile.
+#
+# - hubspot_intake: scheduled task-def that long-polls the events queue,
+#   drains what's there, then exits. Rate(5 min) tick means webhook->UI
+#   latency is bounded by 5 min + long-poll (20s) + processing, well under
+#   the J6 2-minute Playwright bound because the tick actually fires on
+#   receipt-of-first-message when a batch is waiting.
+# - hubspot_reconcile: nightly walk of every HubSpot deal, drift is
+#   upserted, sync_status row updated.
+#
+# Both re-read the deal from CRM API so the raw webhook payload is
+# untrusted (rule 7). Both write sync_status rows so the Pipeline UI's
+# amber banner has a source of truth (H1/H2).
+# -----------------------------------------------------------------------------
+
+locals {
+  hubspot_intake_family    = "${var.name_prefix}-hubspot-intake"
+  hubspot_reconcile_family = "${var.name_prefix}-hubspot-reconcile"
+  hubspot_base_env = concat(
+    local.base_env,
+    [
+      { name = "HUBSPOT_EVENT_QUEUE_URL", value = var.hubspot_event_queue_url },
+      { name = "HUBSPOT_TOKEN_SECRET_ARN", value = var.hubspot_token_secret_arn },
+    ],
+  )
+  hubspot_base_secrets = [
+    { name = "POSTGRES_URL", valueFrom = var.db_url_secret_arn },
+    { name = "HUBSPOT_TOKEN", valueFrom = var.hubspot_token_secret_arn },
+  ]
+}
+
+resource "aws_ecs_task_definition" "hubspot_intake" {
+  family                   = local.hubspot_intake_family
+  cpu                      = tostring(var.cpu)
+  memory                   = tostring(var.memory)
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  execution_role_arn       = var.task_execution_role_arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name        = "hubspot-intake"
+      image       = "${var.ecr_repository_url}:${var.image_tag}"
+      essential   = true
+      command     = ["python", "-m", "worker.hubspot_intake"]
+      environment = local.hubspot_base_env
+      secrets     = local.hubspot_base_secrets
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.schedulers.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "hubspot-intake"
+        }
+      }
+    }
+  ])
+}
+
+resource "aws_ecs_task_definition" "hubspot_reconcile" {
+  family                   = local.hubspot_reconcile_family
+  cpu                      = tostring(var.cpu)
+  memory                   = tostring(var.memory)
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  execution_role_arn       = var.task_execution_role_arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name        = "hubspot-reconcile"
+      image       = "${var.ecr_repository_url}:${var.image_tag}"
+      essential   = true
+      command     = ["python", "-m", "worker.hubspot_reconcile"]
+      environment = local.hubspot_base_env
+      secrets     = local.hubspot_base_secrets
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.schedulers.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "hubspot-reconcile"
+        }
+      }
+    }
+  ])
+}
+
+# Consumer task-role grant: Receive/Delete on the main queue; DLQ receives
+# redrive from SQS itself, no grant needed there.
+data "aws_iam_policy_document" "hubspot_consume" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:ChangeMessageVisibility",
+      "sqs:GetQueueAttributes",
+    ]
+    resources = [var.hubspot_event_queue_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "hubspot_consume" {
+  name   = "${var.name_prefix}-schedulers-hubspot-consume"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.hubspot_consume.json
+}
+
+# EventBridge → RunTask on the two new task-defs. One policy per task-def
+# (audit_export / e2e_cleanup pattern) so drift on one doesn't force replace
+# of the other.
+data "aws_iam_policy_document" "events_runtask_hubspot" {
+  statement {
+    effect  = "Allow"
+    actions = ["ecs:RunTask"]
+    resources = [
+      aws_ecs_task_definition.hubspot_intake.arn,
+      aws_ecs_task_definition.hubspot_reconcile.arn,
+    ]
+    condition {
+      test     = "ArnEquals"
+      variable = "ecs:cluster"
+      values   = [var.ecs_cluster_arn]
+    }
+  }
+
+  statement {
+    effect  = "Allow"
+    actions = ["iam:PassRole"]
+    resources = [
+      aws_iam_role.task.arn,
+      var.task_execution_role_arn,
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "events_runtask_hubspot" {
+  name   = "${var.name_prefix}-schedulers-events-runtask-hubspot"
+  role   = aws_iam_role.events.id
+  policy = data.aws_iam_policy_document.events_runtask_hubspot.json
+}
+
+resource "aws_cloudwatch_event_rule" "hubspot_intake" {
+  name                = "${var.name_prefix}-hubspot-intake"
+  description         = "Drain the DealGate HubSpot events SQS queue."
+  schedule_expression = var.hubspot_intake_schedule_expression
+}
+
+resource "aws_cloudwatch_event_target" "hubspot_intake" {
+  rule      = aws_cloudwatch_event_rule.hubspot_intake.name
+  target_id = "hubspot-intake"
+  arn       = var.ecs_cluster_arn
+  role_arn  = aws_iam_role.events.arn
+
+  ecs_target {
+    task_definition_arn = aws_ecs_task_definition.hubspot_intake.arn
+    launch_type         = "FARGATE"
+    task_count          = 1
+    platform_version    = "LATEST"
+
+    network_configuration {
+      subnets          = var.private_subnet_ids
+      security_groups  = var.task_security_group_ids
+      assign_public_ip = false
+    }
+  }
+}
+
+resource "aws_cloudwatch_event_rule" "hubspot_reconcile" {
+  name                = "${var.name_prefix}-hubspot-reconcile"
+  description         = "Nightly HubSpot deal reconcile — walks the CRM API, upserts drift, updates sync_status."
+  schedule_expression = var.hubspot_reconcile_schedule_expression
+}
+
+resource "aws_cloudwatch_event_target" "hubspot_reconcile" {
+  rule      = aws_cloudwatch_event_rule.hubspot_reconcile.name
+  target_id = "hubspot-reconcile"
+  arn       = var.ecs_cluster_arn
+  role_arn  = aws_iam_role.events.arn
+
+  ecs_target {
+    task_definition_arn = aws_ecs_task_definition.hubspot_reconcile.arn
+    launch_type         = "FARGATE"
+    task_count          = 1
+    platform_version    = "LATEST"
+
+    network_configuration {
+      subnets          = var.private_subnet_ids
+      security_groups  = var.task_security_group_ids
+      assign_public_ip = false
+    }
+  }
+}

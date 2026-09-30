@@ -81,6 +81,13 @@ ID_TOKEN=$(printf '%s' "$AUTH_JSON" | python3 -c 'import json,sys; print(json.lo
 [ -n "$ID_TOKEN" ] || fail "no IdToken in cognito response"
 AUTH_H=(-H "Authorization: Bearer $ID_TOKEN")
 
+# ---- Step 0.5 · S19 slice 1 single-truth grep gate (C8/F3) ---------------
+# Every router that lists deals routes through
+# app/services/hubspot_pipeline.py. Local grep runs before any curl.
+log "step 0.5 · single-truth grep gate"
+"$(cd "$(dirname "$0")" && pwd)/check-single-query-service.sh" \
+  || fail "single-query-service gate failed"
+
 # ---- Step 1: liveness ----------------------------------------------------
 log "step 1 · /healthz"
 code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/api/healthz" || true)

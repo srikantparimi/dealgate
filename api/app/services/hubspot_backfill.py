@@ -36,11 +36,14 @@ from app.db import session_factory as default_session_factory
 from app.integrations.hubspot import HubSpotClient
 from app.models.opportunity import Opportunity
 from app.services.hubspot_intake import (
+    _dedup_company_ids,
     _deal_props,
     _resolve_client,
     _resolve_owner,
+    _resolve_secondary_clients,
     _upsert_opportunity,
 )
+from app.services.hubspot_stage_mirror import StageMap, sync_stage_mirror
 
 log = structlog.get_logger("hubspot_backfill")
 
@@ -56,6 +59,7 @@ class BackfillCounts:
     companies_created: int = 0
     owners_matched: int = 0
     owners_unassigned: int = 0
+    multi_company_deals: int = 0
     errors: int = 0
     error_deal_ids: list[str] = field(default_factory=list)
 
@@ -112,6 +116,7 @@ async def _process_deal(
     deal_payload: dict,
     counts: BackfillCounts,
     correlation_id: str,
+    stage_map: StageMap | None = None,
 ) -> None:
     deal_id = _extract_deal_id(deal_payload)
     counts.deals_seen += 1
@@ -146,8 +151,20 @@ async def _process_deal(
     else:
         counts.companies_matched += 1
 
+    # S19 G3: resolve secondary company associations beyond the primary so
+    # the Pipeline UI can render "+N others". Primary is the one used to
+    # populate `client_row` above (labeled association wins, else first).
+    all_company_ids = _dedup_company_ids(deal_payload)
+    secondary_ids: list[str] = []
+    if len(all_company_ids) > 1:
+        secondary_ids = await _resolve_secondary_clients(
+            session, client, all_company_ids[1:], correlation_id
+        )
+        counts.multi_company_deals += 1
+
     opp, created = await _upsert_opportunity(
-        session, deal_id, deal_payload, owner, client_row, correlation_id
+        session, deal_id, deal_payload, owner, client_row, correlation_id,
+        stage_map=stage_map, secondary_client_ids=secondary_ids,
     )
     if created:
         counts.deals_created += 1
@@ -183,6 +200,21 @@ async def run_backfill(
     counts = BackfillCounts()
     seen_ids: set[str] = set()
 
+    # S19 B1: sync pipeline / stage mirror before any deal upsert. The map
+    # feeds every _upsert_opportunity so label / closed flags are resolved
+    # from the same source every time.
+    stage_map: StageMap | None = None
+    try:
+        async with factory() as session:
+            stage_map = await sync_stage_mirror(session, hub)
+            await session.commit()
+    except Exception:
+        log.exception("hubspot_stage_mirror_sync_failed")
+        # A stage-map failure isn't fatal — intake falls back to the naked
+        # stage id (mapper bug degrades gracefully). Continue but count the
+        # error.
+        counts.errors += 1
+
     pagination_ok = True
     after: str | None = None
     while True:
@@ -199,7 +231,10 @@ async def run_backfill(
             seen_ids.add(deal_id)
             async with factory() as session:
                 try:
-                    await _process_deal(session, hub, deal_payload, counts, correlation_id)
+                    await _process_deal(
+                        session, hub, deal_payload, counts, correlation_id,
+                        stage_map=stage_map,
+                    )
                     await session.commit()
                 except Exception:
                     counts.errors += 1

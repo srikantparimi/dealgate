@@ -60,6 +60,25 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     through it. Only then does it squash-merge to main. Main is always
     releasable. Adopted with S16.
 
+15. **Interactive terraform prompts are stop points, not automation
+    surfaces.** Never pipe `yes`, `echo yes`, `printf` or any other
+    scripted answer into `terraform init` (`-reconfigure` /
+    `-migrate-state`), `terraform apply` (state-lock overrides, resource
+    replacements, destroy plans) or any other interactive terraform
+    prompt. If a prompt appears, stop and show it to the operator
+    verbatim. The prompts exist because the answer changes state that
+    cannot be undone from a shell one-liner. Additionally, `terraform
+    init` refuses to run when any `terraform.tfstate*` file (other than
+    `*.stale.bak`) sits in `infra-tf/`: `scripts/tf-init.sh` is the
+    only supported entry point and it fails the run with a pointer to
+    the S14a.1 ADR when a stale local state is detected. Adopted
+    29 Sep 2026 after a scripted `yes` to `terraform init -reconfigure`
+    briefly overwrote the S3 state with a Sept-17 laptop file (root
+    cause: local state files never deleted per the S14a.1 post-
+    migration step, so a returning `init` had material to overwrite
+    with). See `docs/reports/s19-1-progress.md` §"Incident during I1"
+    for the recovery.
+
 ## Where things live
 
 - `docs/blueprint.md` — the governance policy (source of truth for rules).

@@ -9,7 +9,7 @@ variable "env" {
 }
 
 variable "allow_dev_seed_endpoint" {
-  description = "Explicit staging-only seed endpoint opt-in; ignored outside staging."
+  description = "Opt-in for the /internal/seed endpoint the Playwright suite calls. Historically gated on env == staging AND this flag; the env-string check was dropped in S19 slice 1 when TF began owning the task-def env (the deployed name_prefix is `officeapp-dev` even though the environment role is staging — the double gate silently stripped the env from every TF-registered task-def, which CI's fetch_and_patch then propagated). Keep this off in prod; the env-check safety net there is now the tfvars file, not this variable."
   type        = bool
   default     = false
 }
@@ -82,6 +82,16 @@ variable "cognito_user_pool_arn" {
 
 variable "hubspot_token_secret_arn" {
   description = "ARN of the HubSpot private-app token in Secrets Manager. Injected as HUBSPOT_TOKEN via the ECS task's secrets block; the raw value never touches TF."
+  type        = string
+}
+
+variable "hubspot_event_queue_url" {
+  description = "URL of the HubSpot events SQS queue. Enqueued from the webhook handler as HUBSPOT_EVENT_QUEUE_URL."
+  type        = string
+}
+
+variable "hubspot_event_queue_arn" {
+  description = "ARN of the HubSpot events SQS queue. Scopes the task-role SendMessage grant."
   type        = string
 }
 

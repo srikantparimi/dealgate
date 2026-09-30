@@ -3767,3 +3767,137 @@ export function deleteBulkImportBatch(
     { method: "DELETE" },
   );
 }
+
+// ---------------------------------------------------------------------------
+// S19 slice 1 — Pipeline query service surface (C1-C8).
+// ---------------------------------------------------------------------------
+
+export interface PipelineOpportunityRow {
+  opportunity_id: UUID;
+  hubspot_deal_id: string | null;
+  name: string | null;
+  client_id: UUID | null;
+  client_name: string | null;
+  stage_id: string | null;
+  stage_label: string | null;
+  is_closed_won: boolean;
+  is_closed_lost: boolean;
+  amount: DecimalStr | null;
+  currency: string | null;
+  close_date: ISODate | null;
+  owner_id: UUID | null;
+  owner_name: string | null;
+  owner_email: string | null;
+  hubspot_last_activity_at: ISODateTime | null;
+  sow_approval_state: string;
+  attention_flags: string[];
+  next_action_open_count: number;
+  next_action_min_due: ISODate | null;
+  sow_count: number;
+}
+
+export interface PipelineClientRow {
+  client_id: UUID;
+  client_name: string;
+  hubspot_company_id: string | null;
+  owner_id: UUID | null;
+  owner_name: string | null;
+  owner_email: string | null;
+  open_opp_count: number;
+  open_value_by_currency: Record<string, DecimalStr>;
+  stage_breakdown: Record<string, number>;
+  has_nda: boolean;
+  has_msa: boolean;
+  worst_sow_approval_state: string;
+  attention_flags: string[];
+  latest_activity_at: ISODateTime | null;
+  next_action_min_due: ISODate | null;
+  next_action_open_count: number;
+}
+
+export interface PipelineListPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface PipelineSummary {
+  open_count: number;
+  open_value_by_currency: Record<string, DecimalStr>;
+  closing_this_month: number;
+  overdue_actions: number;
+  pending_approvals: number;
+  agreement_gaps: number;
+}
+
+export interface PipelineFilters {
+  pipeline?: string | null;
+  stage?: string[];
+  owner?: UUID[];
+  readiness?: string[];
+  attention?: string[];
+  date_field?: "created" | "close" | "last_activity" | "action_due";
+  date_from?: ISODate;
+  date_to?: ISODate;
+  search?: string;
+  include_closed?: boolean;
+  page?: number;
+  page_size?: number;
+  sort?: string;
+}
+
+function pipelineParams(filters: PipelineFilters): URLSearchParams {
+  const p = new URLSearchParams();
+  if (filters.pipeline) p.set("pipeline", filters.pipeline);
+  filters.stage?.forEach((s) => p.append("stage", s));
+  filters.owner?.forEach((o) => p.append("owner", o));
+  filters.readiness?.forEach((r) => p.append("readiness", r));
+  filters.attention?.forEach((a) => p.append("attention", a));
+  if (filters.date_field) p.set("date_field", filters.date_field);
+  if (filters.date_from) p.set("date_from", filters.date_from);
+  if (filters.date_to) p.set("date_to", filters.date_to);
+  if (filters.search) p.set("search", filters.search);
+  if (filters.include_closed) p.set("include_closed", "true");
+  if (filters.page) p.set("page", String(filters.page));
+  if (filters.page_size) p.set("page_size", String(filters.page_size));
+  if (filters.sort) p.set("sort", filters.sort);
+  return p;
+}
+
+export function listPipelineOpportunities(
+  filters: PipelineFilters = {},
+): Promise<PipelineListPage<PipelineOpportunityRow>> {
+  const params = pipelineParams(filters);
+  return request<PipelineListPage<PipelineOpportunityRow>>(
+    `/pipeline/opportunities${params.toString() ? "?" + params.toString() : ""}`,
+  );
+}
+
+export function listPipelineClients(
+  filters: PipelineFilters = {},
+): Promise<PipelineListPage<PipelineClientRow>> {
+  const params = pipelineParams(filters);
+  return request<PipelineListPage<PipelineClientRow>>(
+    `/pipeline/clients${params.toString() ? "?" + params.toString() : ""}`,
+  );
+}
+
+export function getPipelineSummary(filters: PipelineFilters = {}): Promise<PipelineSummary> {
+  const params = pipelineParams(filters);
+  return request<PipelineSummary>(
+    `/pipeline/summary${params.toString() ? "?" + params.toString() : ""}`,
+  );
+}
+
+export interface SyncStatusRow {
+  source: string;
+  last_success_at: ISODateTime | null;
+  last_attempt_at: ISODateTime | null;
+  last_error: string | null;
+  lag_seconds: number | null;
+}
+
+export function getSyncStatus(): Promise<{ items: SyncStatusRow[] }> {
+  return request<{ items: SyncStatusRow[] }>(`/sync-status`);
+}

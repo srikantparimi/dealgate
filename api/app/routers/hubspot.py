@@ -24,6 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import AuthUser, require_role
 from app.db import get_session
 from app.integrations.hubspot import HubSpotClient, get_hubspot_client
+from app.integrations.hubspot_events_queue import (
+    HubSpotEventsQueue,
+    HubSpotEventsQueueError,
+    get_queue,
+)
 from app.integrations.hubspot_signature import verify_v3
 from app.models.integration import IntegrationEvent
 from app.services.hubspot_intake import replay_event, store_events
@@ -71,12 +76,20 @@ def _reject_replay(timestamp_header: str) -> None:
 async def hubspot_webhook(
     request: Request,
     session: AsyncSession = Depends(get_session),
+    queue: HubSpotEventsQueue = Depends(get_queue),
 ) -> dict[str, object]:
-    """Verify signature, dedupe, persist, and return 200.
+    """Verify signature, enqueue verified events, return 200.
 
-    The response body reports how many events were newly stored (`stored`)
-    vs. dropped as duplicates (`duplicates`). HubSpot only requires the
-    200 — the counts are for local ops.
+    S19 slice 1 §B4: events flow via SQS to the ``worker.hubspot_intake``
+    consumer instead of the integration_event row store. The DB-backed
+    path stays as a fallback for local runs where SQS is not configured
+    (``HUBSPOT_EVENT_QUEUE_URL`` unset), so tests + dev shells keep
+    working without an AWS credential.
+
+    The response body reports how many events were enqueued
+    (``queued``) vs. dropped as duplicates by SQS-msg-id-shape checks
+    (``duplicates``). HubSpot only needs the 200 — the counts are for
+    local ops.
     """
 
     secret = os.environ.get("HUBSPOT_APP_SECRET", "")
@@ -106,6 +119,32 @@ async def hubspot_webhook(
         ) from exc
 
     events = payload if isinstance(payload, list) else [payload]
+    queue_url = os.environ.get("HUBSPOT_EVENT_QUEUE_URL", "").strip()
+    if queue_url:
+        # S19 slice 1 §B4 — enqueue path. Each event goes on the queue
+        # individually so the consumer can process one deal at a time and
+        # a poison event only stalls itself (DLQ after 3 attempts).
+        queued = 0
+        for event in events:
+            try:
+                await queue.send(event)
+                queued += 1
+            except HubSpotEventsQueueError:
+                log.exception(
+                    "hubspot_webhook_enqueue_failed",
+                    event_id=event.get("eventId"),
+                )
+        log.info(
+            "hubspot_webhook_enqueued", received=len(events), queued=queued
+        )
+        return {
+            "received": len(events),
+            "queued": queued,
+            "duplicates": 0,
+        }
+
+    # Legacy DB path — local dev + tests without SQS. Same behaviour as
+    # S18 §2a.
     stored_rows = await store_events(session, events)
     log.info(
         "hubspot_webhook_accepted",

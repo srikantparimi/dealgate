@@ -20,8 +20,10 @@ from app.models.embedding import SowEmbedding
 from app.models.forecast import ForecastPeriod
 from app.models.function_owner import FunctionOwner
 from app.models.gm_model import CostLine, GmModel, ResourceLine
+from app.models.hubspot_pipeline import HubspotPipeline, HubspotStage
 from app.models.hubspot_writeback import HubspotWritebackJob
 from app.models.integration import IntegrationEvent
+from app.models.next_action import NextAction
 from app.models.notification import Notification, NotificationSetting
 from app.models.opportunity import Opportunity
 from app.models.policy import PolicyVersion
@@ -30,8 +32,10 @@ from app.models.renewal import Renewal
 from app.models.signed_sow import SignedSowUpload
 from app.models.sow import Sow, SowVersion
 from app.models.sow_upload_job import SowUploadJob
+from app.models.sync_status import SyncStatus
 from app.models.task import Task
 from app.models.user import User
+from app.models.user_preference import UserPreference
 
 # Import last: extends Sow/SowVersion/GmModel with the columns migration
 # 0009 adds and registers ``legacy_import_batch``. Must run after the base
@@ -70,10 +74,13 @@ __all__ = [
     "GmModel",
     "GmModelPhase",
     "GmModelTemplate",
+    "HubspotPipeline",
+    "HubspotStage",
     "HubspotWritebackJob",
     "IntegrationEvent",
     "LegacyImportBatch",
     "LegalEntity",
+    "NextAction",
     "Notification",
     "NotificationSetting",
     "Opportunity",
@@ -87,6 +94,8 @@ __all__ = [
     "SowEmbedding",
     "SowUploadJob",
     "SowVersion",
+    "SyncStatus",
     "Task",
     "User",
+    "UserPreference",
 ]

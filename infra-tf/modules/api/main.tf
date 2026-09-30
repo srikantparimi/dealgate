@@ -313,6 +313,23 @@ resource "aws_iam_role_policy" "task_cognito_read" {
   policy = data.aws_iam_policy_document.task_cognito_read.json
 }
 
+# S19 slice 1 §B4: webhook receiver enqueues verified events to the HubSpot
+# queue. Task-role grant is scoped to the single queue ARN; the consumer
+# side (Receive/Delete) lives in modules/schedulers on that task role.
+data "aws_iam_policy_document" "hubspot_enqueue" {
+  statement {
+    effect    = "Allow"
+    actions   = ["sqs:SendMessage", "sqs:GetQueueAttributes"]
+    resources = [var.hubspot_event_queue_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "hubspot_enqueue" {
+  name   = "${var.name_prefix}-api-hubspot-enqueue"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.hubspot_enqueue.json
+}
+
 # ------------------------------------------------------------------
 # Cluster, log group, task def, service
 # ------------------------------------------------------------------
@@ -381,7 +398,9 @@ resource "aws_ecs_task_definition" "api" {
         # backs a request (never the value) can point at it. Reading the
         # actual token still goes through the ``secrets`` block above.
         { name = "HUBSPOT_TOKEN_SECRET_ARN", value = var.hubspot_token_secret_arn },
-        ], var.env == "staging" && var.allow_dev_seed_endpoint ? [
+        # S19 slice 1 §B4: webhook handler enqueues verified events here.
+        { name = "HUBSPOT_EVENT_QUEUE_URL", value = var.hubspot_event_queue_url },
+        ], var.allow_dev_seed_endpoint ? [
         { name = "ALLOW_DEV_SEED_ENDPOINT", value = "1" },
       ] : [])
       secrets = [
