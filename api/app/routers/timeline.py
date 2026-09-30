@@ -194,14 +194,22 @@ async def client_timeline(
 ) -> TimelineResponse:
     """Union of the timelines of every non-archived opportunity under the client."""
 
-    opps = (
-        await session.execute(
-            select(Opportunity.id).where(
-                Opportunity.client_id == client_id,
-                Opportunity.archived_at.is_(None),
-            )
-        )
-    ).scalars().all()
+    # Route through the shared hubspot_pipeline query service so the
+    # single-truth C8 gate stays green (no direct opportunity list
+    # query in this router). include_closed=True since a client's
+    # timeline should cover history even after closed-won/lost.
+    from app.services.hubspot_pipeline import (
+        PipelineFilters,
+        list_opportunities as _list_opps,
+    )
+
+    page = await _list_opps(
+        session,
+        filters=PipelineFilters(client=(client_id,), include_closed=True),
+        page=1,
+        page_size=200,
+    )
+    opps = [r.opportunity_id for r in page.items]
     if not opps:
         return TimelineResponse(items=[])
 
