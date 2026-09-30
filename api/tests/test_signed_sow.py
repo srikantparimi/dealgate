@@ -144,6 +144,53 @@ class _CannedBedrock(BedrockSowExtract):
         return ExtractedFields(fields=fields)
 
 
+async def _seed_internal_signoff(session, package: ApprovalPackage, delivery_user: User) -> None:
+    """S20 W7 (T23): file the internal Delivery signoff for the package."""
+    from app.models.approval import Approval
+    session.add(
+        Approval(
+            id=uuid.uuid4(),
+            package_id=package.id,
+            function="delivery",
+            approver_id=delivery_user.id,
+            decision="approve",
+            reason="internal signoff for test",
+        )
+    )
+    await session.commit()
+
+
+async def _seed_delivery_acceptance(
+    session, package: ApprovalPackage, delivery_user: User
+) -> None:
+    """S20 W7 (T23): file the delivery_acceptance row for the package."""
+    from app.services.delivery_acceptance import record as record_acceptance
+    await record_acceptance(
+        session,
+        actor_id=delivery_user.id,
+        package_id=package.id,
+        notes="acceptance recorded for test",
+        staffing_confirmed=True,
+        billing_setup_confirmed=True,
+        po_confirmed=True,
+    )
+
+
+async def _prepare_release_ready(
+    session, *, owner: User
+) -> tuple[ApprovalPackage, Opportunity, SowVersion, User]:
+    """Seed a package + internal signoff + delivery acceptance for release tests."""
+    package, opp, pinned = await _seed_ready_to_sign_package(session, owner=owner)
+    delivery_user = await _seed_user(
+        session,
+        f"delivery-{uuid.uuid4().hex[:6]}@smartek21.com",
+        ["Delivery"],
+    )
+    await _seed_internal_signoff(session, package, delivery_user)
+    await _seed_delivery_acceptance(session, package, delivery_user)
+    return package, opp, pinned, delivery_user
+
+
 async def _seed_ready_to_sign_package(
     session,
     *,
@@ -355,7 +402,9 @@ async def test_release_distributes_and_opens_renewal(session):
     await _seed_user(session, "delivery@smartek21.com", ["Delivery"])
     await _seed_user(session, "finance@smartek21.com", ["Finance"])
     await _seed_user(session, "legal@smartek21.com", ["Legal"])
-    package, opp, pinned = await _seed_ready_to_sign_package(session, owner=owner)
+    # S20 W7 (T23): the release gate now requires internal signoff +
+    # delivery acceptance in addition to the verified upload.
+    package, opp, pinned, _ = await _prepare_release_ready(session, owner=owner)
 
     upload = await create_upload(
         session,
@@ -429,10 +478,16 @@ async def test_release_distributes_and_opens_renewal(session):
 
 
 async def test_release_guards_when_configured_recipients_missing(session):
-    """No Delivery/Finance/Legal users seeded → owner still gets the email."""
+    """No Finance/Legal users seeded → owner + Delivery still get the email.
+
+    S20 W7: the release gate now requires a Delivery user (for the
+    internal signoff + acceptance events), so this test asserts a
+    smaller distribution — owner + the Delivery user only — rather
+    than only the owner.
+    """
 
     owner = await _seed_user(session, "owner-solo@smartek21.com", ["Sales"])
-    package, _, _ = await _seed_ready_to_sign_package(session, owner=owner)
+    package, _, _, delivery_user = await _prepare_release_ready(session, owner=owner)
     upload = await create_upload(
         session,
         actor_id=owner.id,
@@ -447,7 +502,12 @@ async def test_release_guards_when_configured_recipients_missing(session):
     ses = StubSES()
     await release(session, actor_id=owner.id, upload_id=upload.id, ses=ses)
     recipients = {msg["to"] for msg in ses.sent}
-    assert recipients == {"owner-solo@smartek21.com"}
+    # Owner + the Delivery user (seeded to satisfy the release gate) —
+    # no Finance/Legal recipients configured.
+    assert "owner-solo@smartek21.com" in recipients
+    assert delivery_user.email in recipients
+    assert not any("finance" in r for r in recipients)
+    assert not any("legal" in r for r in recipients)
 
 
 # ---- re-upload voids previous verification -----------------------------
@@ -527,10 +587,11 @@ async def test_http_upload_requires_owner_or_admin(app_with_session, session):
 
 async def test_http_verify_and_release_end_to_end(app_with_session, session):
     owner = await _seed_user(session, "http-owner2@smartek21.com", ["Sales"])
-    await _seed_user(session, "delivery-h@smartek21.com", ["Delivery"])
     await _seed_user(session, "finance-h@smartek21.com", ["Finance"])
     await _seed_user(session, "legal-h@smartek21.com", ["Legal"])
-    package, _, _ = await _seed_ready_to_sign_package(session, owner=owner)
+    # `_prepare_release_ready` seeds a Delivery user + internal signoff +
+    # delivery acceptance so the T23 release gate passes.
+    package, _, _, _ = await _prepare_release_ready(session, owner=owner)
 
     ses_stub = StubSES()
     bedrock_stub = _CannedBedrock()

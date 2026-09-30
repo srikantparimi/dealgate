@@ -2597,6 +2597,10 @@ export interface ApprovalPackage {
   policy_version_id: UUID | null;
   approvals: ApprovalRow[];
   floors?: ApprovalPackageFloors;
+  // S20 W7 (T22): when a newer submission supersedes this package,
+  // this field carries the newer package's id. The signature UI shows
+  // "Superseded by v{N}" and disables the primary action.
+  superseded_by?: UUID | null;
 }
 
 export interface ApprovalPackageListResponse {
@@ -3065,7 +3069,23 @@ export interface SignedSowDiff {
   reason?: string;
 }
 
-export type SignedSowVerifyStatus = "pending" | "verified" | "blocked";
+// S20 W7 (T22): expanded to distinguish unsigned uploads (rejected 400
+// on create), declined and expired signature requests. `verify_reason`
+// carries the human-readable cause; `signer_state` tracks the external
+// signature-request lifecycle independently from verify.
+export type SignedSowVerifyStatus =
+  | "pending"
+  | "verified"
+  | "blocked"
+  | "unsigned"
+  | "declined"
+  | "expired";
+
+export type SignedSowSignerState =
+  | "sent"
+  | "signed"
+  | "declined"
+  | "expired";
 
 export interface SignedSowUpload {
   id: UUID;
@@ -3075,6 +3095,8 @@ export interface SignedSowUpload {
   uploaded_by: UUID;
   uploaded_at: ISODateTime | null;
   verify_status: SignedSowVerifyStatus;
+  verify_reason: string | null;
+  signer_state: SignedSowSignerState | null;
   diff_json: SignedSowDiff | null;
   verified_at: ISODateTime | null;
   released_at: ISODateTime | null;
@@ -3097,6 +3119,17 @@ export interface SignedSowUploadUrlResponse {
 export interface CreateSignedSowUploadBody {
   file_s3_key: string;
   file_hash: string;
+  // S20 W7 (T22): defaults true; when false the API returns 400 with
+  // an `unsigned upload rejected` message.
+  has_signature_evidence?: boolean;
+}
+
+export interface MarkSignedSowDeclinedBody {
+  reason: string;
+}
+
+export interface MarkSignedSowExpiredBody {
+  reason?: string | null;
 }
 
 export function getSignedSowUploadUrl(
@@ -3134,6 +3167,83 @@ export function verifySignedSow(packageId: UUID): Promise<SignedSowUpload> {
 export function releaseSignedSow(packageId: UUID): Promise<SignedSowUpload> {
   return request<SignedSowUpload>(`/signed-sow/${packageId}/release`, {
     method: "POST",
+  });
+}
+
+// S20 W7 (T22): declined / expired signature-request transitions.
+export function declineSignedSow(
+  packageId: UUID,
+  body: MarkSignedSowDeclinedBody,
+): Promise<SignedSowUpload> {
+  return request<SignedSowUpload>(`/signed-sow/${packageId}/decline`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function expireSignedSow(
+  packageId: UUID,
+  body: MarkSignedSowExpiredBody = {},
+): Promise<SignedSowUpload> {
+  return request<SignedSowUpload>(`/signed-sow/${packageId}/expire`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// --- S20 W7: handoff / release gate ---------------------------------------
+
+export interface HandoffGateChecks {
+  internal_signoff: boolean;
+  client_execution: boolean;
+  delivery_acceptance: boolean;
+  approvals_current: boolean;
+  not_superseded: boolean;
+}
+
+export interface HandoffGate {
+  ok: boolean;
+  checks: HandoffGateChecks;
+  reasons: string[];
+}
+
+export interface DeliveryAcceptance {
+  id: UUID;
+  package_id: UUID;
+  accepted_by: UUID;
+  accepted_at: ISODateTime | null;
+  notes: string | null;
+  staffing_confirmed: boolean;
+  billing_setup_confirmed: boolean;
+  po_confirmed: boolean;
+}
+
+export interface RecordDeliveryAcceptanceBody {
+  notes?: string | null;
+  staffing_confirmed?: boolean;
+  billing_setup_confirmed?: boolean;
+  po_confirmed?: boolean;
+}
+
+export function getHandoffGate(packageId: UUID): Promise<HandoffGate> {
+  return request<HandoffGate>(`/handoff/${packageId}/gate`);
+}
+
+export function getDeliveryAcceptance(
+  packageId: UUID,
+): Promise<DeliveryAcceptance | null> {
+  return request<DeliveryAcceptance | null>(
+    `/handoff/${packageId}/acceptance`,
+  );
+}
+
+export function recordDeliveryAcceptance(
+  packageId: UUID,
+  body: RecordDeliveryAcceptanceBody = {},
+): Promise<DeliveryAcceptance> {
+  return request<DeliveryAcceptance>(`/handoff/${packageId}/accept`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

@@ -28,7 +28,27 @@ from app.db.base import Base, JsonB
 
 # Kept in lock-step with alembic 0015's CHECK constraint and the
 # ``VERIFY_STATUSES`` tuple in ``app.services.signed_sow``.
-VERIFY_STATUSES: tuple[str, ...] = ("pending", "verified", "blocked")
+#
+# S20 W7 (T22): expanded to distinguish `unsigned` (upload has no
+# detectable signature), `declined` (external signer refused) and
+# `expired` (signature request timed out) from the generic `blocked`.
+# The CHECK migration lands via requests.md #W7-2026-09-30-01; until
+# it does, the SQLite test path uses this tuple directly via
+# `Base.metadata.create_all` so tests exercise the full alphabet.
+VERIFY_STATUSES: tuple[str, ...] = (
+    "pending",
+    "verified",
+    "blocked",
+    "unsigned",
+    "declined",
+    "expired",
+)
+
+# `signer_state` tracks the external signature-request lifecycle,
+# independent of verify_status. `null` when no request has been sent;
+# `sent` after the request goes out; then one of `signed / declined /
+# expired` when the external system reports back.
+SIGNER_STATES: tuple[str, ...] = ("sent", "signed", "declined", "expired")
 
 
 class SignedSowUpload(Base):
@@ -49,6 +69,14 @@ class SignedSowUpload(Base):
     verify_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="pending"
     )
+    # S20 W7 (T22): human-readable reason accompanying every non-verified
+    # verify_status. Examples: `price_mismatch`, `unsigned_upload`,
+    # `declined_by_signer`, `signature_request_expired`.
+    verify_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # S20 W7 (T22): external signature lifecycle. Advances independently
+    # from `verify_status` so the UI can show "Sent" while a diff is
+    # still pending.
+    signer_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
     diff_json: Mapped[dict[str, Any] | None] = mapped_column(JsonB, nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -58,4 +86,4 @@ class SignedSowUpload(Base):
     )
 
 
-__all__ = ["VERIFY_STATUSES", "SignedSowUpload"]
+__all__ = ["SIGNER_STATES", "VERIFY_STATUSES", "SignedSowUpload"]

@@ -1,4 +1,11 @@
-"""Released project read model, pinned to approved SOW and staffing versions."""
+"""Released project read model, pinned to approved SOW and staffing versions.
+
+S20 W7 (T24): now sources from the `project` table where a row exists —
+that row carries the frozen baseline snapshot. When the projection is
+absent (legacy released packages before S20), we fall back to the
+package + gm_model live view so nothing disappears from the UI. Baseline
+vs forecast vs actuals is surfaced separately.
+"""
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -8,6 +15,7 @@ from app.models.client import Client
 from app.models.forecast import ForecastPeriod
 from app.models.gm_model import GmModel
 from app.models.opportunity import Opportunity
+from app.models.project import Project
 from app.models.sow import SowVersion
 from app.models.user import User
 from app.services.deals import is_leader
@@ -22,11 +30,12 @@ def decimal_string(value):
 
 async def list_projects(session, *, actor):
     stmt = (
-        select(ApprovalPackage, Opportunity, Client, SowVersion, User)
+        select(ApprovalPackage, Opportunity, Client, SowVersion, User, Project)
         .join(Opportunity, Opportunity.id == ApprovalPackage.opportunity_id)
         .outerjoin(Client, Client.id == Opportunity.client_id)
         .join(SowVersion, SowVersion.id == ApprovalPackage.sow_version_id)
         .outerjoin(User, User.id == Opportunity.owner_id)
+        .outerjoin(Project, Project.package_id == ApprovalPackage.id)
         .where(ApprovalPackage.released_at.is_not(None), Opportunity.archived_at.is_(None))
         .order_by(ApprovalPackage.released_at.desc())
     )
@@ -34,7 +43,7 @@ async def list_projects(session, *, actor):
         stmt = stmt.where(Opportunity.owner_id == actor.id)
     rows = (await session.execute(stmt)).all()
     result, seen = [], set()
-    for package, opportunity, client, sow, owner in rows:
+    for package, opportunity, client, sow, owner, project in rows:
         if opportunity.id in seen or (client and client.archived_at):
             continue
         seen.add(opportunity.id)
@@ -53,20 +62,43 @@ async def list_projects(session, *, actor):
             .limit(1)
         )
         fields = sow.extracted_fields or {}
+        # T24: baseline_snapshot_json is the pinned-at-release truth.
+        # It never mutates. Forecast rows and actuals rows go alongside,
+        # not on top of, this snapshot.
+        baseline_block = None
+        if project is not None:
+            baseline_block = project.baseline_snapshot_json
         result.append(
             {
                 "id": str(opportunity.id),
+                "project_id": str(project.id) if project else None,
                 "package_id": str(package.id),
                 "gm_model_id": str(model.id),
-                "title": value_of(fields.get("sow_title"))
-                or value_of(fields.get("title"))
-                or f"{client.name if client else 'Project'} - {model.engagement_type.replace('_', ' ')}",
+                "provenance": {
+                    "opportunity_id": str(opportunity.id),
+                    "sow_version_id": str(sow.id),
+                    "gm_model_id": str(model.id),
+                    "package_id": str(package.id),
+                    "hubspot_deal_id": opportunity.hubspot_deal_id,
+                },
+                "title": (
+                    project.title
+                    if project
+                    else (
+                        value_of(fields.get("sow_title"))
+                        or value_of(fields.get("title"))
+                        or f"{client.name if client else 'Project'} - {model.engagement_type.replace('_', ' ')}"
+                    )
+                ),
                 "client_name": client.name if client else None,
                 "owner_name": display_user_name(owner.name, owner.email) if owner else "Unassigned",
                 "sow_version": sow.version_no,
                 "gm_version": model.version,
                 "released_at": package.released_at.isoformat(),
                 "term_end": value_of(fields.get("term_end")),
+                # Approved / baseline: frozen. Forecast: mutable per-week.
+                # Actuals: append-only.
+                "baseline": baseline_block,
                 "approved": {
                     "us": decimal_string(computed.gm_us) if computed.complete else None,
                     "india": decimal_string(computed.gm_india) if computed.complete else None,

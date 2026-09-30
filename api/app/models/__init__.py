@@ -15,6 +15,7 @@ from app.models.client import Agreement, Client, LegalEntity
 from app.models.client_alias import ClientAlias
 from app.models.client_contact import ClientContact as ClientContact
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
+from app.models.delivery_acceptance import DeliveryAcceptance
 from app.models.direct_cost_settings import DirectCostSettings
 from app.models.embedding import SowEmbedding
 from app.models.forecast import ForecastPeriod
@@ -30,6 +31,7 @@ from app.models.tracking_group import TrackingGroup, TrackingGroupMember
 from app.models.notification import Notification, NotificationSetting
 from app.models.opportunity import Opportunity
 from app.models.policy import PolicyVersion
+from app.models.project import Project
 from app.models.rate_card import RateCardRow, RateCardVersion
 from app.models.renewal import Renewal
 from app.models.signed_sow import SignedSowUpload
@@ -72,6 +74,7 @@ __all__ = [
     "ClientRateCardRow",
     "CostLine",
     "DealComment",
+    "DeliveryAcceptance",
     "DirectCostSettings",
     "ForecastPeriod",
     "FunctionOwner",
@@ -90,6 +93,7 @@ __all__ = [
     "NotificationSetting",
     "Opportunity",
     "PolicyVersion",
+    "Project",
     "RateCardRow",
     "RateCardVersion",
     "Renewal",

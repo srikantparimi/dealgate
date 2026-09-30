@@ -357,6 +357,10 @@ async def update_forecast(
     )
 
     # Recovery task + escalation notification if any component fails floor.
+    # T24 (S20 W7): the recovery has a **named owner** — the gm_model's
+    # creator (typically the Delivery lead who submitted staffing). The
+    # notification body includes their identifier so the CEO dashboard
+    # can render "Recovery owner: <name>" instead of "assigned".
     policy = await active_policy(session)
     us_fails = gm_us is not None and gm_us < policy.us_floor
     india_fails = gm_india is not None and gm_india < policy.india_floor
@@ -409,10 +413,36 @@ async def update_forecast(
                     f"Weekly forecast for gm_model `{gm_model_id}` fell below "
                     f"the policy floor on {', '.join(failing)} component"
                     f"{'s' if len(failing) > 1 else ''}. File a recovery "
-                    "plan on the deal detail."
+                    "plan on the deal detail.\n\n"
+                    f"**Recovery owner:** user `{delivery_lead_id}` "
+                    "(delivery lead who submitted staffing)."
                 ),
                 related_entity="forecast_period",
                 related_entity_id=str(row.id),
+            )
+            # Named audit line so the deterioration + owner assignment
+            # has a distinct trail marker separate from the generic
+            # task.created / notification records.
+            await append_audit(
+                session,
+                actor_id=actor.id,
+                action="forecast.recovery_required",
+                entity="forecast_period",
+                entity_id=str(row.id),
+                before=None,
+                after={
+                    "gm_model_id": str(gm_model_id),
+                    "failing_components": failing,
+                    "recovery_owner_id": str(delivery_lead_id),
+                    "us_floor": format(policy.us_floor, "f"),
+                    "india_floor": format(policy.india_floor, "f"),
+                    "forecast_gm_us": (
+                        format(gm_us, "f") if gm_us is not None else None
+                    ),
+                    "forecast_gm_india": (
+                        format(gm_india, "f") if gm_india is not None else None
+                    ),
+                },
             )
 
     await session.commit()

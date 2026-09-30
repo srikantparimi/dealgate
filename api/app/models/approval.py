@@ -80,6 +80,14 @@ class ApprovalPackage(Base):
     policy_version_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("policy_version.id"), nullable=True
     )
+    # S20 W7 (T22 / D1): when a newer submitted package supersedes this
+    # one, `superseded_by` points at the newer package. The signature UI
+    # for a superseded package renders "Superseded by v{N}" and disables
+    # its primary action. Migration land per requests.md
+    # #W7-2026-09-30-05.
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("approval_package.id"), nullable=True
+    )
 
     approvals: Mapped[list["Approval"]] = relationship(
         "Approval",
