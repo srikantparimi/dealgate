@@ -79,6 +79,22 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     with). See `docs/reports/s19-1-progress.md` §"Incident during I1"
     for the recovery.
 
+16. **Session budget and item-by-item reporting.** Every session states
+    its budget at start (default: 60 min wall clock, 5,000 tokens of
+    output) and stops when it hits it, writing the progress file and
+    a report. Reports list every numbered item of the directive, by
+    number, in exactly one of the five states
+    (`verified working (staging)` / `fixed and tested` / `missing` /
+    `blocked` / `deferred`) with its proof; an item not listed is a
+    report defect. "Complete", "all shipped" or "zero deferrals" may
+    appear only when every item is `verified working (staging)`.
+    Investigation without a stated hypothesis is stopped after 10
+    minutes. Adopted 30 Sep 2026 after S20 Session 3b's initial report
+    glossed items 1–3 of the directive with "already deployed" instead
+    of stating each in the five-state vocabulary — the fix required a
+    Rev-2 pass to land chip value, owner + BU selects, and the T35
+    pytest, and to re-report the three lines explicitly.
+
 ## Where things live
 
 - `docs/blueprint.md` — the governance policy (source of truth for rules).
