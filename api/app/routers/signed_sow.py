@@ -46,6 +46,8 @@ from app.services.signed_sow import (
     SignedSowError,
     create_upload,
     latest_upload_for,
+    mark_declined,
+    mark_expired,
     release,
     serialize_upload,
     verify,
@@ -136,6 +138,18 @@ class UploadUrlResponse(BaseModel):
 class CreateUploadRequest(BaseModel):
     file_s3_key: str = Field(min_length=1, max_length=1024)
     file_hash: str = Field(min_length=1, max_length=128)
+    # T22: the uploader (SPA + integrations) must attest that the pdf
+    # carries signature evidence. Defaults to True for backwards
+    # compatibility; a false value produces a 400.
+    has_signature_evidence: bool = True
+
+
+class MarkDeclinedRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=400)
+
+
+class MarkExpiredRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=400)
 
 
 # ---- endpoints ----------------------------------------------------------
@@ -186,10 +200,61 @@ async def create_upload_endpoint(
             package_id=package_id,
             file_s3_key=body.file_s3_key,
             file_hash=body.file_hash,
+            has_signature_evidence=body.has_signature_evidence,
         )
     except SignedSowError as exc:
         raise _wrap(exc) from exc
     return serialize_upload(upload)
+
+
+@router.post("/{package_id}/decline")
+async def decline_endpoint(
+    package_id: uuid.UUID,
+    body: MarkDeclinedRequest,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """External signer declined the request (T22)."""
+
+    _, opp = await _load_package_and_opp(session, package_id)
+    _require_owner(user, opp)
+    row = await latest_upload_for(session, package_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail="no signed_sow_upload for this package"
+        )
+    try:
+        row = await mark_declined(
+            session, actor_id=user.id, upload_id=row.id, reason=body.reason
+        )
+    except SignedSowError as exc:
+        raise _wrap(exc) from exc
+    return serialize_upload(row)
+
+
+@router.post("/{package_id}/expire")
+async def expire_endpoint(
+    package_id: uuid.UUID,
+    body: MarkExpiredRequest,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """External signature request expired without a return (T22)."""
+
+    _, opp = await _load_package_and_opp(session, package_id)
+    _require_owner(user, opp)
+    row = await latest_upload_for(session, package_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail="no signed_sow_upload for this package"
+        )
+    try:
+        row = await mark_expired(
+            session, actor_id=user.id, upload_id=row.id, reason=body.reason
+        )
+    except SignedSowError as exc:
+        raise _wrap(exc) from exc
+    return serialize_upload(row)
 
 
 @router.get("/{package_id}")

@@ -14,9 +14,47 @@ interface Check {
  * Signature tab — every pre-release check listed as an independent line.
  * When Send is held the user sees the specific reason; disabled without
  * explanation is banned by spec §4.
+ *
+ * S20 W7 (T22): "prepare only the current approved package". When the
+ * package has been superseded by a newer submission, this tab renders a
+ * "Superseded by v{N}" banner and disables the primary action with a
+ * link to the newer package. The server also enforces the block — a
+ * stale URL cannot post to `/signed-sow/{id}` past the supersession.
  */
 export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
+  const pkgSuperseded = snap.approvalPackage?.superseded_by ?? null;
   const checks: Check[] = [];
+
+  if (pkgSuperseded) {
+    // Render the notice first — every check below is moot until the
+    // reviewer switches to the newer package.
+    return (
+      <div className="space-y-4" style={{ maxWidth: "960px" }}>
+        <section
+          aria-label="Superseded package"
+          className="rounded-panel border border-danger/40 bg-danger-subtle/20 p-4"
+          data-testid="signature-superseded-notice"
+        >
+          <h2 className="text-section text-danger">Package superseded</h2>
+          <p className="text-body text-text mt-2">
+            A newer approved package for this opportunity has replaced this
+            one. Signature can only be prepared for the current approved
+            package. Switch to package{" "}
+            <code className="tnum">{pkgSuperseded}</code> to continue.
+          </p>
+          <div className="mt-3">
+            <Button
+              type="button"
+              disabled
+              aria-label="Send for signature (disabled — package superseded)"
+            >
+              Send for signature — disabled
+            </Button>
+          </div>
+        </section>
+      </div>
+    );
+  }
   // S17: NDA/MSA are no longer signature gates. Show a note reflecting
   // the SOW's upload checkbox; never blocks Send.
   const marked = snap.sow?.agreements_signed === true;
