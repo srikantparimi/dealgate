@@ -194,3 +194,22 @@ Per `docs/reports/s20/contracts.md` §1 status vocabulary:
 | Product-owner click-through | `<pending>` | Runs after this doc is complete |
 
 If any row is not `verified working`, the deploy does not close.
+
+---
+
+## STATUS · 2026-10-01 18:52 UTC · **DEPLOYED to staging** · Lead-C2
+
+- Image: `s20-b75959ff` @ digest `sha256:5b5981c7c0b2480b23513fc7c835aa55c83a864a613d56b99ba5ec14f666e805` · size 103 MB.
+- Branch: `integrate/s20 @ b75959f` (W4-1 SummaryOut exposure + W4-7 total_open scope fix + rule 19 heartbeat).
+- Migration: alembic exit=0 on `MIG_TD arn:...:officeapp-dev-api-migrate:3`. Head remained at `20260930_0047_w6_watch` (no new revision in b75959f — no-op advance, same as rev 64 → rev 65).
+- api service: **rev 64 → rev 65**. Rollout `COMPLETED` on first poll of `services-stable`.
+- Worker families re-registered on same image:
+  - `officeapp-dev-alert-scheduler:18`
+  - `officeapp-dev-notification-sender:18`
+  - `officeapp-dev-renewals-scheduler:18`
+  - `officeapp-dev-audit-export:18`
+  - `officeapp-dev-hubspot-intake:16`
+  - `officeapp-dev-hubspot-reconcile:16`
+  - (`officeapp-dev-e2e-cleanup`: no task-def family — carried forward from prior deploys as missing)
+- Deploy smoke `smoke 20261001T184714Z`: **GREEN**. Test-data-clean gate: 0 leaked clients. Log: `docs/reports/s20/deploy-artifacts/smoke-c2.txt`.
+- Before-state (rollback target): api rev 64 image `s20-b2e544df`; 6 workers rev 17/15 on same image.
