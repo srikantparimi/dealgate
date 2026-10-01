@@ -165,3 +165,24 @@ Reply-To addresses.
 **Status.** Not yet filed. Add the AWS Support case id here when
 raised. Blocking: real approval mail to the five addresses
 (verification mails are allowed in sandbox and will succeed).
+
+### R-S21-02 · S21 item 8 · terraform plan prerequisites
+
+The S21-1 session landed `infra-tf/modules/prod-approvers/main.tf`
++ its wiring in `infra-tf/main.tf`. `terraform fmt -check` passes on
+the new module. `terraform plan -target=module.prod_approvers`
+could NOT be run from the session because `infra-tf/terraform.tfstate`
+exists locally and CLAUDE.md rule 15 forbids running
+`scripts/tf-init.sh` with any `terraform.tfstate*` file in place
+(other than `.stale.bak`). This is the exact stop condition the
+rule describes.
+
+**Kanna's path to apply:**
+
+1. `mv infra-tf/terraform.tfstate{,.stale.bak}` (and `.backup` likewise if present).
+2. `scripts/tf-init.sh` — answer any state-migration prompt verbatim.
+3. `terraform -chdir=infra-tf plan -target=module.prod_approvers`.
+4. Expect 6 adds: 5 approver addresses + Srikanth as Delivery fallback.
+5. `terraform -chdir=infra-tf apply -target=module.prod_approvers` — answer the confirm prompt.
+6. Each of the five mailboxes receives a verification mail. Click once each.
+7. Record which addresses are verified in the scoreboard proof column for S21-8.

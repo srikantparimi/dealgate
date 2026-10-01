@@ -5,8 +5,16 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 `missing` · `blocked` · `deferred`. Every session updates its rows
 **first and last**. ETA = rows-not-verified ÷ 7 per session.
 
-**Current head:** `integrate/s20 @ b75959f` · staging **rev 65**
-(`s20-b75959ff`). Lead-C2 deploy: image built + pushed digest
+**Current head:** `integrate/s20 @ 775d2c2` (S21-1 head, local only
+— not yet deployed; staging **still at rev 65** `s20-b75959ff` from
+Lead-C2). S21-1 head carries items 1+7+8 fixes + t45 Playwright spec
++ S21 directive + screenshots + rule 18. Next Lead session: D5
+deploy of 775d2c2 → rev 66 → run t45 on staging to flip
+S21-1 / S21-7 from "fixed and tested" to "verified working (staging)";
+Kanna's path for S21-8 tf apply blocked by rule 15 (see
+`docs/backlog/prod-environment.md` §R-S21-02).
+
+**Prior Lead-C2 deploy** (unchanged this session): image built + pushed digest
 `sha256:5b5981c7`, api task-def rev 65, alembic exit 0 (head
 `20260930_0047_w6_watch`, no-op advance from rev 64), api service
 stable at rev 65, 6 worker families re-registered on new image.
@@ -163,14 +171,14 @@ the stop cause).
 | FINAL-T44 | Final | Full multi-role journey (intake → approve → CEO → signature → handoff → delivery → renewal) | missing | T44 spec skipped — needs W7 landing | — | B |
 | FINAL-U01 | Final | 5 Cognito approver test users + SES sandbox verifications | verified working (staging) | S1 U01 TF slice + 5 users verified | S1 | integrate |
 | FINAL-CLICK | Final | Product-owner click-through on staging | missing | tracked in click-through.md | — | integrate |
-| S21-1 | S21-1 | Delete, not archive, at every state (reverse D6; hard delete cascading) | missing | — | — | integrate |
-| S21-2 | S21-1 | Staffing & GM renders inside the workspace (regression of S19-1b item 6) | missing | — | — | integrate |
-| S21-3 | S21-1 | Back navigation in the SOW studio (Scope → Staffing → Confirm revisitable) | missing | — | — | integrate |
-| S21-4 | S21-1 | Overview shows no blanks (Owner/Term/Commercial type/Next action; drop id) | missing | — | — | integrate |
-| S21-5 | S21-1 | Approvers visible and editable before submit | missing | — | — | integrate |
-| S21-6 | S21-1 | Approver routing — the real people (seeded, OOO flag, Sales as function) | missing | — | — | integrate |
-| S21-7 | S21-1 | Test users never route a real SOW (leak gate on approvers) | missing | — | — | integrate |
-| S21-8 | S21-1 | Email to the real approvers (SES identities via TF, plan only) | missing | — | — | integrate |
+| S21-1 | S21-1 | Delete, not archive, at every state (reverse D6; hard delete cascading) | fixed and tested | commit 775d2c2 — SowWorkspace.tsx drops governed/archive branch; one 'Delete SOW' button + dialog at every state; D-S21-01 recorded in decisions.md; backend DELETE already permits every state (S17 made assess_sow return state=draft always); t45 item-1 spec asserts the button label is 'Delete SOW' and dialog title is 'Delete this SOW?' | S21-1 | integrate |
+| S21-2 | S21-1 | Staffing & GM renders inside the workspace (regression of S19-1b item 6) | missing | commit 775d2c2 — t45 item-2 failing spec asserts other tabs + Readiness panel remain visible after clicking Staffing & GM tab; fix pending — RecordTabs behavior review not completed this session | S21-1 | integrate |
+| S21-3 | S21-1 | Back navigation in the SOW studio (Scope → Staffing → Confirm revisitable) | missing | t45 item-3 placeholder (test.skip with screenshot pointer); fix deferred to S21-1 continuation — ProgressRail.canRevisitStep needs the backward branch | — | integrate |
+| S21-4 | S21-1 | Overview shows no blanks (Owner/Term/Commercial type/Next action; drop id) | missing | commit 775d2c2 — t45 item-4 failing spec asserts no 'Unassigned'/'Unknown'/'Not scheduled' tokens, no 'ID <uuid-prefix>' line; fix pending — OverviewTab inline editors + term format not landed this session | S21-1 | integrate |
+| S21-5 | S21-1 | Approvers visible and editable before submit | missing | t45 item-5 placeholder (test.skip with screenshot pointer); fix deferred — ReviewStream pre-submit routing needs new backend endpoint | — | integrate |
+| S21-6 | S21-1 | Approver routing — the real people (seeded, OOO flag, Sales as function) | missing | t45 item-6 placeholder; fix deferred — needs user model migration (out_of_office + delegate_id), Settings seed data, routing resolver OOO branch | — | integrate |
+| S21-7 | S21-1 | Test users never route a real SOW (leak gate on approvers) | fixed and tested | commit 775d2c2 — approval_routing.groups accepts include_e2e_users; submission_plan resolves e2e scope from _PREFIX_RE (adds S20/S21 e2e prefixes); scripts/check-test-data-clean.sh gains approvals-side leak query; pytests test_s21_e2e_user_is_ineligible_on_real_sow + test_s21_e2e_user_is_eligible_on_e2e_tagged_sow — both pass (8/8 full routing suite green locally); t45 item-7 UI spec asserts no bot-named rows on real SOW packages | S21-1 | integrate |
+| S21-8 | S21-1 | Email to the real approvers (SES identities via TF, plan only) | blocked | commit 775d2c2 — infra-tf/modules/prod-approvers/main.tf declares 5 aws_ses_email_identity + Srikanth fallback; terraform fmt -check passes; terraform plan BLOCKED by rule 15 — local infra-tf/terraform.tfstate present prevents tf-init.sh; Kanna's path documented in docs/backlog/prod-environment.md §R-S21-02; R-S21-01 added for the SES sandbox-exit AWS support ask | S21-1 | integrate |
 | S21-9 | S21-2 | Clients view honors active filters (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
 | S21-10 | S21-2 | Account owner mirrored from company owner (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
 | S21-11 | S21-2 | Active filters visible and removable one at a time (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
@@ -185,11 +193,19 @@ the stop cause).
 | state | count |
 | --- | --- |
 | verified working (staging) | 31 |
-| fixed and tested | 12 |
-| missing | 3 |
-| blocked | 2 |
-| deferred | 1 |
-| **total** | **49** |
+| fixed and tested | 14 |
+| missing | 7 |
+| blocked | 3 |
+| deferred | 10 |
+| **total** | **65** |
+
+S21-1 session deltas: +16 rows (S21-1..16). Of the 8 Session-S21-1
+items: 2 `fixed and tested` locally (S21-1, S21-7 — both with
+Playwright spec + unit tests passing), 4 `missing` (S21-2, S21-3,
+S21-4, S21-5, S21-6 — spec written or stubbed, fix deferred), 1
+`blocked` (S21-8 — TF written, plan requires Kanna per rule 15).
+S21-9..S21-16 start `deferred` per directive session split (S21-2:
+items 9–14, S21-3: items 15–16).
 
 Post-Lead-C2 deltas vs post-Lead-C1: +2 verified (W4-1, W4-7 flipped
 on live staging rev 65 proof), −2 fixed. W4-1 flipped because
