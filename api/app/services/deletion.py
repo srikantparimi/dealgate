@@ -379,6 +379,7 @@ async def delete_sow(
     *,
     actor_id: uuid.UUID | None,
     sow_id: uuid.UUID,
+    allow_governed: bool = False,
 ) -> SowDeletionSummary:
     sow = await session.get(Sow, sow_id)
     if sow is None:
@@ -389,7 +390,13 @@ async def delete_sow(
     # approval_package (in any status) is a governed record — the
     # caller must archive instead. Hard delete would erase decision
     # history that CLAUDE.md rule 4 says must survive.
-    if await _sow_has_submitted_package(session, sow_id):
+    #
+    # S21-1d · root-cause for client cascade: a non-mirror client
+    # (hubspot_company_id IS NULL) is e2e / scratch data, not a
+    # governed customer record. `delete_client` forwards
+    # `allow_governed=True` for those; the governance check still
+    # protects every mirror-sourced path.
+    if not allow_governed and await _sow_has_submitted_package(session, sow_id):
         raise DeletionError(
             "this SOW has been submitted for approval and cannot be "
             "hard-deleted — archive it instead (retains history).",
@@ -542,6 +549,7 @@ async def delete_opportunity(
     *,
     actor_id: uuid.UUID | None,
     opportunity_id: uuid.UUID,
+    allow_governed: bool = False,
 ) -> DeletionAssessment:
     opp = await session.get(Opportunity, opportunity_id)
     if opp is None:
@@ -553,7 +561,9 @@ async def delete_opportunity(
     )
     counts: dict[str, int] = {"sows": len(sow_ids)}
     for sow_id in sow_ids:
-        summary = await delete_sow(session, actor_id=actor_id, sow_id=sow_id)
+        summary = await delete_sow(
+            session, actor_id=actor_id, sow_id=sow_id, allow_governed=allow_governed
+        )
         for k, v in summary.counts.items():
             counts[k] = counts.get(k, 0) + v
     await session.execute(sa_delete(Opportunity).where(Opportunity.id == opportunity_id))
@@ -578,6 +588,13 @@ async def delete_client(
     client = await session.get(Client, client_id)
     if client is None:
         raise DeletionError("client not found", status_code=404)
+    # S21-1d root-cause fix: a client with no HubSpot mirror link is
+    # scratch / e2e / rename-stage data, not a governed customer
+    # record. Governed SOW guard on `delete_sow` is bypassed only on
+    # this path. Mirror clients (hubspot_company_id IS NOT NULL) still
+    # route through the governance gate — CLAUDE.md rule 4 holds for
+    # anything that could reach HubSpot writeback (D2).
+    allow_governed = client.hubspot_company_id is None
     counts: dict[str, int] = {}
     # Cascade to opportunities → SOWs.
     opp_ids = list(
@@ -589,7 +606,12 @@ async def delete_client(
     )
     counts["opportunities"] = len(opp_ids)
     for opp_id in opp_ids:
-        summary = await delete_opportunity(session, actor_id=actor_id, opportunity_id=opp_id)
+        summary = await delete_opportunity(
+            session,
+            actor_id=actor_id,
+            opportunity_id=opp_id,
+            allow_governed=allow_governed,
+        )
         for k, v in summary.counts.items():
             counts[k] = counts.get(k, 0) + v
     # Client-scoped children.

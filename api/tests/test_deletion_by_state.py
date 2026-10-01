@@ -159,3 +159,48 @@ async def test_archive_is_idempotent(session):
     # Second call should not raise and should return a summary.
     result = await archive_sow(session, sow_id=sow.id, actor_id=owner.id)
     assert result.sow_id == sow.id
+
+
+# ---------------------------------------------------------------------------
+# S21-1d · root-cause: non-mirror client cascades through governed SOWs.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_non_mirror_client_hard_deletes_with_governed_sow(session):
+    """A client with no hubspot_company_id is scratch / e2e data; it
+    must hard-delete even when its SOW has reached approval."""
+
+    from app.services.deletion import delete_client
+
+    owner, opp, sow = await _seed(session, with_package=True)
+    client = await session.get(Client, opp.client_id)
+    assert client is not None and client.hubspot_company_id is None, "fixture sanity"
+    # Baseline: delete_sow refuses the governed row.
+    with pytest.raises(DeletionError):
+        await delete_sow(session, actor_id=owner.id, sow_id=sow.id)
+    # delete_client cascades through anyway because the client is non-mirror.
+    result = await delete_client(session, actor_id=owner.id, client_id=client.id)
+    assert result.state == "draft"
+    # Client + SOW are actually gone.
+    assert await session.get(Client, client.id) is None
+    assert await session.get(Sow, sow.id) is None
+
+
+@pytest.mark.asyncio
+async def test_mirror_client_still_refuses_governed_sow(session):
+    """A client with a hubspot_company_id value remains governance-
+    protected — the S20 W3 D6 refusal still fires. CLAUDE.md rule 4
+    protects every mirror-sourced record."""
+
+    from app.services.deletion import delete_client
+
+    owner, opp, _sow = await _seed(session, with_package=True)
+    client = await session.get(Client, opp.client_id)
+    assert client is not None
+    client.hubspot_company_id = "fake-hubspot-123"
+    await session.commit()
+    with pytest.raises(DeletionError):
+        await delete_client(session, actor_id=owner.id, client_id=client.id)
+    # Client survives.
+    assert await session.get(Client, client.id) is not None
