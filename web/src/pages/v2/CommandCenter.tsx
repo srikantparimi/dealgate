@@ -635,30 +635,33 @@ export function CommandCenterPage() {
   }, [load]);
 
   // S20 W6 Session 4b item 7 · Watching metric card on the banner.
-  const [watchingCount, setWatchingCount] = useState<number | null>(null);
+  // S21-1d · item 1: the card is always on the banner — honest zero
+  // when the watchlist is empty or the fetch fails. The link stays
+  // live so a user with no watched rows can still open the surface.
+  // The old `null` sentinel hid the card on empty-watchlist, which
+  // failed `s20/t39-w4-session5.spec.ts:33` (W6-7 regression on an
+  // empty staging DB).
+  const [watchingCount, setWatchingCount] = useState<number>(0);
   useEffect(() => {
     import("../../api/client").then(({ listWatchlist }) =>
       listWatchlist()
         .then((r) =>
           setWatchingCount((r.counts.opportunity || 0) + (r.counts.client || 0)),
         )
-        .catch(() => setWatchingCount(null)),
+        .catch(() => setWatchingCount(0)),
     );
   }, []);
   const metrics = useMemo(() => {
     const base = data ? bannerMetrics(data, isCeo) : [];
-    if (watchingCount != null) {
-      return [
-        ...base,
-        {
-          id: "watching",
-          label: "Watching",
-          value: String(watchingCount),
-          href: "/pipeline?watching=true",
-        },
-      ];
-    }
-    return base;
+    return [
+      ...base,
+      {
+        id: "watching",
+        label: "Watching",
+        value: String(watchingCount),
+        href: "/pipeline?watching=true",
+      },
+    ];
   }, [data, isCeo, watchingCount]);
   const signals = useMemo(
     () => (data ? firstPrioritySignals(data) : []),

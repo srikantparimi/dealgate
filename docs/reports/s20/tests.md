@@ -124,3 +124,44 @@ W5 runs the growing suite (`pytest -q && cd web && npx vitest run --reporter=dot
   real assertions on seeded 137 rows — all pass. T40 gains L06b +
   Owner/BU-present blocks (both pass on rev 58). All three lines now
   `verified working (staging)` in matrix.md.
+
+## S21-1d · dev-harness-only staging skip
+
+The Playwright suite contains two generations of specs:
+
+- `specs/s20/*.spec.ts` (T01–T45) — authored for staging. They
+  authenticate via Cognito (`fixtures/multi-role-auth.ts`
+  `authAsRole()`), read live data from the staging API, and assert
+  on URLs that match the staging routes.
+- `specs/0[1-9]-*.spec.ts`, `specs/1[0-9]-*.spec.ts`,
+  `specs/2[0-5]-*.spec.ts` — dev-harness-only. These predate S19
+  and use `fixtures/seed.ts`'s `seedClientWithDeal()` +
+  `applyTestUser()` which rely on the local dev server's
+  `X-Test-User` header + direct DB seeding. They expect the
+  removed `/deals` route (replaced by `/pipeline` in S19).
+
+The two cannot be run in the same invocation against the same
+environment. `.github/workflows/e2e.yml` already stands up a local
+Postgres + uvicorn + Vite for the dev-harness set. For staging
+runs, `playwright.config.ts` now sets `testIgnore` to the
+numeric-prefix glob when `E2E_BASE_URL` resolves to
+`app.dealgateapp.com` (or the older CloudFront / smartek21
+hostnames) — so running the suite against staging reports a clean
+pass/fail count without 22 structural reds.
+
+### Known flakes on staging (concurrent-load dependent · S21-1d)
+
+- `s20/t09-names-not-ids.spec.ts:43` — pipeline opportunity rows:
+  deal column shows the dealname, not the stage id. Flakes when
+  the deal-list network response races the table-render polling.
+  Isolated rerun passes. Open item: **S21-12** (raw identifiers on
+  the deal page / breadcrumbs) tracks the broader class.
+- `s20/t40-live-repro.spec.ts:92` — L05: client rows show owner +
+  Open count + last activity. Flakes under the same race. Open
+  item: **S21-9** (Clients view honors active filters).
+
+No in-suite retry per CLAUDE.md rule 18 (test must assert on the
+screen the user sees, deterministically — a retry hides the race
+rather than fixes it). The fix for both is to serialise the
+staging-side data refetch; captured as follow-up work under their
+S21-2 items.
