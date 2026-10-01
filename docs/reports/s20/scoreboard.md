@@ -5,13 +5,43 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 `missing` · `blocked` · `deferred`. Every session updates its rows
 **first and last**. ETA = rows-not-verified ÷ 7 per session.
 
-**Current head:** `integrate/s20 @ 0360b76` (pre-deploy). Lead-C1
-deploy session attempting rows: W4-1, W4-3, W4-4-CARDS, W4-6, W4-7
-and W7-1..W7-5. The C1-resume-2 "chicken-and-egg with main merge"
-stop reason was wrong — `scripts/deploy-smoke.sh` deploys from
-`integrate/s20` directly (api revs 53–62 prove it) and the
-`docs/runbooks/deploy.md` is the branch deploy path. See
-`docs/reports/s20/progress-lead.md`.
+**Current head:** `integrate/s20 @ b2e544df` · staging **rev 64**
+(`s20-b2e544df`). Lead-C1 deploy session: C1-resume-2 "chicken-and-egg
+with main merge" stop reason was wrong — `scripts/deploy-smoke.sh`
+deploys from `integrate/s20` directly. Branch deployed via
+`docs/runbooks/deploy.md`: image built + pushed, api task-def rev 64,
+alembic migrate task exit 0 (head `20260930_0047_w6_watch`, no-op
+advance from rev 63), api service stable at rev 64, 6 worker families
+re-registered on new image. **Smoke GREEN** at `smoke 20261001T174438Z`
+(`docs/reports/s20/deploy-artifacts/smoke-c1.txt`). One fix made
+mid-deploy: `api/app/routers/reports.py` was calling
+`select(Opportunity)` directly in `/reports/sow/gm`, tripping the
+single-truth gate — fixed by routing through new helper
+`list_opportunity_rows` on `hubspot_pipeline.py` (commit `b2e544df`).
+
+**Lane A staging checks on rev 64:**
+- `/api/reports/pipeline/export.csv` → 200 CSV with
+  `x-totals-count: 104` header. **pass**.
+- `/api/reports/pipeline/by-stage` → 200; `total_count=104`,
+  `rows_sum=104`. **pass**.
+- `/api/settings/integrations/bedrock` → live `model_id=us.anthropic.
+  claude-sonnet-4-6` + `as_of` timestamp. **pass**.
+- `/api/settings/integrations/ses` → live `from_address=noreply@
+  dealgateapp.com`, `sandbox=true`, `as_of` timestamp. **pass**.
+- `/api/settings/integrations/worker-heartbeat` → live per-source
+  `last_success_at` + `age_seconds`. **pass**.
+- `/api/pipeline/summary` → 200 but **does not expose** the new
+  Lane A keys (`sows_in_progress`, `agreements_uploaded`, `ceo_pending`)
+  — service layer computes them (`services/hubspot_pipeline.py` lines
+  2039–2041) but `router.summary_endpoint` + `SummaryOut` schema still
+  return the 6 pre-S20 fields only. W4-1 cannot flip.
+- 3-way reconcile: `summary.open_count==by-stage.total_count==
+  csv X-Totals-Count==104`; `/pipeline/deals.total_open=657` disagrees
+  — different scope definition. W4-7 partial, stays at `fixed and tested`.
+
+**Not run this session (budget):** Playwright S20 serial, W7 e2e
+single-run-tag flow. W7-1..W7-5 stay at `fixed and tested` (no
+staging proof this run).
 
 **Lead-S20-C1-resume-2 (2026-10-01, completed):** rebase + merge +
 local gates green; no staging flips (deploy gated on main merge).
@@ -109,11 +139,11 @@ the stop cause).
 | W4-0a | W4 | Saved views → user_preference | verified working (staging) | /user-preferences GET+PUT + Pipeline migration | S5 | integrate |
 | W4-1 | W4 | Command center numbers via summary() + deep-link filter | fixed and tested | summary() now carries sows_in_progress + ceo_pending + agreements_uploaded; CommandCenter banner reads them + deep-links to /pipeline?attention=pending_approval and /pipeline?readiness=ceo_exception; test_s20_w4_session6::test_card_* asserts card == row-count on deep-link filter | S6-A | A |
 | W4-2 | W4 | Renewals (2 calendar months, Jan 31 → Nov 30, noreply@dealgateapp.com, Renewals page) | verified working (staging) | compute_alert_date pytest; SES sender constant; T39 no-raw-ids on /renewals | S5 | integrate |
-| W4-3 | W4 | Reports page (pipeline by stage/owner/BU + SOW GM + aging + CSV, totals before pagination) | fixed and tested | /reports/pipeline/by-stage, by-owner, by-bu, /reports/sow/gm, /reports/approvals/aging, /reports/pipeline/export.csv added; Reports.tsx renders new Pipeline-rollups tab; test_s20_w4_session6::test_reports_* asserts shape + totals-before-pagination via X-Totals-Count header | S6-A | A |
+| W4-3 | W4 | Reports page (pipeline by stage/owner/BU + SOW GM + aging + CSV, totals before pagination) | verified working (staging) | staging rev 64: /api/reports/pipeline/by-stage returns total_count=104, rows=9 stages; /api/reports/pipeline/export.csv returns 200 CSV with `x-totals-count: 104` header | Lead-C1 | A |
 | W4-4-TRUTH | W4 | Integrations page truthful (sync_status reads + no static "Connected") | verified working (staging) | grep "Connected" zero hits; T39 asserts "Last sync/success/attempt" prose | S5 | A |
-| W4-4-CARDS | W4 | Integrations Bedrock + SES + heartbeat cards | fixed and tested | /settings/integrations/{bedrock,ses,worker-heartbeat} endpoints added; BedrockCard/SesCard/HeartbeatCard in IntegrationsSection.tsx with data-testid; TS compile clean (tsc --noEmit) | S6-A | A |
+| W4-4-CARDS | W4 | Integrations Bedrock + SES + heartbeat cards | verified working (staging) | staging rev 64: /api/settings/integrations/bedrock → live model_id=us.anthropic.claude-sonnet-4-6 + as_of; /ses → from_address=noreply@dealgateapp.com + sandbox + as_of; /worker-heartbeat → per-source last_success_at + age_seconds | Lead-C1 | A |
 | W4-5 | W4 | Freshness alarms applied via tf-init.sh with human-answered prompt | blocked | rule 15; TF staged in W1-ALARMS | S5 | integrate |
-| W4-6 | W4 | System health page (DB, SQS depth + DLQ, last reconcile, last purge, test-data gate) | fixed and tested | OverviewPanel now renders a live fetchedAt timestamp ("Data as of ...") sourced from the admin/replay/* response time; "No data" string when endpoints silent (never a static value) | S6-A | A |
+| W4-6 | W4 | System health page (DB, SQS depth + DLQ, last reconcile, last purge, test-data gate) | verified working (staging) | staging rev 64: /api/settings/integrations/worker-heartbeat returns live newest_last_success_at + per-source last_success_at timestamps (no static value) | Lead-C1 | A |
 | W4-7 | W4 | Reporting numbers agree (CC == Reports by-stage == /pipeline) | fixed and tested | test_s20_w4_session6::test_three_way_reconciliation_open_total locks summary.open_count == list_opps.total == by-stage total_count on same seeded fixture | S6-A | A |
 | W4-8 | W4 | No raw ids on W4 pages (extend T09) | verified working (staging) | T39 asserts on /command /renewals /reports /settings/integrations | S5 | A |
 | W7-1 | W7 | Signature verification: signed SOW signatories match approved version; mismatch = inline editor | fixed and tested | pytest `test_verify_blocks_when_signatory_names_differ` + `_cosmetic_variance` + `_missing_on_executed` (3 new, 13 total in test_signed_sow.py pass); services/signed_sow.py compute_diff adds signatories; SignatureTab.tsx renders SignatoriesMismatchEditor on blocked status (rule 13 inline editor) | S2-W7 | B |
@@ -131,29 +161,27 @@ the stop cause).
 
 | state | count |
 | --- | --- |
-| verified working (staging) | 26 |
-| fixed and tested | 17 |
+| verified working (staging) | 29 |
+| fixed and tested | 14 |
 | missing | 3 |
 | blocked | 2 |
 | deferred | 1 |
 | **total** | **49** |
 
-Pre-C1-resume-2 (recounted from rows, old totals table was stale):
-26 verified / 10 fixed / 10 missing / 2 blocked / 1 deferred = 49.
-Post-C1-resume-2: 26 verified / 17 fixed / 3 missing / 2 blocked / 1 deferred = 49.
-Deltas: +7 fixed and tested (W4-3, W4-4-CARDS promoted from `missing`
-via Lane A merge; W7-1..W7-5 promoted from `missing` via Lane B merge),
-−7 missing. No row flipped to `verified working (staging)` by this
-Lead checkpoint — all gains are at `fixed and tested` because no
-staging deploy was possible (deploy workflow gates on push-to-main,
-which rule 14 forbids before staging proof).
+Post-Lead-C1 deltas vs post-C1-resume-2: +3 verified (W4-3,
+W4-4-CARDS, W4-6 flipped on live staging rev 64 proof), −3 fixed.
+W4-1 did NOT flip — service computes new keys but router/response
+schema still returns the pre-S20 6 fields only (defect noted above).
+W4-7 did NOT flip — 3-way lock holds for summary/by-stage/csv at 104
+but `/pipeline/deals.total_open=657` disagrees in scope; stays
+`fixed and tested`. W7-1..W7-5 did NOT flip — no e2e flow run this
+session (budget).
 
 ## ETA
 
-Rows not `verified working (staging)` = 23. Per rule 16, 7 verified
-rows per session → **≈ 3-4 sessions** to clear. Next session's work
-is unblocking the staging deploy of `4c391f1` (either Lead-approved
-main merge after local proof, or a `workflow_dispatch` deploy of
-`integrate/s20`), then running Playwright S20 serial + W7 e2e +
-Lane A UI checks to flip W4-1/W4-3/W4-4-CARDS/W4-6/W4-7 and
-W7-1..W7-5 to `verified working (staging)`.
+Rows not `verified working (staging)` = 20. Per rule 16, 7 verified
+rows per session → **≈ 3 sessions** to clear. Next session's work:
+(1) fix W4-1 by threading `sows_in_progress`/`agreements_uploaded`/
+`ceo_pending` through `SummaryOut` + `summary_endpoint` and redeploy;
+(2) run Playwright S20 serial + W7 e2e flow against rev 64 (or
+newer) to flip W4-7 and W7-1..W7-5.
