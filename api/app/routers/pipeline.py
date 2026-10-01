@@ -204,6 +204,11 @@ class OpportunityRowOut(BaseModel):
     sow_count: int
     hubspot_pipeline_id: str | None = None
     business_unit: str | None = None
+    # S20 W6 Session 4b item 2 · latest-comment preview on the row.
+    latest_comment_body: str | None = None
+    latest_comment_author: str | None = None
+    latest_comment_pinned: bool = False
+    latest_comment_at: datetime | None = None
 
 
 class ClientRowOut(BaseModel):
@@ -553,6 +558,10 @@ def _opp_to_out(row: OpportunityRow) -> OpportunityRowOut:
         sow_count=row.sow_count,
         hubspot_pipeline_id=row.hubspot_pipeline_id,
         business_unit=row.business_unit,
+        latest_comment_body=getattr(row, "latest_comment_body", None),
+        latest_comment_author=getattr(row, "latest_comment_author", None),
+        latest_comment_pinned=getattr(row, "latest_comment_pinned", False),
+        latest_comment_at=getattr(row, "latest_comment_at", None),
     )
 
 

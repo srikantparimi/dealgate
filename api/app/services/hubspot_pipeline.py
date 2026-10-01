@@ -613,6 +613,14 @@ class OpportunityRow:
     sow_count: int
     hubspot_pipeline_id: str | None
     business_unit: str | None
+    # S20 W6 Session 4b · latest-comment row preview (item 2). Pinned
+    # wins over newer: subquery sorts by (pinned DESC, created_at DESC)
+    # and takes the first. All four fields are None when the deal has
+    # no non-deleted comments.
+    latest_comment_body: str | None = None
+    latest_comment_author: str | None = None
+    latest_comment_pinned: bool = False
+    latest_comment_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -977,6 +985,35 @@ def _sow_count_subq():
     )
 
 
+def _latest_comment_subq(column: str):
+    """S20 W6 Session 4b item 2 · latest comment on the Pipeline row.
+
+    Pinned wins over newer: ORDER BY pinned DESC, created_at DESC. One
+    scalar subquery per column we want (body, author_id, created_at,
+    pinned); SQL is slightly chatty but each is a direct index hit on
+    `(opportunity_id, pinned desc, created_at desc)`. Kept correlated
+    so the query budget stays bounded.
+    """
+    from app.models.deal_comment import DealComment
+
+    expr = {
+        "body": DealComment.body,
+        "author_id": DealComment.author_id,
+        "author_name_fallback": DealComment.author_name_fallback,
+        "pinned": DealComment.pinned,
+        "created_at": DealComment.created_at,
+    }[column]
+    return (
+        select(expr)
+        .where(DealComment.opportunity_id == Opportunity.id)
+        .where(DealComment.deleted_at.is_(None))
+        .order_by(DealComment.pinned.desc(), DealComment.created_at.desc())
+        .limit(1)
+        .correlate(Opportunity)
+        .scalar_subquery()
+    )
+
+
 # --- Mapping approval-package status → D3 display state --------------------
 
 _PACKAGE_TO_STATE: dict[str, SowApprovalState] = {
@@ -1101,6 +1138,12 @@ async def list_opportunities(
     subq_sow_id = _sow_id_subq().label("sow_id")
     subq_signed = _signed_sow_exists_subq().label("signed_ct")
     subq_sow_ct = _sow_count_subq().label("sow_ct")
+    # S20 W6 Session 4b item 2 · latest comment preview per row.
+    subq_c_body = _latest_comment_subq("body").label("c_body")
+    subq_c_author_id = _latest_comment_subq("author_id").label("c_author_id")
+    subq_c_fallback = _latest_comment_subq("author_name_fallback").label("c_fallback")
+    subq_c_pinned = _latest_comment_subq("pinned").label("c_pinned")
+    subq_c_at = _latest_comment_subq("created_at").label("c_at")
     total = func.count().over().label("total")
 
     stmt = (
@@ -1114,6 +1157,11 @@ async def list_opportunities(
             subq_sow_id,
             subq_signed,
             subq_sow_ct,
+            subq_c_body,
+            subq_c_author_id,
+            subq_c_fallback,
+            subq_c_pinned,
+            subq_c_at,
             total,
         )
         .join(Client, Client.id == Opportunity.client_id, isouter=True)
@@ -1125,6 +1173,24 @@ async def list_opportunities(
     stmt = stmt.offset(max(0, (page - 1) * page_size)).limit(page_size)
 
     rows = (await session.execute(stmt)).all()
+
+    # Resolve latest-comment authors into display names via one batched
+    # query — stays within the C7 ≤3-query budget (main select, this
+    # author batch, and the stage-count aggregate below).
+    comment_author_ids = {
+        row[10] for row in rows if row[10] is not None
+    }  # row[10] = c_author_id
+    author_names: dict[uuid.UUID, str] = {}
+    if comment_author_ids:
+        author_rows = (
+            await session.execute(
+                select(User.id, User.name, User.email).where(
+                    User.id.in_(comment_author_ids)
+                )
+            )
+        ).all()
+        for uid, uname, uemail in author_rows:
+            author_names[uid] = uname or uemail or "User"
 
     items: list[OpportunityRow] = []
     total_count = 0
@@ -1138,6 +1204,11 @@ async def list_opportunities(
         sow_id,
         signed_ct,
         sow_ct,
+        c_body,
+        c_author_id,
+        c_fallback,
+        c_pinned,
+        c_at,
         total_c,
     ) in rows:
         total_count = int(total_c or 0)
@@ -1195,6 +1266,12 @@ async def list_opportunities(
                     getattr(opp, "hubspot_business_unit", None)
                     or (getattr(client, "hubspot_business_unit", None) if client else None)
                 ),
+                latest_comment_body=c_body,
+                latest_comment_author=(
+                    author_names.get(c_author_id) if c_author_id else c_fallback
+                ),
+                latest_comment_pinned=bool(c_pinned) if c_pinned is not None else False,
+                latest_comment_at=c_at,
             )
         )
 
@@ -1367,9 +1444,18 @@ def _apply_opportunity_sort(stmt, sort: tuple[SortSpec, ...]):
     for spec in sort:
         direction = "desc" if spec.descending else "asc"
         if spec.column == "attention":
-            # `no_owner` = owner_id IS NULL, always wants to sort to top when desc
-            expr = Opportunity.owner_id.is_(None)
-            order_by.append(expr.desc() if spec.descending else expr.asc())
+            # S20 W6 Session 4b item 1 · overdue sorts to top. Attention
+            # order used to be `no_owner` only; now a row counts as
+            # attention-worthy if ANY of: next_action overdue OR no-owner
+            # OR closed-won-no-release.
+            na_due = _next_action_min_due_subq()
+            today = func.current_date()
+            overdue_flag = case(
+                (and_(na_due.is_not(None), na_due < today), 2),
+                (Opportunity.owner_id.is_(None), 1),
+                else_=0,
+            )
+            order_by.append(overdue_flag.desc() if spec.descending else overdue_flag.asc())
         elif spec.column == "next_action_due":
             expr = _next_action_min_due_subq()
             order_by.append(expr.desc().nullslast() if spec.descending else expr.asc().nullslast())

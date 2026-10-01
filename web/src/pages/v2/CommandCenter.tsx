@@ -621,10 +621,32 @@ export function CommandCenterPage() {
     void load();
   }, [load]);
 
-  const metrics = useMemo(
-    () => (data ? bannerMetrics(data, isCeo) : []),
-    [data, isCeo],
-  );
+  // S20 W6 Session 4b item 7 · Watching metric card on the banner.
+  const [watchingCount, setWatchingCount] = useState<number | null>(null);
+  useEffect(() => {
+    import("../../api/client").then(({ listWatchlist }) =>
+      listWatchlist()
+        .then((r) =>
+          setWatchingCount((r.counts.opportunity || 0) + (r.counts.client || 0)),
+        )
+        .catch(() => setWatchingCount(null)),
+    );
+  }, []);
+  const metrics = useMemo(() => {
+    const base = data ? bannerMetrics(data, isCeo) : [];
+    if (watchingCount != null) {
+      return [
+        ...base,
+        {
+          id: "watching",
+          label: "Watching",
+          value: String(watchingCount),
+          href: "/pipeline?watching=true",
+        },
+      ];
+    }
+    return base;
+  }, [data, isCeo, watchingCount]);
   const signals = useMemo(
     () => (data ? firstPrioritySignals(data) : []),
     [data],

@@ -68,6 +68,8 @@ import {
 } from "../../ui-v2/primitives/tabs";
 
 const PREF_KEY_VIEW = "s19.pipeline.view";
+// S20 W6 Session 4b item 6 · last applied saved-view, per-user per-tab.
+const PREF_KEY_LAST_VIEW = "s20.pipeline.lastSavedView";
 const HUBSPOT_NEW_DEAL_URL =
   "https://app.hubspot.com/contacts/48656168/deal/new";
 
@@ -330,7 +332,24 @@ export function PipelinePage() {
       .then((r) => setGroups(r.items))
       .catch(() => setGroups([]));
     listSavedViews()
-      .then((r) => setSavedViews(r.items))
+      .then((r) => {
+        setSavedViews(r.items);
+        // Item 6: apply last saved view only if URL is empty (explicit URL still wins).
+        const hasExplicitFilter =
+          searchParams.toString().replace(/^view=\w+&?/, "") !== "";
+        const lastKey = window.localStorage.getItem(PREF_KEY_LAST_VIEW);
+        if (!hasExplicitFilter && lastKey) {
+          const v = r.items.find((it) => it.id === lastKey);
+          if (v) {
+            const sp = new URLSearchParams();
+            for (const [k, val] of Object.entries(v.filter_json)) {
+              if (Array.isArray(val)) val.forEach((x) => sp.append(k, String(x)));
+              else if (val != null && val !== false) sp.set(k, String(val));
+            }
+            setSearchParams(sp, { replace: true });
+          }
+        }
+      })
       .catch(() => setSavedViews([]));
     listWatchlist()
       .then(setWatchlist)
@@ -605,6 +624,40 @@ export function PipelinePage() {
               Unknown stage · {unknownBucket}
             </span>
           ) : null}
+        </div>
+      ) : null}
+
+      {/* S20 W6 Session 4b item 5 · "why is this here" — explain the
+        * active scope (group / view / watching) in prose so a user can
+        * see why these specific rows are in view. */}
+      {(filters.group?.length || filters.watching) ? (
+        <div
+          className="mb-3 rounded-panel border border-primary/40 bg-primary-subtle/40 px-3 py-2 text-body text-text"
+          data-testid="scope-explainer"
+        >
+          <span className="font-medium">Why these rows: </span>
+          {filters.group?.length
+            ? (() => {
+                const g = groups.find((x) => x.id === filters.group![0]);
+                if (!g) return "scoped to a group.";
+                if (g.filter_json) {
+                  const preds = Object.entries(g.filter_json)
+                    .filter(([, v]) => v != null && v !== false)
+                    .map(([k, v]) => `${k} = ${JSON.stringify(v)}`);
+                  return (
+                    <>
+                      rule-based group <b>{g.name}</b> matches rows where{" "}
+                      {preds.join(" AND ")}.
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    manual group <b>{g.name}</b> (members added by hand).
+                  </>
+                );
+              })()
+            : "scoped to deals + clients you've starred (Watching)."}
         </div>
       ) : null}
 
@@ -955,6 +1008,7 @@ function FilterBar({
               page: 1,
               page_size: prev.page_size,
             }));
+            window.localStorage.setItem(PREF_KEY_LAST_VIEW, view.id);
           }}
           data-testid="filter-saved-view"
           disabled={savedViews.length === 0}
@@ -1249,6 +1303,7 @@ function OpportunitiesTable({
             <th className="px-3 py-2 font-medium">Close</th>
             <th className="px-3 py-2 font-medium">SOW</th>
             <th className="px-3 py-2 font-medium">Attention</th>
+            <th className="px-3 py-2 font-medium">Latest comment</th>
             <th className="px-3 py-2 font-medium">Last activity</th>
           </tr>
         </thead>
@@ -1323,6 +1378,32 @@ function OpportunitiesTable({
                 </td>
                 <td className="px-3 py-3 align-top">
                   <AttentionBadges flags={row.attention_flags} />
+                </td>
+                <td
+                  className="max-w-xs px-3 py-3 align-top text-text-secondary"
+                  data-testid={`opp-latest-comment-${row.opportunity_id}`}
+                >
+                  {row.latest_comment_body ? (
+                    <>
+                      {row.latest_comment_pinned ? (
+                        <span
+                          className="mr-1 rounded bg-warn-fill/30 px-1 text-secondary text-warn"
+                          data-testid={`opp-pinned-${row.opportunity_id}`}
+                        >
+                          📌
+                        </span>
+                      ) : null}
+                      <span className="line-clamp-2">
+                        {row.latest_comment_body}
+                      </span>
+                      <div className="text-secondary">
+                        {row.latest_comment_author ?? "Someone"} ·{" "}
+                        {formatAgo(row.latest_comment_at ?? null)}
+                      </div>
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-3 py-3 align-top text-text-secondary">
                   {formatAgo(row.hubspot_last_activity_at)}

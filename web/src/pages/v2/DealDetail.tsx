@@ -28,12 +28,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   getDealTimeline,
+  getPipelineFacets,
   getPipelineOpportunity,
   listDealComments,
   listNextActions,
   listPipelineStages,
+  patchNextAction,
   type DealCommentRow,
   type NextActionRow,
+  type PipelineFacets,
   type PipelineOpportunityRow,
   type PipelineStageCount,
   type TimelineEntry,
@@ -118,6 +121,10 @@ export function DealDetailPage() {
     null,
   );
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [facets, setFacets] = useState<PipelineFacets>({
+    owners: [],
+    business_units: [],
+  });
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -132,7 +139,7 @@ export function DealDetailPage() {
         if (cancelled) return;
         setDeal(d);
 
-        const [stageList, actions, comments, tl] = await Promise.all([
+        const [stageList, actions, comments, tl, fct] = await Promise.all([
           d.hubspot_pipeline_id
             ? listPipelineStages(d.hubspot_pipeline_id)
             : Promise.resolve([] as PipelineStageCount[]),
@@ -141,12 +148,17 @@ export function DealDetailPage() {
           getDealTimeline(d.opportunity_id).catch(() => ({
             items: [] as TimelineEntry[],
           })),
+          getPipelineFacets().catch(() => ({
+            owners: [],
+            business_units: [],
+          })),
         ]);
         if (cancelled) return;
         setStages(stageList);
         setNextActions(actions.items);
         setLatestComment(comments.latest);
         setTimeline(tl.items);
+        setFacets(fct);
       } catch (err) {
         if (!cancelled) setError(err);
       } finally {
@@ -417,7 +429,7 @@ export function DealDetailPage() {
                       {a.description}
                     </div>
                   ) : null}
-                  <div className="mt-1 flex items-center gap-2 text-secondary">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-secondary">
                     <Badge
                       tone={a.status === "open" ? "warning" : "neutral"}
                       data-testid={`next-action-status-${a.status}`}
@@ -428,6 +440,49 @@ export function DealDetailPage() {
                       <span className="text-text-secondary">
                         blocker: {a.blocker}
                       </span>
+                    ) : null}
+                    {/* S20 W6 Session 4b item 1 · inline assignee picker. */}
+                    <label className="inline-flex items-center gap-1 text-text-secondary">
+                      assignee
+                      <select
+                        className="rounded border border-divider bg-surface px-1 py-0.5 text-body"
+                        value={a.assignee_user_id ?? ""}
+                        onChange={async (e) => {
+                          const next = e.target.value || null;
+                          const patched = await patchNextAction(a.id, {
+                            assignee_user_id: next,
+                          });
+                          setNextActions((cur) =>
+                            cur.map((x) => (x.id === a.id ? patched : x)),
+                          );
+                        }}
+                        data-testid={`next-action-assignee-${a.id}`}
+                      >
+                        <option value="">— unassigned —</option>
+                        {facets.owners.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {/* S20 W6 Session 4b item 1 · inline Mark Complete. */}
+                    {a.status !== "complete" ? (
+                      <button
+                        type="button"
+                        className="rounded-panel border border-success bg-success/5 px-2 py-0.5 text-secondary text-success"
+                        data-testid={`next-action-complete-${a.id}`}
+                        onClick={async () => {
+                          const patched = await patchNextAction(a.id, {
+                            status: "complete",
+                          });
+                          setNextActions((cur) =>
+                            cur.map((x) => (x.id === a.id ? patched : x)),
+                          );
+                        }}
+                      >
+                        Mark complete
+                      </button>
                     ) : null}
                   </div>
                 </li>

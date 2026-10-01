@@ -3939,7 +3939,35 @@ export interface PipelineOpportunityRow {
   sow_count: number;
   hubspot_pipeline_id?: string | null;
   business_unit?: string | null;
+  // S20 W6 Session 4b item 2 · latest-comment preview on the row.
+  latest_comment_body?: string | null;
+  latest_comment_author?: string | null;
+  latest_comment_pinned?: boolean;
+  latest_comment_at?: ISODateTime | null;
 }
+
+// S20 W6 Session 4b item 1 · patch helpers for next actions.
+export function patchNextAction(
+  id: UUID,
+  patch: {
+    status?: string;
+    assignee_user_id?: UUID | null;
+    due_date?: ISODate | null;
+    clear_due_date?: boolean;
+    title?: string;
+    blocker?: string;
+    outcome?: string;
+  },
+): Promise<NextActionRow> {
+  return request<NextActionRow>(`/next-actions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+// S20 W6 Session 4b item 1 · deal-owner picker options list.
+// Reuses /pipeline/facets owner list — those are the users with ≥1
+// non-archived HubSpot opportunity (the right set to assign actions to).
 
 export interface PipelineClientRow {
   client_id: UUID;

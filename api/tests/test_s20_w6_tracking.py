@@ -105,6 +105,20 @@ async def test_watching_ids_empty_returns_zero_rows(session):
 
 
 @pytest.mark.asyncio
+async def test_rule_based_group_uses_same_filter_function(session):
+    """Item 5 · the server-side filter function W2's list endpoint uses
+    is `_base_opportunity_filter` in `app.services.hubspot_pipeline`.
+    Rule-based groups store their predicates as `filter_json` matching
+    the W2 filter contract and route through the same function.
+    """
+    from app.services.hubspot_pipeline import _base_opportunity_filter
+
+    # Prove the function exists and accepts a PipelineFilters instance.
+    conds = _base_opportunity_filter(PipelineFilters(stage=("STAGE_A",)))
+    assert conds, "the shared filter function must return WHERE clauses"
+
+
+@pytest.mark.asyncio
 async def test_rule_based_group_uses_same_query_engine(session):
     """Item 5 · rule-based groups evaluated by the same engine.
 
@@ -147,6 +161,80 @@ async def test_rule_based_group_uses_same_query_engine(session):
     page = await list_opportunities(session, filters=sub, page=1, page_size=25)
     ids = {r.opportunity_id for r in page.items}
     assert ids == {a.id}, "rule-based group evaluated by list_opportunities"
+
+
+@pytest.mark.asyncio
+async def test_rule_based_group_membership_follows_stage_change(session):
+    """Item 5 · membership updates when a mirrored deal changes stage.
+
+    Group filter_json = {"stage": ["STAGE_A"]}. Deal starts in STAGE_A
+    → matches. Mirror row updated to STAGE_B → next list_opportunities
+    call drops it from the group's result set. The directive calls out
+    this specifically ("test by updating a mirror row in the isolated
+    staging DB"); on an isolated test DB the same semantics hold.
+    """
+    owner = User(email="sc@dealgate.local", name="SC", groups=[])
+    session.add(owner)
+    c = Client(name="Stage-change Corp")
+    session.add(c)
+    await session.flush()
+    opp = await _seed_opp(session, dealname="SC1", owner=owner, client=c, stage="STAGE_A")
+    await session.commit()
+
+    page_before = await list_opportunities(
+        session, filters=PipelineFilters(stage=("STAGE_A",)), page=1, page_size=25
+    )
+    assert any(r.opportunity_id == opp.id for r in page_before.items)
+
+    # Simulate HubSpot webhook landing: mirror row's stage flips to STAGE_B.
+    opp.hubspot_stage_id = "STAGE_B"
+    await session.commit()
+
+    page_after = await list_opportunities(
+        session, filters=PipelineFilters(stage=("STAGE_A",)), page=1, page_size=25
+    )
+    assert not any(r.opportunity_id == opp.id for r in page_after.items), (
+        "mirror stage change must drop the deal from the rule-based group"
+    )
+    page_b = await list_opportunities(
+        session, filters=PipelineFilters(stage=("STAGE_B",)), page=1, page_size=25
+    )
+    assert any(r.opportunity_id == opp.id for r in page_b.items)
+
+
+@pytest.mark.asyncio
+async def test_latest_comment_pinned_wins_over_newer(session):
+    """Item 2 · pinned comment wins over a strictly-newer unpinned one
+    in the Pipeline row's latest-comment preview.
+    """
+    from datetime import timedelta
+    owner = User(email="pw@dealgate.local", name="Pinner", groups=[])
+    session.add(owner)
+    c = Client(name="Pin Corp")
+    session.add(c)
+    await session.flush()
+    opp = await _seed_opp(session, dealname="PW", owner=owner, client=c)
+    t_pinned = datetime.now(UTC) - timedelta(days=3)
+    t_newer = datetime.now(UTC)
+    session.add_all([
+        DealComment(
+            opportunity_id=opp.id, author_id=owner.id,
+            body="pinned-older", pinned=True, source="internal",
+            created_at=t_pinned,
+        ),
+        DealComment(
+            opportunity_id=opp.id, author_id=owner.id,
+            body="newer-unpinned", pinned=False, source="internal",
+            created_at=t_newer,
+        ),
+    ])
+    await session.commit()
+
+    page = await list_opportunities(session, page=1, page_size=25)
+    row = next(r for r in page.items if r.opportunity_id == opp.id)
+    assert row.latest_comment_pinned is True
+    assert row.latest_comment_body == "pinned-older"
+    assert row.latest_comment_author == "Pinner"
 
 
 @pytest.mark.asyncio
