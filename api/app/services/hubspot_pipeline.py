@@ -664,6 +664,20 @@ class PipelineSummary:
     overdue_actions: int
     pending_approvals: int
     agreement_gaps: int
+    # S20 W4 Session 6 · scalars that back the Command-center cards so
+    # each tile reads from `summary()` (one source) and the deep-link
+    # routes to the same filter the number was computed on.
+    #   - sows_in_progress  = count of approval packages still in any
+    #     pending state (pending_delivery_hr / pending_finance_legal /
+    #     pending_ceo_exception). Deep-links to /pipeline?attention=pending_approval.
+    #   - agreements_uploaded = count of Agreement rows on file (per
+    #     the executive banner, "NDA & MSA documents on file"). Deep-
+    #     links to /agreements.
+    #   - ceo_pending = subset of sows_in_progress awaiting a CEO
+    #     exception decision. Deep-links to /pipeline?readiness=ceo_exception.
+    sows_in_progress: int = 0
+    agreements_uploaded: int = 0
+    ceo_pending: int = 0
 
 
 @dataclass(frozen=True)
@@ -1944,12 +1958,30 @@ async def summary(
             )
         )
     )
-    # Two aggregates but one execute via UNION ALL for the budget test —
+    # S20 W4 Session 6 · chain two more counts into the same UNION so
+    # the three command-center scalars ride the same execute budget.
+    # (pending_stmt already counts `sows_in_progress`; we add the CEO
+    # subset + total agreement count.)
+    ceo_pending_stmt = select(func.count(ApprovalPackage.id)).where(
+        ApprovalPackage.status == "pending_ceo_exception"
+    )
+    agreements_stmt = select(func.count(Agreement.id))
+    # Four aggregates but one execute via UNION ALL for the budget test —
     # SQLite requires distinct SELECTs to be UNION'd for combined counting.
-    combined = overdue_stmt.union_all(pending_stmt)
+    from sqlalchemy import union_all as _union_all
+
+    combined = _union_all(
+        overdue_stmt,
+        pending_stmt,
+        ceo_pending_stmt,
+        agreements_stmt,
+    )
     combined_rows = (await session.execute(combined)).all()
     overdue = int(combined_rows[0][0]) if combined_rows else 0
     pending = int(combined_rows[1][0]) if len(combined_rows) > 1 else 0
+    sows_in_progress = pending  # same expression (sum of three pending lanes)
+    ceo_pending = int(combined_rows[2][0]) if len(combined_rows) > 2 else 0
+    agreements_uploaded = int(combined_rows[3][0]) if len(combined_rows) > 3 else 0
 
     # Q3 — agreement gaps. A client with at least one open deal AND no
     # NDA OR no MSA file counts as one gap.
@@ -1978,6 +2010,11 @@ async def summary(
     gap_rows = (await session.execute(gap_stmt)).all()
     agreement_gaps = sum(1 for _cid, has_nda, has_msa in gap_rows if not has_nda or not has_msa)
 
+    # S20 W4 Session 6 · command-center card scalars are already
+    # populated above as part of the Q2 UNION ALL (overdue + pending +
+    # ceo_pending + agreements_uploaded). This keeps the execute budget
+    # at 3 (Q1 currency + Q2 UNION of 4 counts + Q3 agreement gaps).
+
     return PipelineSummary(
         open_count=open_count,
         open_value_by_currency=open_value,
@@ -1985,4 +2022,7 @@ async def summary(
         overdue_actions=overdue,
         pending_approvals=pending,
         agreement_gaps=agreement_gaps,
+        sows_in_progress=sows_in_progress,
+        agreements_uploaded=agreements_uploaded,
+        ceo_pending=ceo_pending,
     )

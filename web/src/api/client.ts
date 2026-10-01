@@ -4036,6 +4036,11 @@ export interface PipelineSummary {
   overdue_actions: number;
   pending_approvals: number;
   agreement_gaps: number;
+  // S20 W4 Session 6 · command-center card scalars (optional for
+  // forward compatibility; servers at head always return them).
+  sows_in_progress?: number;
+  agreements_uploaded?: number;
+  ceo_pending?: number;
 }
 
 export interface PipelineFilters {
@@ -4419,4 +4424,144 @@ export interface PortfolioBasis {
 
 export function getPortfolioBasis(): Promise<PortfolioBasis> {
   return request<PortfolioBasis>(`/reports/portfolio/basis`);
+}
+
+// S20 W4 Session 6 · pipeline aggregates for the Reports page.
+
+export interface ReportStageAggregateRow {
+  stage_label: string;
+  stage_id: string | null;
+  count: number;
+  open_value_usd: string;
+}
+export interface ReportByStage {
+  total_count: number;
+  total_open_value_usd: string;
+  rows: ReportStageAggregateRow[];
+  generated_at: ISODateTime;
+}
+export function getReportsByStage(): Promise<ReportByStage> {
+  return request<ReportByStage>(`/reports/pipeline/by-stage`);
+}
+
+export interface ReportOwnerAggregateRow {
+  owner_name: string;
+  owner_email: string | null;
+  count: number;
+  open_value_usd: string;
+}
+export interface ReportByOwner {
+  total_count: number;
+  total_open_value_usd: string;
+  rows: ReportOwnerAggregateRow[];
+  generated_at: ISODateTime;
+}
+export function getReportsByOwner(): Promise<ReportByOwner> {
+  return request<ReportByOwner>(`/reports/pipeline/by-owner`);
+}
+
+export interface ReportBuAggregateRow {
+  business_unit: string;
+  count: number;
+  open_value_usd: string;
+}
+export interface ReportByBu {
+  bu_mirrored: boolean;
+  note: string;
+  total_count: number;
+  total_open_value_usd: string;
+  rows: ReportBuAggregateRow[];
+  generated_at: ISODateTime;
+}
+export function getReportsByBu(): Promise<ReportByBu> {
+  return request<ReportByBu>(`/reports/pipeline/by-bu`);
+}
+
+export interface SowGmRow {
+  opportunity_id: string;
+  hubspot_deal_id: string | null;
+  deal_name: string | null;
+  client_name: string | null;
+  component: "US" | "India" | "Blended" | string;
+  revenue: string;
+  gm_pct: string | null;
+  floor_pct: string;
+  floor_pass: boolean | null;
+}
+export interface SowGmReport {
+  us_floor_pct: string;
+  india_floor_pct: string;
+  rows: SowGmRow[];
+  generated_at: ISODateTime;
+  note: string;
+}
+export function getSowGmReport(): Promise<SowGmReport> {
+  return request<SowGmReport>(`/reports/sow/gm`);
+}
+
+export interface ApprovalsAgingBucket {
+  label: string;
+  count: number;
+}
+export interface ApprovalsAgingLane {
+  status: string;
+  total: number;
+  buckets: ApprovalsAgingBucket[];
+}
+export interface ApprovalsAgingReport {
+  as_of: ISODateTime;
+  lanes: ApprovalsAgingLane[];
+}
+export function getApprovalsAging(): Promise<ApprovalsAgingReport> {
+  return request<ApprovalsAgingReport>(`/reports/approvals/aging`);
+}
+
+export const reportsPipelineCsvUrl = "/reports/pipeline/export.csv";
+
+// S20 W4 Session 6 · integrations status cards.
+
+export interface BedrockStatus {
+  model_id: string;
+  source: "env" | "default" | string;
+  boot_check:
+    | "enforced"
+    | "skipped-stub"
+    | "skipped-env"
+    | "skipped-override"
+    | string;
+  region: string;
+  as_of: ISODateTime;
+}
+export function getBedrockStatus(): Promise<BedrockStatus> {
+  return request<BedrockStatus>(`/settings/integrations/bedrock`);
+}
+
+export interface SesStatus {
+  from_address: string;
+  source: "env" | "default" | string;
+  sandbox: boolean;
+  as_of: ISODateTime;
+}
+export function getSesStatus(): Promise<SesStatus> {
+  return request<SesStatus>(`/settings/integrations/ses`);
+}
+
+export interface WorkerHeartbeatSourceRow {
+  source: string;
+  last_success_at: ISODateTime | null;
+  last_attempt_at: ISODateTime | null;
+  last_error: string | null;
+  age_seconds: number | null;
+}
+export interface WorkerHeartbeatStatus {
+  newest_source: string | null;
+  newest_last_success_at: ISODateTime | null;
+  newest_age_seconds: number | null;
+  sources: WorkerHeartbeatSourceRow[];
+  as_of: ISODateTime;
+}
+export function getWorkerHeartbeat(): Promise<WorkerHeartbeatStatus> {
+  return request<WorkerHeartbeatStatus>(
+    `/settings/integrations/worker-heartbeat`,
+  );
 }

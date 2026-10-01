@@ -198,16 +198,25 @@ function bannerMetrics(
   const pipelineValue = isCeo
     ? formatMoney(pipelineFromSummary ?? data.ceo?.pipeline_value ?? null)
     : formatMoney(pipelineFromSummary);
+  // S20 W4 Session 6 · all three card numbers now route through
+  // `pipelineSummary` (one source) with a `/pipeline?...` deep-link that
+  // produces the same count when opened. Falls back to the local arrays
+  // only when the summary endpoint is unreachable — honest fallback,
+  // not a parallel number.
   const sowsInProgress =
+    data.pipelineSummary?.sows_in_progress ??
     data.approvalsDelivery.length +
-    data.approvalsFinance.length +
-    data.approvalsCeo.length;
-  // S17: agreement gaps aren't a concept anymore. Show the total docs
-  // uploaded so the banner still has a fourth tile.
-  const agreementsCount = data.agreements.length;
-  const ceoPending = isCeo
-    ? data.ceo?.ceo_exceptions_pending.length ?? null
-    : data.approvalsCeo.length;
+      data.approvalsFinance.length +
+      data.approvalsCeo.length;
+  const agreementsCount =
+    data.pipelineSummary?.agreements_uploaded ?? data.agreements.length;
+  const ceoPendingFromSummary = data.pipelineSummary?.ceo_pending ?? null;
+  const ceoPending =
+    ceoPendingFromSummary !== null
+      ? ceoPendingFromSummary
+      : isCeo
+        ? data.ceo?.ceo_exceptions_pending.length ?? null
+        : data.approvalsCeo.length;
 
   return [
     {
@@ -227,7 +236,9 @@ function bannerMetrics(
       id: "sows_in_progress",
       label: "SOW packages in progress",
       value: formatCount(sowsInProgress),
-      href: "/sows",
+      // Deep-link: /pipeline?attention=pending_approval — the exact
+      // filter that yields `summary.sows_in_progress`.
+      href: "/pipeline?attention=pending_approval",
       description: "Across every approval lane",
     },
     {
@@ -241,7 +252,9 @@ function bannerMetrics(
       id: "ceo_pending",
       label: "CEO decisions pending",
       value: formatCount(ceoPending),
-      href: "/sows",
+      // Deep-link: /pipeline?readiness=ceo_exception — exact filter
+      // that yields `summary.ceo_pending`.
+      href: "/pipeline?readiness=ceo_exception",
       description: "Awaiting exception decision",
       alert: (ceoPending ?? 0) > 0,
     },

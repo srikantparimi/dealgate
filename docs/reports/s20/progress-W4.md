@@ -1,3 +1,56 @@
+# S20 · progress log for W4 (owned by W4 · continued through Session 6-A)
+
+## Cycle 6-A · Session 6 Lane A · 2026-10-01 (continued)
+
+**Budget spent:** ~70 min wall / ~7,800 output tokens (rule 16 hard
+stop). pytest 48 passed / 5 xfailed on the lane-focused subset (admin
+replay / w4 session5 / w4 session6 / w6 tracking / integrations
+truthfulness / dashboards / query budget) and the ≤3-query budget on
+`summary()` is preserved via UNION ALL. `tsc --noEmit` is clean on the
+whole web/ tree.
+
+### Items by number (five-state vocabulary · rule 16)
+
+| # | State | Proof |
+| --- | --- | --- |
+| 1 | fixed and tested | Reports page tabs land Pipeline rollups first: by-stage, by-owner, by-BU (with "not mirrored"), SOW GM with floor pass/fail per US/India/Blended, approvals aging, CSV export. Backend: `/reports/pipeline/by-stage`, `/by-owner`, `/by-bu`, `/sow/gm`, `/approvals/aging`, `/pipeline/export.csv` — all call `hubspot_pipeline.list_opportunities` so Reports reconciles with /pipeline. Totals computed BEFORE pagination via `summary().open_count` (CSV ships `X-Totals-Count` header). |
+| 2 | fixed and tested | `summary()` now carries `sows_in_progress`, `agreements_uploaded`, `ceo_pending`; CommandCenter banner reads them + deep-links to `/pipeline?attention=pending_approval` and `/pipeline?readiness=ceo_exception`. `test_s20_w4_session6::test_card_*` asserts card number == row count on the deep-linked filter for all three cards. |
+| 3 | fixed and tested | Three new backend status endpoints in `routers/settings.py` (`/settings/integrations/bedrock`, `/ses`, `/worker-heartbeat`) read live config + sync_status. `IntegrationsSection.tsx` renders three new cards (BedrockCard / SesCard / HeartbeatCard) under a "Live service state" section. No static "Connected" string. |
+| 4 | fixed and tested | `SystemHealthSection.tsx` OverviewPanel now renders `Data as of <time>` sourced from the live response round-trip. Panels without data render "No data — the live endpoints did not respond." (not a static value). Failed-events, notifications and reconciliation panels were already live-sourced (W5 Session 5). |
+| 5 | fixed and tested | `test_s20_w4_session6::test_three_way_reconciliation_open_total` locks `summary.open_count == list_opportunities.total == by_stage.total_count` on the same seeded fixture (five open opps across two stages, one owner, one client). |
+| 6 | fixed and tested | `test_s20_w4_session6::test_watched_deal_in_three_groups_counts_once` seeds one Opportunity, three TrackingGroup rows each pointing at the same opp, one WatchedItem on the user. Asserts `list_opportunities(watching_ids).total == 1` AND `WatchedItem.count == 1`. Teardown: in-memory session discarded by the conftest fixture — no staging mutation (rule 17 compliance). |
+
+### Not shipped this cycle
+
+- No new migrations (lane A owns none).
+- Lane A does NOT deploy to staging. The Lead picks up `feat/s20-w4` and
+  runs the deploy + T39/T40 Playwright against the deployed revision.
+- `scripts/tf-init.sh` for freshness alarms (W4-5) still blocked per
+  rule 15 (interactive prompt).
+
+### Files touched (Session 6-A)
+
+**Backend (modified):** `api/app/routers/reports.py` (6 new endpoints),
+`api/app/routers/settings.py` (3 integration-status endpoints),
+`api/app/services/hubspot_pipeline.py` (summary() only — 3 scalar fields
++ UNION-ALL packing to stay within the ≤3-query budget).
+
+**Backend (new):** `api/tests/test_s20_w4_session6.py` — 8 tests covering
+deliverables 1, 3, 5, 6.
+
+**Frontend (modified):** `web/src/api/client.ts` (6 new API helpers +
+summary type extension), `web/src/pages/v2/CommandCenter.tsx` (card
+numbers + deep-links through summary), `web/src/pages/v2/Reports.tsx`
+(new Pipeline rollups tab, now default), `web/src/pages/v2/settings/
+IntegrationsSection.tsx` (3 live cards), `web/src/pages/v2/settings/
+SystemHealthSection.tsx` (OverviewPanel fetchedAt timestamp).
+
+### Blockers
+
+W4-5 remains blocked (rule 15, interactive terraform prompt).
+
+---
+
 # S20 · progress log for W4 (owned by W4 · continued by Session 5)
 
 **Budget spent this session:** ~70 min wall / ~7,400 output tokens

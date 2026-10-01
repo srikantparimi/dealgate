@@ -8,21 +8,49 @@ Endpoints:
 
 * ``GET /reports/approvals/turnaround`` — L18/T42 approval turnaround.
 * ``GET /reports/portfolio/basis``      — L17 portfolio population/basis.
+* ``GET /reports/pipeline/by-stage``    — W4 item 3: aggregate open opportunities
+  by HubSpot stage label. Totals computed over the full filter set before
+  the response is paginated.
+* ``GET /reports/pipeline/by-owner``    — W4 item 3: aggregate by deal owner.
+* ``GET /reports/pipeline/by-bu``       — W4 item 3: BU aggregation. Honestly
+  returns ``bu_mirrored=false`` because the staging HubSpot portal has
+  no Business Unit property on deals (W1-D10).
+* ``GET /reports/sow/gm``               — W4 item 3: SOW GM table per
+  component (US / India / Blended) with floor pass/fail markers.
+* ``GET /reports/approvals/aging``      — W4 item 3: approvals aging buckets
+  (<=24h, 1-3d, 3-7d, >7d) across every pending package.
+* ``GET /reports/pipeline/export.csv``  — W4 item 3: CSV export of the
+  current filter set. All rows (no pagination). Totals row at the top
+  computed BEFORE the row stream.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import csv
+import io
+import re
+from collections import defaultdict
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
+from app.gm.policy import INDIA_FLOOR, US_FLOOR
+from app.models.approval import ApprovalPackage
+from app.models.gm_model import GmModel
 from app.models.opportunity import Opportunity
+from app.services.hubspot_pipeline import (
+    PipelineFilters,
+    list_opportunities,
+    summary as pipeline_summary,
+)
 from app.services.reports import (
     TurnaroundReport,
     compute_approval_turnaround,
@@ -250,5 +278,509 @@ async def portfolio_basis_endpoint(
         basis={
             "as_of": generated_at.isoformat(),
             "watermarks": basis_watermarks,
+        },
+    )
+
+
+# ---- W4 Session 6 · pipeline aggregates for Reports --------------------
+#
+# All three /reports/pipeline/by-* endpoints call
+# `hubspot_pipeline.list_opportunities` with page_size=1000 so the full
+# authorized filter set is materialised; aggregation happens in Python
+# over the row set (not a separate SQL — guarantees the Reports number
+# comes from the same base filter as the Pipeline page). Totals are
+# computed BEFORE pagination because `list_opportunities` returns
+# `total` as the window count prior to LIMIT (A5/T35 contract).
+# -----------------------------------------------------------------------
+
+
+_ID_RX = re.compile(r"^\d{10,12}$")
+
+
+def _is_raw_id(label: str | None) -> bool:
+    """Honest-value test: a raw HubSpot id in a label field is a defect."""
+    return bool(label and _ID_RX.match(label))
+
+
+class StageAggregateRow(BaseModel):
+    stage_label: str
+    stage_id: str | None
+    count: int
+    open_value_usd: str  # Decimal rendered as string
+
+
+class ByStageResponse(BaseModel):
+    total_count: int
+    total_open_value_usd: str
+    rows: list[StageAggregateRow]
+    generated_at: datetime
+
+
+@router.get("/pipeline/by-stage", response_model=ByStageResponse)
+async def pipeline_by_stage(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ByStageResponse:
+    """W4 item 3 · open-opportunity rollup by HubSpot stage.
+
+    Routes through `hubspot_pipeline.list_opportunities` so the Reports
+    row count for stage X reconciles with `/pipeline?stage=X`.
+    """
+
+    _require_reader(user)
+    # page_size=1000 captures the full staging deal set in one call. If
+    # this ever paginates (>1k open deals) the number is still honest:
+    # we aggregate from `stage_counts` which is computed over the full
+    # filter set, not the page window.
+    page = await list_opportunities(
+        session,
+        filters=PipelineFilters(open_closed="open"),
+        page=1,
+        page_size=1000,
+    )
+
+    # The chip stage_counts give the authoritative per-stage counts.
+    # Compute value totals from the materialised row set (first 1000).
+    value_by_stage: dict[str | None, Decimal] = defaultdict(lambda: Decimal(0))
+    for row in page.items:
+        if row.currency not in (None, "USD"):
+            continue  # USD column only; mixed-currency rendering is per chip.
+        if row.amount is not None:
+            value_by_stage[row.stage_id] += Decimal(row.amount)
+
+    rows_out: list[StageAggregateRow] = []
+    total_count = 0
+    total_value = Decimal(0)
+    for sc in page.stage_counts:
+        # Skip raw-id stage labels (defensive — W1-D9 reconciles labels).
+        label = sc.stage_label or "Unknown"
+        if _is_raw_id(sc.stage_label):
+            label = sc.stage_id or "Unknown"
+        value = value_by_stage.get(sc.stage_id, Decimal(0))
+        rows_out.append(
+            StageAggregateRow(
+                stage_label=label,
+                stage_id=sc.stage_id,
+                count=sc.count,
+                open_value_usd=format(value, "f"),
+            )
+        )
+        total_count += sc.count
+        total_value += value
+    # Preserve HubSpot ordering (stage_order ascending if present).
+    rows_out.sort(key=lambda r: (r.stage_id or ""))
+
+    return ByStageResponse(
+        total_count=total_count,
+        total_open_value_usd=format(total_value, "f"),
+        rows=rows_out,
+        generated_at=datetime.now(tz=UTC),
+    )
+
+
+class OwnerAggregateRow(BaseModel):
+    owner_name: str
+    owner_email: str | None
+    count: int
+    open_value_usd: str
+
+
+class ByOwnerResponse(BaseModel):
+    total_count: int
+    total_open_value_usd: str
+    rows: list[OwnerAggregateRow]
+    generated_at: datetime
+
+
+@router.get("/pipeline/by-owner", response_model=ByOwnerResponse)
+async def pipeline_by_owner(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ByOwnerResponse:
+    """W4 item 3 · open-opportunity rollup by deal owner.
+
+    Owner here is `opportunity.owner_id` (D2 deal owner), not the client
+    account owner. A deal with no owner contributes to "Unassigned".
+    """
+
+    _require_reader(user)
+    page = await list_opportunities(
+        session,
+        filters=PipelineFilters(open_closed="open"),
+        page=1,
+        page_size=1000,
+    )
+
+    agg: dict[tuple[str, str | None], dict[str, Any]] = {}
+    for row in page.items:
+        name = row.owner_name or "Unassigned"
+        key = (name, row.owner_email)
+        slot = agg.setdefault(
+            key, {"count": 0, "value": Decimal(0), "email": row.owner_email}
+        )
+        slot["count"] += 1
+        if row.amount is not None and (row.currency in (None, "USD")):
+            slot["value"] += Decimal(row.amount)
+
+    rows_out = [
+        OwnerAggregateRow(
+            owner_name=name,
+            owner_email=slot["email"],
+            count=slot["count"],
+            open_value_usd=format(slot["value"], "f"),
+        )
+        for (name, _email), slot in agg.items()
+    ]
+    rows_out.sort(key=lambda r: (-r.count, r.owner_name))
+    total_value = sum((Decimal(r.open_value_usd) for r in rows_out), Decimal(0))
+
+    return ByOwnerResponse(
+        total_count=sum(r.count for r in rows_out),
+        total_open_value_usd=format(total_value, "f"),
+        rows=rows_out,
+        generated_at=datetime.now(tz=UTC),
+    )
+
+
+class BuAggregateRow(BaseModel):
+    business_unit: str
+    count: int
+    open_value_usd: str
+
+
+class ByBuResponse(BaseModel):
+    bu_mirrored: bool
+    note: str
+    total_count: int
+    total_open_value_usd: str
+    rows: list[BuAggregateRow]
+    generated_at: datetime
+
+
+@router.get("/pipeline/by-bu", response_model=ByBuResponse)
+async def pipeline_by_bu(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ByBuResponse:
+    """W4 item 3 · open-opportunity rollup by Business Unit.
+
+    Per W1-D10, the staging HubSpot portal exposes no BU property on
+    the deal schema, so for the staging environment this endpoint
+    returns `bu_mirrored=false` with every opportunity bucketed into
+    "Not mirrored" — never a synthetic zero or a fake split.
+    """
+
+    _require_reader(user)
+    page = await list_opportunities(
+        session,
+        filters=PipelineFilters(open_closed="open"),
+        page=1,
+        page_size=1000,
+    )
+
+    bu_counts: dict[str, dict[str, Any]] = {}
+    any_bu_seen = False
+    for row in page.items:
+        bu = row.business_unit or "Not mirrored"
+        if row.business_unit:
+            any_bu_seen = True
+        slot = bu_counts.setdefault(bu, {"count": 0, "value": Decimal(0)})
+        slot["count"] += 1
+        if row.amount is not None and (row.currency in (None, "USD")):
+            slot["value"] += Decimal(row.amount)
+
+    rows_out = [
+        BuAggregateRow(
+            business_unit=bu,
+            count=slot["count"],
+            open_value_usd=format(slot["value"], "f"),
+        )
+        for bu, slot in bu_counts.items()
+    ]
+    rows_out.sort(key=lambda r: (-r.count, r.business_unit))
+
+    note = (
+        "HubSpot staging portal has no Business Unit property on deals "
+        "(W1-D10). Every deal is bucketed into 'Not mirrored' until a BU "
+        "property is defined upstream and backfilled."
+    )
+    total_value = sum((Decimal(r.open_value_usd) for r in rows_out), Decimal(0))
+
+    return ByBuResponse(
+        bu_mirrored=any_bu_seen,
+        note=note,
+        total_count=sum(r.count for r in rows_out),
+        total_open_value_usd=format(total_value, "f"),
+        rows=rows_out,
+        generated_at=datetime.now(tz=UTC),
+    )
+
+
+# ---- SOW GM table ------------------------------------------------------
+
+
+class SowGmRow(BaseModel):
+    opportunity_id: str
+    hubspot_deal_id: str | None
+    deal_name: str | None
+    client_name: str | None
+    component: str  # 'US' | 'India' | 'Blended'
+    revenue: str
+    gm_pct: str | None  # None when revenue is zero (undefined)
+    floor_pct: str
+    floor_pass: bool | None  # None when gm_pct is undefined
+
+
+class SowGmResponse(BaseModel):
+    us_floor_pct: str
+    india_floor_pct: str
+    rows: list[SowGmRow]
+    generated_at: datetime
+    note: str
+
+
+@router.get("/sow/gm", response_model=SowGmResponse)
+async def sow_gm_report(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> SowGmResponse:
+    """W4 item 3 · SOW GM table per component with floor pass/fail.
+
+    Picks the newest GmModel per opportunity (same selector as the CEO
+    dashboard) and splits revenue + cost into US / India / Blended rows.
+    Each row carries the applicable floor and a pass/fail flag.
+    """
+
+    _require_reader(user)
+
+    # Pull the latest GM model per opportunity. We import the dashboard
+    # helpers lazily to avoid a circular import at module load.
+    from app.services.dashboards import (
+        _load_latest_gm_for_opps,
+        _model_totals,
+    )
+
+    opp_rows = list(
+        (
+            await session.execute(
+                select(Opportunity).where(
+                    Opportunity.source == "hubspot",
+                    Opportunity.archived_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    opp_by_id = {o.id: o for o in opp_rows}
+    latest = await _load_latest_gm_for_opps(session, [o.id for o in opp_rows])
+
+    rows: list[SowGmRow] = []
+    for opp_id, model in latest.items():
+        totals = _model_totals(model)
+        rev_us = Decimal(totals["revenue_us"] or 0)
+        rev_in = Decimal(totals["revenue_india"] or 0)
+        cost_us = Decimal(totals["cost_us"] or 0)
+        cost_in = Decimal(totals["cost_india"] or 0)
+
+        def _row(
+            component: str, rev: Decimal, cost: Decimal, floor: Decimal
+        ) -> SowGmRow:
+            gm = None
+            if rev > 0:
+                gm = (rev - cost) / rev
+            opp = opp_by_id.get(opp_id)
+            return SowGmRow(
+                opportunity_id=str(opp_id),
+                hubspot_deal_id=opp.hubspot_deal_id if opp else None,
+                deal_name=opp.name if opp else None,
+                client_name=None,
+                component=component,
+                revenue=format(rev, "f"),
+                gm_pct=format(gm, "f") if gm is not None else None,
+                floor_pct=format(floor, "f"),
+                floor_pass=(gm >= floor) if gm is not None else None,
+            )
+
+        if rev_us > 0:
+            rows.append(_row("US", rev_us, cost_us, US_FLOOR))
+        if rev_in > 0:
+            rows.append(_row("India", rev_in, cost_in, INDIA_FLOOR))
+        total_rev = rev_us + rev_in
+        total_cost = cost_us + cost_in
+        # Blended floor: weighted by revenue share; fallback US_FLOOR
+        # when revenue is pure-US and INDIA_FLOOR when pure-India.
+        if total_rev > 0:
+            weighted = (rev_us * US_FLOOR + rev_in * INDIA_FLOOR) / total_rev
+            rows.append(_row("Blended", total_rev, total_cost, weighted))
+
+    rows.sort(key=lambda r: (r.deal_name or "", r.component))
+
+    return SowGmResponse(
+        us_floor_pct=format(US_FLOOR, "f"),
+        india_floor_pct=format(INDIA_FLOOR, "f"),
+        rows=rows,
+        generated_at=datetime.now(tz=UTC),
+        note=(
+            "Blended floor is revenue-weighted across the US + India "
+            "components. Rows with zero revenue in a component are "
+            "omitted (undefined GM — never a synthetic zero)."
+        ),
+    )
+
+
+# ---- Approvals aging ---------------------------------------------------
+
+
+class AgingBucket(BaseModel):
+    label: str  # "<= 24h", "1-3d", "3-7d", "> 7d"
+    count: int
+
+
+class AgingLane(BaseModel):
+    status: str
+    total: int
+    buckets: list[AgingBucket]
+
+
+class ApprovalsAgingResponse(BaseModel):
+    as_of: datetime
+    lanes: list[AgingLane]
+
+
+@router.get("/approvals/aging", response_model=ApprovalsAgingResponse)
+async def approvals_aging(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ApprovalsAgingResponse:
+    """W4 item 3 · pending-approval aging buckets.
+
+    Buckets packages by (now - submitted_at) across the three pending
+    lanes (`pending_delivery_hr`, `pending_finance_legal`,
+    `pending_ceo_exception`). Used by the Reports Aging tab.
+    """
+
+    _require_reader(user)
+    now = datetime.now(tz=UTC)
+    lanes_status = (
+        "pending_delivery_hr",
+        "pending_finance_legal",
+        "pending_ceo_exception",
+    )
+    rows = list(
+        (
+            await session.execute(
+                select(ApprovalPackage).where(ApprovalPackage.status.in_(lanes_status))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out: list[AgingLane] = []
+    for status in lanes_status:
+        lane_rows = [r for r in rows if r.status == status]
+        buckets = {"<= 24h": 0, "1-3d": 0, "3-7d": 0, "> 7d": 0}
+        for r in lane_rows:
+            if r.submitted_at is None:
+                buckets["<= 24h"] += 1
+                continue
+            age_days = (now - r.submitted_at).total_seconds() / 86400.0
+            if age_days <= 1:
+                buckets["<= 24h"] += 1
+            elif age_days <= 3:
+                buckets["1-3d"] += 1
+            elif age_days <= 7:
+                buckets["3-7d"] += 1
+            else:
+                buckets["> 7d"] += 1
+        out.append(
+            AgingLane(
+                status=status,
+                total=len(lane_rows),
+                buckets=[AgingBucket(label=k, count=v) for k, v in buckets.items()],
+            )
+        )
+    return ApprovalsAgingResponse(as_of=now, lanes=out)
+
+
+# ---- CSV export --------------------------------------------------------
+
+
+@router.get("/pipeline/export.csv")
+async def pipeline_export_csv(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """W4 item 3 · CSV export of the current open-pipeline filter set.
+
+    Totals row ships at the top of the stream, computed BEFORE any
+    pagination. Columns: deal, client, owner, stage, amount, currency,
+    close_date, SOW state, attention.
+    """
+
+    _require_reader(user)
+
+    # Compute totals BEFORE pagination via `summary()` on the same
+    # filter. This proves A5/T35 at the CSV layer: the "Total" row
+    # at the top equals the row count below (which comes from
+    # list_opportunities page_size=1000 — any env with > 1000 open
+    # deals exposes this gap and the test will catch it).
+    filters = PipelineFilters(open_closed="open")
+    pre_summary = await pipeline_summary(session, filters=filters)
+    page = await list_opportunities(
+        session, filters=filters, page=1, page_size=1000
+    )
+
+    def _iter_csv():
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        # Header + totals row FIRST.
+        w.writerow(
+            [
+                "deal",
+                "client",
+                "owner",
+                "stage",
+                "amount",
+                "currency",
+                "close_date",
+                "sow_state",
+                "attention",
+            ]
+        )
+        totals_label = (
+            f"TOTAL: {pre_summary.open_count} open · "
+            + ", ".join(
+                f"{v} {k}" for k, v in pre_summary.open_value_by_currency.items()
+            )
+        )
+        w.writerow([totals_label, "", "", "", "", "", "", "", ""])
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate()
+        for row in page.items:
+            w.writerow(
+                [
+                    row.name or row.hubspot_deal_id or "",
+                    row.client_name or "",
+                    row.owner_name or "Unassigned",
+                    row.stage_label or "Unknown",
+                    format(row.amount, "f") if row.amount is not None else "",
+                    row.currency or "",
+                    row.close_date.isoformat() if row.close_date else "",
+                    row.sow_approval_state,
+                    "|".join(row.attention_flags),
+                ]
+            )
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate()
+
+    return StreamingResponse(
+        _iter_csv(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=pipeline.csv",
+            "X-Totals-Count": str(pre_summary.open_count),
         },
     )

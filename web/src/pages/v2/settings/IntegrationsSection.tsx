@@ -35,10 +35,16 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
+  getBedrockStatus,
+  getSesStatus,
   getSyncStatus,
+  getWorkerHeartbeat,
   listAdminReplayIntegrationEvents,
   type AdminReplayIntegrationEventRow,
+  type BedrockStatus,
+  type SesStatus,
   type SyncStatusRow,
+  type WorkerHeartbeatStatus,
 } from "../../../api/client";
 import { useAuth } from "../../../auth/AuthProvider";
 import { EmptyState } from "../../../ui-v2/EmptyState";
@@ -505,6 +511,274 @@ function HealthSection() {
   );
 }
 
+// ---- S20 W4 Session 6 · live service cards (Bedrock / SES / Heartbeat) --
+//
+// All three read from live backend endpoints added to
+// `api/app/routers/settings.py`. None of them print "Connected" without
+// a backing source — rule 11.
+// -----------------------------------------------------------------------
+
+function fmtRelative2(iso: string | null | undefined): string {
+  if (!iso) return "Unknown";
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "Unknown";
+  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+function BedrockCard() {
+  const [state, setState] = useState<
+    { kind: "loading" } | { kind: "ok"; data: BedrockStatus } | { kind: "error"; message: string }
+  >({ kind: "loading" });
+  useEffect(() => {
+    let cancelled = false;
+    getBedrockStatus()
+      .then((d) => {
+        if (!cancelled) setState({ kind: "ok", data: d });
+      })
+      .catch((err) =>
+        setState({
+          kind: "error",
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const tone =
+    state.kind === "ok"
+      ? state.data.boot_check === "enforced"
+        ? "ok"
+        : "progress"
+      : state.kind === "error"
+        ? "warn"
+        : "neutral";
+  const label =
+    state.kind === "loading"
+      ? "Loading"
+      : state.kind === "error"
+        ? "Unavailable"
+        : state.data.boot_check === "enforced"
+          ? "Enforced at boot"
+          : state.data.boot_check;
+
+  return (
+    <div
+      className="flex flex-col gap-3 rounded-panel border border-divider bg-surface p-4"
+      data-testid="integration-card-bedrock"
+      aria-label="Bedrock model-check card"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-section text-text">Bedrock</h3>
+          <p className="mt-1 text-secondary text-text-secondary">
+            SOW extract profile · live from the API, not a hard-coded badge.
+          </p>
+        </div>
+        <StatusBadge tone={tone} label={label} />
+      </div>
+      {state.kind === "ok" ? (
+        <dl className="grid grid-cols-1 gap-2 text-body sm:grid-cols-2">
+          <div>
+            <dt className="text-secondary text-text-secondary uppercase tracking-wide">
+              Model id
+            </dt>
+            <dd className="text-text break-all">{state.data.model_id}</dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-text-secondary uppercase tracking-wide">
+              Region
+            </dt>
+            <dd className="text-text">{state.data.region}</dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-text-secondary uppercase tracking-wide">
+              Source
+            </dt>
+            <dd className="text-text">{state.data.source}</dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-text-secondary uppercase tracking-wide">
+              Checked
+            </dt>
+            <dd className="text-text">{fmtRelative2(state.data.as_of)}</dd>
+          </div>
+        </dl>
+      ) : state.kind === "error" ? (
+        <p className="text-secondary text-text-secondary">{state.message}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function SesCard() {
+  const [state, setState] = useState<
+    { kind: "loading" } | { kind: "ok"; data: SesStatus } | { kind: "error"; message: string }
+  >({ kind: "loading" });
+  useEffect(() => {
+    let cancelled = false;
+    getSesStatus()
+      .then((d) => {
+        if (!cancelled) setState({ kind: "ok", data: d });
+      })
+      .catch((err) =>
+        setState({
+          kind: "error",
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const tone =
+    state.kind === "ok"
+      ? state.data.sandbox
+        ? "warn"
+        : "ok"
+      : state.kind === "error"
+        ? "warn"
+        : "neutral";
+  const label =
+    state.kind === "loading"
+      ? "Loading"
+      : state.kind === "error"
+        ? "Unavailable"
+        : state.data.sandbox
+          ? "Sandbox"
+          : "Production access";
+
+  return (
+    <div
+      className="flex flex-col gap-3 rounded-panel border border-divider bg-surface p-4"
+      data-testid="integration-card-ses"
+      aria-label="SES sender-state card"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-section text-text">SES sender</h3>
+          <p className="mt-1 text-secondary text-text-secondary">
+            From-address the renewal worker uses on every notification.
+          </p>
+        </div>
+        <StatusBadge tone={tone} label={label} />
+      </div>
+      {state.kind === "ok" ? (
+        <dl className="grid grid-cols-1 gap-2 text-body sm:grid-cols-2">
+          <div>
+            <dt className="text-secondary text-text-secondary uppercase tracking-wide">
+              From
+            </dt>
+            <dd className="text-text">{state.data.from_address}</dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-text-secondary uppercase tracking-wide">
+              Source
+            </dt>
+            <dd className="text-text">{state.data.source}</dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-text-secondary uppercase tracking-wide">
+              Checked
+            </dt>
+            <dd className="text-text">{fmtRelative2(state.data.as_of)}</dd>
+          </div>
+        </dl>
+      ) : state.kind === "error" ? (
+        <p className="text-secondary text-text-secondary">{state.message}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function HeartbeatCard() {
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "ok"; data: WorkerHeartbeatStatus }
+    | { kind: "error"; message: string }
+  >({ kind: "loading" });
+  useEffect(() => {
+    let cancelled = false;
+    getWorkerHeartbeat()
+      .then((d) => {
+        if (!cancelled) setState({ kind: "ok", data: d });
+      })
+      .catch((err) =>
+        setState({
+          kind: "error",
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const ageSec = state.kind === "ok" ? state.data.newest_age_seconds : null;
+  const tone =
+    state.kind === "ok"
+      ? ageSec === null
+        ? "neutral"
+        : ageSec > 300
+          ? "warn"
+          : "ok"
+      : state.kind === "error"
+        ? "warn"
+        : "neutral";
+  const label =
+    state.kind === "loading"
+      ? "Loading"
+      : state.kind === "error"
+        ? "Unavailable"
+        : ageSec === null
+          ? "No success yet"
+          : `${fmtRelative2(state.data.newest_last_success_at)}`;
+
+  return (
+    <div
+      className="flex flex-col gap-3 rounded-panel border border-divider bg-surface p-4"
+      data-testid="integration-card-worker-heartbeat"
+      aria-label="Worker heartbeat card"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-section text-text">Worker heartbeat</h3>
+          <p className="mt-1 text-secondary text-text-secondary">
+            Newest `last_success_at` across webhook, backfill and reconcile.
+          </p>
+        </div>
+        <StatusBadge tone={tone} label={label} />
+      </div>
+      {state.kind === "ok" ? (
+        <ul className="flex flex-col gap-2 text-body">
+          {state.data.sources.map((row) => (
+            <li
+              key={row.source}
+              className="flex items-center justify-between rounded-control border border-divider p-2"
+            >
+              <span className="text-text">{row.source}</span>
+              <span className="text-text-secondary">
+                {row.last_success_at
+                  ? fmtRelative2(row.last_success_at)
+                  : row.last_error
+                    ? `error: ${row.last_error}`
+                    : "no success yet"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : state.kind === "error" ? (
+        <p className="text-secondary text-text-secondary">{state.message}</p>
+      ) : null}
+    </div>
+  );
+}
+
 // ---- Section ---------------------------------------------------------
 
 export function IntegrationsSection() {
@@ -587,6 +861,21 @@ export function IntegrationsSection() {
         }
       />
       <ArchitectureTruthPanel />
+      <section
+        aria-label="Live service cards"
+        className="flex flex-col gap-3"
+      >
+        <h2 className="text-section text-text">Live service state</h2>
+        <p className="text-secondary text-text-secondary">
+          Each card below reads a live endpoint — never a hard-coded badge
+          (CLAUDE.md rule 11, S20 W4-4-CARDS).
+        </p>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <BedrockCard />
+          <SesCard />
+          <HeartbeatCard />
+        </div>
+      </section>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {cards.map((c) => (
           <ConnectorCard key={c.id} card={c} />
