@@ -8,6 +8,12 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 **Current head:** `integrate/s20 @ 6b25186` · staging rev 62
 (`s20-0573d19d`). D-S20-17a + rule 17 amendment landed; no deploy.
 
+**Lead-S20-C1-resume-2 attempt (2026-10-01, in flight):** rows to be
+attempted this checkpoint — W4-1, W4-3, W4-4-CARDS, W4-6, W4-7,
+W7-1, W7-2, W7-3, W7-4, W7-5. First action per rule 16: this
+annotation. Last action: flip states based on step 5-8 staging
+proof.
+
 **Lead-S20-C1 checkpoint (2026-09-30):** STOPPED at step 1 (rebase).
 Both lanes edited files outside their owned sets per rule 17.
 No rebase, no merge, no deploy, no flips. Attempted rows W4-1,

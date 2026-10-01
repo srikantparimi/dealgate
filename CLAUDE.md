@@ -122,15 +122,21 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
       `api/app/services/signed_sow.py`,
       `web/src/pages/{SowWorkspace,Projects,Handoff}*`, migrations.
 
-    - **Shared, append-only** (D-S20-17a, 1 Oct 2026): any lane may
-      **add** to the following files; no lane edits or removes
-      existing lines; the Lead merges additions on rebase. Paths —
+    - **Shared, append-only** (D-S20-17a, 1 Oct 2026; refined by
+      D-S20-17b, 1 Oct 2026): any lane may **add** to the
+      following files; the Lead merges additions on rebase. Paths —
       `web/src/api/client.ts`, `web/src/routes*.tsx`,
       `web/src/nav*.tsx`, and the router-registration block in
       `api/app/main.py`. On merge conflict in these files the
       resolution is to **keep both lanes' additions** (concatenate,
-      do not drop). Anything beyond pure additions in a shared file
-      remains a rule-17 violation and a stop condition.
+      do not drop). "Additive" is a **type check, not a line-count
+      check**: widening a union, adding a union member, adding an
+      enum member, or adding an optional field is additive;
+      narrowing a type or removing a member/field is not. The Lead
+      verifies additivity on the merged tree with `tsc --noEmit`;
+      diff line counts are not the gate. Anything that fails the
+      tsc check in a shared file remains a rule-17 violation and a
+      stop condition.
 
     Lanes merge back to `integrate/s20` only through a Lead rebase +
     checkpoint; alembic head must stay == 1 after merge or the Lead
