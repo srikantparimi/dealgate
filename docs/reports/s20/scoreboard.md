@@ -5,14 +5,39 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 `missing` · `blocked` · `deferred`. Every session updates its rows
 **first and last**. ETA = rows-not-verified ÷ 7 per session.
 
-**Current head:** `integrate/s20 @ 6b25186` · staging rev 62
-(`s20-0573d19d`). D-S20-17a + rule 17 amendment landed; no deploy.
+**Current head:** `integrate/s20 @ 4c391f1` · staging rev 62
+(`s20-0573d19d`). Lane A (W4 session 6-A) + Lane B (W7 session 2)
+rebased + merged + pushed. D-S20-17b + rule 17 refinement landed
+(additivity = tsc check). **No staging deploy this checkpoint:**
+`.github/workflows/deploy.yml` triggers only on push-to-main and
+rule 14 forbids merging to main before staging proof — the chicken-
+and-egg means W4/W7 rows stay at `fixed and tested`, bumped from
+`missing` where applicable on local pytest proof (992 passed, 6
+skipped, 150 xfail). Smoke script requires live new deploy; not
+runnable here.
 
-**Lead-S20-C1-resume-2 attempt (2026-10-01, in flight):** rows to be
-attempted this checkpoint — W4-1, W4-3, W4-4-CARDS, W4-6, W4-7,
-W7-1, W7-2, W7-3, W7-4, W7-5. First action per rule 16: this
-annotation. Last action: flip states based on step 5-8 staging
-proof.
+**Lead-S20-C1-resume-2 (2026-10-01, completed):** rebase + merge +
+local gates green; no staging flips (deploy gated on main merge).
+- Rebase Lane A onto `e727dcf` → `44080a1` (two commits collapsed
+  to one; scoreboard conflicts resolved by keeping C1-resume-2
+  header + taking Lane A's W4 row proof text).
+- Rebase Lane B onto Lane A tip → `4c391f1` (no conflicts).
+- `tsc --noEmit` clean on merged tree (D-S20-17b additivity gate).
+- `alembic heads` = 1 (`20260930_0047_w6_watch`).
+- Single-query-service pytest 7/7.
+- No-stubs grep: no net-new functional stubs introduced; the pre-
+  existing `bedrock_ceo_brief` fallback stub carried forward from
+  `fa3332e` (not a C1-resume-2 regression).
+- Full pytest: 992 passed, 0 failed in 4m35s.
+- Attempted rows W4-1, W4-3, W4-4-CARDS, W4-6, W4-7 land at
+  `fixed and tested` with S6-A proof text; W7-1..W7-5 land at
+  `fixed and tested` with S2-W7 proof text. Zero rows flip to
+  `verified working (staging)` this checkpoint — gated on CI
+  deploy that only fires on push-to-main.
+- Follow-up: run `scripts/deploy-smoke.sh` + Playwright S20 serial
+  + W7 e2e + Lane A UI checks against staging AFTER a Lead-
+  approved main merge of `4c391f1`. That merge is the next
+  checkpoint, not this one.
 
 **Lead-S20-C1 checkpoint (2026-09-30):** STOPPED at step 1 (rebase).
 Both lanes edited files outside their owned sets per rule 17.
@@ -109,16 +134,29 @@ the stop cause).
 
 | state | count |
 | --- | --- |
-| verified working (staging) | 25 |
-| fixed and tested | 14 |
-| missing | 5 |
+| verified working (staging) | 26 |
+| fixed and tested | 17 |
+| missing | 3 |
 | blocked | 2 |
 | deferred | 1 |
-| **total** | **47** |
+| **total** | **49** |
+
+Pre-C1-resume-2 (recounted from rows, old totals table was stale):
+26 verified / 10 fixed / 10 missing / 2 blocked / 1 deferred = 49.
+Post-C1-resume-2: 26 verified / 17 fixed / 3 missing / 2 blocked / 1 deferred = 49.
+Deltas: +7 fixed and tested (W4-3, W4-4-CARDS promoted from `missing`
+via Lane A merge; W7-1..W7-5 promoted from `missing` via Lane B merge),
+−7 missing. No row flipped to `verified working (staging)` by this
+Lead checkpoint — all gains are at `fixed and tested` because no
+staging deploy was possible (deploy workflow gates on push-to-main,
+which rule 14 forbids before staging proof).
 
 ## ETA
 
-Rows not `verified working (staging)` = 22. Per rule 16, 7 verified
-rows per session → **≈ 3-4 sessions** to clear (W7 lane needs ~2
-sessions for items 1-5; W4 lane needs ~1-2 for 1, 3, 4-cards, 6, 7;
-plus the final Lead checkpoints and the click-through).
+Rows not `verified working (staging)` = 23. Per rule 16, 7 verified
+rows per session → **≈ 3-4 sessions** to clear. Next session's work
+is unblocking the staging deploy of `4c391f1` (either Lead-approved
+main merge after local proof, or a `workflow_dispatch` deploy of
+`integrate/s20`), then running Playwright S20 serial + W7 e2e +
+Lane A UI checks to flip W4-1/W4-3/W4-4-CARDS/W4-6/W4-7 and
+W7-1..W7-5 to `verified working (staging)`.
