@@ -3063,24 +3063,33 @@ export function getClientSowGmDashboard(
 // --- Signed SOW verify + distribution (S5 E8) ------------------------------
 
 /**
- * The four "material terms" the signed SOW diff engine locks against.
+ * The five "material terms" the signed SOW diff engine locks against.
  * Kept in lock-step with ``app.services.signed_sow._MATERIAL_FIELDS``.
+ *
+ * S20 W7 item 1: ``signatories`` joins the lock set — the approved
+ * signer list must appear on the executed PDF.
  */
 export type SignedSowFieldName =
   | "price"
   | "term_start"
   | "term_end"
-  | "scope_summary";
+  | "scope_summary"
+  | "signatories";
 
 /** One row in the side-by-side diff viewer. */
 export interface SignedSowDiffField {
   field: SignedSowFieldName;
-  approved: string | null;
-  extracted: string | null;
+  // ``signatories`` carries string arrays; the four scalar fields carry
+  // string | null. Narrowed in the UI by `field`.
+  approved: string | string[] | null;
+  extracted: string | string[] | null;
   match: boolean;
   // Only populated on the scope row.
   similarity?: number;
   threshold?: number;
+  // Only populated on the signatories row — S20 W7 item 1.
+  missing?: string[];
+  unexpected?: string[];
 }
 
 export interface SignedSowDiff {

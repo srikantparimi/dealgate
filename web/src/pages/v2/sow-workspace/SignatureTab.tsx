@@ -1,6 +1,7 @@
 import { Button } from "../../../ui-v2/primitives/button";
 import { StatusBadge, type StatusTone } from "../../../ui-v2/StatusBadge";
 import type { WorkspaceSnapshot } from "./readiness";
+import type { ReactNode } from "react";
 
 interface Check {
   id: string;
@@ -8,6 +9,9 @@ interface Check {
   status: StatusTone;
   statusLabel: string;
   hint?: string;
+  /** Rule 13 — inline editor rendered under the row when the check
+   * surfaces a specific recoverable mismatch (not just "pending"). */
+  editor?: ReactNode;
 }
 
 /**
@@ -96,14 +100,44 @@ export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
     status: snap.sow ? "ok" : "danger",
     statusLabel: snap.sow ? snap.sow.file_hash.slice(0, 8) : "Missing",
   });
+
+  // S20 W7 item 1 · signatories check with inline editor on mismatch.
+  // Rule 13: every blocker is an editor. When the server's signatory
+  // diff flagged a missing / unexpected name we render the specifics
+  // and link to the Legal review's signatories picker — never a dead
+  // end "verification failed" message.
+  const sigField = signed?.diff_json?.fields?.find(
+    (f) => f.field === "signatories",
+  );
+  const sigMismatch =
+    signed?.verify_status === "blocked" &&
+    sigField !== undefined &&
+    sigField.match === false;
   checks.push({
     id: "signatories",
     label: "Signatories verified",
-    status: signed?.verify_status === "verified" ? "ok" : "warn",
+    status:
+      signed?.verify_status === "verified"
+        ? "ok"
+        : sigMismatch
+          ? "danger"
+          : "warn",
     statusLabel:
       signed?.verify_status === "verified"
         ? "Verified"
-        : "Not yet verified",
+        : sigMismatch
+          ? "Mismatch"
+          : "Not yet verified",
+    editor: sigMismatch ? (
+      <SignatoriesMismatchEditor
+        approved={Array.isArray(sigField.approved) ? sigField.approved : []}
+        extracted={
+          Array.isArray(sigField.extracted) ? sigField.extracted : []
+        }
+        missing={sigField.missing ?? []}
+        unexpected={sigField.unexpected ?? []}
+      />
+    ) : undefined,
   });
 
   const failing = checks.filter((c) => c.status !== "ok");
@@ -128,6 +162,7 @@ export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
                   {c.hint}
                 </p>
               ) : null}
+              {c.editor ? <div className="mt-2">{c.editor}</div> : null}
             </li>
           ))}
         </ul>
@@ -159,6 +194,86 @@ export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
           </Button>
         </div>
       </section>
+    </div>
+  );
+}
+
+
+/**
+ * Inline editor for a signatories mismatch (S20 W7 item 1 · rule 13).
+ *
+ * Rendered under the "Signatories verified" check row when the server's
+ * diff flagged a missing or unexpected name on the executed PDF. We
+ * surface the specifics side-by-side and route the operator back to the
+ * Legal-review signatories picker — the authoritative writer for the
+ * pinned signatory list. Never a dead-end "verification failed" row.
+ */
+function SignatoriesMismatchEditor({
+  approved,
+  extracted,
+  missing,
+  unexpected,
+}: {
+  approved: string[];
+  extracted: string[];
+  missing: string[];
+  unexpected: string[];
+}) {
+  return (
+    <div
+      className="rounded-panel border border-danger-subtle bg-danger-soft p-3"
+      aria-label="Signatories mismatch — resolution"
+    >
+      <p className="text-body text-text">
+        The executed document&apos;s signatory list does not match the
+        approved SOW.
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-3">
+        <div>
+          <h4 className="text-caption text-text-secondary">Approved</h4>
+          <ul className="list-disc pl-5 text-body text-text">
+            {approved.length > 0 ? (
+              approved.map((n) => <li key={`a-${n}`}>{n}</li>)
+            ) : (
+              <li>None recorded</li>
+            )}
+          </ul>
+        </div>
+        <div>
+          <h4 className="text-caption text-text-secondary">On executed PDF</h4>
+          <ul className="list-disc pl-5 text-body text-text">
+            {extracted.length > 0 ? (
+              extracted.map((n) => <li key={`e-${n}`}>{n}</li>)
+            ) : (
+              <li>None detected</li>
+            )}
+          </ul>
+        </div>
+      </div>
+      {missing.length > 0 ? (
+        <p className="mt-2 text-body text-text">
+          <strong>Missing on executed:</strong> {missing.join(", ")}
+        </p>
+      ) : null}
+      {unexpected.length > 0 ? (
+        <p className="mt-1 text-body text-text">
+          <strong>Unexpected on executed:</strong> {unexpected.join(", ")}
+        </p>
+      ) : null}
+      <p className="mt-2 text-secondary text-text-secondary">
+        To proceed, either (a) re-upload an executed document that bears
+        exactly the approved signers, or (b) create a new SOW revision
+        with the correct signatory list and route it through Legal
+        review again.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <a
+          href="#signatories-picker"
+          className="text-body text-link underline"
+        >
+          Open signatories picker
+        </a>
+      </div>
     </div>
   );
 }

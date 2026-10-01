@@ -67,12 +67,19 @@ class SignedSowError(HTTPException):
 # ---- diff engine ---------------------------------------------------------
 
 
-# The four "material terms" the story locks against.
+# The five "material terms" the story locks against.
+#
+# S20 W7 (item 1): ``signatories`` joins the diff. The approved SOW's
+# signatory list (the names the Legal review signed off on) must match
+# the executed PDF's signatory block. A different set of names is a
+# material change — a stranger countersigning the SOW is exactly the
+# kind of silent swap we need to catch before release.
 _MATERIAL_FIELDS: tuple[str, ...] = (
     "price",
     "term_start",
     "term_end",
     "scope_summary",
+    "signatories",
 )
 
 # Text similarity threshold for the scope diff. Below this the row lands
@@ -174,6 +181,76 @@ def _diff_scope(approved: Any, extracted: Any) -> dict[str, Any]:
     }
 
 
+# ---- signatory diff (S20 W7 item 1) --------------------------------------
+
+
+def _normalise_signatory_name(raw: Any) -> str:
+    """Canonical name string for signatory comparison.
+
+    Accepts either a bare string (legacy rows) or the standard
+    ``{name, role}`` dict. Whitespace + case + punctuation are
+    folded so trivial cosmetic variation (``"J. Doe"`` vs ``"J Doe"``)
+    does not trip the diff — but a different human still does.
+    """
+
+    if isinstance(raw, dict):
+        name = raw.get("name") or raw.get("value") or ""
+    else:
+        name = raw or ""
+    text = str(name).strip().lower()
+    # Collapse interior whitespace + strip trailing punctuation that
+    # OCR routinely attaches ("J. Doe," → "j doe").
+    text = " ".join(text.split())
+    text = text.rstrip(".,;:")
+    return text
+
+
+def _signatory_names(raw: Any) -> list[str]:
+    """Return the normalised, de-duped signatory name list from an extract
+    value.
+
+    The extract carries ``[{"name": "...", "role": "..."}, ...]``. We
+    only diff on the name identity — role mismatches are a Legal-review
+    concern, not a signature-verification concern (the point of this
+    diff is "did the people we approved actually sign").
+    """
+
+    if not isinstance(raw, list):
+        return []
+    seen: list[str] = []
+    for row in raw:
+        canonical = _normalise_signatory_name(row)
+        if canonical and canonical not in seen:
+            seen.append(canonical)
+    return seen
+
+
+def _diff_signatories(approved: Any, extracted: Any) -> dict[str, Any]:
+    """Compare approved vs executed signatory name sets.
+
+    Match rule (S20 W7 item 1): the sets must be equal. A missing name
+    (approved signer not on the executed doc) or an unexpected name (a
+    name on the executed doc nobody approved) is a mismatch. The diff
+    payload names the two sides so the UI's inline editor can render
+    "add Jane Doe" / "remove Someone Else" affordances.
+    """
+
+    approved_names = _signatory_names(approved)
+    extracted_names = _signatory_names(extracted)
+    approved_set = set(approved_names)
+    extracted_set = set(extracted_names)
+    missing = sorted(approved_set - extracted_set)
+    unexpected = sorted(extracted_set - approved_set)
+    return {
+        "field": "signatories",
+        "approved": approved_names,
+        "extracted": extracted_names,
+        "missing": missing,
+        "unexpected": unexpected,
+        "match": not missing and not unexpected,
+    }
+
+
 @dataclass(frozen=True)
 class DiffResult:
     """Structured diff persisted verbatim as ``signed_sow_upload.diff_json``."""
@@ -218,6 +295,10 @@ def compute_diff(
         _diff_scope(
             _field_value(approved, "scope_summary"),
             _field_value(extracted, "scope_summary"),
+        ),
+        _diff_signatories(
+            _field_value(approved, "signatories"),
+            _field_value(extracted, "signatories"),
         ),
     ]
     return DiffResult(fields=fields)

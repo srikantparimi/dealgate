@@ -95,6 +95,12 @@ APPROVED_PRICE = "250000.00"
 APPROVED_TERM_START = "2026-10-01"
 APPROVED_TERM_END = "2027-03-31"
 APPROVED_SCOPE = "Modernise loan-origination platform onto AWS."
+# S20 W7 item 1 · signatory diff. The pinned approved signatories are
+# what Legal signed off on; the executed PDF must bear the same humans.
+APPROVED_SIGNATORIES: list[dict] = [
+    {"name": "Jane Doe", "role": "Client sponsor"},
+    {"name": "Alex Roe", "role": "Delivery lead"},
+]
 
 
 def _approved_fields() -> dict:
@@ -107,6 +113,7 @@ def _approved_fields() -> dict:
     fields["term_start"]["value"] = APPROVED_TERM_START
     fields["term_end"]["value"] = APPROVED_TERM_END
     fields["scope_summary"]["value"] = APPROVED_SCOPE
+    fields["signatories"]["value"] = APPROVED_SIGNATORIES
     return fields
 
 
@@ -131,13 +138,14 @@ class _CannedBedrock(BedrockSowExtract):
                 "page_ref": 1,
                 "status": "unconfirmed",
             }
-        # Populate the four material fields with the "matching" defaults
+        # Populate the five material fields with the "matching" defaults
         # so a test only has to override the fields it wants to mutate.
         for name, default in (
             ("price", APPROVED_PRICE),
             ("term_start", APPROVED_TERM_START),
             ("term_end", APPROVED_TERM_END),
             ("scope_summary", APPROVED_SCOPE),
+            ("signatories", APPROVED_SIGNATORIES),
         ):
             if name not in self.overrides:
                 fields[name]["value"] = default
@@ -315,6 +323,7 @@ async def test_verify_passes_on_exact_terms(session):
         "term_start",
         "term_end",
         "scope_summary",
+        "signatories",
     }
     assert all(f["match"] for f in diff["fields"])
     assert await _count_audits(session, "signed_sow.verified") == 1
@@ -373,6 +382,130 @@ async def test_verify_blocks_on_scope_similarity_below_threshold(session):
     scope = next(f for f in result.diff_json["fields"] if f["field"] == "scope_summary")
     assert scope["match"] is False
     assert scope["similarity"] < 0.9
+
+
+# ---- signatory diff (S20 W7 item 1) --------------------------------------
+
+
+async def test_verify_blocks_when_signatory_names_differ(session):
+    """A stranger countersigning the SOW is a mismatch.
+
+    The approved SOW listed Jane Doe + Alex Roe. The executed PDF carries
+    Jane Doe + a different name. Verify blocks, surfaces the
+    ``signatories_mismatch`` reason, and the diff payload names the
+    missing + unexpected signers so the inline editor can render
+    "add Alex Roe" / "remove Mallory X" affordances.
+    """
+
+    owner = await _seed_user(session, "owner-sig@smartek21.com", ["Sales"])
+    package, _, _ = await _seed_ready_to_sign_package(session, owner=owner)
+    upload = await create_upload(
+        session,
+        actor_id=owner.id,
+        package_id=package.id,
+        file_s3_key="sow/signed/bad-sig.pdf",
+        file_hash="sha256:badsig",
+    )
+    bedrock = _CannedBedrock(
+        overrides={
+            "signatories": [
+                {"name": "Jane Doe", "role": "Client sponsor"},
+                {"name": "Mallory X", "role": "Delivery lead"},
+            ]
+        }
+    )
+
+    result = await verify(
+        session, actor_id=owner.id, upload_id=upload.id, bedrock=bedrock
+    )
+
+    assert result.verify_status == "blocked"
+    assert result.verify_reason == "signatories_mismatch"
+    sig = next(
+        f for f in result.diff_json["fields"] if f["field"] == "signatories"
+    )
+    assert sig["match"] is False
+    assert "alex roe" in sig["missing"]
+    assert "mallory x" in sig["unexpected"]
+    assert "jane doe" not in sig["missing"]
+    assert "jane doe" not in sig["unexpected"]
+
+
+async def test_verify_matches_signatories_despite_cosmetic_variance(session):
+    """``J. Doe,`` vs ``J Doe`` is the same person — do not false-block.
+
+    OCR routinely strips or inserts punctuation. The diff normaliser
+    folds case + interior whitespace + trailing punctuation so the
+    identity test only fires on a different human.
+    """
+
+    owner = await _seed_user(session, "owner-sig-ok@smartek21.com", ["Sales"])
+    package, _, _ = await _seed_ready_to_sign_package(session, owner=owner)
+    upload = await create_upload(
+        session,
+        actor_id=owner.id,
+        package_id=package.id,
+        file_s3_key="sow/signed/ok-sig.pdf",
+        file_hash="sha256:oksig",
+    )
+    bedrock = _CannedBedrock(
+        overrides={
+            "signatories": [
+                {"name": "jane  doe,", "role": "Client sponsor"},
+                {"name": "ALEX ROE.", "role": "Delivery lead"},
+            ]
+        }
+    )
+
+    result = await verify(
+        session, actor_id=owner.id, upload_id=upload.id, bedrock=bedrock
+    )
+
+    assert result.verify_status == "verified"
+    sig = next(
+        f for f in result.diff_json["fields"] if f["field"] == "signatories"
+    )
+    assert sig["match"] is True
+    assert sig["missing"] == []
+    assert sig["unexpected"] == []
+
+
+async def test_verify_blocks_when_signatory_missing_on_executed(session):
+    """A signer the client approved is absent on the executed PDF.
+
+    This is the common case — a delegate signed in Jane's place without
+    going back to Legal for a revision. Must block.
+    """
+
+    owner = await _seed_user(session, "owner-sig-miss@smartek21.com", ["Sales"])
+    package, _, _ = await _seed_ready_to_sign_package(session, owner=owner)
+    upload = await create_upload(
+        session,
+        actor_id=owner.id,
+        package_id=package.id,
+        file_s3_key="sow/signed/missing-sig.pdf",
+        file_hash="sha256:missingsig",
+    )
+    bedrock = _CannedBedrock(
+        overrides={
+            "signatories": [
+                {"name": "Alex Roe", "role": "Delivery lead"},
+            ]
+        }
+    )
+
+    result = await verify(
+        session, actor_id=owner.id, upload_id=upload.id, bedrock=bedrock
+    )
+
+    assert result.verify_status == "blocked"
+    assert result.verify_reason == "signatories_mismatch"
+    sig = next(
+        f for f in result.diff_json["fields"] if f["field"] == "signatories"
+    )
+    assert sig["match"] is False
+    assert "jane doe" in sig["missing"]
+    assert sig["unexpected"] == []
 
 
 # ---- release -------------------------------------------------------------

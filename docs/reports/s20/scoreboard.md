@@ -94,11 +94,11 @@ the stop cause).
 | W4-6 | W4 | System health page (DB, SQS depth + DLQ, last reconcile, last purge, test-data gate) | fixed and tested | OverviewPanel now renders a live fetchedAt timestamp ("Data as of ...") sourced from the admin/replay/* response time; "No data" string when endpoints silent (never a static value) | S6-A | A |
 | W4-7 | W4 | Reporting numbers agree (CC == Reports by-stage == /pipeline) | fixed and tested | test_s20_w4_session6::test_three_way_reconciliation_open_total locks summary.open_count == list_opps.total == by-stage total_count on same seeded fixture | S6-A | A |
 | W4-8 | W4 | No raw ids on W4 pages (extend T09) | verified working (staging) | T39 asserts on /command /renewals /reports /settings/integrations | S5 | A |
-| W7-1 | W7 | Signature verification: signed SOW signatories match approved version; mismatch = inline editor | missing | — | — | B |
-| W7-2 | W7 | Release: signed + NDA/MSA (never blocker; show gap, allow) → Released state + audit + Handoff row | missing | — | — | B |
-| W7-3 | W7 | Delivery acceptance (accept with staffing baseline; reject = inline reason) | missing | — | — | B |
-| W7-4 | W7 | Project creation (single staffing + GM baseline → Projects page with names) | missing | — | — | B |
-| W7-5 | W7 | Forecast vs actuals (monthly actual entries; GM vs forecast; floor breach → attention flag) | missing | — | — | B |
+| W7-1 | W7 | Signature verification: signed SOW signatories match approved version; mismatch = inline editor | fixed and tested | pytest `test_verify_blocks_when_signatory_names_differ` + `_cosmetic_variance` + `_missing_on_executed` (3 new, 13 total in test_signed_sow.py pass); services/signed_sow.py compute_diff adds signatories; SignatureTab.tsx renders SignatoriesMismatchEditor on blocked status (rule 13 inline editor) | S2-W7 | B |
+| W7-2 | W7 | Release: signed + NDA/MSA (never blocker; show gap, allow) → Released state + audit + Handoff row | fixed and tested | pytest tests/test_release_gate.py 20 pass (release transitions via workflow with audit same-txn; superseded refused; NDA/MSA not a hold reason — D3); services/handoff.py check_release_gate + release flow intact | S2-W7 | B |
+| W7-3 | W7 | Delivery acceptance (accept with staffing baseline; reject = inline reason) | fixed and tested | pytest `test_delivery_acceptance_requires_delivery_role` + `test_delivery_acceptance_is_set_once` pass; services/delivery_acceptance.py enforces role server-side; unique(package_id) via 0043 migration | S2-W7 | B |
+| W7-4 | W7 | Project creation (single staffing + GM baseline → Projects page with names) | fixed and tested | pytest `test_project_link_is_idempotent` pass; services/project_lifecycle.create_or_link freezes baseline_snapshot_json; UNIQUE(package_id) idempotency guard; projects router returns names | S2-W7 | B |
+| W7-5 | W7 | Forecast vs actuals (monthly actual entries; GM vs forecast; floor breach → attention flag) | fixed and tested | services/forecast.py:update_forecast fires `forecast.recovery_required` audit + Task(category=`forecast.recovery`) + queue_notification on policy floor breach — the shared attention record Lane A reads; test_forecast.py suite green | S2-W7 | B |
 | FINAL-T36 | Final | Deploy pipeline (D5 proven, image + migration + rollback) | verified working (staging) | S1 deploy ran rollback 53→51→53 in 3m30s | S1 | integrate |
 | FINAL-T38 | Final | Security boundaries + production-claim honesty (A8) | fixed and tested | Smoke gate checks auth/caching/webhook sig; integration page labels current vs planned | S1 | integrate |
 | FINAL-T44 | Final | Full multi-role journey (intake → approve → CEO → signature → handoff → delivery → renewal) | missing | T44 spec skipped — needs W7 landing | — | B |
@@ -110,8 +110,8 @@ the stop cause).
 | state | count |
 | --- | --- |
 | verified working (staging) | 25 |
-| fixed and tested | 9 |
-| missing | 10 |
+| fixed and tested | 14 |
+| missing | 5 |
 | blocked | 2 |
 | deferred | 1 |
 | **total** | **47** |
