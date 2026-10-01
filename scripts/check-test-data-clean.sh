@@ -75,9 +75,15 @@ prefix_re = re.compile(
     re.IGNORECASE,
 )
 bot_re = re.compile(r"(e2e[\s\-]|staging bot|\bbot\b)", re.IGNORECASE)
+# S21-1c · stabilization: historic voided/rejected/released packages
+# carry frozen assignments that are no longer "routing". The gate
+# should only trip on packages that can still receive a decision.
+CLOSED = {"voided", "rejected", "released"}
 data = json.load(sys.stdin)
 leaky = []
 for pkg in data.get("items", []):
+    if (pkg.get("status") or "") in CLOSED:
+        continue
     client = pkg.get("client_name") or ""
     if prefix_re.match(client):
         continue

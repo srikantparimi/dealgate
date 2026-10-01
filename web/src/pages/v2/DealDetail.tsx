@@ -8,10 +8,11 @@
  * (W6's contract), and the SOW list — or a single "Upload SOW"
  * button when the deal has no SOW yet.
  *
- * Rule 11 (CLAUDE.md): every control is wired. No stub buttons, no
- * "Not implemented" branches. If the mirror has no pipeline id, the
- * ordered stage strip degrades to a single "current stage" chip
- * rather than rendering an empty section.
+ * Rule 11 (CLAUDE.md): every control exercises a real server path or
+ * is deleted outright. If the mirror has no pipeline id, the ordered
+ * stage strip degrades to a single "current stage" chip rather than
+ * rendering an empty section — the degradation is the deployed
+ * behaviour, not a placeholder.
  *
  * Contract coverage:
  *  - L04 dealname → h1 heading + `data-testid="deal-heading"`

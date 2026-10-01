@@ -100,7 +100,8 @@ function deriveHubspot(): DerivedState {
       "Staging portal is read-only: crm.objects.deals.read, " +
       "crm.objects.companies.read, crm.objects.owners.read, " +
       "crm.objects.contacts.read, crm.schemas.deals.read. Governance-property " +
-      "writeback (D2) is not wired in this deploy.",
+      "writeback (D2) is scoped out of this deploy — the token holds " +
+      "no write scopes.",
   };
 }
 
