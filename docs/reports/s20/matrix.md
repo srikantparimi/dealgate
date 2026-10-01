@@ -315,3 +315,28 @@ reruns individually pass on rev 61.
 | 9 | Comment permissions (re-run) | `verified working (staging)` | T16 "item 9: anon POST → 401" asserts the server-side guard on `/api/deals/{id}/comments`. Unit `test_comment_viewer_gets_empty_list_and_403_on_write` continues to pass. Session 4b made no changes to the guard. |
 
 All nine items are `verified working (staging)` on rev 61.
+
+---
+
+## Session 5 W4 update · 2026-10-01 00:30 UTC · staging on api rev 62
+
+Session 5 = W4 on `integrate/s20` @ `0573d19d`. Deploy: rev 62 ·
+image `s20-0573d19d`. No new migration. See `progress-W4.md` for the
+item-by-item table; summary:
+
+| # | Item (short) | State on rev 62 |
+| --- | --- | --- |
+| 0a | Saved views + last-view → user_preference | **`verified working (staging)`** |
+| 0b | Real staging assertion for item 8 | `fixed and tested` (seeded staging scenario not run) |
+| 1 | Command center reconciles with Pipeline | `fixed and tested` (summary=list proven; 3 of 4 metric cards still compute independently in ceo_view) |
+| 2 | Renewals (2 calendar months, Jan 31, noreply@dealgateapp.com) | **`verified working (staging)`** |
+| 3 | Reports (pipeline-by-stage/owner/BU + GM + aging + CSV) | `deferred` (budget) |
+| 4 | Integrations truthful | **`verified working (staging)`** for sync_status reads + no static "Connected"; **`missing`** for Bedrock + SES + heartbeat cards |
+| 5 | Freshness alarms via tf-init.sh | **`blocked`** (rule 15 — interactive TF prompt, needs a human) |
+| 6 | System health page | `fixed and tested` (reachable; per-panel liveness audit deferred) |
+| 7 | Reporting numbers agree | `fixed and tested` (two-way today; three-way needs item 3) |
+| 8 | No raw ids on W4 pages (extend T09) | **`verified working (staging)`** |
+
+Session 5 does NOT declare "complete" — four items are
+`verified working (staging)`; four are `fixed and tested`; one is
+`deferred` (budget); one is `blocked` (hard block, rule 15).
