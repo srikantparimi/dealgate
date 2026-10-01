@@ -5,16 +5,13 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 `missing` · `blocked` · `deferred`. Every session updates its rows
 **first and last**. ETA = rows-not-verified ÷ 7 per session.
 
-**Current head:** `integrate/s20 @ 4c391f1` · staging rev 62
-(`s20-0573d19d`). Lane A (W4 session 6-A) + Lane B (W7 session 2)
-rebased + merged + pushed. D-S20-17b + rule 17 refinement landed
-(additivity = tsc check). **No staging deploy this checkpoint:**
-`.github/workflows/deploy.yml` triggers only on push-to-main and
-rule 14 forbids merging to main before staging proof — the chicken-
-and-egg means W4/W7 rows stay at `fixed and tested`, bumped from
-`missing` where applicable on local pytest proof (992 passed, 6
-skipped, 150 xfail). Smoke script requires live new deploy; not
-runnable here.
+**Current head:** `integrate/s20 @ 0360b76` (pre-deploy). Lead-C1
+deploy session attempting rows: W4-1, W4-3, W4-4-CARDS, W4-6, W4-7
+and W7-1..W7-5. The C1-resume-2 "chicken-and-egg with main merge"
+stop reason was wrong — `scripts/deploy-smoke.sh` deploys from
+`integrate/s20` directly (api revs 53–62 prove it) and the
+`docs/runbooks/deploy.md` is the branch deploy path. See
+`docs/reports/s20/progress-lead.md`.
 
 **Lead-S20-C1-resume-2 (2026-10-01, completed):** rebase + merge +
 local gates green; no staging flips (deploy gated on main merge).
