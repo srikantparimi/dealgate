@@ -5,8 +5,27 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 `missing` · `blocked` · `deferred`. Every session updates its rows
 **first and last**. ETA = rows-not-verified ÷ 7 per session.
 
-**Current head:** `integrate/s20 @ f693a99` · staging rev 62
+**Current head:** `integrate/s20 @ d5d6f51` · staging rev 62
 (`s20-0573d19d`).
+
+**Lead-S20-C1 checkpoint (2026-09-30):** STOPPED at step 1 (rebase).
+Both lanes edited files outside their owned sets per rule 17.
+No rebase, no merge, no deploy, no flips. Attempted rows W4-1,
+W4-3, W4-4-CARDS, W4-6, W4-7, W7-1, W7-2, W7-3, W7-4, W7-5
+remain at their lane-reported state (`fixed and tested`) pending
+Lead decision on the ownership exception.
+
+Ownership violations (step-1 stop):
+- Lane A (`feat/s20-w4 @ 1f05090`) edited `web/src/api/client.ts`
+  (shared, not in Lane A owned glob `web/src/pages/{Reports,
+  CommandCenter,Settings,SystemHealth}*` + routers + hubspot_pipeline
+  summary).
+- Lane B (`feat/s20-w7 @ 8b42c81`) edited `web/src/api/client.ts`
+  (shared) AND `api/app/services/signed_sow.py` (not in Lane B owned
+  glob `api/app/services/{signature,release,projects,forecast}*`).
+Both lanes also updated shared `docs/reports/s20/scoreboard.md`
+with overlapping diffs on the header + totals (reconcilable; not
+the stop cause).
 
 | id | scope | deliverable | state | proof | session | lane |
 | --- | --- | --- | --- | --- | --- | --- |
