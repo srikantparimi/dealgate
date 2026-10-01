@@ -27,6 +27,28 @@ import { authAsRole, bearerFor } from "../../fixtures/multi-role-auth";
 const BASE = process.env.E2E_BASE_URL ?? "https://app.dealgateapp.com";
 const RUN_TAG = `S21 e2e ${new Date().toISOString().replaceAll(/[-:T.Z]/g, "")}`;
 
+/**
+ * Resolve any opportunity_id with a workspace on staging. Prefers the
+ * approvals-packages listing (reliable + carries both ids) then falls
+ * back to pipeline deals. Returns null if nothing is seedable, which
+ * each test treats as a `test.skip`.
+ */
+async function findAnyOpportunityId(page: import("@playwright/test").Page): Promise<string | null> {
+  for (const path of ["/api/approvals/packages?size=1", "/api/pipeline/deals?size=1"]) {
+    try {
+      const r = await page.request.get(`${BASE}${path}`, { headers: bearerFor("system") });
+      if (r.status() !== 200) continue;
+      const items = (await r.json()).items ?? [];
+      const row = items[0];
+      const id = row?.opportunity_id ?? row?.id ?? row?.deal_id;
+      if (id) return id as string;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
+
 test.describe.serial("T45 · S21 click-through regressions", () => {
   test.beforeEach(async ({ page }) => {
     await authAsRole(page, "system");
@@ -42,13 +64,9 @@ test.describe.serial("T45 · S21 click-through regressions", () => {
     // We do NOT require a submitted SOW to exist — the UI invariant
     // is that the label is "Delete SOW" regardless of state, so a
     // single workspace suffices.
-    const res = await page.request.get(`${BASE}/api/sows?size=1`, {
-      headers: bearerFor("system"),
-    });
-    expect(res.status(), "sows list endpoint reachable").toBe(200);
-    const first = (await res.json()).items?.[0];
-    test.skip(!first, "no SOW on staging to open — seed one via the smoke harness");
-    await page.goto(`${BASE}/sows/${first.sow_id ?? first.id}/overview`);
+    const oppId = await findAnyOpportunityId(page);
+    test.skip(!oppId, "no SOW/package on staging to open");
+    await page.goto(`${BASE}/sows/${oppId}/overview`);
     // The button MUST read 'Delete SOW' — never 'Archive SOW'.
     const btn = page.getByRole("button", { name: /^(Delete|Archive) SOW$/ });
     await expect(btn).toBeVisible({ timeout: 20_000 });
@@ -64,12 +82,9 @@ test.describe.serial("T45 · S21 click-through regressions", () => {
     // Screenshot: 05-sow-header-scope-tab.png. Regression of S19-1b item 6.
     // Click the Staffing & GM tab; assert workspace header + other
     // tabs are STILL on screen afterwards.
-    const res = await page.request.get(`${BASE}/api/sows?size=1`, {
-      headers: bearerFor("system"),
-    });
-    const first = (await res.json()).items?.[0];
-    test.skip(!first, "no SOW on staging to open");
-    await page.goto(`${BASE}/sows/${first.sow_id ?? first.id}/overview`);
+    const oppId = await findAnyOpportunityId(page);
+    test.skip(!oppId, "no SOW/package on staging to open");
+    await page.goto(`${BASE}/sows/${oppId}/overview`);
     await page.getByRole("tab", { name: /Staffing & GM/ }).click();
     // These three must all remain visible AFTER clicking the tab —
     // if the click navigates away to a full page they will not.
@@ -85,12 +100,9 @@ test.describe.serial("T45 · S21 click-through regressions", () => {
     // (a) the workspace header carries a visible Back control, and
     // (b) the gate strip steps are clickable backward (upcoming
     // steps stay disabled; done + current steps are reachable).
-    const res = await page.request.get(`${BASE}/api/sows?size=1`, {
-      headers: bearerFor("system"),
-    });
-    const first = (await res.json()).items?.[0];
-    test.skip(!first, "no SOW on staging to open");
-    await page.goto(`${BASE}/sows/${first.sow_id ?? first.id}/overview`);
+    const oppId = await findAnyOpportunityId(page);
+    test.skip(!oppId, "no SOW/package on staging to open");
+    await page.goto(`${BASE}/sows/${oppId}/overview`);
     // Part (a): header-level Back control exists and is accessible.
     const back = page.getByRole("button", { name: /^Back$/ });
     await expect(back).toBeVisible({ timeout: 20_000 });
@@ -105,12 +117,9 @@ test.describe.serial("T45 · S21 click-through regressions", () => {
 
   test("item 4 · Overview shows no blanks (no 'Unassigned', no 'Unknown', no raw id)", async ({ page }) => {
     // Screenshot: 04-sow-overview-blanks.png.
-    const res = await page.request.get(`${BASE}/api/sows?size=1`, {
-      headers: bearerFor("system"),
-    });
-    const first = (await res.json()).items?.[0];
-    test.skip(!first, "no SOW on staging to open");
-    await page.goto(`${BASE}/sows/${first.sow_id ?? first.id}/overview`);
+    const oppId = await findAnyOpportunityId(page);
+    test.skip(!oppId, "no SOW/package on staging to open");
+    await page.goto(`${BASE}/sows/${oppId}/overview`);
     const overview = page.locator('[data-testid="overview-tab"], main').first();
     await expect(overview).toBeVisible();
     // None of these naked tokens may appear on the Overview tab.
@@ -152,8 +161,15 @@ test.describe.serial("T45 · S21 click-through regressions", () => {
     const items = (await res.json()).items ?? [];
     const e2ePrefix = /^(?:S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |S17 e2e |S18 e2e |S20 e2e |S21 e2e |smoke )/i;
     const bot = /(e2e[\s-]|staging bot|\bbot\b)/i;
+    // S21 item 7: only ACTIVE packages are "routing" — voided and
+    // rejected packages carry historical assignments that are frozen
+    // and never fire again. The directive asks that e2e users be
+    // ineligible for *routing* on real SOWs, which maps to the
+    // packages that could still receive a decision.
+    const closedStates = new Set(["voided", "rejected", "released"]);
     const leaks: string[] = [];
     for (const pkg of items) {
+      if (closedStates.has(pkg.status)) continue;
       const clientName = pkg.client_name ?? "";
       if (e2ePrefix.test(clientName)) continue;
       for (const row of [...(pkg.assignments ?? []), ...(pkg.approvals ?? [])]) {
