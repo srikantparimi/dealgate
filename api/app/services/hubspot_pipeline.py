@@ -446,6 +446,20 @@ async def search_pipeline_deals(
     return [_row_to_deal(opp, client, owner, linked.get(opp.id, ())) for opp, client, owner in rows]
 
 
+async def list_opportunity_rows(session: AsyncSession) -> list[Opportunity]:
+    """W4 reports (and any read that needs raw rows, not the Pipeline DTO)
+    comes through here so the C8/F3 single-truth gate stays green. Same
+    scope filter as every other list surface — HubSpot-sourced, non-archived.
+    """
+
+    rows = await session.execute(
+        select(Opportunity)
+        .where(Opportunity.source == "hubspot")
+        .where(Opportunity.archived_at.is_(None))
+    )
+    return list(rows.scalars().all())
+
+
 async def is_hubspot_linked(session: AsyncSession, opportunity_id: uuid.UUID) -> bool:
     """SOW board uses this to decide whether to render the 'Not linked' pill."""
 

@@ -559,19 +559,11 @@ async def sow_gm_report(
         _load_latest_gm_for_opps,
         _model_totals,
     )
+    from app.services.hubspot_pipeline import list_opportunity_rows
 
-    opp_rows = list(
-        (
-            await session.execute(
-                select(Opportunity).where(
-                    Opportunity.source == "hubspot",
-                    Opportunity.archived_at.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
+    # Route through the single-truth list helper (C8/F3) — same
+    # hubspot-sourced + non-archived scope every other list surface uses.
+    opp_rows = await list_opportunity_rows(session)
     opp_by_id = {o.id: o for o in opp_rows}
     latest = await _load_latest_gm_for_opps(session, [o.id for o in opp_rows])
 
