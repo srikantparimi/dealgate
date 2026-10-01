@@ -119,7 +119,18 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     - **Lane B** (`feat/s20-w7`): owns alembic revisions **0048+**.
       Owned files — `api/app/routers/{sows,approvals,signature,projects}*`,
       `api/app/services/{signature,release,projects,forecast}*`,
+      `api/app/services/signed_sow.py`,
       `web/src/pages/{SowWorkspace,Projects,Handoff}*`, migrations.
+
+    - **Shared, append-only** (D-S20-17a, 1 Oct 2026): any lane may
+      **add** to the following files; no lane edits or removes
+      existing lines; the Lead merges additions on rebase. Paths —
+      `web/src/api/client.ts`, `web/src/routes*.tsx`,
+      `web/src/nav*.tsx`, and the router-registration block in
+      `api/app/main.py`. On merge conflict in these files the
+      resolution is to **keep both lanes' additions** (concatenate,
+      do not drop). Anything beyond pure additions in a shared file
+      remains a rule-17 violation and a stop condition.
 
     Lanes merge back to `integrate/s20` only through a Lead rebase +
     checkpoint; alembic head must stay == 1 after merge or the Lead

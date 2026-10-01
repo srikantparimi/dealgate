@@ -15,6 +15,13 @@ W4-3, W4-4-CARDS, W4-6, W4-7, W7-1, W7-2, W7-3, W7-4, W7-5
 remain at their lane-reported state (`fixed and tested`) pending
 Lead decision on the ownership exception.
 
+**Lead-S20-C1-resume (2026-10-01, in flight):** attempting rows
+W4-1, W4-3, W4-4-CARDS, W4-6, W4-7, W7-1, W7-2, W7-3, W7-4, W7-5
+after recording D-S20-17a (shared-append-only exception for
+`web/src/api/client.ts` + routes/nav + main.py registration block;
+adds `signed_sow.py` to Lane B owned list). Flips occur only on
+step 4-6 staging proof.
+
 Ownership violations (step-1 stop):
 - Lane A (`feat/s20-w4 @ 1f05090`) edited `web/src/api/client.ts`
   (shared, not in Lane A owned glob `web/src/pages/{Reports,
