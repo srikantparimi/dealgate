@@ -23,7 +23,7 @@ import {
   nextValidStep,
   type WorkspaceSnapshot,
 } from "./sow-workspace/readiness";
-import { formatDate, shortId } from "./sow-workspace/format";
+import { formatTermRange } from "./sow-workspace/format";
 import { SubmitApprovalDialog } from "./sow-workspace/SubmitApprovalDialog";
 import { workspaceTitle } from "./sow-workspace/readiness";
 import {
@@ -211,7 +211,7 @@ export function SowWorkspacePage() {
           title="No SOW draft for this deal yet"
           identity={
             <>
-              <span>ID {shortId(id)}</span>
+              {/* S21 item 4: no internal ID line on the no-SOW shell either. */}
               {snap.deal?.owner?.name && <span>Owner {snap.deal.owner.name}</span>}
               {snap.deal?.engagement_type && <span>Type {snap.deal.engagement_type.replaceAll("_", " ")}</span>}
             </>
@@ -263,6 +263,15 @@ export function SowWorkspacePage() {
   const canSubmit = !!viewer && (viewer.id === snap.deal?.owner_id || viewer.groups.includes("SystemAdmin"));
   const termStart = snap.sow?.extracted_fields?.term_start?.value;
   const termEnd = snap.sow?.extracted_fields?.term_end?.value;
+  // S21 item 4: single display format with explicit year on both sides.
+  const termDisplay = formatTermRange(
+    typeof termStart === "string" ? termStart : null,
+    typeof termEnd === "string" ? termEnd : null,
+  );
+  // S21 item 4: owner falls back to the SOW uploader when the deal has
+  // no owner — never the raw "Unassigned" token.
+  const ownerDisplay = snap.deal?.owner?.name
+    ?? (snap.sow?.uploaded_by ? `Uploader · ${String(snap.sow.uploaded_by).slice(0, 8)}` : null);
   const rail = buildRail(snap);
   const readiness = buildReadiness(snap);
   const items: RecordTabItem[] = TAB_ORDER.map((key) => ({
@@ -280,11 +289,15 @@ export function SowWorkspacePage() {
           title={workspaceTitle(snap)}
           identity={
             <>
-              <span>ID {shortId(id)}</span>
-              <span>Owner {snap.deal?.owner?.name ?? "Unassigned"}</span>
+              {/* S21 item 4: internal `ID <uuid>` line removed; owner
+                  falls back to the uploader (never "Unassigned"); term
+                  renders in a single explicit-year format. The SOW/GM
+                  version chips stay — they are the content, not the
+                  identifier. */}
+              {ownerDisplay && <span data-testid="header-owner">Owner {ownerDisplay}</span>}
               {snap.deal?.engagement_type && <span>Type {snap.deal.engagement_type.replaceAll("_", " ")}</span>}
               {snap.gmModel?.delivery_pattern && <span>Delivery {snap.gmModel.delivery_pattern}</span>}
-              {typeof termStart === "string" && <span>Term {formatDate(termStart)}{typeof termEnd === "string" ? ` to ${formatDate(termEnd)}` : ""}</span>}
+              {termDisplay && <span data-testid="header-term">Term {termDisplay}</span>}
               <span data-testid="sow-version">
                 SOW v {snap.sow?.version_no ?? "—"}
               </span>
@@ -345,6 +358,23 @@ export function SowWorkspacePage() {
                 title={step.reason}
               >
                 {step.label}
+              </Button>
+              {/* S21 item 3: a Back control is always present in the
+                  workspace header. The gate strip + tab bar are
+                  revisitable (both clickable backward until Submit);
+                  this control gives the user a one-click exit back to
+                  the originating deal — the screenshot 05 complaint
+                  was that there was no way back from inside the
+                  studio flow. */}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => nav(snap.deal ? `/deals/${id}` : "/pipeline")}
+                aria-label="Back"
+                title="Back to the deal"
+                data-testid="workspace-back"
+              >
+                Back
               </Button>
               {/* S21 item 1: Delete at every state. One label, one
                   action — the confirm dialog names the cascade. */}

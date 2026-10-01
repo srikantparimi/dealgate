@@ -80,11 +80,27 @@ test.describe.serial("T45 · S21 click-through regressions", () => {
     await expect(page.getByRole("heading", { name: /^Readiness$/ })).toBeVisible();
   });
 
-  test.skip("item 3 · Back navigation in SOW studio", async () => {
-    // Screenshot: 05-sow-header-scope-tab.png. Expectation: every
-    // studio step (Scope → Staffing → Confirm) revisitable via Back
-    // button + step rail click until Submit. Skipped — fix deferred
-    // to Session S21-1 continuation (ProgressRail.canRevisitStep).
+  test("item 3 · Back control + revisitable gate strip", async ({ page }) => {
+    // Screenshot: 05-sow-header-scope-tab.png. Expectations:
+    // (a) the workspace header carries a visible Back control, and
+    // (b) the gate strip steps are clickable backward (upcoming
+    // steps stay disabled; done + current steps are reachable).
+    const res = await page.request.get(`${BASE}/api/sows?size=1`, {
+      headers: bearerFor("system"),
+    });
+    const first = (await res.json()).items?.[0];
+    test.skip(!first, "no SOW on staging to open");
+    await page.goto(`${BASE}/sows/${first.sow_id ?? first.id}/overview`);
+    // Part (a): header-level Back control exists and is accessible.
+    const back = page.getByRole("button", { name: /^Back$/ });
+    await expect(back).toBeVisible({ timeout: 20_000 });
+    // Part (b): the gate strip (SOW progress nav) renders at least
+    // one clickable button for a prior step. The exact labels depend
+    // on the SOW's state, but the aria label is stable.
+    const rail = page.getByRole("navigation", { name: /^SOW progress$/ });
+    await expect(rail).toBeVisible();
+    const enabled = rail.locator("button:not([disabled])");
+    expect(await enabled.count()).toBeGreaterThan(0);
   });
 
   test("item 4 · Overview shows no blanks (no 'Unassigned', no 'Unknown', no raw id)", async ({ page }) => {

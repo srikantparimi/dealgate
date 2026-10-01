@@ -27,7 +27,6 @@ import { AppShell } from "./ui-v2/AppShell";
 import { CommandCenterPage } from "./pages/v2/CommandCenter";
 import { SowApprovalsPage } from "./pages/v2/SowApprovals";
 import { SowStudioPage } from "./pages/v2/SowStudio";
-import { StaffingGatePage } from "./pages/v2/sow-staffing/StaffingGate";
 import { SowWorkspacePage } from "./pages/v2/SowWorkspace";
 import { CEOExceptionDecisionPage } from "./pages/v2/CEOExceptionDecision";
 import { ClientDetailPageV2 } from "./pages/v2/ClientDetail";
@@ -141,14 +140,16 @@ export function App() {
                   <Route path="/agreements" element={<AgreementsRegisterPage />} />
                   <Route path="/sows" element={<SowApprovalsPage />} />
                   <Route path="/sows/new" element={<SowStudioPage />} />
-                  {/* Staffing gate — sits between upload and confirmation.
-                   * A gross margin is only as good as the plan under it, so
-                   * the plan is entered (or uploaded) before the confirm
-                   * screen shows a margin at all. */}
-                  <Route
-                    path="/sows/:id/staffing"
-                    element={<StaffingGatePage />}
-                  />
+                  {/* S21 item 2: `/sows/:id/staffing` no longer resolves
+                   * to a full-screen StaffingGatePage — clicking the
+                   * Staffing & GM tab inside the workspace used to
+                   * trip this more-specific route and leave the
+                   * workspace. The in-place StaffingGmTab now owns
+                   * both display and editing. The component
+                   * StaffingGatePage remains importable for the
+                   * studio flow (web/src/pages/v2/SowStudio.tsx), but
+                   * only the generic `/sows/:id/:tab` route reaches
+                   * the staffing surface now. */}
                   <Route path="/sows/:id" element={<SowWorkspacePage />} />
                   <Route path="/sows/:id/:tab" element={<SowWorkspacePage />} />
                   <Route

@@ -102,6 +102,20 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     session id filled. ETA at the bottom of the scoreboard =
     (rows not `verified working (staging)`) ÷ 7 per session.
 
+    **Deploy is not optional (1 Oct 2026, S21-1b addendum).** For any
+    session whose directive requires a staging-verified outcome, the
+    build phase stops at **minute 55** of the stated budget — commit,
+    deploy via D5, run the owning spec on staging, update the
+    scoreboard, write the report. Report items in whatever state they
+    reach; a `fixed and tested` row that could not deploy is not a
+    completed row. Adopted after S21-1 shipped three local-only fixes
+    (items 1, 7, 8) and marked deploy "deferred" because the session
+    was spent on build. The scoreboard distinguishes `fixed and
+    tested` (local proof) from `verified working (staging)` (staging
+    proof) precisely so this split is visible — but without the
+    deploy, the row never flips, and the product owner's
+    click-through cannot pick up the fix.
+
 17. **Parallel lanes.** When S20 splits into feature lanes
     (`feat/s20-<lane>`), each lane works on its own branch — only the
     Lead deploys to staging. A lane proves its work locally: pytest
