@@ -206,10 +206,11 @@ async def test_card_agreements_uploaded_matches_agreement_count(session):
 
 @pytest.mark.asyncio
 async def test_three_way_reconciliation_open_total(session):
-    """CC `summary.open_count` == sum of `by-stage` counts == `list_opps.total`.
+    """CC `summary.open_count` == `by-stage.total_count` ==
+    `list_opps.total` == `list_pipeline_deals.total_open`.
 
-    This locks the directive's "Reporting numbers agree" invariant across
-    all three surfaces at once.
+    Locks the "Reporting numbers agree" invariant across all four
+    surfaces (W4-7 four-way assertion).
     """
     owner = User(email="rec@dealgate.local", name="Rec", groups=[])
     c = Client(name="Rec Corp")
@@ -246,9 +247,21 @@ async def test_three_way_reconciliation_open_total(session):
     )
     by_stage = await pipeline_by_stage(user=sysadmin, session=session)
 
-    assert cc.open_count == pipeline.total == by_stage.total_count == 5, (
-        f"three-way mismatch: cc={cc.open_count}, "
-        f"pipeline={pipeline.total}, reports={by_stage.total_count}"
+    # /pipeline/deals source — the user-facing pipeline tab counter.
+    from app.services.hubspot_pipeline import list_pipeline_deals
+
+    _, total_open_deals, _ = await list_pipeline_deals(session)
+
+    assert (
+        cc.open_count
+        == pipeline.total
+        == by_stage.total_count
+        == total_open_deals
+        == 5
+    ), (
+        f"four-way mismatch: cc={cc.open_count}, "
+        f"pipeline={pipeline.total}, reports={by_stage.total_count}, "
+        f"deals={total_open_deals}"
     )
 
 

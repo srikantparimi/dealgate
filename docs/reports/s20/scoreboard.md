@@ -43,6 +43,13 @@ single-truth gate — fixed by routing through new helper
 single-run-tag flow. W7-1..W7-5 stay at `fixed and tested` (no
 staging proof this run).
 
+**Lead-S20-C2 (2026-10-01, in flight):** attempting W4-1 (expose
+new summary fields through SummaryOut + router + CommandCenter
+deep-links), W4-7 (/pipeline/deals total_open scope fix + 4-way
+reconcile assertion), W7-1..W7-5 (Playwright S20 serial + W7 e2e
+run-tag flow). Deploy via D5. Flips only on staging proof. Rule 19
+heartbeat active.
+
 **Lead-S20-C1-resume-2 (2026-10-01, completed):** rebase + merge +
 local gates green; no staging flips (deploy gated on main merge).
 - Rebase Lane A onto `e727dcf` → `44080a1` (two commits collapsed

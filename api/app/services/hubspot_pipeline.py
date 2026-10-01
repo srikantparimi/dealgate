@@ -153,18 +153,25 @@ async def list_pipeline_deals(
     """Return (rows, total_open, total_closed_lost) for the Pipeline UI."""
 
     # Split counts so the tab labels are honest without a second round trip.
+    # Scope: `total_open` matches the `_closed_condition()` used by
+    # `summary.open_count` — not won AND not lost. The prior stage_label
+    # string match leaked closed-won into total_open (W4-7 bug).
     count_stmt = (
-        select(Opportunity.stage_label, Opportunity.sales_stage, func.count(Opportunity.id))
+        select(
+            Opportunity.is_closed_won,
+            Opportunity.is_closed_lost,
+            func.count(Opportunity.id),
+        )
         .where(Opportunity.source == "hubspot")
         .where(Opportunity.archived_at.is_(None))
-        .group_by(Opportunity.stage_label, Opportunity.sales_stage)
+        .group_by(Opportunity.is_closed_won, Opportunity.is_closed_lost)
     )
     total_open = 0
     total_closed_lost = 0
-    for stage_label, stage, count in (await session.execute(count_stmt)).all():
-        if _is_closed_lost(stage, stage_label):
+    for is_won, is_lost, count in (await session.execute(count_stmt)).all():
+        if is_lost:
             total_closed_lost += count
-        else:
+        elif not is_won:
             total_open += count
 
     stmt = _base_query()

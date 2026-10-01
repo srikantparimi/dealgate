@@ -299,6 +299,9 @@ class SummaryOut(BaseModel):
     overdue_actions: int
     pending_approvals: int
     agreement_gaps: int
+    sows_in_progress: int = 0
+    agreements_uploaded: int = 0
+    ceo_pending: int = 0
 
 
 def _parse_filters(
@@ -778,6 +781,9 @@ async def summary_endpoint(
         overdue_actions=result.overdue_actions,
         pending_approvals=result.pending_approvals,
         agreement_gaps=result.agreement_gaps,
+        sows_in_progress=result.sows_in_progress,
+        agreements_uploaded=result.agreements_uploaded,
+        ceo_pending=result.ceo_pending,
     )
 
 

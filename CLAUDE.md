@@ -144,6 +144,22 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     integrations + health) and W7 (approval → delivery) progress in
     parallel without stepping on each other's files or staging.
 
+19. **Heartbeat.** Every session posts a one-line status to chat at
+    every step boundary and at least every 15 minutes while any
+    command runs. Format:
+    `<step n/N> · <what is running> · <elapsed> · <next step>`.
+    Long commands (`scripts/deploy-smoke.sh`, Playwright, pytest) run
+    in the background; the session polls them and posts the line when
+    they finish, with pass/fail counts. Never wait silently on an
+    external process. If the session is waiting on something only a
+    human can do (approve a prompt, verify a UI, resolve a question),
+    say exactly what — once — and continue with anything that does
+    not depend on it. Adopted 1 Oct 2026 after the Lead C1-* sessions
+    sat silent for 20–90 minutes after deploys and tests completed,
+    obscuring whether the agent had stalled or still had work in
+    flight. The scoreboard-first-and-last rule (16) covers state;
+    rule 19 covers liveness between those two writes.
+
 ## Where things live
 
 - `docs/blueprint.md` — the governance policy (source of truth for rules).
