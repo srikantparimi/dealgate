@@ -115,7 +115,13 @@ export function ApprovalQueuePage() {
       const key = `${pkg.id}:${decision}`;
       setBusy((prev) => new Set(prev).add(key));
       try {
-        await decideApprovalPackage(pkg.id, fn, { decision, reason: reasons[pkg.id].trim() });
+        // S20 W3 T19: include the loaded package_hash so a stale queue
+        // row cannot approve an obsolete package (material change void).
+        await decideApprovalPackage(pkg.id, fn, {
+          decision,
+          reason: reasons[pkg.id].trim(),
+          expected_package_hash: pkg.package_hash,
+        });
         await load();
       } catch (e) {
         setError(e);

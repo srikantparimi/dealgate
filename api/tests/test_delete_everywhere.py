@@ -28,11 +28,18 @@ from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
 from app.models.task import Task
 from app.models.user import User
-from app.services.deletion import delete_sow
+from app.services.deletion import DeletionError, archive_sow, delete_sow
 
 
 @pytest.mark.asyncio
 async def test_delete_sow_removes_it_from_every_list(session):
+    """S17 §Addendum 1, superseded by S20 D6.
+
+    With a submitted approval package, D6 requires ``archive_sow`` (rows
+    survive with archived_at set) — hard delete is refused. The list
+    surfaces filter on ``archived_at IS NULL`` so the archived SOW is
+    invisible to every UI while the audit chain remains intact.
+    """
     owner = User(
         id=uuid.uuid4(),
         email="s17-owner@example.test",
@@ -164,27 +171,31 @@ async def test_delete_sow_removes_it_from_every_list(session):
         )
     ) == 1
 
-    # -- Act --
-    summary = await delete_sow(session, actor_id=owner.id, sow_id=sow.id)
+    # -- Act: D6 refuses hard delete of a governed SOW --
+    with pytest.raises(DeletionError) as excinfo:
+        await delete_sow(session, actor_id=owner.id, sow_id=sow.id)
+    assert excinfo.value.status_code == 409
+    assert "archive" in str(excinfo.value).lower()
+
+    # -- Act (D6 path): archive_sow succeeds --
+    summary = await archive_sow(session, actor_id=owner.id, sow_id=sow.id)
     await session.commit()
 
-    # -- Post-delete: rows are gone from every list --
-    assert await count(Sow, Sow.id == sow.id) == 0
-    assert await count(SowVersion, SowVersion.sow_id == sow.id) == 0
-    assert await count(GmModel, GmModel.sow_version_id == version.id) == 0
-    assert await count(ApprovalPackage, ApprovalPackage.opportunity_id == opp.id) == 0
-    assert await count(Approval, Approval.package_id == package.id) == 0
-    assert await count(ApprovalAssignment, ApprovalAssignment.package_id == package.id) == 0
-    assert await count(Task, Task.id == task.id) == 0
-    assert (
-        await count(
-            Notification,
-            Notification.related_entity == "approval_package",
-            Notification.related_entity_id == str(package.id),
-        )
-    ) == 0
+    # -- Post-archive: SOW row survives (rule 4) with archived_at set --
+    archived = await session.get(Sow, sow.id)
+    assert archived is not None
+    assert archived.archived_at is not None
+    assert archived.archived_reason == "s20_w3_governed_archive"
 
-    # -- One audit line, and it carries what the directive asks for --
+    # -- Descendants survive (rule 4 — audit + decisions must persist) --
+    assert await count(SowVersion, SowVersion.sow_id == sow.id) == 1
+    assert await count(GmModel, GmModel.sow_version_id == version.id) == 1
+    assert await count(ApprovalPackage, ApprovalPackage.opportunity_id == opp.id) == 1
+    assert await count(Approval, Approval.package_id == package.id) == 1
+    assert await count(ApprovalAssignment, ApprovalAssignment.package_id == package.id) == 1
+    assert await count(Task, Task.id == task.id) == 1
+
+    # -- One audit line for the archive; the sow.deleted line was refused --
     rows = list(
         (
             await session.execute(
@@ -192,15 +203,16 @@ async def test_delete_sow_removes_it_from_every_list(session):
             )
         ).scalars()
     )
+    archives = [r for r in rows if r.action == "sow.archived"]
     deletions = [r for r in rows if r.action == "sow.deleted"]
-    assert len(deletions) == 1
-    payload = deletions[0].before or {}
-    assert payload["sow_id"] == str(sow.id)
-    assert payload["sow_title"] == "S17 delete-everywhere fixture"
+    assert len(archives) == 1
+    assert len(deletions) == 0
+    payload = archives[0].after or {}
+    assert payload["archived_reason"] == "s20_w3_governed_archive"
     assert payload["stage"] == "SOWDraft.confirmed"
     assert payload["price"] == "$42,000"
 
-    # -- The summary the service returns matches the audit line --
+    # -- Summary shape matches (returned by both archive_sow + delete_sow) --
     assert summary.sow_title == "S17 delete-everywhere fixture"
     assert summary.stage == "SOWDraft.confirmed"
     assert summary.price == "$42,000"

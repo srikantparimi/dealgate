@@ -1036,6 +1036,8 @@ export interface SowVersion {
   sow_id: UUID;
   opportunity_id: UUID;
   uploaded_by: UUID | null;
+  /** S21-1c item 1: display name of the uploader (never a raw id). */
+  uploaded_by_name: string | null;
   uploaded_at: ISODateTime;
   file_s3_key: string;
   file_hash: string;
@@ -1309,10 +1311,21 @@ export interface SowUploadRejected422 {
 export async function uploadSow(input: {
   file: File;
   clientHint?: string;
+  // S20 W3 T11/T37: pre-bind the upload to a client + deal so the
+  // pipeline skips the picker. Both must be supplied together; the
+  // server 422s if only one is set. The Deal page always sends both;
+  // the global "New SOW studio" leaves them undefined and takes the
+  // fuzzy-match/picker path.
+  clientId?: UUID;
+  opportunityId?: UUID;
 }): Promise<UploadSowResponse> {
   const form = new FormData();
   form.append("file", input.file);
   if (input.clientHint) form.append("client_hint", input.clientHint);
+  if (input.clientId && input.opportunityId) {
+    form.append("client_id", input.clientId);
+    form.append("opportunity_id", input.opportunityId);
+  }
   const res = await fetch(`${BASE_URL}/sows/upload`, {
     method: "POST",
     headers: { ...(await authHeaders()) },
@@ -2597,6 +2610,10 @@ export interface ApprovalPackage {
   policy_version_id: UUID | null;
   approvals: ApprovalRow[];
   floors?: ApprovalPackageFloors;
+  // S20 W7 (T22): when a newer submission supersedes this package,
+  // this field carries the newer package's id. The signature UI shows
+  // "Superseded by v{N}" and disables the primary action.
+  superseded_by?: UUID | null;
 }
 
 export interface ApprovalPackageListResponse {
@@ -2672,7 +2689,16 @@ export function getApprovalPackage(packageId: UUID): Promise<ApprovalPackage> {
 export function decideApprovalPackage(
   packageId: UUID,
   fn: ApprovalFunction,
-  body: { decision: ApprovalDecision; reason?: string | null },
+  body: {
+    decision: ApprovalDecision;
+    reason?: string | null;
+    // S20 W3 T19: send the package_hash the client loaded. The server
+    // rejects with 409 if it doesn't match — a material change (new
+    // sow_version / gm_model) voided the package between load and
+    // submit. The UI must reload and re-render the current package
+    // before letting the reviewer decide again.
+    expected_package_hash?: string;
+  },
 ): Promise<ApprovalPackage> {
   return request<ApprovalPackage>(
     `/approvals/packages/${packageId}/decisions/${fn}`,
@@ -3039,24 +3065,33 @@ export function getClientSowGmDashboard(
 // --- Signed SOW verify + distribution (S5 E8) ------------------------------
 
 /**
- * The four "material terms" the signed SOW diff engine locks against.
+ * The five "material terms" the signed SOW diff engine locks against.
  * Kept in lock-step with ``app.services.signed_sow._MATERIAL_FIELDS``.
+ *
+ * S20 W7 item 1: ``signatories`` joins the lock set — the approved
+ * signer list must appear on the executed PDF.
  */
 export type SignedSowFieldName =
   | "price"
   | "term_start"
   | "term_end"
-  | "scope_summary";
+  | "scope_summary"
+  | "signatories";
 
 /** One row in the side-by-side diff viewer. */
 export interface SignedSowDiffField {
   field: SignedSowFieldName;
-  approved: string | null;
-  extracted: string | null;
+  // ``signatories`` carries string arrays; the four scalar fields carry
+  // string | null. Narrowed in the UI by `field`.
+  approved: string | string[] | null;
+  extracted: string | string[] | null;
   match: boolean;
   // Only populated on the scope row.
   similarity?: number;
   threshold?: number;
+  // Only populated on the signatories row — S20 W7 item 1.
+  missing?: string[];
+  unexpected?: string[];
 }
 
 export interface SignedSowDiff {
@@ -3065,7 +3100,23 @@ export interface SignedSowDiff {
   reason?: string;
 }
 
-export type SignedSowVerifyStatus = "pending" | "verified" | "blocked";
+// S20 W7 (T22): expanded to distinguish unsigned uploads (rejected 400
+// on create), declined and expired signature requests. `verify_reason`
+// carries the human-readable cause; `signer_state` tracks the external
+// signature-request lifecycle independently from verify.
+export type SignedSowVerifyStatus =
+  | "pending"
+  | "verified"
+  | "blocked"
+  | "unsigned"
+  | "declined"
+  | "expired";
+
+export type SignedSowSignerState =
+  | "sent"
+  | "signed"
+  | "declined"
+  | "expired";
 
 export interface SignedSowUpload {
   id: UUID;
@@ -3075,6 +3126,8 @@ export interface SignedSowUpload {
   uploaded_by: UUID;
   uploaded_at: ISODateTime | null;
   verify_status: SignedSowVerifyStatus;
+  verify_reason: string | null;
+  signer_state: SignedSowSignerState | null;
   diff_json: SignedSowDiff | null;
   verified_at: ISODateTime | null;
   released_at: ISODateTime | null;
@@ -3097,6 +3150,17 @@ export interface SignedSowUploadUrlResponse {
 export interface CreateSignedSowUploadBody {
   file_s3_key: string;
   file_hash: string;
+  // S20 W7 (T22): defaults true; when false the API returns 400 with
+  // an `unsigned upload rejected` message.
+  has_signature_evidence?: boolean;
+}
+
+export interface MarkSignedSowDeclinedBody {
+  reason: string;
+}
+
+export interface MarkSignedSowExpiredBody {
+  reason?: string | null;
 }
 
 export function getSignedSowUploadUrl(
@@ -3134,6 +3198,83 @@ export function verifySignedSow(packageId: UUID): Promise<SignedSowUpload> {
 export function releaseSignedSow(packageId: UUID): Promise<SignedSowUpload> {
   return request<SignedSowUpload>(`/signed-sow/${packageId}/release`, {
     method: "POST",
+  });
+}
+
+// S20 W7 (T22): declined / expired signature-request transitions.
+export function declineSignedSow(
+  packageId: UUID,
+  body: MarkSignedSowDeclinedBody,
+): Promise<SignedSowUpload> {
+  return request<SignedSowUpload>(`/signed-sow/${packageId}/decline`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function expireSignedSow(
+  packageId: UUID,
+  body: MarkSignedSowExpiredBody = {},
+): Promise<SignedSowUpload> {
+  return request<SignedSowUpload>(`/signed-sow/${packageId}/expire`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// --- S20 W7: handoff / release gate ---------------------------------------
+
+export interface HandoffGateChecks {
+  internal_signoff: boolean;
+  client_execution: boolean;
+  delivery_acceptance: boolean;
+  approvals_current: boolean;
+  not_superseded: boolean;
+}
+
+export interface HandoffGate {
+  ok: boolean;
+  checks: HandoffGateChecks;
+  reasons: string[];
+}
+
+export interface DeliveryAcceptance {
+  id: UUID;
+  package_id: UUID;
+  accepted_by: UUID;
+  accepted_at: ISODateTime | null;
+  notes: string | null;
+  staffing_confirmed: boolean;
+  billing_setup_confirmed: boolean;
+  po_confirmed: boolean;
+}
+
+export interface RecordDeliveryAcceptanceBody {
+  notes?: string | null;
+  staffing_confirmed?: boolean;
+  billing_setup_confirmed?: boolean;
+  po_confirmed?: boolean;
+}
+
+export function getHandoffGate(packageId: UUID): Promise<HandoffGate> {
+  return request<HandoffGate>(`/handoff/${packageId}/gate`);
+}
+
+export function getDeliveryAcceptance(
+  packageId: UUID,
+): Promise<DeliveryAcceptance | null> {
+  return request<DeliveryAcceptance | null>(
+    `/handoff/${packageId}/acceptance`,
+  );
+}
+
+export function recordDeliveryAcceptance(
+  packageId: UUID,
+  body: RecordDeliveryAcceptanceBody = {},
+): Promise<DeliveryAcceptance> {
+  return request<DeliveryAcceptance>(`/handoff/${packageId}/accept`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 
@@ -3659,6 +3800,7 @@ export function deleteCapability(id: UUID): Promise<void> {
 export type DeletionState =
   | "draft"
   | "approved"
+  | "governed"
   | "hubspot_linked"
   | "archived"
   | "deleted";
@@ -3719,6 +3861,18 @@ export function deleteSow(
   const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
   return request<DeletionAssessmentResponse>(`/sows/${sowId}${qs}`, {
     method: "DELETE",
+  });
+}
+
+// S20 W3 D6: archive a governed SOW (any SOW that reached approval).
+// The server 409s hard-delete on governed SOWs; use this instead.
+export function archiveSow(
+  sowId: UUID,
+  reason?: string,
+): Promise<DeletionAssessmentResponse> {
+  return request<DeletionAssessmentResponse>(`/sows/${sowId}/archive`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason ?? null }),
   });
 }
 
@@ -3794,15 +3948,50 @@ export interface PipelineOpportunityRow {
   next_action_open_count: number;
   next_action_min_due: ISODate | null;
   sow_count: number;
+  hubspot_pipeline_id?: string | null;
+  business_unit?: string | null;
+  // S20 W6 Session 4b item 2 · latest-comment preview on the row.
+  latest_comment_body?: string | null;
+  latest_comment_author?: string | null;
+  latest_comment_pinned?: boolean;
+  latest_comment_at?: ISODateTime | null;
 }
+
+// S20 W6 Session 4b item 1 · patch helpers for next actions.
+export function patchNextAction(
+  id: UUID,
+  patch: {
+    status?: string;
+    assignee_user_id?: UUID | null;
+    due_date?: ISODate | null;
+    clear_due_date?: boolean;
+    title?: string;
+    blocker?: string;
+    outcome?: string;
+  },
+): Promise<NextActionRow> {
+  return request<NextActionRow>(`/next-actions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+// S20 W6 Session 4b item 1 · deal-owner picker options list.
+// Reuses /pipeline/facets owner list — those are the users with ≥1
+// non-archived HubSpot opportunity (the right set to assign actions to).
 
 export interface PipelineClientRow {
   client_id: UUID;
   client_name: string;
   hubspot_company_id: string | null;
+  account_owner_id?: string | null;
+  account_owner_name?: string | null;
+  account_owner_email?: string | null;
   owner_id: UUID | null;
   owner_name: string | null;
   owner_email: string | null;
+  matching_deal_count?: number;
+  total_open_deal_count?: number;
   open_opp_count: number;
   open_value_by_currency: Record<string, DecimalStr>;
   stage_breakdown: Record<string, number>;
@@ -3815,11 +4004,40 @@ export interface PipelineClientRow {
   next_action_open_count: number;
 }
 
+export interface PipelineStageCount {
+  pipeline_id: string | null;
+  stage_id: string | null;
+  stage_label: string | null;
+  stage_order: number | null;
+  count: number;
+  is_closed_won?: boolean;
+  is_closed_lost?: boolean;
+  // S20 W2 Session 3b Rev-2 · per-chip currency totals (L06).
+  open_value_by_currency?: Record<string, DecimalStr>;
+}
+
+export interface PipelineFreshness {
+  source: string;
+  received_at: ISODateTime | null;
+  processed_at: ISODateTime | null;
+  reconciled_at: ISODateTime | null;
+  state: string;
+}
+
+export interface PipelineListMeta {
+  freshness: PipelineFreshness;
+  unknown_bucket: number;
+  stage_counts: PipelineStageCount[];
+  filters_echo: Record<string, unknown>;
+  business_timezone?: string;
+}
+
 export interface PipelineListPage<T> {
   items: T[];
   total: number;
   page: number;
   page_size: number;
+  meta?: PipelineListMeta;
 }
 
 export interface PipelineSummary {
@@ -3829,19 +4047,49 @@ export interface PipelineSummary {
   overdue_actions: number;
   pending_approvals: number;
   agreement_gaps: number;
+  // S20 W4 Session 6 · command-center card scalars (optional for
+  // forward compatibility; servers at head always return them).
+  sows_in_progress?: number;
+  agreements_uploaded?: number;
+  ceo_pending?: number;
 }
 
 export interface PipelineFilters {
   pipeline?: string | null;
   stage?: string[];
   owner?: UUID[];
+  account_owner?: string[];
+  business_unit?: string[];
   readiness?: string[];
   attention?: string[];
-  date_field?: "created" | "close" | "last_activity" | "action_due";
+  date_field?:
+    | "created"
+    | "close"
+    | "last_activity"
+    | "action_due"
+    | "last_contacted";
   date_from?: ISODate;
   date_to?: ISODate;
+  date_preset?:
+    | "last7"
+    | "last30"
+    | "last90"
+    | "next7"
+    | "next30"
+    | "next90"
+    | "this_month"
+    | "this_quarter"
+    | "custom";
   search?: string;
   include_closed?: boolean;
+  open_closed?: "open" | "closed_won" | "closed_lost" | "any";
+  missing?: string[];
+  // S20 W2 Session 3b · scope to one or more client UUIDs (client detail page).
+  client?: UUID[];
+  // S20 W6 Session 4 · tracking-group scope (manual or rule-based).
+  group?: UUID[];
+  // S20 W6 Session 4 · per-user watchlist axis. `true` = only starred rows.
+  watching?: boolean;
   page?: number;
   page_size?: number;
   sort?: string;
@@ -3852,13 +4100,21 @@ function pipelineParams(filters: PipelineFilters): URLSearchParams {
   if (filters.pipeline) p.set("pipeline", filters.pipeline);
   filters.stage?.forEach((s) => p.append("stage", s));
   filters.owner?.forEach((o) => p.append("owner", o));
+  filters.account_owner?.forEach((o) => p.append("account_owner", o));
+  filters.business_unit?.forEach((b) => p.append("business_unit", b));
   filters.readiness?.forEach((r) => p.append("readiness", r));
   filters.attention?.forEach((a) => p.append("attention", a));
+  filters.missing?.forEach((m) => p.append("missing", m));
+  filters.client?.forEach((c) => p.append("client", c));
+  filters.group?.forEach((g) => p.append("group", g));
+  if (filters.watching) p.set("watching", "true");
   if (filters.date_field) p.set("date_field", filters.date_field);
   if (filters.date_from) p.set("date_from", filters.date_from);
   if (filters.date_to) p.set("date_to", filters.date_to);
+  if (filters.date_preset) p.set("date_preset", filters.date_preset);
   if (filters.search) p.set("search", filters.search);
   if (filters.include_closed) p.set("include_closed", "true");
+  if (filters.open_closed) p.set("open_closed", filters.open_closed);
   if (filters.page) p.set("page", String(filters.page));
   if (filters.page_size) p.set("page_size", String(filters.page_size));
   if (filters.sort) p.set("sort", filters.sort);
@@ -3890,6 +4146,219 @@ export function getPipelineSummary(filters: PipelineFilters = {}): Promise<Pipel
   );
 }
 
+// S20 W2 Session 3b · single-opportunity for /deals/:id. Returns the
+// same OpportunityRow shape as the list endpoint so the deal page and
+// the pipeline table stay column-aligned.
+export function getPipelineOpportunity(
+  opportunityId: UUID,
+): Promise<PipelineOpportunityRow> {
+  return request<PipelineOpportunityRow>(
+    `/pipeline/opportunities/${opportunityId}`,
+  );
+}
+
+// S20 W2 Session 3b · ordered stage strip for /deals/:id. Uses the
+// hubspot_stage mirror; every non-archived stage in this pipeline in
+// display order (zero-count stages included).
+export function listPipelineStages(
+  pipelineId: string,
+): Promise<PipelineStageCount[]> {
+  return request<PipelineStageCount[]>(
+    `/pipeline/pipelines/${encodeURIComponent(pipelineId)}/stages`,
+  );
+}
+
+// S20 W2 Session 3b Rev-2 · facets for the Pipeline filter bar.
+export interface PipelineOwnerFacet {
+  id: UUID;
+  name: string;
+  email: string | null;
+}
+
+export interface PipelineFacets {
+  owners: PipelineOwnerFacet[];
+  business_units: string[];
+}
+
+export function getPipelineFacets(): Promise<PipelineFacets> {
+  return request<PipelineFacets>(`/pipeline/facets`);
+}
+
+// S20 W6 Session 4 · tracking groups (manual + rule-based).
+export interface TrackingGroup {
+  id: UUID;
+  owner_id: UUID;
+  name: string;
+  visibility: "private" | "team";
+  member_kind: "client" | "opportunity";
+  filter_json: Record<string, unknown> | null;
+  include_future_deals: boolean;
+  archived_at: ISODateTime | null;
+}
+
+export function listTrackingGroups(params: {
+  member_kind?: "client" | "opportunity";
+  visibility?: "private" | "team";
+} = {}): Promise<{ items: TrackingGroup[] }> {
+  const p = new URLSearchParams();
+  if (params.member_kind) p.set("member_kind", params.member_kind);
+  if (params.visibility) p.set("visibility", params.visibility);
+  return request<{ items: TrackingGroup[] }>(
+    `/tracking-groups${p.toString() ? "?" + p.toString() : ""}`,
+  );
+}
+
+// S20 W6 Session 4 · saved views.
+export interface SavedView {
+  id: UUID;
+  owner_id: UUID;
+  key: string;
+  name: string;
+  filter_json: Record<string, unknown>;
+  sort_json: unknown | null;
+  visibility: "private" | "team";
+  is_builtin: boolean;
+  display_order: number;
+  archived_at: ISODateTime | null;
+}
+
+export function listSavedViews(): Promise<{ items: SavedView[] }> {
+  return request<{ items: SavedView[] }>(`/saved-views`);
+}
+
+// S20 W6 Session 4 · watchlist.
+export interface WatchedItemRow {
+  id: UUID;
+  kind: "opportunity" | "client";
+  item_id: UUID;
+}
+
+export interface WatchedList {
+  items: WatchedItemRow[];
+  counts: { opportunity?: number; client?: number };
+}
+
+export function listWatchlist(): Promise<WatchedList> {
+  return request<WatchedList>(`/watchlist`);
+}
+
+export function addWatch(
+  kind: "opportunity" | "client",
+  itemId: UUID,
+): Promise<WatchedItemRow> {
+  return request<WatchedItemRow>(`/watchlist`, {
+    method: "POST",
+    body: JSON.stringify({ kind, item_id: itemId }),
+  });
+}
+
+export function removeWatch(
+  kind: "opportunity" | "client",
+  itemId: UUID,
+): Promise<void> {
+  const p = new URLSearchParams({ kind, item_id: itemId });
+  return request<void>(`/watchlist?${p.toString()}`, { method: "DELETE" });
+}
+
+// S20 W6 Session 4 · timeline on /deals/:id and /clients/:id.
+export interface TimelineEntry {
+  ts: ISODateTime;
+  source: string;
+  kind: string;
+  actor_name: string | null;
+  body: string;
+  entity_id: UUID | null;
+}
+
+export function getDealTimeline(
+  opportunityId: UUID,
+): Promise<{ items: TimelineEntry[] }> {
+  return request<{ items: TimelineEntry[] }>(
+    `/deals/${opportunityId}/timeline`,
+  );
+}
+
+export function getClientTimeline(
+  clientId: UUID,
+): Promise<{ items: TimelineEntry[] }> {
+  return request<{ items: TimelineEntry[] }>(`/clients/${clientId}/timeline`);
+}
+
+// S20 W4 Session 5 item 0a · per-user preference KV.
+export function getUserPreference<T = unknown>(
+  key: string,
+): Promise<T | null> {
+  return request<{ key: string; value: T }>(`/user-preferences/${key}`)
+    .then((r) => r.value)
+    .catch(() => null);
+}
+
+export function putUserPreference<T = unknown>(
+  key: string,
+  value: T,
+): Promise<void> {
+  return request<void>(`/user-preferences/${key}`, {
+    method: "PUT",
+    body: JSON.stringify({ value }),
+  });
+}
+
+// S20 W6 · deal comments (latest + list) for /deals/:id and client page.
+export interface DealCommentRow {
+  id: UUID;
+  opportunity_id: UUID;
+  author_id: UUID | null;
+  author_name_fallback: string | null;
+  body: string;
+  pinned: boolean;
+  source: string;
+  hubspot_note_id: string | null;
+  created_at: ISODateTime;
+  edited_at: ISODateTime | null;
+  deleted_at: ISODateTime | null;
+}
+
+export interface DealCommentList {
+  items: DealCommentRow[];
+  latest: DealCommentRow | null;
+}
+
+export function listDealComments(
+  opportunityId: UUID,
+): Promise<DealCommentList> {
+  return request<DealCommentList>(`/deals/${opportunityId}/comments`);
+}
+
+// S20 W6 · next actions per opportunity (used by /deals/:id and Pipeline).
+export interface NextActionRow {
+  id: UUID;
+  opportunity_id: UUID;
+  title: string | null;
+  description: string;
+  assignee_user_id: UUID | null;
+  owner_user_id: UUID;
+  due_date: ISODate | null;
+  status: string;
+  blocker: string | null;
+  outcome: string | null;
+  approval_package_id: UUID | null;
+}
+
+export function listNextActions(params: {
+  opportunity_id?: UUID;
+  assignee_user_id?: UUID;
+  status?: string;
+}): Promise<{ items: NextActionRow[] }> {
+  const p = new URLSearchParams();
+  if (params.opportunity_id) p.set("opportunity_id", params.opportunity_id);
+  if (params.assignee_user_id)
+    p.set("assignee_user_id", params.assignee_user_id);
+  if (params.status) p.set("status", params.status);
+  return request<{ items: NextActionRow[] }>(
+    `/next-actions${p.toString() ? "?" + p.toString() : ""}`,
+  );
+}
+
 export interface SyncStatusRow {
   source: string;
   last_success_at: ISODateTime | null;
@@ -3900,4 +4369,210 @@ export interface SyncStatusRow {
 
 export function getSyncStatus(): Promise<{ items: SyncStatusRow[] }> {
   return request<{ items: SyncStatusRow[] }>(`/sync-status`);
+}
+
+// -----------------------------------------------------------------------------
+// S20 · reports (owner: W4)
+//
+// L18/T42 approval turnaround, L17 portfolio basis. These map 1:1 to the
+// `/reports/*` endpoints in api/app/routers/reports.py; unavailability
+// on either side must degrade to "Unknown" on the UI, never a fake zero.
+// -----------------------------------------------------------------------------
+
+export interface StageTurnaround {
+  stage: string;
+  sample_size: number;
+  avg_hours: number | null;
+  median_hours: number | null;
+  p90_hours: number | null;
+}
+
+export interface TurnaroundReport {
+  window: string;
+  window_from: ISODateTime;
+  window_to: ISODateTime;
+  total_transitions: number;
+  per_stage: StageTurnaround[];
+  overall_median_hours: number | null;
+  generated_at: ISODateTime;
+  meta: {
+    freshness?: {
+      source?: string;
+      processed_at?: string;
+      state?: string;
+    };
+    filters_echo?: Record<string, unknown>;
+  };
+}
+
+export function getApprovalTurnaround(
+  window = "30d",
+): Promise<TurnaroundReport> {
+  return request<TurnaroundReport>(
+    `/reports/approvals/turnaround?window=${encodeURIComponent(window)}`,
+  );
+}
+
+export interface PortfolioBasis {
+  population: {
+    included: number;
+    excluded_archived: number;
+    excluded_non_hubspot: number;
+    reasons: Record<string, string>;
+  };
+  basis: {
+    as_of: ISODateTime;
+    watermarks: Record<
+      string,
+      {
+        last_success_at: ISODateTime | null;
+        last_error: string | null;
+        lag_seconds: number | null;
+      }
+    >;
+  };
+}
+
+export function getPortfolioBasis(): Promise<PortfolioBasis> {
+  return request<PortfolioBasis>(`/reports/portfolio/basis`);
+}
+
+// S20 W4 Session 6 · pipeline aggregates for the Reports page.
+
+export interface ReportStageAggregateRow {
+  stage_label: string;
+  stage_id: string | null;
+  count: number;
+  open_value_usd: string;
+}
+export interface ReportByStage {
+  total_count: number;
+  total_open_value_usd: string;
+  rows: ReportStageAggregateRow[];
+  generated_at: ISODateTime;
+}
+export function getReportsByStage(): Promise<ReportByStage> {
+  return request<ReportByStage>(`/reports/pipeline/by-stage`);
+}
+
+export interface ReportOwnerAggregateRow {
+  owner_name: string;
+  owner_email: string | null;
+  count: number;
+  open_value_usd: string;
+}
+export interface ReportByOwner {
+  total_count: number;
+  total_open_value_usd: string;
+  rows: ReportOwnerAggregateRow[];
+  generated_at: ISODateTime;
+}
+export function getReportsByOwner(): Promise<ReportByOwner> {
+  return request<ReportByOwner>(`/reports/pipeline/by-owner`);
+}
+
+export interface ReportBuAggregateRow {
+  business_unit: string;
+  count: number;
+  open_value_usd: string;
+}
+export interface ReportByBu {
+  bu_mirrored: boolean;
+  note: string;
+  total_count: number;
+  total_open_value_usd: string;
+  rows: ReportBuAggregateRow[];
+  generated_at: ISODateTime;
+}
+export function getReportsByBu(): Promise<ReportByBu> {
+  return request<ReportByBu>(`/reports/pipeline/by-bu`);
+}
+
+export interface SowGmRow {
+  opportunity_id: string;
+  hubspot_deal_id: string | null;
+  deal_name: string | null;
+  client_name: string | null;
+  component: "US" | "India" | "Blended" | string;
+  revenue: string;
+  gm_pct: string | null;
+  floor_pct: string;
+  floor_pass: boolean | null;
+}
+export interface SowGmReport {
+  us_floor_pct: string;
+  india_floor_pct: string;
+  rows: SowGmRow[];
+  generated_at: ISODateTime;
+  note: string;
+}
+export function getSowGmReport(): Promise<SowGmReport> {
+  return request<SowGmReport>(`/reports/sow/gm`);
+}
+
+export interface ApprovalsAgingBucket {
+  label: string;
+  count: number;
+}
+export interface ApprovalsAgingLane {
+  status: string;
+  total: number;
+  buckets: ApprovalsAgingBucket[];
+}
+export interface ApprovalsAgingReport {
+  as_of: ISODateTime;
+  lanes: ApprovalsAgingLane[];
+}
+export function getApprovalsAging(): Promise<ApprovalsAgingReport> {
+  return request<ApprovalsAgingReport>(`/reports/approvals/aging`);
+}
+
+export const reportsPipelineCsvUrl = "/reports/pipeline/export.csv";
+
+// S20 W4 Session 6 · integrations status cards.
+
+export interface BedrockStatus {
+  model_id: string;
+  source: "env" | "default" | string;
+  boot_check:
+    | "enforced"
+    | "skipped-stub"
+    | "skipped-env"
+    | "skipped-override"
+    | string;
+  region: string;
+  as_of: ISODateTime;
+}
+export function getBedrockStatus(): Promise<BedrockStatus> {
+  return request<BedrockStatus>(`/settings/integrations/bedrock`);
+}
+
+export interface SesStatus {
+  from_address: string;
+  source: "env" | "default" | string;
+  sandbox: boolean;
+  as_of: ISODateTime;
+}
+export function getSesStatus(): Promise<SesStatus> {
+  return request<SesStatus>(`/settings/integrations/ses`);
+}
+
+export interface WorkerHeartbeatSourceRow {
+  source: string;
+  last_success_at: ISODateTime | null;
+  last_attempt_at: ISODateTime | null;
+  last_error: string | null;
+  age_seconds: number | null;
+}
+export interface WorkerHeartbeatStatus {
+  newest_source: string | null;
+  newest_last_success_at: ISODateTime | null;
+  newest_age_seconds: number | null;
+  sources: WorkerHeartbeatSourceRow[];
+  as_of: ISODateTime;
+}
+export function getWorkerHeartbeat(): Promise<WorkerHeartbeatStatus> {
+  return request<WorkerHeartbeatStatus>(
+    `/settings/integrations/worker-heartbeat`,
+  );
 }

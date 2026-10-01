@@ -26,6 +26,7 @@ from app.services.clients import (
     upsert_client_from_hubspot,
     upsert_unknown_client_for_deal,
 )
+from app.services.sync_status import touch_source
 
 log = structlog.get_logger("hubspot_intake")
 
@@ -340,6 +341,9 @@ async def _upsert_opportunity(
     amount = _parse_amount(props.get("amount"))
     close_date = _parse_close_date(props.get("closedate"))
     currency = props.get("deal_currency_code") or None
+    # S20 W2 L04 · dealname → opportunity.name. Trim + None-guard.
+    raw_dealname = props.get("dealname")
+    dealname = raw_dealname.strip() if isinstance(raw_dealname, str) and raw_dealname.strip() else None
     seen_at = datetime.now(UTC)
     # S19 slice 1 B2 — resolve label + closed flags + order from the mirror.
     stage_info = stage_map.resolve(stage) if stage_map is not None else None
@@ -369,6 +373,7 @@ async def _upsert_opportunity(
             engagement_type=engagement,
             sales_stage=stage,
             stage_label=stage_label,
+            name=dealname,
             amount=amount,
             close_date=close_date,
             hubspot_last_seen_at=seen_at,
@@ -447,6 +452,11 @@ async def _upsert_opportunity(
         changed = True
     if stage_label is not None and opp.stage_label != stage_label:
         opp.stage_label = stage_label
+        changed = True
+    # S20 W2 L04 · dealname update. `getattr` guard so a partial-migrated
+    # schema (name column not yet applied) is safe.
+    if hasattr(opp, "name") and opp.name != dealname:
+        opp.name = dealname
         changed = True
     if amount != opp.amount:
         opp.amount = amount
@@ -599,7 +609,16 @@ async def _store_event(
     session: AsyncSession,
     event: dict[str, Any],
 ) -> tuple[IntegrationEvent, bool]:
-    """Insert the raw event if not already stored. Returns `(row, created)`."""
+    """Insert the raw event if not already stored. Returns `(row, created)`.
+
+    D7 · A4 — dedupe on ``source_event_id`` at the DB level. If the row
+    exists we return it; if two workers race the same event id, the
+    ``IntegrityError`` losing side re-fetches and returns the existing
+    row rather than exploding. That closes the "distinct queue message
+    ids carrying the same source event id" case (T34).
+    """
+
+    from sqlalchemy.exc import IntegrityError
 
     source_event_id = _extract_event_id(event)
     result = await session.execute(
@@ -615,7 +634,22 @@ async def _store_event(
         payload=event,
     )
     session.add(row)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        # Concurrent insert won the race; the ``source_event_id`` unique
+        # index rejected ours. Roll back the failed flush's savepoint and
+        # re-fetch the row that won.
+        await session.rollback()
+        result = await session.execute(
+            select(IntegrationEvent).where(
+                IntegrationEvent.source_event_id == source_event_id
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is None:  # pragma: no cover - defensive
+            raise
+        return existing, False
     return row, True
 
 
@@ -649,13 +683,18 @@ async def handle_event(
 ) -> None:
     """Idempotent: process one HubSpot webhook event end-to-end.
 
-    - Skips if the event is already stored *and* `processed_at` is set.
-    - Re-reads the deal from HubSpot.
+    - Skips if the event is already stored *and* ``processed_at`` is set
+      (dedupe on source_event_id per D7 — the DB constraint is the guard,
+      this check just short-circuits the re-read).
+    - Re-reads the deal from HubSpot (rule 7 — webhook payload untrusted).
     - Upserts the opportunity, resolves owner, creates the intake task
       (only when we just created the opportunity, to preserve idempotency
       on retries).
-    - Emits audits for every state change in the same transaction, then
-      stamps `integration_event.processed_at`.
+    - Emits audits for every state change in the same transaction, stamps
+      ``integration_event.processed_at`` and the
+      ``hubspot_webhook_processed`` watermark, then commits. **The commit
+      is atomic — record + audit + watermark land together before the
+      caller acks the SQS message** (contracts §D7, §A4, T34).
     """
 
     event_row, _ = await _store_event(session, event)
@@ -669,11 +708,58 @@ async def handle_event(
     ):
         log.info("hubspot_event_ignored", subscriptionType=subscription)
         event_row.processed_at = datetime.now(UTC)
+        # Even an ignored event bumps the processed watermark so the
+        # freshness envelope keeps ticking on portals that emit only
+        # non-deal events (rare but observed on the SmarTek21 sandbox).
+        await touch_source(
+            session,
+            source="hubspot_webhook_processed",
+            success=True,
+            error=None,
+            mark_processed=True,
+        )
         await session.commit()
         return
 
     deal_id = _extract_deal_id(event)
     correlation_id = f"hubspot:{event_row.source_event_id}"
+
+    # T28 · webhook-side deletion. `deal.deletion` never has the deal
+    # available on the CRM API anymore, so we archive the mirror row
+    # locally without a `get_deal` call. Downstream governance rows
+    # (SOWs, decisions, audit) are preserved per rule 4.
+    if subscription == "deal.deletion":
+        opp = (
+            await session.execute(
+                select(Opportunity).where(Opportunity.hubspot_deal_id == deal_id)
+            )
+        ).scalar_one_or_none()
+        if opp is not None and opp.archived_at is None:
+            opp.archived_at = datetime.now(UTC)
+            opp.archived_reason = "hubspot_deleted"
+            await append_audit(
+                session,
+                actor_id=None,
+                action="opportunity.archived",
+                entity="opportunity",
+                entity_id=str(opp.id),
+                correlation_id=correlation_id,
+                before={"archived_at": None, "archived_reason": None},
+                after={
+                    "archived_at": opp.archived_at.isoformat(),
+                    "archived_reason": "hubspot_deleted",
+                },
+            )
+        event_row.processed_at = datetime.now(UTC)
+        await touch_source(
+            session,
+            source="hubspot_webhook_processed",
+            success=True,
+            error=None,
+            mark_processed=True,
+        )
+        await session.commit()
+        return
 
     deal_payload = await client.get_deal(deal_id)
     props = _deal_props(deal_payload)
@@ -686,6 +772,11 @@ async def handle_event(
     opportunity, created = await _upsert_opportunity(
         session, deal_id, deal_payload, owner, client_row, correlation_id
     )
+    # T28 · property-clear / owner-clear / association-change / merge /
+    # delete-on-remote are all handled by ``_upsert_opportunity`` (it
+    # detects an absent field via `props.get(...)` and clears the mirror
+    # row; ``_archive_missing`` in backfill handles remote deletes).
+    #
     # S17: no more auto-created 'obtain NDA/MSA' tasks. NDA/MSA is a doc store now.
     if created:
         await _create_intake_task(session, opportunity, owner, correlation_id)
@@ -696,6 +787,17 @@ async def handle_event(
             await _create_intake_task(session, opportunity, owner, correlation_id)
 
     event_row.processed_at = datetime.now(UTC)
+    # D4/D7 — watermark advance happens in the same transaction as the
+    # record and audit rows. A crash before commit rolls all three back
+    # and the SQS message re-delivers; a crash between commit and ack
+    # re-delivers the message, sees ``processed_at`` set, and returns.
+    await touch_source(
+        session,
+        source="hubspot_webhook_processed",
+        success=True,
+        error=None,
+        mark_processed=True,
+    )
     await session.commit()
 
 

@@ -51,7 +51,9 @@ from app.integrations.s3_sow import (
     get_sow_s3,
 )
 from app.models.opportunity import Opportunity
+from app.models.user import User as UserModel
 from app.services.deals import can_mutate_deal
+from app.services.user_identity import display_user_name
 from app.services.sow_extract import (
     SowInvalidField,
     SowNotFound,
@@ -118,6 +120,11 @@ class VersionResponse(BaseModel):
     sow_id: uuid.UUID
     opportunity_id: uuid.UUID
     uploaded_by: uuid.UUID | None
+    # S21-1c item 1: never a short id in the UI fallback — carry the
+    # uploader's display name on the version so OverviewTab and the
+    # workspace header can render "Uploader · Jane Doe" when the deal
+    # has no owner.
+    uploaded_by_name: str | None = None
     uploaded_at: datetime
     file_s3_key: str
     file_hash: str
@@ -167,7 +174,11 @@ def _require_owner(user: AuthUser, opp: Opportunity) -> None:
 
 
 def _to_response(
-    state: SowVersionState, download_url: str | None = None, *, user: AuthUser
+    state: SowVersionState,
+    download_url: str | None = None,
+    *,
+    user: AuthUser,
+    uploaded_by_name: str | None = None,
 ) -> VersionResponse:
     return VersionResponse(
         id=state.id,
@@ -175,6 +186,7 @@ def _to_response(
         version_no=state.version_no,
         opportunity_id=state.opportunity_id,
         uploaded_by=state.uploaded_by,
+        uploaded_by_name=uploaded_by_name,
         uploaded_at=state.uploaded_at,
         file_s3_key=state.file_s3_key,
         file_hash=state.file_hash,
@@ -188,6 +200,25 @@ def _to_response(
         engagement_type_confirmed=state.engagement_type_confirmed,
         download_url=download_url,
     )
+
+
+async def _resolve_uploader_name(
+    session: AsyncSession, uploaded_by: uuid.UUID | None
+) -> str | None:
+    """S21-1c item 1 helper: look up the uploader's display name.
+
+    Returns None when the uploaded_by column is NULL. Returns the
+    `display_user_name` of a found user, else a stable "Former
+    teammate" sentinel (never a raw id or UUID prefix) when the row
+    exists on a SOW but the user has since been deleted.
+    """
+
+    if uploaded_by is None:
+        return None
+    user_row = await session.scalar(select(UserModel).where(UserModel.id == uploaded_by))
+    if user_row is None:
+        return "Former teammate"
+    return display_user_name(user_row.name, user_row.email)
 
 
 async def _load_version_or_404(
@@ -273,7 +304,8 @@ async def create_version(
 
     await session.commit()
     download = s3.generate_download_url(state.file_s3_key)
-    return _to_response(state, download_url=download, user=user)
+    uploader_name = await _resolve_uploader_name(session, state.uploaded_by)
+    return _to_response(state, download_url=download, user=user, uploaded_by_name=uploader_name)
 
 
 @router.get(
@@ -296,7 +328,8 @@ async def get_current_version(
     if state is None:
         return None
     download = s3.generate_download_url(state.file_s3_key)
-    return _to_response(state, download_url=download, user=_user)
+    uploader_name = await _resolve_uploader_name(session, state.uploaded_by)
+    return _to_response(state, download_url=download, user=_user, uploaded_by_name=uploader_name)
 
 
 @router.get("/versions/{sow_version_id}", response_model=VersionResponse)
@@ -308,7 +341,8 @@ async def get_version(
 ) -> VersionResponse:
     state = await _load_version_or_404(session, sow_version_id)
     download = s3.generate_download_url(state.file_s3_key)
-    return _to_response(state, download_url=download, user=_user)
+    uploader_name = await _resolve_uploader_name(session, state.uploaded_by)
+    return _to_response(state, download_url=download, user=_user, uploaded_by_name=uploader_name)
 
 
 @router.patch(
@@ -345,7 +379,8 @@ async def patch_field(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     await session.commit()
     download = s3.generate_download_url(new_state.file_s3_key)
-    return _to_response(new_state, download_url=download, user=user)
+    uploader_name = await _resolve_uploader_name(session, new_state.uploaded_by)
+    return _to_response(new_state, download_url=download, user=user, uploaded_by_name=uploader_name)
 
 
 @router.get("/{opportunity_id}/confirmation")
@@ -442,7 +477,8 @@ async def reextract_version(
     )
     await session.commit()
     download = s3.generate_download_url(updated.file_s3_key)
-    return _to_response(updated, download_url=download, user=user)
+    uploader_name = await _resolve_uploader_name(session, updated.uploaded_by)
+    return _to_response(updated, download_url=download, user=user, uploaded_by_name=uploader_name)
 
 
 @router.post(
@@ -473,4 +509,5 @@ async def submit_version(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     await session.commit()
     download = s3.generate_download_url(new_state.file_s3_key)
-    return _to_response(new_state, download_url=download, user=user)
+    uploader_name = await _resolve_uploader_name(session, new_state.uploaded_by)
+    return _to_response(new_state, download_url=download, user=user, uploaded_by_name=uploader_name)

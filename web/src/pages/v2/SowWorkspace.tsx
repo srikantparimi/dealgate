@@ -23,7 +23,7 @@ import {
   nextValidStep,
   type WorkspaceSnapshot,
 } from "./sow-workspace/readiness";
-import { formatDate, shortId } from "./sow-workspace/format";
+import { formatTermRange } from "./sow-workspace/format";
 import { SubmitApprovalDialog } from "./sow-workspace/SubmitApprovalDialog";
 import { workspaceTitle } from "./sow-workspace/readiness";
 import {
@@ -90,6 +90,13 @@ export function SowWorkspacePage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const requestNo = useRef(0);
   useEffect(() => { getMe().then(setViewer).catch(() => setViewer(null)); }, []);
+  // S20 W3 D6: fetch the deletion assessment so the Delete/Archive
+  // button renders the right label from first render. Assessment is
+  // cheap (a single count query) and idempotent.
+  useEffect(() => {
+    if (!snap?.sow?.sow_id) return;
+    assessSowDeletion(snap.sow.sow_id).then(setDeleteAssessment).catch(() => setDeleteAssessment(null));
+  }, [snap?.sow?.sow_id]);
 
   const openDelete = useCallback(async () => {
     if (!snap?.sow?.sow_id) return;
@@ -108,11 +115,19 @@ export function SowWorkspacePage() {
     setDeleting(true);
     setDeleteError(null);
     try {
+      // S21 item 1 reverses S20 W3 D6: a SOW is hard-deletable at every
+      // state (draft, submitted, approved, signed). `services/deletion.py`
+      // cascades to approvals, versions, GM runs, documents, next
+      // actions, comments, renewals, and the project created from it.
+      // Archive is removed from the UI; the decision history survives
+      // in the audit trail, not in zombie rows (CLAUDE.md rule 4
+      // concerns immutability of accepted facts, not retention of
+      // deleted drafts' metadata).
       await deleteSow(snap.sow.sow_id);
       setDeleteOpen(false);
       nav("/sows");
     } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : "Delete failed");
+      setDeleteError(e instanceof Error ? e.message : "Action failed");
     } finally {
       setDeleting(false);
     }
@@ -183,10 +198,81 @@ export function SowWorkspacePage() {
     );
   }
 
+  // S20 W3 L09/L11: a deal with no SowVersion is a valid tracking record
+  // — it must not render the SOW workspace shell (which would imply a
+  // SOW exists, and expose the Delete button). Show a bordered empty
+  // state with "Upload SOW" (pre-bound to this opportunity) and a Back
+  // link to the deal (or Pipeline if the deal page isn't ready yet).
+  if (!snap.sow) {
+    return (
+      <div className="space-y-4">
+        <RecordHeader
+          eyebrow={snap.deal?.client_name ?? "Client"}
+          title="No SOW draft for this deal yet"
+          identity={
+            <>
+              {/* S21 item 4: no internal ID line on the no-SOW shell either. */}
+              {snap.deal?.owner?.name && <span>Owner {snap.deal.owner.name}</span>}
+              {snap.deal?.engagement_type && <span>Type {snap.deal.engagement_type.replaceAll("_", " ")}</span>}
+            </>
+          }
+          primaryAction={
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={() =>
+                  nav(
+                    `/sows/new?bindOppId=${id}${snap.deal?.client_id ? `&bindClientId=${snap.deal.client_id}` : ""}`,
+                  )
+                }
+                aria-label="Upload SOW"
+              >
+                Upload SOW
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => nav(snap.deal ? `/deals/${id}` : "/pipeline")}
+                aria-label="Back to deal"
+              >
+                Back
+              </Button>
+            </div>
+          }
+        />
+        <section
+          aria-label="No SOW yet"
+          className="rounded-panel border border-divider bg-surface p-6"
+        >
+          <p className="text-body text-text">
+            This deal has no uploaded SOW. Upload the draft to start the
+            scope, GM and approvals path. The deal itself keeps its
+            comments, actions and reporting whether or not a SOW exists.
+          </p>
+          <p className="text-secondary text-text-secondary mt-3">
+            No SOW is created automatically. Only the file you upload
+            here starts a workspace — Delete SOW does not appear until a
+            draft actually exists.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
   const step = nextValidStep(snap);
   const canSubmit = !!viewer && (viewer.id === snap.deal?.owner_id || viewer.groups.includes("SystemAdmin"));
   const termStart = snap.sow?.extracted_fields?.term_start?.value;
   const termEnd = snap.sow?.extracted_fields?.term_end?.value;
+  // S21 item 4: single display format with explicit year on both sides.
+  const termDisplay = formatTermRange(
+    typeof termStart === "string" ? termStart : null,
+    typeof termEnd === "string" ? termEnd : null,
+  );
+  // S21 item 4 + S21-1c item 1: owner falls back to the SOW uploader
+  // when the deal has no owner. Always a display name — never a raw
+  // id or UUID prefix (T09 extension: no ids on user-facing fields).
+  const ownerDisplay = snap.deal?.owner?.name
+    ?? (snap.sow?.uploaded_by_name ? `Uploader · ${snap.sow.uploaded_by_name}` : null);
   const rail = buildRail(snap);
   const readiness = buildReadiness(snap);
   const items: RecordTabItem[] = TAB_ORDER.map((key) => ({
@@ -204,11 +290,15 @@ export function SowWorkspacePage() {
           title={workspaceTitle(snap)}
           identity={
             <>
-              <span>ID {shortId(id)}</span>
-              <span>Owner {snap.deal?.owner?.name ?? "Unassigned"}</span>
+              {/* S21 item 4: internal `ID <uuid>` line removed; owner
+                  falls back to the uploader (never "Unassigned"); term
+                  renders in a single explicit-year format. The SOW/GM
+                  version chips stay — they are the content, not the
+                  identifier. */}
+              {ownerDisplay && <span data-testid="header-owner">Owner {ownerDisplay}</span>}
               {snap.deal?.engagement_type && <span>Type {snap.deal.engagement_type.replaceAll("_", " ")}</span>}
               {snap.gmModel?.delivery_pattern && <span>Delivery {snap.gmModel.delivery_pattern}</span>}
-              {typeof termStart === "string" && <span>Term {formatDate(termStart)}{typeof termEnd === "string" ? ` to ${formatDate(termEnd)}` : ""}</span>}
+              {termDisplay && <span data-testid="header-term">Term {termDisplay}</span>}
               <span data-testid="sow-version">
                 SOW v {snap.sow?.version_no ?? "—"}
               </span>
@@ -270,12 +360,31 @@ export function SowWorkspacePage() {
               >
                 {step.label}
               </Button>
+              {/* S21 item 3: a Back control is always present in the
+                  workspace header. The gate strip + tab bar are
+                  revisitable (both clickable backward until Submit);
+                  this control gives the user a one-click exit back to
+                  the originating deal — the screenshot 05 complaint
+                  was that there was no way back from inside the
+                  studio flow. */}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => nav(snap.deal ? `/deals/${id}` : "/pipeline")}
+                aria-label="Back"
+                title="Back to the deal"
+                data-testid="workspace-back"
+              >
+                Back
+              </Button>
+              {/* S21 item 1: Delete at every state. One label, one
+                  action — the confirm dialog names the cascade. */}
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => void openDelete()}
                 aria-label="Delete SOW"
-                title="Delete this SOW at any stage"
+                title="Delete this SOW. Cascades to approvals, versions, GM runs, documents, next actions, comments, renewals, and any project created from it."
               >
                 <Trash2 className="h-4 w-4 mr-1" />
                 Delete SOW
@@ -340,9 +449,12 @@ export function SowWorkspacePage() {
               {snap.deal?.client_name ?? "Unassigned"}
             </p>
             <p className="text-secondary text-text-secondary">
-              The delete is hard: SOW versions, GM, staffing, approval package,
-              tasks and files all go. An audit line records who deleted the SOW,
-              when, its title, stage and price. This cannot be undone.
+              S21 item 1: delete is permitted at every state. Hard
+              deletes cascade to SOW versions, approvals, GM runs,
+              documents, next actions, comments, renewals, and any
+              project created from this SOW. An audit line records who
+              deleted the SOW, when, its title, stage and price. This
+              cannot be undone.
             </p>
             {deleteAssessment ? (
               <ul className="text-body">
@@ -353,7 +465,7 @@ export function SowWorkspacePage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-secondary text-text-secondary">Assessing cascade…</p>
+              <p className="text-secondary text-text-secondary">Assessing state…</p>
             )}
             {deleteError ? <p role="alert" className="text-danger">{deleteError}</p> : null}
           </div>

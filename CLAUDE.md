@@ -79,6 +79,113 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     with). See `docs/reports/s19-1-progress.md` §"Incident during I1"
     for the recovery.
 
+16. **Session budget and item-by-item reporting.** Every session states
+    its budget at start (default: 60 min wall clock, 5,000 tokens of
+    output) and stops when it hits it, writing the progress file and
+    a report. Reports list every numbered item of the directive, by
+    number, in exactly one of the five states
+    (`verified working (staging)` / `fixed and tested` / `missing` /
+    `blocked` / `deferred`) with its proof; an item not listed is a
+    report defect. "Complete", "all shipped" or "zero deferrals" may
+    appear only when every item is `verified working (staging)`.
+    Investigation without a stated hypothesis is stopped after 10
+    minutes. Adopted 30 Sep 2026 after S20 Session 3b's initial report
+    glossed items 1–3 of the directive with "already deployed" instead
+    of stating each in the five-state vocabulary — the fix required a
+    Rev-2 pass to land chip value, owner + BU selects, and the T35
+    pytest, and to re-report the three lines explicitly.
+
+    **Scoreboard discipline (1 Oct 2026):** every session's first and
+    last tool actions on `docs/reports/s20/scoreboard.md` are to
+    update the rows it owns. First action: mark rows the session will
+    attempt; last action: flip states to the final value with proof +
+    session id filled. ETA at the bottom of the scoreboard =
+    (rows not `verified working (staging)`) ÷ 7 per session.
+
+    **Deploy is not optional (1 Oct 2026, S21-1b addendum).** For any
+    session whose directive requires a staging-verified outcome, the
+    build phase stops at **minute 55** of the stated budget — commit,
+    deploy via D5, run the owning spec on staging, update the
+    scoreboard, write the report. Report items in whatever state they
+    reach; a `fixed and tested` row that could not deploy is not a
+    completed row. Adopted after S21-1 shipped three local-only fixes
+    (items 1, 7, 8) and marked deploy "deferred" because the session
+    was spent on build. The scoreboard distinguishes `fixed and
+    tested` (local proof) from `verified working (staging)` (staging
+    proof) precisely so this split is visible — but without the
+    deploy, the row never flips, and the product owner's
+    click-through cannot pick up the fix.
+
+17. **Parallel lanes.** When S20 splits into feature lanes
+    (`feat/s20-<lane>`), each lane works on its own branch — only the
+    Lead deploys to staging. A lane proves its work locally: pytest
+    against the CI Postgres fixture, Playwright against a local dev
+    server. **Lanes never run tests against staging and never deploy
+    themselves.** A lane edits only its owned files + its own
+    scoreboard rows; anything else, ask the Lead in
+    `docs/reports/s20/progress-<lane>.md` and don't touch.
+
+    - **Lane A** (`feat/s20-w4`): no migrations. Owned files —
+      `api/app/routers/{reports,dashboards,settings}*`,
+      `api/app/services/hubspot_pipeline.py` **(summary only — nothing
+      else in that file)**,
+      `web/src/pages/{Reports,CommandCenter,Settings,SystemHealth}*`.
+    - **Lane B** (`feat/s20-w7`): owns alembic revisions **0048+**.
+      Owned files — `api/app/routers/{sows,approvals,signature,projects}*`,
+      `api/app/services/{signature,release,projects,forecast}*`,
+      `api/app/services/signed_sow.py`,
+      `web/src/pages/{SowWorkspace,Projects,Handoff}*`, migrations.
+
+    - **Shared, append-only** (D-S20-17a, 1 Oct 2026; refined by
+      D-S20-17b, 1 Oct 2026): any lane may **add** to the
+      following files; the Lead merges additions on rebase. Paths —
+      `web/src/api/client.ts`, `web/src/routes*.tsx`,
+      `web/src/nav*.tsx`, and the router-registration block in
+      `api/app/main.py`. On merge conflict in these files the
+      resolution is to **keep both lanes' additions** (concatenate,
+      do not drop). "Additive" is a **type check, not a line-count
+      check**: widening a union, adding a union member, adding an
+      enum member, or adding an optional field is additive;
+      narrowing a type or removing a member/field is not. The Lead
+      verifies additivity on the merged tree with `tsc --noEmit`;
+      diff line counts are not the gate. Anything that fails the
+      tsc check in a shared file remains a rule-17 violation and a
+      stop condition.
+
+    Lanes merge back to `integrate/s20` only through a Lead rebase +
+    checkpoint; alembic head must stay == 1 after merge or the Lead
+    stops and reports. Adopted 1 Oct 2026 to let W4 (reports +
+    integrations + health) and W7 (approval → delivery) progress in
+    parallel without stepping on each other's files or staging.
+
+18. **A click-through finding becomes a test first.** Every item in a
+    click-through directive starts with a Playwright test that
+    reproduces the product owner's exact path on staging and fails.
+    Then the fix. Then the test passes on staging. Tests for
+    user-facing items assert on the screen the user sees —
+    breadcrumbs, headers, tabs, buttons — not only on table cells or
+    API payloads. Adopted 1 Oct 2026 after the S21 click-through
+    found three items reported "verified working (staging)" in
+    earlier sessions (S19-1b item 6, W6 item 1, T09) whose tests
+    passed because they did not look where the owner looks. See
+    `docs/directives/s21-click-through-fixes.md`.
+
+19. **Heartbeat.** Every session posts a one-line status to chat at
+    every step boundary and at least every 15 minutes while any
+    command runs. Format:
+    `<step n/N> · <what is running> · <elapsed> · <next step>`.
+    Long commands (`scripts/deploy-smoke.sh`, Playwright, pytest) run
+    in the background; the session polls them and posts the line when
+    they finish, with pass/fail counts. Never wait silently on an
+    external process. If the session is waiting on something only a
+    human can do (approve a prompt, verify a UI, resolve a question),
+    say exactly what — once — and continue with anything that does
+    not depend on it. Adopted 1 Oct 2026 after the Lead C1-* sessions
+    sat silent for 20–90 minutes after deploys and tests completed,
+    obscuring whether the agent had stalled or still had work in
+    flight. The scoreboard-first-and-last rule (16) covers state;
+    rule 19 covers liveness between those two writes.
+
 ## Where things live
 
 - `docs/blueprint.md` — the governance policy (source of truth for rules).

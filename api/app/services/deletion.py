@@ -260,15 +260,149 @@ async def _sow_cascade_counts(
     return counts
 
 
+async def _sow_has_submitted_package(
+    session: AsyncSession, sow_id: uuid.UUID
+) -> bool:
+    """S20 W3 D6 — a SOW is "submitted or later" when at least one
+    approval_package exists for it (regardless of package status —
+    a rejected package still means a decision was recorded)."""
+
+    version_ids = list(
+        (
+            await session.execute(
+                select(SowVersion.id).where(SowVersion.sow_id == sow_id)
+            )
+        ).scalars()
+    )
+    if not version_ids:
+        return False
+    row = (
+        await session.execute(
+            select(ApprovalPackage.id)
+            .where(ApprovalPackage.sow_version_id.in_(version_ids))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return row is not None
+
+
+async def archive_sow(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID | None,
+    sow_id: uuid.UUID,
+    reason: str = "s20_w3_governed_archive",
+) -> SowDeletionSummary:
+    """S20 W3 D6 — archive a governed SOW.
+
+    Any SOW that has been submitted for approval (approved, rejected,
+    released, or voided) is a governed record and cannot be hard
+    deleted (CLAUDE.md rule 4 + review §"Define deletion by state and
+    authority"). Archiving marks ``sow.archived_at`` + ``archived_by``
+    + ``archived_reason``; the rows and their audit trail survive.
+    """
+
+    sow = await session.get(Sow, sow_id)
+    if sow is None:
+        raise DeletionError("sow not found", status_code=404)
+    if sow.archived_at is not None:
+        # Idempotent — a repeat archive is a no-op summary.
+        versions = list(
+            (
+                await session.execute(
+                    select(SowVersion).where(SowVersion.sow_id == sow_id)
+                )
+            ).scalars()
+        )
+        counts = await _sow_cascade_counts(session, [sow_id])
+        return SowDeletionSummary(
+            sow_id=sow_id,
+            sow_title=f"SOW {str(sow_id)[:8]} (already archived)",
+            stage="archived",
+            price=_price_from_sow(max(versions, key=lambda v: v.uploaded_at) if versions else None),
+            counts=counts,
+        )
+
+    opp = await session.get(Opportunity, sow.opportunity_id)
+    versions = list(
+        (
+            await session.execute(select(SowVersion).where(SowVersion.sow_id == sow_id))
+        ).scalars()
+    )
+    latest_version = max(versions, key=lambda v: v.uploaded_at) if versions else None
+    price = _price_from_sow(latest_version)
+    stage = _stage_from_opportunity(opp)
+    counts = await _sow_cascade_counts(session, [sow_id])
+
+    before = {
+        "archived_at": None,
+        "archived_reason": None,
+    }
+    sow.archived_at = datetime.now(UTC)
+    sow.archived_by = actor_id
+    sow.archived_reason = reason
+    await session.flush()
+
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="sow.archived",
+        entity="sow",
+        entity_id=str(sow_id),
+        before=before,
+        after={
+            "archived_at": sow.archived_at.isoformat(),
+            "archived_reason": reason,
+            "stage": stage,
+            "price": price,
+        },
+    )
+
+    fields = (latest_version.extracted_fields or {}) if latest_version else {}
+    title_cell = fields.get("sow_title") if isinstance(fields, dict) else None
+    if isinstance(title_cell, dict):
+        sow_title = str(title_cell.get("value") or "").strip() or f"SOW {str(sow_id)[:8]}"
+    else:
+        sow_title = f"SOW {str(sow_id)[:8]}"
+
+    return SowDeletionSummary(
+        sow_id=sow_id,
+        sow_title=sow_title,
+        stage=stage,
+        price=price,
+        counts=counts,
+    )
+
+
 async def delete_sow(
     session: AsyncSession,
     *,
     actor_id: uuid.UUID | None,
     sow_id: uuid.UUID,
+    allow_governed: bool = False,
 ) -> SowDeletionSummary:
     sow = await session.get(Sow, sow_id)
     if sow is None:
         raise DeletionError("sow not found", status_code=404)
+
+    # S20 W3 D6: hard delete is only permitted for a draft SOW that has
+    # never been submitted for approval. A SOW with at least one
+    # approval_package (in any status) is a governed record — the
+    # caller must archive instead. Hard delete would erase decision
+    # history that CLAUDE.md rule 4 says must survive.
+    #
+    # S21-1d · root-cause for client cascade: a non-mirror client
+    # (hubspot_company_id IS NULL) is e2e / scratch data, not a
+    # governed customer record. `delete_client` forwards
+    # `allow_governed=True` for those; the governance check still
+    # protects every mirror-sourced path.
+    if not allow_governed and await _sow_has_submitted_package(session, sow_id):
+        raise DeletionError(
+            "this SOW has been submitted for approval and cannot be "
+            "hard-deleted — archive it instead (retains history).",
+            status_code=409,
+        )
+
     opp = await session.get(Opportunity, sow.opportunity_id)
     versions = list(
         (
@@ -415,6 +549,7 @@ async def delete_opportunity(
     *,
     actor_id: uuid.UUID | None,
     opportunity_id: uuid.UUID,
+    allow_governed: bool = False,
 ) -> DeletionAssessment:
     opp = await session.get(Opportunity, opportunity_id)
     if opp is None:
@@ -426,7 +561,9 @@ async def delete_opportunity(
     )
     counts: dict[str, int] = {"sows": len(sow_ids)}
     for sow_id in sow_ids:
-        summary = await delete_sow(session, actor_id=actor_id, sow_id=sow_id)
+        summary = await delete_sow(
+            session, actor_id=actor_id, sow_id=sow_id, allow_governed=allow_governed
+        )
         for k, v in summary.counts.items():
             counts[k] = counts.get(k, 0) + v
     await session.execute(sa_delete(Opportunity).where(Opportunity.id == opportunity_id))
@@ -451,6 +588,13 @@ async def delete_client(
     client = await session.get(Client, client_id)
     if client is None:
         raise DeletionError("client not found", status_code=404)
+    # S21-1d root-cause fix: a client with no HubSpot mirror link is
+    # scratch / e2e / rename-stage data, not a governed customer
+    # record. Governed SOW guard on `delete_sow` is bypassed only on
+    # this path. Mirror clients (hubspot_company_id IS NOT NULL) still
+    # route through the governance gate — CLAUDE.md rule 4 holds for
+    # anything that could reach HubSpot writeback (D2).
+    allow_governed = client.hubspot_company_id is None
     counts: dict[str, int] = {}
     # Cascade to opportunities → SOWs.
     opp_ids = list(
@@ -462,7 +606,12 @@ async def delete_client(
     )
     counts["opportunities"] = len(opp_ids)
     for opp_id in opp_ids:
-        summary = await delete_opportunity(session, actor_id=actor_id, opportunity_id=opp_id)
+        summary = await delete_opportunity(
+            session,
+            actor_id=actor_id,
+            opportunity_id=opp_id,
+            allow_governed=allow_governed,
+        )
         for k, v in summary.counts.items():
             counts[k] = counts.get(k, 0) + v
     # Client-scoped children.
@@ -552,8 +701,25 @@ async def assess_opportunity(
 
 
 async def assess_sow(session: AsyncSession, sow_id: uuid.UUID) -> DeletionAssessment:
+    """S20 W3 D6: report whether the SOW is hard-deletable (never
+    submitted) or must be archived (submitted / approved / executed).
+
+    ``state`` values:
+      - ``"draft"`` — no approval_package exists; hard delete allowed.
+      - ``"governed"`` — at least one approval_package; archive only.
+    """
+
     counts = await _sow_cascade_counts(session, [sow_id])
-    return DeletionAssessment(state="draft", reason="hard delete (S17)", counts=counts)
+    is_governed = await _sow_has_submitted_package(session, sow_id)
+    return DeletionAssessment(
+        state="governed" if is_governed else "draft",
+        reason=(
+            "governed record — archive retains audit history"
+            if is_governed
+            else "no approval submitted — hard delete allowed"
+        ),
+        counts=counts,
+    )
 
 
 # --- dedupe helper ---------------------------------------------------------
@@ -679,6 +845,7 @@ __all__ = [
     "SowDeletionSummary",
     "archive_client",
     "archive_opportunity",
+    "archive_sow",
     "assess_client",
     "assess_opportunity",
     "assess_sow",

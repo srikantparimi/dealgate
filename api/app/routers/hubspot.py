@@ -32,6 +32,7 @@ from app.integrations.hubspot_events_queue import (
 from app.integrations.hubspot_signature import verify_v3
 from app.models.integration import IntegrationEvent
 from app.services.hubspot_intake import replay_event, store_events
+from app.services.sync_status import touch_source
 
 log = structlog.get_logger("hubspot_router")
 
@@ -134,6 +135,18 @@ async def hubspot_webhook(
                     "hubspot_webhook_enqueue_failed",
                     event_id=event.get("eventId"),
                 )
+        # S20 W1 D4 — the webhook verified + enqueued, so the "received"
+        # watermark advances now. The intake consumer moves "processed"
+        # once each event lands in the DB (see hubspot_intake.handle_event).
+        if queued > 0:
+            await touch_source(
+                session,
+                source="hubspot_webhook_received",
+                success=True,
+                error=None,
+                mark_received=True,
+            )
+            await session.commit()
         log.info(
             "hubspot_webhook_enqueued", received=len(events), queued=queued
         )
@@ -146,6 +159,17 @@ async def hubspot_webhook(
     # Legacy DB path — local dev + tests without SQS. Same behaviour as
     # S18 §2a.
     stored_rows = await store_events(session, events)
+    if stored_rows:
+        # Legacy path still advances the received watermark so the freshness
+        # envelope stays honest for local dev / offline smoke.
+        await touch_source(
+            session,
+            source="hubspot_webhook_received",
+            success=True,
+            error=None,
+            mark_received=True,
+        )
+        await session.commit()
     log.info(
         "hubspot_webhook_accepted",
         received=len(events),

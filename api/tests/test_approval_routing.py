@@ -197,3 +197,76 @@ async def test_explicit_empty_group_stays_empty_and_admin_owns_gap(session):
     await routing.route_missing(session, actor_id=owner.id, package_id=pkg.id)
     assignment = await session.get(ApprovalAssignment, (pkg.id, "delivery"))
     assert assignment.approver_id == people["delivery"].id
+
+
+@pytest.mark.asyncio
+async def test_s21_e2e_user_is_ineligible_on_real_sow(session):
+    """S21 item 7 (leak gate): a user tagged with the Cognito
+    `officeapp-e2e` group must NOT be routed on a real SOW. The leak
+    appeared in staging as 'Finance · Queued for E2E Staging Bot' on
+    a Liberty Mutual SOW; the eligibility query was returning every
+    user with the Finance Cognito group regardless of the e2e tag.
+    """
+    owner, opp, _, _, _ = await fixture(session)
+    # Replace Finance's seeded routing with an e2e-tagged user.
+    bot = await _seed_user(
+        session,
+        email="e2e-bot@routing.test",
+        groups=("Finance", routing.E2E_USER_GROUP),
+    )
+    await routing.save_group(
+        session,
+        actor_id=owner.id,
+        function="finance",
+        member_ids=[str(bot.id)],
+        backup_ids=[],
+        default_approver_id=bot.id,
+    )
+    plan = await routing.submission_plan(
+        session, opportunity_id=opp.id, actor_id=owner.id
+    )
+    finance_row = next(r for r in plan["rows"] if r["function"] == "finance")
+    # The e2e bot must not be eligible → routing is blocked, not queued.
+    assert finance_row["approver_id"] is None, (
+        f"e2e user must not be routable on a non-tagged SOW; got "
+        f"{finance_row['approver_id']}"
+    )
+    assert finance_row["blocker"], "blocker must be set when no eligible approver remains"
+    assert bot.email not in [m["email"] for m in finance_row["members"]], (
+        "e2e user must not even appear in the members list"
+    )
+
+
+@pytest.mark.asyncio
+async def test_s21_e2e_user_is_eligible_on_e2e_tagged_sow(session):
+    """Companion to the leak-gate test: when the SOW's client name
+    matches the e2e prefix regex (`S14b e2e …`, `smoke …`, etc.), e2e
+    users are permitted — otherwise the e2e harness itself cannot
+    exercise the approval path.
+    """
+    from app.models.client import Client
+
+    owner, opp, _, _, _ = await fixture(session)
+    client = await session.get(Client, opp.client_id)
+    client.name = "S20 e2e Liberty Mutual fixture"
+    await session.commit()
+    bot = await _seed_user(
+        session,
+        email="e2e-bot-ok@routing.test",
+        groups=("Finance", routing.E2E_USER_GROUP),
+    )
+    await routing.save_group(
+        session,
+        actor_id=owner.id,
+        function="finance",
+        member_ids=[str(bot.id)],
+        backup_ids=[],
+        default_approver_id=bot.id,
+    )
+    plan = await routing.submission_plan(
+        session, opportunity_id=opp.id, actor_id=owner.id
+    )
+    finance_row = next(r for r in plan["rows"] if r["function"] == "finance")
+    assert finance_row["approver_id"] == str(bot.id), (
+        "e2e user must be routable when the SOW itself is e2e-tagged"
+    )

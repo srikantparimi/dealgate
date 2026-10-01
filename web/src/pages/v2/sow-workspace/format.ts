@@ -41,6 +41,33 @@ export function formatDate(value: string | null | undefined): string | null {
   return value.slice(0, 10);
 }
 
+/**
+ * S21 item 4 · single display format for a SOW term — "Oct 12, 2026 –
+ * Apr 12, 2027". Both ends get the same format with an explicit year.
+ * The old header path concatenated two different formats ("10/12/2026
+ * to April 12th") because `formatDate` returns ISO-truncated and the
+ * end was parsed by `toLocaleDateString`. Returns null when neither
+ * side is present; "Oct 12, 2026 – (open)" when only start is present.
+ */
+export function formatTermRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string | null {
+  const asDate = (v: string | null | undefined): Date | null => {
+    if (!v) return null;
+    const d = new Date(v.length === 10 ? `${v}T00:00:00Z` : v);
+    return Number.isFinite(d.getTime()) ? d : null;
+  };
+  const fmt = (d: Date): string =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  const s = asDate(start);
+  const e = asDate(end);
+  if (!s && !e) return null;
+  if (s && !e) return `${fmt(s)} – (open)`;
+  if (!s && e) return `(open) – ${fmt(e)}`;
+  return `${fmt(s!)} – ${fmt(e!)}`;
+}
+
 /** UUID → short suffix used in the record header (last 8 chars). */
 export function shortId(value: string | null | undefined): string {
   if (!value) return "—";

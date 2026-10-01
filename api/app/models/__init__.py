@@ -15,6 +15,7 @@ from app.models.client import Agreement, Client, LegalEntity
 from app.models.client_alias import ClientAlias
 from app.models.client_contact import ClientContact as ClientContact
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
+from app.models.delivery_acceptance import DeliveryAcceptance
 from app.models.direct_cost_settings import DirectCostSettings
 from app.models.embedding import SowEmbedding
 from app.models.forecast import ForecastPeriod
@@ -23,10 +24,14 @@ from app.models.gm_model import CostLine, GmModel, ResourceLine
 from app.models.hubspot_pipeline import HubspotPipeline, HubspotStage
 from app.models.hubspot_writeback import HubspotWritebackJob
 from app.models.integration import IntegrationEvent
-from app.models.next_action import NextAction
+from app.models.deal_comment import DealComment
+from app.models.next_action import NextAction, NextActionEvent
+from app.models.saved_view import SavedView
+from app.models.tracking_group import TrackingGroup, TrackingGroupMember
 from app.models.notification import Notification, NotificationSetting
 from app.models.opportunity import Opportunity
 from app.models.policy import PolicyVersion
+from app.models.project import Project
 from app.models.rate_card import RateCardRow, RateCardVersion
 from app.models.renewal import Renewal
 from app.models.signed_sow import SignedSowUpload
@@ -68,6 +73,8 @@ __all__ = [
     "ClientRateCard",
     "ClientRateCardRow",
     "CostLine",
+    "DealComment",
+    "DeliveryAcceptance",
     "DirectCostSettings",
     "ForecastPeriod",
     "FunctionOwner",
@@ -81,14 +88,17 @@ __all__ = [
     "LegacyImportBatch",
     "LegalEntity",
     "NextAction",
+    "NextActionEvent",
     "Notification",
     "NotificationSetting",
     "Opportunity",
     "PolicyVersion",
+    "Project",
     "RateCardRow",
     "RateCardVersion",
     "Renewal",
     "ResourceLine",
+    "SavedView",
     "SignedSowUpload",
     "Sow",
     "SowEmbedding",
@@ -96,6 +106,8 @@ __all__ = [
     "SowVersion",
     "SyncStatus",
     "Task",
+    "TrackingGroup",
+    "TrackingGroupMember",
     "User",
     "UserPreference",
 ]

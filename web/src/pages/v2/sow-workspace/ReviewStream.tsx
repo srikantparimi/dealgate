@@ -76,7 +76,17 @@ function ReviewActions({ pkg, assignment, refresh }: { pkg: ApprovalPackage; ass
   const [busy, setBusy] = useState(false);
   async function act(decision: ApprovalDecision) {
     setBusy(true); setError("");
-    try { await decideApprovalPackage(pkg.id, assignment.function, { decision, reason: reason.trim() }); await refresh?.(); }
+    // S20 W3 T19: send the package_hash the tab loaded with. The server
+    // 409s if a material change (`void_on_change`) fired between load
+    // and click; the caller catches the 409 and forces a refresh.
+    try {
+      await decideApprovalPackage(pkg.id, assignment.function, {
+        decision,
+        reason: reason.trim(),
+        expected_package_hash: pkg.package_hash,
+      });
+      await refresh?.();
+    }
     catch (e) { setError(reviewError(e)); } finally { setBusy(false); }
   }
   return <div className="space-y-2 pt-2">

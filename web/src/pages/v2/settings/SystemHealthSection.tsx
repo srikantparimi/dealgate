@@ -199,6 +199,9 @@ function OverviewPanel() {
   const [events, setEvents] = useState<AdminReplayIntegrationEventRow[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  // S20 W4 Session 6 · per-panel freshness timestamp (W4-6 real-timestamp
+  // audit). `null` = "no data" per the directive — never a static value.
+  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -212,6 +215,7 @@ function OverviewPanel() {
         setHubspot(hs.items);
         setNotif(no.items);
         setEvents(ev.items);
+        setFetchedAt(new Date());
       })
       .catch((err) => setError(err))
       .finally(() => setLoading(false));
@@ -240,22 +244,29 @@ function OverviewPanel() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-      <OverviewTile
-        label="HubSpot writebacks"
-        count={hubspot.length}
-        loading={loading}
-      />
-      <OverviewTile
-        label="Notification failures"
-        count={notif.length}
-        loading={loading}
-      />
-      <OverviewTile
-        label="Stuck integration events"
-        count={events.length}
-        loading={loading}
-      />
+    <div className="flex flex-col gap-3" data-testid="system-health-overview">
+      <p className="text-secondary text-text-secondary">
+        {fetchedAt
+          ? `Data as of ${fetchedAt.toLocaleTimeString()} · fetched live from /admin/replay/*`
+          : "No data — the live endpoints did not respond."}
+      </p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <OverviewTile
+          label="HubSpot writebacks"
+          count={hubspot.length}
+          loading={loading}
+        />
+        <OverviewTile
+          label="Notification failures"
+          count={notif.length}
+          loading={loading}
+        />
+        <OverviewTile
+          label="Stuck integration events"
+          count={events.length}
+          loading={loading}
+        />
+      </div>
     </div>
   );
 }

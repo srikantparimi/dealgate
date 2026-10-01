@@ -18,17 +18,21 @@ Read-only in this slice (S18 §2). No POST/PATCH here.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select as _select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.services.deals import LEADER_ROLES
 from app.services.hubspot_pipeline import (
+    BUSINESS_TZ,
     ClientRow,
     DEFAULT_SORT_CLIENTS,
     DEFAULT_SORT_OPPS,
@@ -37,11 +41,18 @@ from app.services.hubspot_pipeline import (
     PipelineFilters,
     PipelineSummary,
     SortSpec,
+    StageCount,
     VALID_DATE_FIELDS,
+    VALID_MISSING_FIELDS,
+    VALID_OPEN_CLOSED,
+    get_opportunity_row,
     get_pipeline_deal,
     list_clients as _list_clients,
     list_opportunities as _list_opportunities,
     list_pipeline_deals,
+    list_pipeline_facets,
+    list_pipeline_stages,
+    resolve_date_preset,
     search_pipeline_deals,
     summary as _summary,
 )
@@ -191,15 +202,30 @@ class OpportunityRowOut(BaseModel):
     next_action_open_count: int
     next_action_min_due: date | None
     sow_count: int
+    hubspot_pipeline_id: str | None = None
+    business_unit: str | None = None
+    # S20 W6 Session 4b item 2 · latest-comment preview on the row.
+    latest_comment_body: str | None = None
+    latest_comment_author: str | None = None
+    latest_comment_pinned: bool = False
+    latest_comment_at: datetime | None = None
 
 
 class ClientRowOut(BaseModel):
     client_id: uuid.UUID
     client_name: str
     hubspot_company_id: str | None
+    # D2 — three ownership concepts; keep them separate in the wire model.
+    account_owner_id: str | None = None
+    account_owner_name: str | None = None
+    account_owner_email: str | None = None
     owner_id: uuid.UUID | None
     owner_name: str | None
     owner_email: str | None
+    matching_deal_count: int
+    total_open_deal_count: int
+    # Legacy alias kept so older callers (Command center card, tests)
+    # continue to read `open_opp_count` while the field is renamed.
     open_opp_count: int
     open_value_by_currency: dict[str, Decimal]
     stage_breakdown: dict[str, int]
@@ -212,11 +238,50 @@ class ClientRowOut(BaseModel):
     next_action_open_count: int
 
 
+class StageCountOut(BaseModel):
+    pipeline_id: str | None
+    stage_id: str | None
+    stage_label: str | None
+    stage_order: int | None
+    count: int
+    is_closed_won: bool = False
+    is_closed_lost: bool = False
+    # S20 W2 Session 3b Rev-2 · per-chip value totals (L06).
+    open_value_by_currency: dict[str, Decimal] = Field(default_factory=dict)
+
+
+class FreshnessOut(BaseModel):
+    """Response envelope §3 — freshness watermark for the dataset."""
+
+    source: str = "hubspot_mirror"
+    received_at: datetime | None = None
+    processed_at: datetime | None = None
+    reconciled_at: datetime | None = None
+    state: str = "Unknown"
+
+
+class ListMetaOut(BaseModel):
+    """Meta block per response envelope §3.
+
+    Echoes filters the caller sent so the SPA can render the "active
+    filters" strip without re-parsing its own URL, and carries the
+    stage-count reconciliation payload + explicit unknown-stage bucket
+    (A5, T35, T40, D9).
+    """
+
+    freshness: FreshnessOut
+    unknown_bucket: int = 0
+    stage_counts: list[StageCountOut] = Field(default_factory=list)
+    filters_echo: dict[str, Any] = Field(default_factory=dict)
+    business_timezone: str = BUSINESS_TZ
+
+
 class OpportunityListOut(BaseModel):
     items: list[OpportunityRowOut]
     total: int
     page: int
     page_size: int
+    meta: ListMetaOut
 
 
 class ClientListOut(BaseModel):
@@ -224,6 +289,7 @@ class ClientListOut(BaseModel):
     total: int
     page: int
     page_size: int
+    meta: ListMetaOut
 
 
 class SummaryOut(BaseModel):
@@ -233,6 +299,9 @@ class SummaryOut(BaseModel):
     overdue_actions: int
     pending_approvals: int
     agreement_gaps: int
+    sows_in_progress: int = 0
+    agreements_uploaded: int = 0
+    ceo_pending: int = 0
 
 
 def _parse_filters(
@@ -244,26 +313,212 @@ def _parse_filters(
     date_field: str | None,
     date_from: date | None,
     date_to: date | None,
+    date_preset: str | None,
     search: str | None,
     include_closed: bool,
+    account_owner: list[str] | None = None,
+    business_unit: list[str] | None = None,
+    open_closed: str | None = None,
+    missing: list[str] | None = None,
+    client: list[uuid.UUID] | None = None,
+    group: list[uuid.UUID] | None = None,
+    watching_ids: tuple[uuid.UUID, ...] | None = None,
 ) -> PipelineFilters:
     if date_field is not None and date_field not in VALID_DATE_FIELDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"date_field must be one of {sorted(VALID_DATE_FIELDS)}",
         )
+    if open_closed is not None and open_closed not in VALID_OPEN_CLOSED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"open_closed must be one of {sorted(VALID_OPEN_CLOSED)}",
+        )
+    if missing:
+        bad = [m for m in missing if m not in VALID_MISSING_FIELDS]
+        if bad:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"missing must be a subset of {sorted(VALID_MISSING_FIELDS)}",
+            )
+    resolved_from, resolved_to = date_from, date_to
+    if date_preset:
+        resolved_from, resolved_to = resolve_date_preset(
+            date_preset, date_from=date_from, date_to=date_to
+        )
     return PipelineFilters(
         pipeline=pipeline,
         stage=tuple(stage or ()),
         owner=tuple(owner or ()),
+        account_owner=tuple(account_owner or ()),
+        business_unit=tuple(business_unit or ()),
         readiness=tuple(readiness or ()),
         attention=tuple(attention or ()),
         date_field=date_field,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=resolved_from,
+        date_to=resolved_to,
         search=search,
         include_closed=include_closed,
+        open_closed=open_closed,
+        missing=tuple(missing or ()),
+        client=tuple(client or ()),
+        group=tuple(group or ()),
+        watching_ids=watching_ids,
     )
+
+
+def _filters_echo(filters: PipelineFilters) -> dict[str, Any]:
+    """Echo the filter set into the response envelope's meta block."""
+
+    def _serialize_uuid_tuple(t):
+        return [str(x) for x in t]
+
+    return {
+        "pipeline": filters.pipeline,
+        "stage": list(filters.stage),
+        "owner": _serialize_uuid_tuple(filters.owner),
+        "account_owner": list(filters.account_owner),
+        "business_unit": list(filters.business_unit),
+        "readiness": list(filters.readiness),
+        "attention": list(filters.attention),
+        "date_field": filters.date_field,
+        "date_from": filters.date_from.isoformat() if filters.date_from else None,
+        "date_to": filters.date_to.isoformat() if filters.date_to else None,
+        "search": filters.search,
+        "include_closed": filters.include_closed,
+        "open_closed": filters.open_closed,
+        "missing": list(filters.missing),
+    }
+
+
+async def _load_freshness(session: AsyncSession, *, now: datetime | None = None) -> FreshnessOut:
+    """Compose the freshness watermark object per contracts §3.
+
+    Reads ``sync_status`` (W1 owns the writer) and folds the three
+    HubSpot watermarks into a single record for the SPA. When W1 has
+    not yet landed rows (fresh worktree), returns ``state='Unknown'``.
+    """
+
+    from app.models.sync_status import SyncStatus
+
+    rows = (
+        await session.execute(_select(SyncStatus).where(SyncStatus.source.like("hubspot%")))
+    ).scalars().all()
+    by_source = {r.source: r for r in rows}
+    received = by_source.get("hubspot_webhook_received") or by_source.get("hubspot_webhook")
+    processed = by_source.get("hubspot_webhook_processed") or by_source.get("hubspot_webhook")
+    reconciled = by_source.get("hubspot_reconcile") or by_source.get("hubspot_backfill")
+    state = "Unknown"
+    if processed and processed.last_success_at:
+        lag = processed.lag_seconds or 0
+        if processed.last_error:
+            state = "Failed"
+        elif lag > 120:
+            state = "Stale"
+        else:
+            state = "verified working"
+    return FreshnessOut(
+        source="hubspot_mirror",
+        received_at=received.last_success_at if received else None,
+        processed_at=processed.last_success_at if processed else None,
+        reconciled_at=reconciled.last_success_at if reconciled else None,
+        state=state,
+    )
+
+
+async def _resolve_scope(
+    session: AsyncSession,
+    *,
+    user: AuthUser,
+    group_ids: list[uuid.UUID] | None,
+    watching: bool,
+) -> dict[str, Any]:
+    """S20 W6 · resolve group + watching axes into an opportunity-id scope.
+
+    - Manual opportunity groups → their member ids.
+    - Manual client groups → the client_ids, funneled via `filters.client`.
+    - Rule-based groups → the group's `filter_json` is evaluated by
+      `list_opportunities` (directive: no second engine) and the returned
+      row ids become the scope.
+    - Watchlist → the caller's own `WatchedItem` rows for kind=opportunity
+      (+ client ids as extra `filters.client` scope).
+
+    Returns a dict with the axes to apply on top of the caller's filters:
+    `{"opportunity_id": tuple | None, "client": tuple | None,
+    "watching_ids": tuple | None}`.
+    """
+
+    from sqlalchemy import select as _select
+
+    from app.models.tracking_group import TrackingGroup, TrackingGroupMember
+    from app.models.watchlist import WatchedItem
+
+    opp_scope: set[uuid.UUID] = set()
+    client_scope: set[uuid.UUID] = set()
+    watching_ids: set[uuid.UUID] | None = None
+    axis_used = False
+
+    if group_ids:
+        axis_used = True
+        groups = (
+            await session.execute(
+                _select(TrackingGroup).where(TrackingGroup.id.in_(group_ids))
+            )
+        ).scalars().all()
+        for grp in groups:
+            if grp.filter_json:
+                # Rule-based: evaluate through the same engine.
+                sub_filters = PipelineFilters(
+                    stage=tuple(grp.filter_json.get("stage") or ()),
+                    owner=tuple(uuid.UUID(o) for o in (grp.filter_json.get("owner") or [])),
+                    business_unit=tuple(grp.filter_json.get("business_unit") or ()),
+                    readiness=tuple(grp.filter_json.get("readiness") or ()),
+                    attention=tuple(grp.filter_json.get("attention") or ()),
+                    open_closed=grp.filter_json.get("open_closed"),
+                    include_closed=bool(grp.filter_json.get("include_closed")),
+                )
+                page = await _list_opportunities(
+                    session, filters=sub_filters, page=1, page_size=200
+                )
+                for r in page.items:
+                    opp_scope.add(r.opportunity_id)
+            else:
+                members = (
+                    await session.execute(
+                        _select(TrackingGroupMember).where(
+                            TrackingGroupMember.group_id == grp.id
+                        )
+                    )
+                ).scalars().all()
+                if grp.member_kind == "opportunity":
+                    for m in members:
+                        opp_scope.add(m.member_id)
+                elif grp.member_kind == "client":
+                    for m in members:
+                        client_scope.add(m.member_id)
+
+    if watching:
+        axis_used = True
+        rows = (
+            await session.execute(
+                _select(WatchedItem).where(WatchedItem.user_id == user.id)
+            )
+        ).scalars().all()
+        watching_ids = set()
+        for r in rows:
+            if r.kind == "opportunity":
+                watching_ids.add(r.item_id)
+            elif r.kind == "client":
+                client_scope.add(r.item_id)
+
+    return {
+        "opportunity_id": (
+            tuple(opp_scope) if (group_ids and not watching) else
+            (tuple(opp_scope | (watching_ids or set())) if axis_used else None)
+        ),
+        "client": tuple(client_scope) if client_scope else None,
+        "watching_ids": tuple(watching_ids) if watching_ids is not None else None,
+    }
 
 
 def _parse_sort(raw: str | None, default: tuple[SortSpec, ...]) -> tuple[SortSpec, ...]:
@@ -304,6 +559,12 @@ def _opp_to_out(row: OpportunityRow) -> OpportunityRowOut:
         next_action_open_count=row.next_action_open_count,
         next_action_min_due=row.next_action_min_due,
         sow_count=row.sow_count,
+        hubspot_pipeline_id=row.hubspot_pipeline_id,
+        business_unit=row.business_unit,
+        latest_comment_body=getattr(row, "latest_comment_body", None),
+        latest_comment_author=getattr(row, "latest_comment_author", None),
+        latest_comment_pinned=getattr(row, "latest_comment_pinned", False),
+        latest_comment_at=getattr(row, "latest_comment_at", None),
     )
 
 
@@ -312,10 +573,15 @@ def _client_to_out(row: ClientRow) -> ClientRowOut:
         client_id=row.client_id,
         client_name=row.client_name,
         hubspot_company_id=row.hubspot_company_id,
+        account_owner_id=row.account_owner_id,
+        account_owner_name=row.account_owner_name,
+        account_owner_email=row.account_owner_email,
         owner_id=row.owner_id,
         owner_name=row.owner_name,
         owner_email=row.owner_email,
-        open_opp_count=row.open_opp_count,
+        matching_deal_count=row.matching_deal_count,
+        total_open_deal_count=row.total_open_deal_count,
+        open_opp_count=row.matching_deal_count,
         open_value_by_currency=row.open_value_by_currency,
         stage_breakdown=row.stage_breakdown,
         has_nda=row.has_nda,
@@ -328,6 +594,36 @@ def _client_to_out(row: ClientRow) -> ClientRowOut:
     )
 
 
+def _stage_counts_to_out(counts) -> list[StageCountOut]:
+    return [
+        StageCountOut(
+            pipeline_id=c.pipeline_id,
+            stage_id=c.stage_id,
+            stage_label=c.stage_label,
+            stage_order=c.stage_order,
+            count=c.count,
+            is_closed_won=c.is_closed_won,
+            is_closed_lost=c.is_closed_lost,
+            open_value_by_currency=dict(getattr(c, "open_value_by_currency", {})),
+        )
+        for c in counts
+    ]
+
+
+_ALLOWED_PAGE_SIZES: frozenset[int] = frozenset({25, 50, 100})
+
+
+def _validate_page_size(page_size: int) -> int:
+    """Contracts §4: page_size ∈ {25, 50, 100}. Anything else rejected."""
+
+    if page_size not in _ALLOWED_PAGE_SIZES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"page_size must be one of {sorted(_ALLOWED_PAGE_SIZES)}",
+        )
+    return page_size
+
+
 @router.get("/opportunities", response_model=OpportunityListOut)
 async def list_opportunities_endpoint(
     user: AuthUser = Depends(current_user),
@@ -335,31 +631,58 @@ async def list_opportunities_endpoint(
     pipeline: str | None = Query(None),
     stage: list[str] | None = Query(None),
     owner: list[uuid.UUID] | None = Query(None),
+    account_owner: list[str] | None = Query(None),
+    business_unit: list[str] | None = Query(None),
     readiness: list[str] | None = Query(None),
     attention: list[str] | None = Query(None),
     date_field: str | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    date_preset: str | None = Query(None),
     search: str | None = Query(None, max_length=200),
     include_closed: bool = Query(False),
+    open_closed: str | None = Query(None),
+    missing: list[str] | None = Query(None),
+    client: list[uuid.UUID] | None = Query(None),
+    group: list[uuid.UUID] | None = Query(None),
+    watching: bool = Query(False),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     sort: str | None = Query(None),
 ) -> OpportunityListOut:
     _require_reader(user)
+    _validate_page_size(page_size)
+    # S20 W6 · resolve group + watching axes into opportunity_id scope.
+    scope = await _resolve_scope(session, user=user, group_ids=group, watching=watching)
     filters = _parse_filters(
         pipeline, stage, owner, readiness, attention,
-        date_field, date_from, date_to, search, include_closed,
+        date_field, date_from, date_to, date_preset, search, include_closed,
+        account_owner=account_owner,
+        business_unit=business_unit,
+        open_closed=open_closed,
+        missing=missing,
+        client=tuple((client or []) + list(scope["client"] or ())) or None,
+        watching_ids=scope["watching_ids"],
     )
+    if scope["opportunity_id"] is not None:
+        filters = replace(filters, opportunity_id=scope["opportunity_id"])
     sort_spec = _parse_sort(sort, DEFAULT_SORT_OPPS)
     result = await _list_opportunities(
         session, filters=filters, page=page, page_size=page_size, sort=sort_spec
     )
+    freshness = await _load_freshness(session)
     return OpportunityListOut(
         items=[_opp_to_out(r) for r in result.items],
         total=result.total,
         page=result.page,
         page_size=result.page_size,
+        meta=ListMetaOut(
+            freshness=freshness,
+            unknown_bucket=result.unknown_bucket,
+            stage_counts=_stage_counts_to_out(result.stage_counts),
+            filters_echo=_filters_echo(filters),
+            business_timezone=BUSINESS_TZ,
+        ),
     )
 
 
@@ -370,31 +693,54 @@ async def list_clients_endpoint(
     pipeline: str | None = Query(None),
     stage: list[str] | None = Query(None),
     owner: list[uuid.UUID] | None = Query(None),
+    account_owner: list[str] | None = Query(None),
+    business_unit: list[str] | None = Query(None),
     readiness: list[str] | None = Query(None),
     attention: list[str] | None = Query(None),
     date_field: str | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    date_preset: str | None = Query(None),
     search: str | None = Query(None, max_length=200),
     include_closed: bool = Query(False),
+    open_closed: str | None = Query(None),
+    missing: list[str] | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     sort: str | None = Query(None),
 ) -> ClientListOut:
     _require_reader(user)
+    _validate_page_size(page_size)
     filters = _parse_filters(
         pipeline, stage, owner, readiness, attention,
-        date_field, date_from, date_to, search, include_closed,
+        date_field, date_from, date_to, date_preset, search, include_closed,
+        account_owner=account_owner,
+        business_unit=business_unit,
+        open_closed=open_closed,
+        missing=missing,
     )
     sort_spec = _parse_sort(sort, DEFAULT_SORT_CLIENTS)
     result = await _list_clients(
         session, filters=filters, page=page, page_size=page_size, sort=sort_spec
+    )
+    freshness = await _load_freshness(session)
+    # Reuse the opportunity stage-count aggregation so client + deal
+    # views render identical chips (aggregate contract §"Aggregate").
+    opp_result = await _list_opportunities(
+        session, filters=filters, page=1, page_size=1
     )
     return ClientListOut(
         items=[_client_to_out(r) for r in result.items],
         total=result.total,
         page=result.page,
         page_size=result.page_size,
+        meta=ListMetaOut(
+            freshness=freshness,
+            unknown_bucket=opp_result.unknown_bucket,
+            stage_counts=_stage_counts_to_out(opp_result.stage_counts),
+            filters_echo=_filters_echo(filters),
+            business_timezone=BUSINESS_TZ,
+        ),
     )
 
 
@@ -405,18 +751,27 @@ async def summary_endpoint(
     pipeline: str | None = Query(None),
     stage: list[str] | None = Query(None),
     owner: list[uuid.UUID] | None = Query(None),
+    account_owner: list[str] | None = Query(None),
+    business_unit: list[str] | None = Query(None),
     readiness: list[str] | None = Query(None),
     attention: list[str] | None = Query(None),
     date_field: str | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    date_preset: str | None = Query(None),
     search: str | None = Query(None, max_length=200),
     include_closed: bool = Query(False),
+    open_closed: str | None = Query(None),
+    missing: list[str] | None = Query(None),
 ) -> SummaryOut:
     _require_reader(user)
     filters = _parse_filters(
         pipeline, stage, owner, readiness, attention,
-        date_field, date_from, date_to, search, include_closed,
+        date_field, date_from, date_to, date_preset, search, include_closed,
+        account_owner=account_owner,
+        business_unit=business_unit,
+        open_closed=open_closed,
+        missing=missing,
     )
     result: PipelineSummary = await _summary(session, filters=filters)
     return SummaryOut(
@@ -426,6 +781,73 @@ async def summary_endpoint(
         overdue_actions=result.overdue_actions,
         pending_approvals=result.pending_approvals,
         agreement_gaps=result.agreement_gaps,
+        sows_in_progress=result.sows_in_progress,
+        agreements_uploaded=result.agreements_uploaded,
+        ceo_pending=result.ceo_pending,
+    )
+
+
+# S20 W2 · single-opportunity for the /deals/:id detail page. Returns
+# the same shape /pipeline/opportunities returns per row so the SPA
+# reuses OpportunityRow (name, stage_id, sow_state, attention_flags,
+# next_action counts, BU, pipeline_id, is_closed_won/lost).
+@router.get("/opportunities/{opportunity_id}", response_model=OpportunityRowOut)
+async def get_opportunity_endpoint(
+    opportunity_id: uuid.UUID,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> OpportunityRowOut:
+    _require_reader(user)
+    row = await get_opportunity_row(session, opportunity_id=opportunity_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="opportunity not found"
+        )
+    return _opp_to_out(row)
+
+
+# S20 W2 · ordered stage strip on /deals/:id. Powered by the mirror in
+# `hubspot_stage`; zero-count stages included so the strip shows every
+# stage the deal could sit in, in mirror display order.
+@router.get("/pipelines/{pipeline_id}/stages", response_model=list[StageCountOut])
+async def list_pipeline_stages_endpoint(
+    pipeline_id: str,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[StageCountOut]:
+    _require_reader(user)
+    stages = await list_pipeline_stages(session, pipeline_id=pipeline_id)
+    return _stage_counts_to_out(stages)
+
+
+class OwnerFacetOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str | None
+
+
+class PipelineFacetsOut(BaseModel):
+    owners: list[OwnerFacetOut]
+    business_units: list[str]
+
+
+# S20 W2 Session 3b Rev-2 · facets for the Pipeline filter bar.
+# `owners` populates the Owner multi-select; `business_units` populates
+# the BU select. Both are empty tuples on portals that haven't mirrored
+# the source axis — the UI renders an "unmirrored on this portal" note
+# rather than silently omitting the axis.
+@router.get("/facets", response_model=PipelineFacetsOut)
+async def list_pipeline_facets_endpoint(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PipelineFacetsOut:
+    _require_reader(user)
+    facets = await list_pipeline_facets(session)
+    return PipelineFacetsOut(
+        owners=[
+            OwnerFacetOut(id=o.id, name=o.name, email=o.email) for o in facets.owners
+        ],
+        business_units=list(facets.business_units),
     )
 
 

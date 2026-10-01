@@ -112,6 +112,12 @@ def _require_function_role(user: AuthUser, function: str) -> None:
 class DecisionBody(BaseModel):
     decision: str = Field(examples=["approve", "reject", "request_changes"])
     reason: str = Field(min_length=1, max_length=4096)
+    # S20 W3 T19: the client sends the `package_hash` it loaded with. The
+    # server rejects the decision with 409 if the current hash differs
+    # (material change occurred between load and submit). Optional so a
+    # pre-S20 client that hasn't been updated still works; new clients
+    # always send it and the review harness enforces its presence.
+    expected_package_hash: str | None = Field(default=None, max_length=64)
 
 
 class ReviewerChoice(BaseModel):
@@ -225,6 +231,7 @@ async def decide_endpoint(
             function=function,
             decision=body.decision,
             reason=body.reason,
+            expected_package_hash=body.expected_package_hash,
         )
     except ApprovalError as exc:
         raise _wrap(exc) from exc

@@ -27,8 +27,11 @@ class Sow(Base):
     __tablename__ = "sow"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # S20 D1 — many SOWs per deal. `opportunity_id` is no longer unique;
+    # the deal-level headline is derived by services/sow_rollup from the
+    # worst per-package state instead of relying on schema uniqueness.
     opportunity_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("opportunity.id"), nullable=False, unique=True
+        Uuid, ForeignKey("opportunity.id"), nullable=False, unique=False
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

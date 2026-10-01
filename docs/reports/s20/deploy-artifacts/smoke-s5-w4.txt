@@ -1,0 +1,20 @@
+[smoke] Session 5 W4 · api rev 62 · image s20-0573d19d
+single-truth guarantee ok · GREEN (3rd run — Bedrock extract_status
+flake on first two tries, standard retry per runbook).
+[gate] clean · 0 test-tagged clients
+
+Playwright S20 (combined T39 + T16 + T40):
+  ✓ T39 (W4): 6 tests · Watching link, Integrations live sync_status,
+    System health reachable, no raw ids on /command /renewals /reports
+    /settings/integrations
+  ✓ T16 (W6): 6 + 1 skip-honest; "item 2 column" flaked once on
+    concurrent load, passed on isolated rerun
+  ✓ T40 (L02-L07 + S3b): 8 tests
+  19 passed / 1 skipped on rev 62
+
+W4 pytest suite: 5/5 locally
+Full impacted-suite: 22/22 + 1 known xfail (W1 worker_crash).
+
+Items 0a + 2 + 4 (sync_status) + 8 verified working (staging).
+Items 0b + 1 + 6 + 7 fixed and tested.
+Item 3 deferred (budget); item 5 blocked (rule 15 — human prompt).

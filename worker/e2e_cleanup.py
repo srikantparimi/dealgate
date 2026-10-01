@@ -35,13 +35,28 @@ log = logging.getLogger("dealgate.worker.e2e_cleanup")
 # Names that scream "test data, delete me".
 _PREFIX_RE = re.compile(
     r"^(?:s1[2-9]-|s17-|S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
+    r"S20 e2e |S21 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|S17 delete-everywhere|"
     r"S17 e2e |Peppermill Casino's, LLC)",
     re.IGNORECASE,
 )
 # Everything created before this cutoff is eligible; hourly ticks keep
 # the tail short without racing an in-flight test run.
-_MIN_AGE = timedelta(hours=24)
+#
+# S21-1d: minimum age is overridable via `E2E_MIN_AGE_HOURS` so a
+# one-off run can sweep rows younger than 24h (0 = sweep everything
+# that matches the prefix, regardless of age). The default stays at
+# 24h for the scheduled nightly tick.
+def _min_age() -> timedelta:
+    raw = os.environ.get("E2E_MIN_AGE_HOURS")
+    if raw is None:
+        return timedelta(hours=24)
+    try:
+        hours = float(raw)
+    except ValueError:
+        log.warning("e2e_cleanup_invalid_min_age_hours", extra={"value": raw})
+        return timedelta(hours=24)
+    return timedelta(hours=max(hours, 0))
 
 
 async def run_tick() -> dict[str, int]:
@@ -53,7 +68,7 @@ async def run_tick() -> dict[str, int]:
         return counts
 
     async with session_factory() as session:
-        cutoff = datetime.now(UTC) - _MIN_AGE
+        cutoff = datetime.now(UTC) - _min_age()
         candidates = list(
             (
                 await session.execute(
@@ -71,7 +86,7 @@ async def run_tick() -> dict[str, int]:
                 continue
             log.info(
                 "e2e_cleanup_delete",
-                extra={"client_id": str(client.id), "name": client.name},
+                extra={"client_id": str(client.id), "client_name": client.name},
             )
             summary = await delete_client(session, actor_id=None, client_id=client.id)
             counts["clients"] += 1

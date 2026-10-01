@@ -120,6 +120,16 @@ module "auth" {
   custom_domain     = var.domain
 }
 
+# S20 U01 · role-partitioned Cognito approvers for T27 + T44.
+# Five plus-addressed users off srikanthp@smartek21.com, one per role,
+# credentials in `officeapp-dev-e2e-approvers`.
+module "e2e_approvers" {
+  source       = "./modules/e2e-approvers"
+  name_prefix  = local.name_prefix
+  user_pool_id = module.auth.user_pool_id
+  kms_key_arn  = module.kms.key_arn
+}
+
 module "api" {
   source      = "./modules/api"
   name_prefix = local.name_prefix
@@ -224,6 +234,11 @@ module "schedulers" {
   # and updates sync_status.
   hubspot_event_queue_url  = module.hubspot.queue_url
   hubspot_event_queue_arn  = module.hubspot.queue_arn
+  # S20 W1 · freshness alarms consume the queue NAMES as the SQS
+  # CloudWatch dimension, so they're wired separately from the URL/ARN
+  # (which the consumer worker uses).
+  hubspot_events_queue_name = module.hubspot.queue_name
+  hubspot_events_dlq_name   = module.hubspot.dlq_name
   hubspot_token_secret_arn = module.secrets.hubspot_token_secret_arn
 }
 
@@ -239,6 +254,13 @@ module "github_oidc" {
   task_role_arn               = module.api.task_role_arn
   web_bucket_arn              = module.web.bucket_arn
   cloudfront_distribution_arn = module.web.distribution_arn
+}
+
+# S21 item 8: five production approver SES sending identities. Add
+# only — the apply (which triggers verification mails) is reserved
+# for Kanna per CLAUDE.md rule 15.
+module "prod_approvers" {
+  source = "./modules/prod-approvers"
 }
 
 # S7: CloudTrail + GuardDuty + CloudWatch alarms + SNS alerts topic.

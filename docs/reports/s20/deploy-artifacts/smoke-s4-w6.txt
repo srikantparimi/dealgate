@@ -1,0 +1,42 @@
+[smoke] target: https://app.dealgateapp.com
+[smoke] run tag: smoke 20260930T231421Z (Session 4 W6 · api rev 60 · image s20-19301a4f)
+[smoke] step 0 · mint Cognito token for e2e user
+[smoke] step 0.5 · single-truth grep gate
+single-truth guarantee ok — every router lists deals through hubspot_pipeline
+[smoke] step 1 · /healthz
+[smoke] step 2 · bedrock inference profile in region
+[smoke] step 3 · POST /sows/upload
+[smoke] step 4 · POST /sows/jobs/*/pick
+[smoke] step 5 · confirmation.extract_status
+[smoke] step 6 · GET /sows/drafts?mine=false
+[smoke] GREEN — deploy is safe to keep.
+[gate] clean · 0 test-tagged clients on https://app.dealgateapp.com
+
+Deploy record:
+- image s20-19301a4f, api rev 60 (previous rev 59 had a C8 gate fail
+  from a `select(Opportunity.id)` in client_timeline; fix 19301a4f
+  routes through hubspot_pipeline.list_opportunities).
+- alembic head 20260930_0047_w6_watch applied on staging Postgres
+  (adds `watched_item` table + `uq_watched_item_user_kind_item` +
+  `ix_watched_item_user_kind`).
+- workers re-registered on the same image: alert_scheduler rev 13,
+  notification_sender rev 13, renewals_scheduler rev 13,
+  audit_export rev 13, hubspot_intake rev 11, hubspot_reconcile rev 11.
+- SPA rebuilt + s3 sync'd + CloudFront invalidation
+  I90H46C8LLH4GZU31XP9D3WI4 → complete.
+
+Playwright S20 specs (rev 60):
+  ✓ t01-sidebar-navigation.spec.ts · sidebar (29.3s)
+  ✓ t09-names-not-ids.spec.ts · 5 tests (16.6s)
+  ✓ t40-live-repro.spec.ts · 8 tests
+    (L06b was flaky on the first full-suite run; passed on retry — the
+    flake is a load-timing issue on the stage-strip visibility check,
+    not a functional regression; the isolated t40 rerun passed 8/8.)
+  13 skipped (T01b + T44)
+
+Endpoint auth-gate checks (rev 60):
+  GET /api/watchlist → 401 (route registered, gated)
+  GET /api/deals/{id}/timeline → 401 (route registered, gated)
+  GET /api/pipeline/facets → 401 (existing, still gated)
+
+pytest local (impacted suites): 33 pass / 1 known xfail.

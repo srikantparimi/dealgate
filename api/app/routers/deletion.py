@@ -34,6 +34,7 @@ from app.services.deletion import (
     DeletionError,
     archive_client,
     archive_opportunity,
+    archive_sow,
     assess_client,
     assess_opportunity,
     assess_sow,
@@ -229,6 +230,36 @@ async def delete_sow_endpoint(
     return AssessmentResponse(
         state="draft",
         reason=f"SOW '{summary.sow_title}' deleted from {summary.stage}",
+        counts=summary.counts,
+    )
+
+
+@router.post("/sows/{sow_id}/archive", response_model=AssessmentResponse)
+async def archive_sow_endpoint(
+    sow_id: uuid.UUID,
+    body: ArchiveBody = ArchiveBody(),
+    user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> AssessmentResponse:
+    """S20 W3 D6: archive a governed SOW (any SOW that has been
+    submitted for approval). Keeps rows + audit trail intact; the SOW is
+    excluded from open lists and the deal's rollup headline (see
+    `services.sow_rollup`)."""
+
+    db_user = await ensure_user(session, user)
+    try:
+        summary = await archive_sow(
+            session,
+            sow_id=sow_id,
+            actor_id=db_user.id,
+            reason=body.reason or "manual_archive",
+        )
+    except DeletionError as exc:
+        _raise(exc)
+    await session.commit()
+    return AssessmentResponse(
+        state="archived",
+        reason=f"SOW '{summary.sow_title}' archived from {summary.stage}",
         counts=summary.counts,
     )
 

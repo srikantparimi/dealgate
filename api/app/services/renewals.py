@@ -1,4 +1,4 @@
-"""Renewal service (S5 E9 — Agent Y2).
+"""Renewal service (S5 E9 — Agent Y2; S20 D8/T25 amendments).
 
 Small state-machine + query helpers backing the renewals scheduler
 (``worker.renewals_scheduler``) and the ``/renewals`` inbox
@@ -16,6 +16,13 @@ State model (blueprint §9):
 ``open_renewal`` is idempotent per (opportunity, term_end): a repeat call
 returns the existing row so the scheduler can safely re-run without
 duping the account owner's task.
+
+S20/D8 — `compute_alert_date` replaces the old ``term_end - 60d`` rule.
+The review live-finding L15 said the live application still ran the
+60-day rule; the directive fixes it at "two calendar months before term
+end, month-end clamped, business timezone `America/Los_Angeles`".
+Weekly-repeat + short-engagement variants live here too so the
+scheduler and the read side agree on the same shape.
 """
 
 from __future__ import annotations
@@ -23,6 +30,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+
+try:  # Python 3.9+
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover — python <3.9 not supported
+    ZoneInfo = None  # type: ignore[assignment]
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -35,7 +47,141 @@ from app.models.task import Task
 from app.services.notifications import queue_notification
 
 
-DEFAULT_TRIGGER_LEAD_DAYS = 60
+DEFAULT_TRIGGER_LEAD_DAYS = 60  # legacy — retained for callers not yet migrated
+
+# ---- D8/T25: two-calendar-month rule -----------------------------------
+
+BUSINESS_TIMEZONE = "America/Los_Angeles"
+"""The business timezone. All date-only calendar math derives from this
+zone (not UTC), so a term ending 2026-03-31 in the office still triggers
+its two-month alert on 2026-01-31 even when the scheduler runs at
+2026-01-31T20:00 UTC (which is still 2026-01-31 local)."""
+
+WEEKLY_REPEAT_UNTIL_DAYS = 14
+"""Weekly nudges continue from the alert-date until this many days before
+term end; inside this window the daily/escalation triggers take over."""
+
+SHORT_ENGAGEMENT_MAX_DAYS = 90
+"""An engagement shorter than three months (< 90 days start-to-close)
+fires its renewal review both when it opens AND when it closes, per
+directive D8 short-engagement clause."""
+
+
+def _days_in_month(year: int, month: int) -> int:
+    """Return the number of days in ``(year, month)`` — clamp helper.
+
+    Pure calendar math; no timezone concern. February handles 28 vs 29
+    the standard way. Used by :func:`compute_alert_date` to keep the
+    two-month shift on months with different lengths (2026-03-31 → 2026-
+    01-31, not 2026-01-30-something).
+    """
+
+    if month == 12:
+        return 31
+    if month in (1, 3, 5, 7, 8, 10, 12):
+        return 31
+    if month in (4, 6, 9, 11):
+        return 30
+    # month == 2
+    if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0):
+        return 29
+    return 28
+
+
+def _subtract_calendar_months(anchor: date, months: int) -> date:
+    """Return ``anchor`` shifted back by ``months`` **calendar** months.
+
+    The day-of-month is clamped to the last day of the target month
+    (per D8: "month-end clamped"). A jan-31 minus two months = nov-30,
+    not nov-1 or dec-1.
+    """
+
+    if months <= 0:
+        return anchor
+    total = anchor.year * 12 + (anchor.month - 1) - months
+    year, month0 = divmod(total, 12)
+    month = month0 + 1
+    day = min(anchor.day, _days_in_month(year, month))
+    return date(year, month, day)
+
+
+def compute_alert_date(term_end: date) -> date:
+    """Two-calendar-month renewal alert date (D8, T25).
+
+    Given a SOW ``term_end``, return the calendar date on which the
+    renewal review should first fire. The rule is:
+
+    * subtract exactly two calendar months from ``term_end``;
+    * clamp the day-of-month to the last day of the target month
+      (a jan-31 term end fires on nov-30, not "nov-31");
+    * calendar math anchors on the business timezone
+      (`America/Los_Angeles`) — since ``term_end`` is date-only,
+      no shift happens here, but the constant is exposed so the
+      scheduler can build its ``datetime`` at 00:00 local instead of
+      00:00 UTC.
+
+    This replaces the old 60-day lead (``term_end - timedelta(days=60)``)
+    that live-finding L15 flagged in the review.
+    """
+
+    return _subtract_calendar_months(term_end, 2)
+
+
+def compute_short_engagement_alerts(
+    *, start: date, term_end: date
+) -> tuple[date, date] | None:
+    """Return ``(open_alert, close_alert)`` for a short engagement.
+
+    A short engagement is one where the interval between ``start`` and
+    ``term_end`` is less than :data:`SHORT_ENGAGEMENT_MAX_DAYS` (90).
+    Per D8 the renewal review triggers on start AND close for these.
+
+    Returns ``None`` for engagements not considered short — the caller
+    should fall back to :func:`compute_alert_date`.
+    """
+
+    duration = (term_end - start).days
+    if duration < 0 or duration >= SHORT_ENGAGEMENT_MAX_DAYS:
+        return None
+    # Same-day alert on start; term-end alert on close (weekly nudges
+    # inside the window fill the middle).
+    return start, term_end
+
+
+def weekly_repeat_dates(
+    *, alert_date: date, term_end: date
+) -> tuple[date, ...]:
+    """Enumerate weekly repeat alert dates.
+
+    Starts at ``alert_date`` and steps 7 days forward until it lands
+    within :data:`WEEKLY_REPEAT_UNTIL_DAYS` days of ``term_end``. Inside
+    that window the scheduler's 30/14-day escalations take over.
+    """
+
+    if alert_date > term_end:
+        return ()
+    horizon = term_end - timedelta(days=WEEKLY_REPEAT_UNTIL_DAYS)
+    out: list[date] = []
+    step = alert_date
+    while step <= horizon:
+        out.append(step)
+        step = step + timedelta(days=7)
+    return tuple(out)
+
+
+def business_today(now: datetime | None = None) -> date:
+    """Return today's calendar date in the business timezone.
+
+    Preserves the invariant that a scheduler tick at 2026-01-31T20:00Z
+    (which is 2026-01-31T12:00 PT) alerts on 2026-01-31, not 2026-02-01.
+    Falls back to UTC if the runtime has no zoneinfo (should not happen
+    on our Fargate images, but keeps unit tests portable).
+    """
+
+    ref = now or datetime.now(tz=UTC)
+    if ZoneInfo is None:
+        return ref.astimezone(UTC).date()
+    return ref.astimezone(ZoneInfo(BUSINESS_TIMEZONE)).date()
 
 
 class RenewalError(HTTPException):
@@ -138,7 +284,11 @@ async def open_renewal(
     if existing is not None:
         return existing, False
 
-    trigger = trigger_date or (term_end - timedelta(days=DEFAULT_TRIGGER_LEAD_DAYS))
+    # D8/T25: default trigger = two calendar months before term_end,
+    # month-end clamped, business timezone. The legacy 60-day rule is
+    # kept only as the ``DEFAULT_TRIGGER_LEAD_DAYS`` constant for callers
+    # that haven't migrated yet.
+    trigger = trigger_date or compute_alert_date(term_end)
     row = Renewal(
         id=uuid.uuid4(),
         opportunity_id=opportunity.id,
@@ -501,11 +651,17 @@ def serialize_renewal(
 
 
 __all__ = [
+    "BUSINESS_TIMEZONE",
     "DEFAULT_TRIGGER_LEAD_DAYS",
     "RENEWAL_STATUSES",
     "RenewalError",
+    "SHORT_ENGAGEMENT_MAX_DAYS",
+    "WEEKLY_REPEAT_UNTIL_DAYS",
     "active_renewals_for",
+    "business_today",
     "close_renewal",
+    "compute_alert_date",
+    "compute_short_engagement_alerts",
     "has_churn",
     "list_renewals",
     "load_renewal",
@@ -514,4 +670,5 @@ __all__ = [
     "patch_renewal",
     "renewals_for",
     "serialize_renewal",
+    "weekly_repeat_dates",
 ]

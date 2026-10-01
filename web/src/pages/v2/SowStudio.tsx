@@ -59,6 +59,12 @@ export function SowStudioPage() {
   const nav = useNavigate();
   const opportunityId = params.get("opportunityId");
   const jobId = params.get("jobId");
+  // S20 W3 T11/T37: `bindOppId` + `bindClientId` are the *pre-upload*
+  // binding declared by the deal page. `opportunityId` still means "go
+  // straight to the confirmation of an existing SOW"; these two are
+  // used only by the upload panel so a fresh upload skips the picker.
+  const bindOppId = params.get("bindOppId");
+  const bindClientId = params.get("bindClientId");
 
   const setJobId = useCallback(
     (id: string) => {
@@ -107,6 +113,8 @@ export function SowStudioPage() {
       onJobStarted={setJobId}
       onDone={goToStaffing}
       onReset={clearUploadState}
+      bindOppId={bindOppId}
+      bindClientId={bindClientId}
     />
   );
 }
@@ -120,6 +128,9 @@ interface UploadFlowProps {
   onJobStarted: (jobId: string) => void;
   onDone: (opportunityId: string) => void;
   onReset: () => void;
+  // S20 W3 T11/T37: pre-bound upload (deal page → skip picker).
+  bindOppId?: string | null;
+  bindClientId?: string | null;
 }
 
 /**
@@ -138,6 +149,8 @@ function UploadFlow({
   onJobStarted,
   onDone,
   onReset,
+  bindOppId,
+  bindClientId,
 }: UploadFlowProps) {
   const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -157,7 +170,16 @@ function UploadFlow({
       setUploadError(null);
       setRejected(null);
       try {
-        const res = await uploadSow({ file });
+        const res = await uploadSow({
+          file,
+          // T11/T37: forward the deal binding when both are present so
+          // the server skips the picker step. Missing either → the
+          // fuzzy-match path still applies.
+          clientId:
+            bindClientId && bindOppId ? (bindClientId as UUID) : undefined,
+          opportunityId:
+            bindClientId && bindOppId ? (bindOppId as UUID) : undefined,
+        });
         if (res.duplicate && res.opportunity_id) {
           // Dupe with a fully-resolved opportunity → jump straight to
           // confirmation so the reviewer sees the derived package.
@@ -186,7 +208,7 @@ function UploadFlow({
         setSubmitting(false);
       }
     },
-    [onDone, onJobStarted],
+    [onDone, onJobStarted, bindClientId, bindOppId],
   );
 
   const handleNeedsPick = useCallback((job: SowUploadJobResponse) => {

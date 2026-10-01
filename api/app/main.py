@@ -25,19 +25,24 @@ from app.routers import (
     client_rate_cards,
     clients,
     dashboards,
+    deal_comments,
     deals,
     deletion,
     delivery_model,
     dev_seed,
     forecast,
     gm,
+    handoff,
     health,
     hubspot,
     legacy,
     me,
+    next_actions,
     notifications,
     pipeline,
     renewals,
+    reports,
+    saved_views,
     settings,
     signatories,
     signed_sow,
@@ -45,6 +50,10 @@ from app.routers import (
     sows_staffing,
     sows_upload,
     tasks,
+    timeline,
+    tracking_groups,
+    user_preferences,
+    watchlist,
 )
 
 log = logging.getLogger("dealgate.api")
@@ -185,7 +194,9 @@ app.include_router(ceo_exception.router)
 app.include_router(signatories.router)
 app.include_router(settings.router)
 app.include_router(signed_sow.router)
+app.include_router(handoff.router)
 app.include_router(renewals.router)
+app.include_router(reports.router)
 app.include_router(dashboards.router)
 app.include_router(forecast.router)
 app.include_router(actuals.router)
@@ -193,6 +204,14 @@ app.include_router(admin_replay.router)
 app.include_router(admin_function_owners.router)
 app.include_router(admin_bulk_imports.router)
 app.include_router(capability_catalog.router)
+# S20 · W6 · tracking features
+app.include_router(next_actions.router)
+app.include_router(deal_comments.router)
+app.include_router(tracking_groups.router)
+app.include_router(saved_views.router)
+app.include_router(watchlist.router)
+app.include_router(timeline.router)
+app.include_router(user_preferences.router)
 
 # `dev_seed` bypasses the S12 approval ceremony so E2E specs can browser-prove
 # S13a DoD #4. Never registered in prod (see is_dev_seed_enabled).

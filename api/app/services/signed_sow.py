@@ -49,7 +49,7 @@ from app.integrations.ses import SESClient
 from app.models.approval import ApprovalPackage
 from app.models.opportunity import Opportunity
 from app.models.renewal import Renewal
-from app.models.signed_sow import VERIFY_STATUSES, SignedSowUpload
+from app.models.signed_sow import SIGNER_STATES, VERIFY_STATUSES, SignedSowUpload
 from app.models.sow import SowVersion
 from app.models.task import Task
 from app.models.user import User
@@ -67,12 +67,19 @@ class SignedSowError(HTTPException):
 # ---- diff engine ---------------------------------------------------------
 
 
-# The four "material terms" the story locks against.
+# The five "material terms" the story locks against.
+#
+# S20 W7 (item 1): ``signatories`` joins the diff. The approved SOW's
+# signatory list (the names the Legal review signed off on) must match
+# the executed PDF's signatory block. A different set of names is a
+# material change — a stranger countersigning the SOW is exactly the
+# kind of silent swap we need to catch before release.
 _MATERIAL_FIELDS: tuple[str, ...] = (
     "price",
     "term_start",
     "term_end",
     "scope_summary",
+    "signatories",
 )
 
 # Text similarity threshold for the scope diff. Below this the row lands
@@ -174,6 +181,76 @@ def _diff_scope(approved: Any, extracted: Any) -> dict[str, Any]:
     }
 
 
+# ---- signatory diff (S20 W7 item 1) --------------------------------------
+
+
+def _normalise_signatory_name(raw: Any) -> str:
+    """Canonical name string for signatory comparison.
+
+    Accepts either a bare string (legacy rows) or the standard
+    ``{name, role}`` dict. Whitespace + case + punctuation are
+    folded so trivial cosmetic variation (``"J. Doe"`` vs ``"J Doe"``)
+    does not trip the diff — but a different human still does.
+    """
+
+    if isinstance(raw, dict):
+        name = raw.get("name") or raw.get("value") or ""
+    else:
+        name = raw or ""
+    text = str(name).strip().lower()
+    # Collapse interior whitespace + strip trailing punctuation that
+    # OCR routinely attaches ("J. Doe," → "j doe").
+    text = " ".join(text.split())
+    text = text.rstrip(".,;:")
+    return text
+
+
+def _signatory_names(raw: Any) -> list[str]:
+    """Return the normalised, de-duped signatory name list from an extract
+    value.
+
+    The extract carries ``[{"name": "...", "role": "..."}, ...]``. We
+    only diff on the name identity — role mismatches are a Legal-review
+    concern, not a signature-verification concern (the point of this
+    diff is "did the people we approved actually sign").
+    """
+
+    if not isinstance(raw, list):
+        return []
+    seen: list[str] = []
+    for row in raw:
+        canonical = _normalise_signatory_name(row)
+        if canonical and canonical not in seen:
+            seen.append(canonical)
+    return seen
+
+
+def _diff_signatories(approved: Any, extracted: Any) -> dict[str, Any]:
+    """Compare approved vs executed signatory name sets.
+
+    Match rule (S20 W7 item 1): the sets must be equal. A missing name
+    (approved signer not on the executed doc) or an unexpected name (a
+    name on the executed doc nobody approved) is a mismatch. The diff
+    payload names the two sides so the UI's inline editor can render
+    "add Jane Doe" / "remove Someone Else" affordances.
+    """
+
+    approved_names = _signatory_names(approved)
+    extracted_names = _signatory_names(extracted)
+    approved_set = set(approved_names)
+    extracted_set = set(extracted_names)
+    missing = sorted(approved_set - extracted_set)
+    unexpected = sorted(extracted_set - approved_set)
+    return {
+        "field": "signatories",
+        "approved": approved_names,
+        "extracted": extracted_names,
+        "missing": missing,
+        "unexpected": unexpected,
+        "match": not missing and not unexpected,
+    }
+
+
 @dataclass(frozen=True)
 class DiffResult:
     """Structured diff persisted verbatim as ``signed_sow_upload.diff_json``."""
@@ -218,6 +295,10 @@ def compute_diff(
         _diff_scope(
             _field_value(approved, "scope_summary"),
             _field_value(extracted, "scope_summary"),
+        ),
+        _diff_signatories(
+            _field_value(approved, "signatories"),
+            _field_value(extracted, "signatories"),
         ),
     ]
     return DiffResult(fields=fields)
@@ -294,6 +375,7 @@ async def create_upload(
     package_id: uuid.UUID,
     file_s3_key: str,
     file_hash: str,
+    has_signature_evidence: bool = True,
 ) -> SignedSowUpload:
     """Register a new signed-pdf upload against ``package_id``.
 
@@ -301,9 +383,33 @@ async def create_upload(
     creates a fresh row and audits ``signed_sow.replaced`` on the
     previous row so the audit trail can reconstruct the sequence
     (rule 4: rows are set-once; a new version replaces).
+
+    S20 W7 (T22): if ``has_signature_evidence`` is False (the caller
+    could not detect a signature-form field, an image signature, or a
+    DocuSign/HelloSign envelope id), the upload is refused with 400 —
+    upload alone is never `verified`. Superseded packages are also
+    refused (409) so a stale UI cannot submit against an old package.
     """
 
+    if not has_signature_evidence:
+        raise SignedSowError(
+            status_code=400,
+            detail=(
+                "unsigned upload rejected — the executed document must "
+                "carry signature evidence (form-field signature, image "
+                "or external envelope id). Upload alone is not execution."
+            ),
+        )
+
     package = await _load_package_or_error(session, package_id)
+    if package.superseded_by is not None:
+        raise SignedSowError(
+            status_code=409,
+            detail=(
+                f"package has been superseded by {package.superseded_by}; "
+                "signature belongs to the newer package"
+            ),
+        )
     if package.status != "ready_to_sign":
         raise SignedSowError(
             status_code=409,
@@ -323,6 +429,8 @@ async def create_upload(
         file_hash=file_hash,
         uploaded_by=actor_id,
         verify_status="pending",
+        verify_reason=None,
+        signer_state="signed",
     )
     session.add(upload)
     await session.flush()
@@ -393,6 +501,7 @@ async def verify(
     except Exception as exc:  # noqa: BLE001 — LLM safety net
         raw = ManualRequired(reason=f"bedrock failed: {exc}")
 
+    new_reason: str | None = None
     if isinstance(raw, ManualRequired):
         # No extract → we cannot verify. Block with a machine-readable
         # marker so the UI shows the "manual review" state.
@@ -402,11 +511,22 @@ async def verify(
             "reason": raw.reason,
         }
         new_status = "blocked"
+        new_reason = f"bedrock_manual_required: {raw.reason}"
     elif isinstance(raw, ExtractedFields):
         extracted_map = raw.fields
         diff = compute_diff(pinned.extracted_fields, extracted_map)
         diff_payload = diff.to_json()
-        new_status = "verified" if diff.all_match else "blocked"
+        if diff.all_match:
+            new_status = "verified"
+        else:
+            new_status = "blocked"
+            # Name the first failing field so the UI + audit have a
+            # specific pointer rather than a generic "diff failed".
+            failed = next(
+                (f for f in diff.fields if not f["match"]), None
+            )
+            if failed is not None:
+                new_reason = f"{failed['field']}_mismatch"
     else:
         diff_payload = {
             "fields": [],
@@ -414,9 +534,11 @@ async def verify(
             "reason": f"bedrock returned {type(raw).__name__}",
         }
         new_status = "blocked"
+        new_reason = f"bedrock_unexpected: {type(raw).__name__}"
 
-    before = {"verify_status": upload.verify_status}
+    before = {"verify_status": upload.verify_status, "verify_reason": upload.verify_reason}
     upload.verify_status = new_status
+    upload.verify_reason = new_reason
     upload.diff_json = diff_payload
     if new_status == "verified":
         upload.verified_at = datetime.now(UTC)
@@ -433,7 +555,104 @@ async def verify(
         before=before,
         after={
             "verify_status": new_status,
+            "verify_reason": new_reason,
             "diff": diff_payload,
+        },
+    )
+    await session.commit()
+    await session.refresh(upload)
+    return upload
+
+
+# ---- external signature-request transitions (T22) ------------------------
+
+
+async def mark_declined(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    reason: str,
+) -> SignedSowUpload:
+    """Record that the external signer declined the request.
+
+    A declined request is a *separate* status from a verify-diff failure —
+    the signer never returned an executed pdf. `verify_status='declined'`
+    with `signer_state='declined'`. The caller supplies the reason
+    string surfaced by the external service.
+    """
+
+    if not reason or not reason.strip():
+        raise SignedSowError(
+            status_code=400,
+            detail="reason required when marking a signature request declined",
+        )
+    upload = await _load_upload(session, upload_id)
+    before = {
+        "verify_status": upload.verify_status,
+        "signer_state": upload.signer_state,
+        "verify_reason": upload.verify_reason,
+    }
+    upload.verify_status = "declined"
+    upload.signer_state = "declined"
+    upload.verify_reason = f"declined_by_signer: {reason.strip()[:400]}"
+    upload.verified_at = None
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="signed_sow.declined",
+        entity="signed_sow_upload",
+        entity_id=str(upload.id),
+        before=before,
+        after={
+            "verify_status": "declined",
+            "signer_state": "declined",
+            "verify_reason": upload.verify_reason,
+        },
+    )
+    await session.commit()
+    await session.refresh(upload)
+    return upload
+
+
+async def mark_expired(
+    session: AsyncSession,
+    *,
+    actor_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    reason: str | None = None,
+) -> SignedSowUpload:
+    """Record that the external signature request expired without a return.
+
+    Separate status from `declined` — the signer never actioned the
+    request. UI can offer "Resend to signer" as the next step.
+    """
+
+    upload = await _load_upload(session, upload_id)
+    before = {
+        "verify_status": upload.verify_status,
+        "signer_state": upload.signer_state,
+        "verify_reason": upload.verify_reason,
+    }
+    upload.verify_status = "expired"
+    upload.signer_state = "expired"
+    upload.verify_reason = (
+        f"signature_request_expired: {reason.strip()[:400]}"
+        if reason and reason.strip()
+        else "signature_request_expired"
+    )
+    upload.verified_at = None
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="signed_sow.expired",
+        entity="signed_sow_upload",
+        entity_id=str(upload.id),
+        before=before,
+        after={
+            "verify_status": "expired",
+            "signer_state": "expired",
+            "verify_reason": upload.verify_reason,
         },
     )
     await session.commit()
@@ -570,29 +789,63 @@ async def release(
 ) -> SignedSowUpload:
     """Distribute the signed SOW and move the package to ``released``.
 
-    Preconditions:
-      - Upload's ``verify_status == "verified"`` (else 409).
-      - Package is still ``ready_to_sign`` (else 409 via
-        :func:`app.services.approvals.mark_released`).
+    Preconditions (**T23 · three distinct events**, all server-enforced):
+      1. Internal signoff — Delivery lead approved the package.
+      2. Client execution — Upload's ``verify_status == "verified"``.
+      3. Delivery acceptance — a ``delivery_acceptance`` row exists.
+
+    Plus:
+      - Approvals current (CEO conditions, expiry) via
+        :func:`app.services.approval_workflow.require_signature_eligibility`.
+      - Package not superseded.
+
+    ``Opportunity.is_closed_won`` is **never** consulted — CRM stage does
+    not authorise release. The regression test
+    ``test_release_ignores_closed_won`` guards this contract.
 
     Side effects (all in one transaction):
       1. SES email to owner + Delivery + Finance + Legal leaders.
       2. ``kickoff`` + ``billing_setup`` tasks filed on the owner.
       3. ``renewal`` row opened with ``trigger_date = term_end - 60d``.
-      4. ``approval_package.status`` → ``released``.
+      4. ``project`` row created (or linked, idempotent).
+      5. ``approval_package.status`` → ``released``.
     """
 
     upload = await _load_upload(session, upload_id)
-    if upload.verify_status != "verified":
+    package = await _load_package_or_error(session, upload.package_id)
+
+    # T23 · three-event release gate. Delegate to services.handoff so
+    # this module remains focused on the state-machine + side-effects;
+    # the gate module is what the release-gate pytest exercises.
+    from app.services.handoff import check_release_gate
+
+    gate = await check_release_gate(session, package)
+    if not gate.ok:
+        # Audit the refusal *before* raising so the failed-release trail
+        # is complete. Refusal is a business event.
+        await append_audit(
+            session,
+            actor_id=actor_id,
+            action="handoff.gate_refused",
+            entity="approval_package",
+            entity_id=str(package.id),
+            before=None,
+            after=gate.to_json(),
+        )
+        await session.commit()
         raise SignedSowError(
             status_code=409,
-            detail=(
-                f"upload is {upload.verify_status!r}; verify must succeed "
-                "before release"
-            ),
+            detail={
+                "error": "release_gate_not_met",
+                "message": (
+                    "release requires internal signoff + verified "
+                    "executed document + delivery acceptance — CRM "
+                    "Closed Won is not sufficient"
+                ),
+                "gate": gate.to_json(),
+            },
         )
 
-    package = await _load_package_or_error(session, upload.package_id)
     pinned = await _load_sow_version(session, package.sow_version_id)
 
     opp = (
@@ -667,7 +920,15 @@ async def release(
             },
         )
 
-    # 4. Move the package to ``released`` + record the upload's release
+    # 4. Create-or-link the project row (T24 idempotency guard). Baseline
+    # snapshot is frozen at this call; subsequent runs return the same
+    # project row and audit `project.linked` instead of `project.created`.
+    from app.services.project_lifecycle import create_or_link as project_create_or_link
+    project, project_created = await project_create_or_link(
+        session, actor_id=actor_id, package=package
+    )
+
+    # 5. Move the package to ``released`` + record the upload's release
     # timestamp.  ``mark_released`` audits ``package.released`` for us.
     upload.released_at = datetime.now(UTC)
     await append_audit(
@@ -681,7 +942,20 @@ async def release(
             "released_at": upload.released_at.isoformat(),
             "recipients": delivered,
             "renewal_id": str(renewal_row.id) if renewal_row else None,
+            "project_id": str(project.id),
+            "project_created": project_created,
         },
+    )
+    # Explicit handoff.gate_passed audit line — the three-event contract
+    # deserves a named trail marker distinct from `signed_sow.released`.
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="handoff.gate_passed",
+        entity="approval_package",
+        entity_id=str(package.id),
+        before=None,
+        after=gate.to_json(),
     )
     try:
         await mark_released(session, actor_id=actor_id, package=package)
@@ -705,6 +979,8 @@ def serialize_upload(row: SignedSowUpload) -> dict[str, Any]:
         "uploaded_by": str(row.uploaded_by),
         "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
         "verify_status": row.verify_status,
+        "verify_reason": row.verify_reason,
+        "signer_state": row.signer_state,
         "diff_json": row.diff_json,
         "verified_at": row.verified_at.isoformat() if row.verified_at else None,
         "released_at": row.released_at.isoformat() if row.released_at else None,
@@ -712,11 +988,14 @@ def serialize_upload(row: SignedSowUpload) -> dict[str, Any]:
 
 
 __all__ = [
+    "SIGNER_STATES",
     "SignedSowError",
     "VERIFY_STATUSES",
     "compute_diff",
     "create_upload",
     "latest_upload_for",
+    "mark_declined",
+    "mark_expired",
     "release",
     "serialize_upload",
     "verify",

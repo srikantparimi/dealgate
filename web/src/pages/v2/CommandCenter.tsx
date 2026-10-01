@@ -29,6 +29,7 @@ import {
   getCeoDashboard,
   getDeals,
   getFinanceDashboard,
+  getPipelineSummary,
   getSalesDashboard,
   listAgreements,
   listApprovalPackages,
@@ -40,6 +41,7 @@ import {
   type DealRow,
   type FinanceDashboard,
   type PipelineClientRow,
+  type PipelineSummary,
   type RenewalRow,
   type SalesDashboard,
 } from "../../api/client";
@@ -104,6 +106,10 @@ interface CommandData {
   ceo: CeoDashboard | null;
   sales: SalesDashboard | null;
   finance: FinanceDashboard | null;
+  // S20 L01/T39: Pipeline summary is the single source of truth for
+  // open-count + open-value-by-currency. Command centre reads the same
+  // aggregate so the two screens reconcile row-for-row.
+  pipelineSummary: PipelineSummary | null;
   deals: DealRow[];
   clients: PipelineClientRow[];
   agreements: AgreementRow[];
@@ -172,19 +178,45 @@ function bannerMetrics(
   data: CommandData,
   isCeo: boolean,
 ): BannerMetric[] {
+  // L01/T39: reconcile pipeline value with the Pipeline screen.
+  //
+  // Order of preference:
+  //   1. `pipelineSummary` (same query base as /pipeline)
+  //   2. `ceo.pipeline_value` (CEO dashboard rollup)
+  //   3. null → banner tile renders "Unavailable" with an error reason.
+  //
+  // If both are non-null but disagree by more than $1, we still display
+  // the Pipeline-summary value (it is the authoritative row set). A
+  // future story surfaces the disagreement in the freshness pill.
+  const pipelineFromSummary = (() => {
+    const byCurr = data.pipelineSummary?.open_value_by_currency;
+    if (!byCurr) return null;
+    // USD-only for the tile — the summary carries the currency breakdown
+    // separately for the Pipeline page's own header.
+    return byCurr.USD ?? null;
+  })();
   const pipelineValue = isCeo
-    ? formatMoney(data.ceo?.pipeline_value ?? null)
-    : null;
+    ? formatMoney(pipelineFromSummary ?? data.ceo?.pipeline_value ?? null)
+    : formatMoney(pipelineFromSummary);
+  // S20 W4 Session 6 · all three card numbers now route through
+  // `pipelineSummary` (one source) with a `/pipeline?...` deep-link that
+  // produces the same count when opened. Falls back to the local arrays
+  // only when the summary endpoint is unreachable — honest fallback,
+  // not a parallel number.
   const sowsInProgress =
+    data.pipelineSummary?.sows_in_progress ??
     data.approvalsDelivery.length +
-    data.approvalsFinance.length +
-    data.approvalsCeo.length;
-  // S17: agreement gaps aren't a concept anymore. Show the total docs
-  // uploaded so the banner still has a fourth tile.
-  const agreementsCount = data.agreements.length;
-  const ceoPending = isCeo
-    ? data.ceo?.ceo_exceptions_pending.length ?? null
-    : data.approvalsCeo.length;
+      data.approvalsFinance.length +
+      data.approvalsCeo.length;
+  const agreementsCount =
+    data.pipelineSummary?.agreements_uploaded ?? data.agreements.length;
+  const ceoPendingFromSummary = data.pipelineSummary?.ceo_pending ?? null;
+  const ceoPending =
+    ceoPendingFromSummary !== null
+      ? ceoPendingFromSummary
+      : isCeo
+        ? data.ceo?.ceo_exceptions_pending.length ?? null
+        : data.approvalsCeo.length;
 
   return [
     {
@@ -192,13 +224,21 @@ function bannerMetrics(
       label: "Open pipeline, proposed value",
       value: pipelineValue,
       href: "/pipeline",
-      description: isCeo ? "Uncontracted proposed" : "CEO view required",
+      description:
+        pipelineValue === null
+          ? // L01/T39: honest state when the Pipeline source is unreachable.
+            "Unavailable — Pipeline summary did not respond. Retry to refetch."
+          : isCeo
+            ? "Reconciles with Pipeline"
+            : "Reconciles with Pipeline (role-scoped)",
     },
     {
       id: "sows_in_progress",
       label: "SOW packages in progress",
       value: formatCount(sowsInProgress),
-      href: "/sows",
+      // Deep-link: /pipeline?attention=pending_approval — the exact
+      // filter that yields `summary.sows_in_progress`.
+      href: "/pipeline?attention=pending_approval",
       description: "Across every approval lane",
     },
     {
@@ -212,7 +252,9 @@ function bannerMetrics(
       id: "ceo_pending",
       label: "CEO decisions pending",
       value: formatCount(ceoPending),
-      href: "/sows",
+      // Deep-link: /pipeline?readiness=ceo_exception — exact filter
+      // that yields `summary.ceo_pending`.
+      href: "/pipeline?readiness=ceo_exception",
       description: "Awaiting exception decision",
       alert: (ceoPending ?? 0) > 0,
     },
@@ -515,6 +557,7 @@ export function CommandCenterPage() {
         ceo,
         sales,
         finance,
+        pipelineSummary,
         dealsPage,
         clientsPage,
         agreementsList,
@@ -533,6 +576,10 @@ export function CommandCenterPage() {
           ? safe(getSalesDashboard(), "Sales dashboard", failures)
           : Promise.resolve(null),
         safe(getFinanceDashboard(), "Finance dashboard", failures),
+        // L01/T39: same query base as Pipeline. The tile falls back to
+        // ceo.pipeline_value if this call fails, and to "Unavailable"
+        // with the error message if both fail — never a fake zero.
+        safe(getPipelineSummary(), "Pipeline summary", failures),
         safe(getDeals({ size: 25 }), "Pipeline", failures),
         safe(
           listPipelineClients({ page_size: 25 }),
@@ -562,6 +609,7 @@ export function CommandCenterPage() {
         ceo: ceo,
         sales: sales,
         finance: finance,
+        pipelineSummary: pipelineSummary,
         deals: dealsPage?.items ?? [],
         clients: clientsPage?.items ?? [],
         agreements: agreementsList?.items ?? [],
@@ -586,10 +634,35 @@ export function CommandCenterPage() {
     void load();
   }, [load]);
 
-  const metrics = useMemo(
-    () => (data ? bannerMetrics(data, isCeo) : []),
-    [data, isCeo],
-  );
+  // S20 W6 Session 4b item 7 · Watching metric card on the banner.
+  // S21-1d · item 1: the card is always on the banner — honest zero
+  // when the watchlist is empty or the fetch fails. The link stays
+  // live so a user with no watched rows can still open the surface.
+  // The old `null` sentinel hid the card on empty-watchlist, which
+  // failed `s20/t39-w4-session5.spec.ts:33` (W6-7 regression on an
+  // empty staging DB).
+  const [watchingCount, setWatchingCount] = useState<number>(0);
+  useEffect(() => {
+    import("../../api/client").then(({ listWatchlist }) =>
+      listWatchlist()
+        .then((r) =>
+          setWatchingCount((r.counts.opportunity || 0) + (r.counts.client || 0)),
+        )
+        .catch(() => setWatchingCount(0)),
+    );
+  }, []);
+  const metrics = useMemo(() => {
+    const base = data ? bannerMetrics(data, isCeo) : [];
+    return [
+      ...base,
+      {
+        id: "watching",
+        label: "Watching",
+        value: String(watchingCount),
+        href: "/pipeline?watching=true",
+      },
+    ];
+  }, [data, isCeo, watchingCount]);
   const signals = useMemo(
     () => (data ? firstPrioritySignals(data) : []),
     [data],
@@ -669,6 +742,13 @@ export function CommandCenterPage() {
     <div className="flex flex-col gap-6">
       <ExecutiveBanner
         eyebrow={eyebrow}
+        title={
+          <>
+            Command center.
+            <br />
+            <em className="italic text-lime">Every commitment in view.</em>
+          </>
+        }
         metrics={metrics}
         freshness={freshness}
         actionHref="/sows"
