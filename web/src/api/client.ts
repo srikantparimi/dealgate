@@ -4268,6 +4268,25 @@ export function getClientTimeline(
   return request<{ items: TimelineEntry[] }>(`/clients/${clientId}/timeline`);
 }
 
+// S20 W4 Session 5 item 0a · per-user preference KV.
+export function getUserPreference<T = unknown>(
+  key: string,
+): Promise<T | null> {
+  return request<{ key: string; value: T }>(`/user-preferences/${key}`)
+    .then((r) => r.value)
+    .catch(() => null);
+}
+
+export function putUserPreference<T = unknown>(
+  key: string,
+  value: T,
+): Promise<void> {
+  return request<void>(`/user-preferences/${key}`, {
+    method: "PUT",
+    body: JSON.stringify({ value }),
+  });
+}
+
 // S20 W6 · deal comments (latest + list) for /deals/:id and client page.
 export interface DealCommentRow {
   id: UUID;

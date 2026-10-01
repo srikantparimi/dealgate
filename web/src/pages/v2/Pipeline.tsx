@@ -37,11 +37,13 @@ import {
   getPipelineFacets,
   getPipelineSummary,
   getSyncStatus,
+  getUserPreference,
   listPipelineClients,
   listPipelineOpportunities,
   listSavedViews,
   listTrackingGroups,
   listWatchlist,
+  putUserPreference,
   type PipelineClientRow,
   type PipelineFacets,
   type PipelineFilters,
@@ -332,12 +334,20 @@ export function PipelinePage() {
       .then((r) => setGroups(r.items))
       .catch(() => setGroups([]));
     listSavedViews()
-      .then((r) => {
+      .then(async (r) => {
         setSavedViews(r.items);
-        // Item 6: apply last saved view only if URL is empty (explicit URL still wins).
+        // S4 Item 6 moved to user_preference backing (S5 item 0a):
+        // read per-user via the server; fall back to localStorage so
+        // a browser that already stored a view keeps working on first
+        // login after the migration.
         const hasExplicitFilter =
           searchParams.toString().replace(/^view=\w+&?/, "") !== "";
-        const lastKey = window.localStorage.getItem(PREF_KEY_LAST_VIEW);
+        const pref =
+          (await getUserPreference<{ view_id: string }>(
+            PREF_KEY_LAST_VIEW,
+          )) ?? null;
+        const lastKey =
+          pref?.view_id ?? window.localStorage.getItem(PREF_KEY_LAST_VIEW);
         if (!hasExplicitFilter && lastKey) {
           const v = r.items.find((it) => it.id === lastKey);
           if (v) {
@@ -1008,7 +1018,12 @@ function FilterBar({
               page: 1,
               page_size: prev.page_size,
             }));
+            // S5 item 0a · persist per-user via server; keep localStorage
+            // as fire-and-forget mirror for offline/first-load.
             window.localStorage.setItem(PREF_KEY_LAST_VIEW, view.id);
+            putUserPreference(PREF_KEY_LAST_VIEW, {
+              view_id: view.id,
+            }).catch(() => {});
           }}
           data-testid="filter-saved-view"
           disabled={savedViews.length === 0}

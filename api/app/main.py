@@ -52,6 +52,7 @@ from app.routers import (
     tasks,
     timeline,
     tracking_groups,
+    user_preferences,
     watchlist,
 )
 
@@ -210,6 +211,7 @@ app.include_router(tracking_groups.router)
 app.include_router(saved_views.router)
 app.include_router(watchlist.router)
 app.include_router(timeline.router)
+app.include_router(user_preferences.router)
 
 # `dev_seed` bypasses the S12 approval ceremony so E2E specs can browser-prove
 # S13a DoD #4. Never registered in prod (see is_dev_seed_enabled).

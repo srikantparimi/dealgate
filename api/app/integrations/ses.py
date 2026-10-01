@@ -21,7 +21,11 @@ import structlog
 log = structlog.get_logger("integrations.ses")
 
 
-DEFAULT_FROM_ADDRESS = "srikantp@smartek21.com"
+# S20 W4 Session 5 item 2 · noreply@dealgateapp.com per directive. The
+# dealgateapp.com domain has verified DKIM + SPF + DMARC (see memory
+# `dealgateapp-dns-zone`) so SES will accept this sender in production;
+# in SES sandbox staging the identity is still required to be verified.
+DEFAULT_FROM_ADDRESS = "noreply@dealgateapp.com"
 
 
 class SESError(Exception):
