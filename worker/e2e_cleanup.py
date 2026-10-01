@@ -86,7 +86,7 @@ async def run_tick() -> dict[str, int]:
                 continue
             log.info(
                 "e2e_cleanup_delete",
-                extra={"client_id": str(client.id), "name": client.name},
+                extra={"client_id": str(client.id), "client_name": client.name},
             )
             summary = await delete_client(session, actor_id=None, client_id=client.id)
             counts["clients"] += 1
