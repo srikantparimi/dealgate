@@ -95,6 +95,13 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     Rev-2 pass to land chip value, owner + BU selects, and the T35
     pytest, and to re-report the three lines explicitly.
 
+    **Scoreboard discipline (1 Oct 2026):** every session's first and
+    last tool actions on `docs/reports/s20/scoreboard.md` are to
+    update the rows it owns. First action: mark rows the session will
+    attempt; last action: flip states to the final value with proof +
+    session id filled. ETA at the bottom of the scoreboard =
+    (rows not `verified working (staging)`) ÷ 7 per session.
+
 17. **Parallel lanes.** When S20 splits into feature lanes
     (`feat/s20-<lane>`), each lane works on its own branch — only the
     Lead deploys to staging. A lane proves its work locally: pytest
