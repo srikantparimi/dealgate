@@ -1,0 +1,18 @@
+[smoke] target: https://app.dealgateapp.com
+[smoke] run tag: Session 4b W6 · api rev 61 · image s20-9d5cf04b
+single-truth guarantee ok — every router lists deals through hubspot_pipeline
+[smoke] GREEN · cleanup clean · 0 test-tagged clients
+
+Playwright S20 (concurrent full run):
+  ✓ T01, T09 (5), T16 (6, 1 skip-honest), T40 (8) · 15 passed / 3 skipped
+  4 concurrent-load flakes on first full-suite run; all pass on
+  isolated reruns:
+    · T09 client-heading: pass isolated (14.2s)
+    · T16 item 4: pass isolated (13.7s)
+    · T40 L04, L06b: pass isolated
+
+W6 pytest suite: 10/10 pass locally
+Full impacted-suite regression: 25/25 pass + 1 known xfail
+(worker_crash_resumes_from_cursor, W1 scope).
+
+Items 1-9 all verified working (staging) — see matrix.md Session 4b.

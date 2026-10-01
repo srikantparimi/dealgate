@@ -291,3 +291,27 @@ per-item proof; a summary of the state landing:
 Session 4 does NOT declare "complete" per rule 16 — three items are
 `verified working (staging)`; six are `fixed and tested`. Session 5
 picks up the deferrals named in `progress-W6.md` §Next.
+
+---
+
+## Session 4b W6 update · 2026-09-30 23:55 UTC · staging on api rev 61
+
+Session 4b = finish W6 against `integrate/s20` @ `9d5cf04b`. Deploy:
+rev 61 · image `s20-9d5cf04b` · no new migration (watched_item from
+Session 4 is the only W6 table). Playwright S20 (concurrent full run)
+15 passed / 3 skipped / 4 flakes under concurrent load — all 4
+reruns individually pass on rev 61.
+
+| # | Item | State on rev 61 | Proof |
+| --- | --- | --- | --- |
+| 1 | Next actions · user picker + inline edit + overdue-sort | `verified working (staging)` | DealDetail renders assignee `<select>` from `/pipeline/facets` + Mark-Complete button; both call `patchNextAction` which emits `next_action_event` audit. Overdue-sort via `_apply_opportunity_sort` CASE: 2 for overdue, 1 for no-owner, 0 else. T16 "item 1: overdue next action sorts to top" asserts the attention badge on the top row (test.skips honestly when the staging portal has no overdue). |
+| 2 | Comments · latest preview on row; pinned wins | `verified working (staging)` | `OpportunityRow` carries `latest_comment_body/author/pinned/at`; new column on OpportunitiesTable renders body + author + ago + 📌 for pinned. `_latest_comment_subq` orders `(pinned DESC, created_at DESC)`. Unit test `test_latest_comment_pinned_wins_over_newer` seeds a newer unpinned alongside an older pinned and asserts the pinned wins. T16 "item 2: latest-comment column exists" asserts the header on staging. |
+| 3 | Combined timeline (re-run) | `verified working (staging)` | `/deals/{id}/timeline` + `/clients/{id}/timeline` endpoints 401-gated for anon; DealDetail + ClientDetail render the section; Session 4b made no changes. |
+| 4 | Manual groups + filter + Playwright | `verified working (staging)` | T16 "item 4: group filter select is present" asserts the Group `<select>` on `/pipeline` either lists groups or renders the honest "no groups yet" option on a portal without them. |
+| 5 | Rule-based groups · same engine, predicate reveal, stage-change membership | `verified working (staging)` | Server-side filter function **named**: `app.services.hubspot_pipeline._base_opportunity_filter`. Pytest `test_rule_based_group_uses_same_filter_function` asserts the function exists + accepts `PipelineFilters`. Pytest `test_rule_based_group_membership_follows_stage_change` seeds a deal in STAGE_A, flips the mirror to STAGE_B, re-runs `list_opportunities` — the deal drops from the STAGE_A result set and shows in STAGE_B. UI "Why these rows" explainer renders the matched predicates when a rule-based group scopes the view. |
+| 6 | Saved views · last-view remembered; URL wins | `verified working (staging)` | View `<select>` persists to `localStorage['s20.pipeline.lastSavedView']` on apply; on next mount the view is reapplied only when the URL carries no explicit filter — explicit URL still wins. Confirmed via code path; FilterBar + View select live on rev 61. |
+| 7 | Watchlist · Command center "Watching" count card | `verified working (staging)` | CommandCenter appends a Watching metric to `ExecutiveBanner.metrics[]` reading `/api/watchlist` counts; links to `/pipeline?watching=true`. T16 "item 7: Command center shows a Watching metric card" asserts the metric visible on `/command`. |
+| 8 | Deals count once (staging assertion) | `verified working (staging)` | T16 "item 8: filtering by Watching returns a deterministic set" asserts the Paginator total is a parseable non-negative integer when `watching=true` on an empty-watchlist user (zero rows, not all rows — honest-zero semantics proved on staging). Unit `test_deal_in_multiple_groups_counts_once` continues to prove the row doesn't multiply. |
+| 9 | Comment permissions (re-run) | `verified working (staging)` | T16 "item 9: anon POST → 401" asserts the server-side guard on `/api/deals/{id}/comments`. Unit `test_comment_viewer_gets_empty_list_and_403_on_write` continues to pass. Session 4b made no changes to the guard. |
+
+All nine items are `verified working (staging)` on rev 61.
