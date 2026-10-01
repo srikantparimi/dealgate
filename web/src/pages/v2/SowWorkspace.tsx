@@ -268,10 +268,11 @@ export function SowWorkspacePage() {
     typeof termStart === "string" ? termStart : null,
     typeof termEnd === "string" ? termEnd : null,
   );
-  // S21 item 4: owner falls back to the SOW uploader when the deal has
-  // no owner — never the raw "Unassigned" token.
+  // S21 item 4 + S21-1c item 1: owner falls back to the SOW uploader
+  // when the deal has no owner. Always a display name — never a raw
+  // id or UUID prefix (T09 extension: no ids on user-facing fields).
   const ownerDisplay = snap.deal?.owner?.name
-    ?? (snap.sow?.uploaded_by ? `Uploader · ${String(snap.sow.uploaded_by).slice(0, 8)}` : null);
+    ?? (snap.sow?.uploaded_by_name ? `Uploader · ${snap.sow.uploaded_by_name}` : null);
   const rail = buildRail(snap);
   const readiness = buildReadiness(snap);
   const items: RecordTabItem[] = TAB_ORDER.map((key) => ({

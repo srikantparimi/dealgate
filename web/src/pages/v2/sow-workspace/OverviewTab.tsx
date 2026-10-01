@@ -41,15 +41,16 @@ export function OverviewTab({ snap }: { snap: WorkspaceSnapshot }) {
     ? (ENGAGEMENT_LABELS[commercialRaw] ?? commercialRaw.replaceAll("_", " "))
     : null;
   const gmAvailable = computed != null;
-  // S21 item 4: owner falls back to the SOW uploader when the deal has
-  // no owner. Both the display name and the fallback id are prefixed
-  // with their source so the viewer knows what they are looking at.
+  // S21 item 4 + S21-1c item 1: owner falls back to the SOW uploader
+  // by name when the deal has no owner. Never a raw id or UUID prefix
+  // (T09 extension — uploader_name is resolved on the server from the
+  // user table, with the `Former teammate` sentinel for deleted users).
   const dealOwnerName = snap.deal?.owner?.name ?? null;
-  const uploaderId = snap.sow?.uploaded_by ?? null;
+  const uploaderName = snap.sow?.uploaded_by_name ?? null;
   const ownerDisplay = dealOwnerName
     ? dealOwnerName
-    : uploaderId
-      ? `Uploader · ${String(uploaderId).slice(0, 8)}`
+    : uploaderName
+      ? `Uploader · ${uploaderName}`
       : null;
   // S21 item 4: term renders in one format with explicit years.
   const termStart = snap.sow?.extracted_fields?.term_start?.value;

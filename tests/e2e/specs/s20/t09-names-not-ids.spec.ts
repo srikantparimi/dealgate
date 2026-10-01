@@ -22,7 +22,7 @@
  * the primary label text (the h1 / first cell / stage cell).
  */
 import { test, expect, type Page } from "@playwright/test";
-import { authAsRole } from "../../fixtures/multi-role-auth";
+import { authAsRole, bearerFor } from "../../fixtures/multi-role-auth";
 
 const BASE = process.env.E2E_BASE_URL ?? "https://app.dealgateapp.com";
 
@@ -120,6 +120,35 @@ test.describe("T09 · names, not ids (S20)", () => {
       `deal-detail heading renders a raw id "${text.trim()}"`,
     ).toBeFalsy();
     expect(text.length).toBeGreaterThan(2);
+  });
+
+  test("sow workspace header owner line is a name, never an id (S21-1c item 1)", async ({
+    page,
+  }) => {
+    // Open any SOW on staging and assert the header Owner line never
+    // ends in an 8-char UUID prefix. The uploader fallback used to
+    // render "Uploader · abc12345"; it now renders the resolved name.
+    const res = await page.request.get(`${BASE}/api/approvals/packages?size=1`, {
+      headers: bearerFor("system"),
+    });
+    if (res.status() !== 200) test.skip();
+    const items = (await res.json()).items ?? [];
+    const oppId = items[0]?.opportunity_id;
+    test.skip(!oppId, "no SOW on staging to open");
+    await page.goto(`${BASE}/sows/${oppId}/overview`);
+    const headerOwner = page.getByTestId("header-owner");
+    await expect(headerOwner).toBeVisible({ timeout: 20_000 });
+    const text = (await headerOwner.textContent()) ?? "";
+    // Strip the "Owner " prefix; what remains is either the deal
+    // owner name or "Uploader · <name>". Neither form may be an id.
+    const payload = text.replace(/^\s*Owner\s*/, "").replace(/^Uploader\s*·\s*/, "");
+    // No bare 8-hex UUID prefix.
+    expect(
+      /^[0-9a-f]{8}$/i.test(payload.trim()),
+      `header owner shows a short id "${payload.trim()}" — expected a name`,
+    ).toBeFalsy();
+    // No full UUID either.
+    expect(looksLikeRawId(payload)).toBeFalsy();
   });
 
   test("client detail page: heading shows client name, not UUID", async ({

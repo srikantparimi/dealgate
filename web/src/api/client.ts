@@ -1036,6 +1036,8 @@ export interface SowVersion {
   sow_id: UUID;
   opportunity_id: UUID;
   uploaded_by: UUID | null;
+  /** S21-1c item 1: display name of the uploader (never a raw id). */
+  uploaded_by_name: string | null;
   uploaded_at: ISODateTime;
   file_s3_key: string;
   file_hash: string;
