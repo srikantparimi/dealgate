@@ -281,3 +281,31 @@ Workers append below this line as their scope surfaces choices.
   `matrix.md` Session 3 update. Next session pulls them off that list
   in whatever order the PO prioritises.
 
+
+---
+
+## D-S21-01 · Reverse D6 — SOW is delete-at-every-state (1 Oct 2026)
+
+**Decision.** The SOW workspace delete control is `Delete SOW` at
+every state (draft, submitted, in-review, approved, signed). The
+Archive branch is removed from the UI. Hard delete cascades to SOW
+versions, GM runs, approvals, documents, next actions, comments,
+renewals, and any project created from the SOW.
+
+**Why.** Kanna's click-through on 2026-10-01 (screenshot 06, 07)
+found that "Archive SOW" post-submit no-ops from the user's
+perspective. D6 preserved archive branch for the audit trail, but
+the audit trail lives in `audit_event` rows, not in zombie SOW
+rows — rule 4's immutability concerns accepted facts, not retention
+of a deleted draft's metadata.
+
+**How to apply.** `web/src/pages/v2/SowWorkspace.tsx` renders one
+button, one dialog, one API call (`deleteSow`). The backend
+`DELETE /sows/{id}` already accepts every state (S17 made
+`assess_sow` always return `state="draft"`); no API change needed.
+`POST /sows/{id}/archive` remains as a backend admin endpoint but
+is no longer wired to the user UI.
+
+**How to reverse.** Re-import `archiveSow` + the governed branch in
+`SowWorkspace.tsx` and `services/deletion.py` already contains the
+archive side intact.

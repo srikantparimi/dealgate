@@ -256,6 +256,13 @@ module "github_oidc" {
   cloudfront_distribution_arn = module.web.distribution_arn
 }
 
+# S21 item 8: five production approver SES sending identities. Add
+# only — the apply (which triggers verification mails) is reserved
+# for Kanna per CLAUDE.md rule 15.
+module "prod_approvers" {
+  source = "./modules/prod-approvers"
+}
+
 # S7: CloudTrail + GuardDuty + CloudWatch alarms + SNS alerts topic.
 module "observability" {
   source                   = "./modules/observability"

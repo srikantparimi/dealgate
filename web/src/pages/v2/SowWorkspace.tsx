@@ -27,7 +27,6 @@ import { formatDate, shortId } from "./sow-workspace/format";
 import { SubmitApprovalDialog } from "./sow-workspace/SubmitApprovalDialog";
 import { workspaceTitle } from "./sow-workspace/readiness";
 import {
-  archiveSow,
   assessSowDeletion,
   deleteSow,
   getMe,
@@ -116,15 +115,15 @@ export function SowWorkspacePage() {
     setDeleting(true);
     setDeleteError(null);
     try {
-      // S20 W3 D6: state-aware action. A governed SOW (submitted /
-      // approved / released) is archived instead of hard-deleted so
-      // the decision history survives (CLAUDE.md rule 4).
-      const governed = deleteAssessment?.state === "governed";
-      if (governed) {
-        await archiveSow(snap.sow.sow_id);
-      } else {
-        await deleteSow(snap.sow.sow_id);
-      }
+      // S21 item 1 reverses S20 W3 D6: a SOW is hard-deletable at every
+      // state (draft, submitted, approved, signed). `services/deletion.py`
+      // cascades to approvals, versions, GM runs, documents, next
+      // actions, comments, renewals, and the project created from it.
+      // Archive is removed from the UI; the decision history survives
+      // in the audit trail, not in zombie rows (CLAUDE.md rule 4
+      // concerns immutability of accepted facts, not retention of
+      // deleted drafts' metadata).
+      await deleteSow(snap.sow.sow_id);
       setDeleteOpen(false);
       nav("/sows");
     } catch (e) {
@@ -132,7 +131,7 @@ export function SowWorkspacePage() {
     } finally {
       setDeleting(false);
     }
-  }, [snap, nav, deleteAssessment]);
+  }, [snap, nav]);
 
   const refresh = useCallback(async () => {
     if (!id) return;
@@ -347,32 +346,17 @@ export function SowWorkspacePage() {
               >
                 {step.label}
               </Button>
-              {/* S20 W3 D6: the SOW workspace exposes Delete only for
-                  drafts with no submitted package. Governed SOWs
-                  (submitted / approved / released) get Archive
-                  instead. The assessment endpoint is cheap; we render
-                  the correct label after the first render — Delete is
-                  the default while we haven't fetched the assessment
-                  yet, so the button is honest at every moment. */}
+              {/* S21 item 1: Delete at every state. One label, one
+                  action — the confirm dialog names the cascade. */}
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => void openDelete()}
-                aria-label={
-                  deleteAssessment?.state === "governed"
-                    ? "Archive SOW"
-                    : "Delete SOW"
-                }
-                title={
-                  deleteAssessment?.state === "governed"
-                    ? "This SOW has been submitted — archive it to keep its history."
-                    : "Delete this draft SOW. Only allowed before submission."
-                }
+                aria-label="Delete SOW"
+                title="Delete this SOW. Cascades to approvals, versions, GM runs, documents, next actions, comments, renewals, and any project created from it."
               >
                 <Trash2 className="h-4 w-4 mr-1" />
-                {deleteAssessment?.state === "governed"
-                  ? "Archive SOW"
-                  : "Delete SOW"}
+                Delete SOW
               </Button>
             </div>
           }
@@ -426,35 +410,21 @@ export function SowWorkspacePage() {
       <Dialog open={deleteOpen} onOpenChange={(o) => (o ? undefined : setDeleteOpen(false))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {/* S20 W3 D6: title reflects the actual action. */}
-              {deleteAssessment?.state === "governed"
-                ? "Archive this SOW?"
-                : "Delete this SOW?"}
-            </DialogTitle>
+            <DialogTitle>Delete this SOW?</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-body">
             <p>
               {workspaceTitle(snap)} — client{" "}
               {snap.deal?.client_name ?? "Unassigned"}
             </p>
-            {deleteAssessment?.state === "governed" ? (
-              <p className="text-secondary text-text-secondary">
-                This SOW has been submitted for approval — its decision
-                history must survive. Archiving marks it as archived and
-                excludes it from open lists and the deal rollup, but the
-                SOW versions, approvals, and audit trail remain
-                queryable. Only a system administrator can unarchive.
-              </p>
-            ) : (
-              <p className="text-secondary text-text-secondary">
-                This SOW is a draft with no submitted approval package —
-                a hard delete is permitted. SOW versions, GM, staffing,
-                tasks and files go together. An audit line records who
-                deleted the SOW, when, its title, stage and price. This
-                cannot be undone.
-              </p>
-            )}
+            <p className="text-secondary text-text-secondary">
+              S21 item 1: delete is permitted at every state. Hard
+              deletes cascade to SOW versions, approvals, GM runs,
+              documents, next actions, comments, renewals, and any
+              project created from this SOW. An audit line records who
+              deleted the SOW, when, its title, stage and price. This
+              cannot be undone.
+            </p>
             {deleteAssessment ? (
               <ul className="text-body">
                 {Object.entries(deleteAssessment.counts).map(([k, v]) => (
@@ -473,13 +443,7 @@ export function SowWorkspacePage() {
               Cancel
             </Button>
             <Button onClick={() => void confirmDelete()} disabled={deleting}>
-              {deleting
-                ? deleteAssessment?.state === "governed"
-                  ? "Archiving…"
-                  : "Deleting…"
-                : deleteAssessment?.state === "governed"
-                  ? "Archive SOW"
-                  : "Delete SOW"}
+              {deleting ? "Deleting…" : "Delete SOW"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -144,3 +144,24 @@ Then the correlation_id in the alarm links to CloudTrail + application logs
   further notice).
 - Not procuring the domain / cert — that lives with Task #26
   ("Blocked: custom domain + ACM cert — needs domain choice").
+
+---
+
+## R-S21-01 · SES production access (sandbox exit) — AWS support
+
+Added 2026-10-01 per S21 item 8. SES account for us-east-2 is in
+sandbox. S21 item 8 landed TF for the five production approver
+sending identities (Shawnna, Janice, Seema, Scott, Al). Each can
+receive verification mail and begin receiving routing — but mail
+*from* the app to any address will be refused until the account is
+moved to production access.
+
+**Owner.** Kanna files the case from AWS console
+(Support → Create case → Service limit increase → SES → Sending
+limits → "Request production access"). Include use-case summary,
+sending volume (< 500 mails/day), bounce/complaint monitoring,
+Reply-To addresses.
+
+**Status.** Not yet filed. Add the AWS Support case id here when
+raised. Blocking: real approval mail to the five addresses
+(verification mails are allowed in sandbox and will succeed).

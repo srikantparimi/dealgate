@@ -39,7 +39,7 @@ import json, re, sys
 prefix_re = re.compile(
     r"^(?:s1[2-9]-|s17-|s18-|"
     r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S17 e2e |S18 e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|"
     r"S17 delete-everywhere)",
     re.IGNORECASE,
@@ -57,11 +57,56 @@ OUT=$(printf '%s' "$RESP" | python3 -c "$TAG_PYTHON")
 COUNT=$(printf '%s\n' "$OUT" | head -1)
 LEAKS=$(printf '%s\n' "$OUT" | tail -n +2)
 
-if [ "$COUNT" = "0" ]; then
-  echo "[gate] clean · 0 test-tagged clients on $BASE_URL"
+# S21 item 7 (leak gate · approvers): any approval package whose
+# approver is an e2e user AND whose SOW is not e2e-tagged is a leak.
+# The eligibility fix in services/approval_routing.py prevents new
+# leaks; this gate catches historic rows + any regression. The
+# approvals list already carries approver_name; we flag names
+# containing the e2e marker 'E2E' or 'e2e-' when the SOW's client
+# name does not match the test-data prefix.
+APPROVER_PYTHON=$(cat <<'PY'
+import json, re, sys
+prefix_re = re.compile(
+    r"^(?:s1[2-9]-|s17-|s18-|"
+    r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |"
+    r"smoke |Peppermill Casino \(smoke fixture\)|"
+    r"S17 delete-everywhere)",
+    re.IGNORECASE,
+)
+bot_re = re.compile(r"(e2e[\s\-]|staging bot|\bbot\b)", re.IGNORECASE)
+data = json.load(sys.stdin)
+leaky = []
+for pkg in data.get("items", []):
+    client = pkg.get("client_name") or ""
+    if prefix_re.match(client):
+        continue
+    for row in (pkg.get("assignments") or []) + (pkg.get("approvals") or []):
+        name = row.get("approver_name") or ""
+        if bot_re.search(name):
+            leaky.append({
+                "package_id": pkg.get("id"),
+                "client": client,
+                "function": row.get("function"),
+                "approver": name,
+            })
+print(len(leaky))
+for r in leaky:
+    print(f"APPROVAL-LEAK\t{r['package_id']}\t{r['client']}\t{r['function']}\t{r['approver']}")
+PY
+)
+APPROVER_RESP=$(curl -sS -H "Authorization: Bearer $ID_TOKEN" "$BASE_URL/api/approvals/packages?size=200" 2>/dev/null || echo '{"items":[]}')
+APPROVER_OUT=$(printf '%s' "$APPROVER_RESP" | python3 -c "$APPROVER_PYTHON" 2>/dev/null || echo "0")
+APPROVER_COUNT=$(printf '%s\n' "$APPROVER_OUT" | head -1)
+APPROVER_LEAKS=$(printf '%s\n' "$APPROVER_OUT" | tail -n +2)
+
+TOTAL=$((COUNT + APPROVER_COUNT))
+if [ "$TOTAL" = "0" ]; then
+  echo "[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs on $BASE_URL"
   exit 0
 fi
 
-echo "[gate] FAIL · $COUNT test-tagged clients still on $BASE_URL" >&2
+echo "[gate] FAIL · $COUNT test-tagged clients + $APPROVER_COUNT e2e-approver leaks on $BASE_URL" >&2
 printf '%s\n' "$LEAKS" >&2
+printf '%s\n' "$APPROVER_LEAKS" >&2
 exit 1
