@@ -5,8 +5,8 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 `missing` · `blocked` · `deferred`. Every session updates its rows
 **first and last**. ETA = rows-not-verified ÷ 7 per session.
 
-**Current head:** `integrate/s20 @ d5d6f51` · staging rev 62
-(`s20-0573d19d`).
+**Current head:** `integrate/s20 @ 6b25186` · staging rev 62
+(`s20-0573d19d`). D-S20-17a + rule 17 amendment landed; no deploy.
 
 **Lead-S20-C1 checkpoint (2026-09-30):** STOPPED at step 1 (rebase).
 Both lanes edited files outside their owned sets per rule 17.
@@ -15,12 +15,25 @@ W4-3, W4-4-CARDS, W4-6, W4-7, W7-1, W7-2, W7-3, W7-4, W7-5
 remain at their lane-reported state (`fixed and tested`) pending
 Lead decision on the ownership exception.
 
-**Lead-S20-C1-resume (2026-10-01, in flight):** attempting rows
-W4-1, W4-3, W4-4-CARDS, W4-6, W4-7, W7-1, W7-2, W7-3, W7-4, W7-5
-after recording D-S20-17a (shared-append-only exception for
-`web/src/api/client.ts` + routes/nav + main.py registration block;
-adds `signed_sow.py` to Lane B owned list). Flips occur only on
-step 4-6 staging proof.
+**Lead-S20-C1-resume (2026-10-01):** STOPPED at step 2 (additive-only
+check). D-S20-17a recorded + rule 17 amended (shared-append-only
+class for `web/src/api/client.ts`, `web/src/routes*.tsx`,
+`web/src/nav*.tsx`, and the router-registration block in
+`api/app/main.py`; `signed_sow.py` added to Lane B owned list) —
+commit `6b25186`. However, Lane B's `web/src/api/client.ts` diff is
+NOT purely additive: 4 removed / 13 added, with in-place edits to
+the existing `SignedSowFieldName` union (added `signatories`) and
+the `SignedSowDiffField` interface (broadened `approved`/`extracted`
+to `string | string[] | null`, added `missing`/`unexpected`). The
+shared-append-only exception only covers **additions** — modifying
+existing lines in a shared file is still a stop condition. Lane A's
+diff is pure addition (145 added / 0 removed) and would have
+passed. No rebase, no merge, no deploy, no flips. W4-* and W7-*
+attempted rows remain at their lane-reported state. Lane B must
+either refactor the signatory diff to a sibling helper type
+appended at the end (keep the original `SignedSowFieldName` /
+`SignedSowDiffField` untouched) or get a product-owner exception
+to edit the shared type in place.
 
 Ownership violations (step-1 stop):
 - Lane A (`feat/s20-w4 @ 1f05090`) edited `web/src/api/client.ts`
