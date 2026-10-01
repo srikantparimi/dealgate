@@ -95,6 +95,31 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     Rev-2 pass to land chip value, owner + BU selects, and the T35
     pytest, and to re-report the three lines explicitly.
 
+17. **Parallel lanes.** When S20 splits into feature lanes
+    (`feat/s20-<lane>`), each lane works on its own branch — only the
+    Lead deploys to staging. A lane proves its work locally: pytest
+    against the CI Postgres fixture, Playwright against a local dev
+    server. **Lanes never run tests against staging and never deploy
+    themselves.** A lane edits only its owned files + its own
+    scoreboard rows; anything else, ask the Lead in
+    `docs/reports/s20/progress-<lane>.md` and don't touch.
+
+    - **Lane A** (`feat/s20-w4`): no migrations. Owned files —
+      `api/app/routers/{reports,dashboards,settings}*`,
+      `api/app/services/hubspot_pipeline.py` **(summary only — nothing
+      else in that file)**,
+      `web/src/pages/{Reports,CommandCenter,Settings,SystemHealth}*`.
+    - **Lane B** (`feat/s20-w7`): owns alembic revisions **0048+**.
+      Owned files — `api/app/routers/{sows,approvals,signature,projects}*`,
+      `api/app/services/{signature,release,projects,forecast}*`,
+      `web/src/pages/{SowWorkspace,Projects,Handoff}*`, migrations.
+
+    Lanes merge back to `integrate/s20` only through a Lead rebase +
+    checkpoint; alembic head must stay == 1 after merge or the Lead
+    stops and reports. Adopted 1 Oct 2026 to let W4 (reports +
+    integrations + health) and W7 (approval → delivery) progress in
+    parallel without stepping on each other's files or staging.
+
 ## Where things live
 
 - `docs/blueprint.md` — the governance policy (source of truth for rules).
