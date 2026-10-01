@@ -309,3 +309,26 @@ is no longer wired to the user UI.
 **How to reverse.** Re-import `archiveSow` + the governed branch in
 `SowWorkspace.tsx` and `services/deletion.py` already contains the
 archive side intact.
+
+
+---
+
+## D-S20-D5b · Workflow-tag mismatch is expected (2026-10-01)
+
+**Decision.** When `integrate/s20` squash-merges to main, the GitHub
+Actions deploy workflow (`.github/workflows/deploy.yml`) builds a
+fresh image tagged `${GITHUB_SHA}` — the squash-merge commit SHA on
+main — and deploys that image. This image tag is NOT the staging
+tag the Lead built by hand (`s20-<short SHA of integrate/s20
+head>`); it IS the same byte-for-byte content, because the source
+tree is identical.
+
+**Why.** The deploy workflow has always keyed its image name off
+`GITHUB_SHA`. The staging-side hand-builds use `s20-<short SHA>`
+so the Lead can tag + roll back without pushing to main.
+
+**How to apply.** Scoreboard proofs name both tags during the
+transition from staging to main: the staging tag that the Lead
+verified via D5, and the main tag that lands via the workflow. The
+smoke runs twice (staging rev N, then post-main rev M) and both
+must be GREEN before S20 closes.
