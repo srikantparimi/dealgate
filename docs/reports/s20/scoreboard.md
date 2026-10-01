@@ -5,8 +5,14 @@ strict (rule 16): `verified working (staging)` · `fixed and tested` ·
 `missing` · `blocked` · `deferred`. Every session updates its rows
 **first and last**. ETA = rows-not-verified ÷ 7 per session.
 
-**Current head:** `integrate/s20 @ 36f01fa` on **staging rev 66**
-(`s20-36f01fa4`). S21-1b deploy: image built + pushed digest
+**Current head:** `integrate/s20 @ 9b7bc5d` on **staging rev 67**
+(`s20-9b7bc5d9`) · S21-1c stabilization sweep deployed 2026-10-01.
+Image digest `sha256:a1b89f0eeb13...`, size 103 MB. Migration no-op
+(head still `20260930_0047_w6_watch`). Deploy smoke `smoke
+20261001T212952Z` GREEN; leak gate clean (0 test clients, 0 e2e
+approvers on active real SOWs). Full pytest exit 0; targeted
+Playwright (t09 + t45) on rev 67: 10 passed, 11 skipped, 1 flake
+on t09 stage-cell (pass on isolated rerun). Prior rev 66 S21-1b deploy: image built + pushed digest
 `sha256:9817ee025b2d0455384b1e85d931deeb754ba23c64a4797766b5787a84bd19ab`
 size 103 MB, api task-def rev 66, alembic exit 0 (head unchanged),
 api service stable on rev 66 (ECS waiter), 6 worker families
