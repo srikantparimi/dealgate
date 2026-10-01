@@ -163,6 +163,22 @@ the stop cause).
 | FINAL-T44 | Final | Full multi-role journey (intake → approve → CEO → signature → handoff → delivery → renewal) | missing | T44 spec skipped — needs W7 landing | — | B |
 | FINAL-U01 | Final | 5 Cognito approver test users + SES sandbox verifications | verified working (staging) | S1 U01 TF slice + 5 users verified | S1 | integrate |
 | FINAL-CLICK | Final | Product-owner click-through on staging | missing | tracked in click-through.md | — | integrate |
+| S21-1 | S21-1 | Delete, not archive, at every state (reverse D6; hard delete cascading) | missing | — | — | integrate |
+| S21-2 | S21-1 | Staffing & GM renders inside the workspace (regression of S19-1b item 6) | missing | — | — | integrate |
+| S21-3 | S21-1 | Back navigation in the SOW studio (Scope → Staffing → Confirm revisitable) | missing | — | — | integrate |
+| S21-4 | S21-1 | Overview shows no blanks (Owner/Term/Commercial type/Next action; drop id) | missing | — | — | integrate |
+| S21-5 | S21-1 | Approvers visible and editable before submit | missing | — | — | integrate |
+| S21-6 | S21-1 | Approver routing — the real people (seeded, OOO flag, Sales as function) | missing | — | — | integrate |
+| S21-7 | S21-1 | Test users never route a real SOW (leak gate on approvers) | missing | — | — | integrate |
+| S21-8 | S21-1 | Email to the real approvers (SES identities via TF, plan only) | missing | — | — | integrate |
+| S21-9 | S21-2 | Clients view honors active filters (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
+| S21-10 | S21-2 | Account owner mirrored from company owner (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
+| S21-11 | S21-2 | Active filters visible and removable one at a time (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
+| S21-12 | S21-2 | Raw identifiers on the deal page / breadcrumbs (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
+| S21-13 | S21-2 | Deal page inline editors for Next action and Latest comment (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
+| S21-14 | S21-2 | Alerts per deal (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
+| S21-15 | S21-3 | Hours are computed, not typed, for staff augmentation (deferred — S21-3) | deferred | S21-1 session scope; Session S21-3 directive-split | — | integrate |
+| S21-16 | S21-3 | Contract extension on signed/released SOW (deferred — S21-3) | deferred | S21-1 session scope; Session S21-3 directive-split | — | integrate |
 
 ## Totals by state
 

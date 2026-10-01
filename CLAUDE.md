@@ -144,6 +144,18 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     integrations + health) and W7 (approval → delivery) progress in
     parallel without stepping on each other's files or staging.
 
+18. **A click-through finding becomes a test first.** Every item in a
+    click-through directive starts with a Playwright test that
+    reproduces the product owner's exact path on staging and fails.
+    Then the fix. Then the test passes on staging. Tests for
+    user-facing items assert on the screen the user sees —
+    breadcrumbs, headers, tabs, buttons — not only on table cells or
+    API payloads. Adopted 1 Oct 2026 after the S21 click-through
+    found three items reported "verified working (staging)" in
+    earlier sessions (S19-1b item 6, W6 item 1, T09) whose tests
+    passed because they did not look where the owner looks. See
+    `docs/directives/s21-click-through-fixes.md`.
+
 19. **Heartbeat.** Every session posts a one-line status to chat at
     every step boundary and at least every 15 minutes while any
     command runs. Format:
