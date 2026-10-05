@@ -24,6 +24,7 @@ import { CalendarFields } from "./commercial-editor/CalendarFields";
 import { HybridFields } from "./commercial-editor/HybridFields";
 import { bindCommercialSource } from "./commercial-editor/bindings";
 import { MspAdjustmentsFields } from "./commercial-editor/MspAdjustmentsFields";
+import { PlanTeamPanel } from "./commercial-editor/PlanTeamPanel";
 
 function initialInputs(snap: WorkspaceSnapshot): CommercialComponent {
   if (snap.gmModel?.commercial_inputs)
@@ -233,6 +234,16 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
         <p role="alert" className="text-danger">
           {error}
         </p>
+      )}
+      {editable && snap.deal && (
+        <PlanTeamPanel
+          opportunityId={snap.deal.id}
+          inputs={inputs}
+          onApply={(next) => {
+            replaceComponent(next);
+            setDirty(true);
+          }}
+        />
       )}
       {notice && <p role="status">{notice}</p>}
       {proposal && !snap.gmModel?.commercial_inputs && (

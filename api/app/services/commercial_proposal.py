@@ -158,8 +158,18 @@ async def propose_component(
     raw_price = value_of(fields.get("price"))
     price: Decimal | None = None
     if raw_price not in (None, ""):
+        # Real documents write "$75,400" or "USD 75,400.00"; normalise the
+        # symbols/grouping before Decimal — never float.
+        cleaned = (
+            str(raw_price)
+            .replace(",", "")
+            .replace("$", "")
+            .replace("USD", "")
+            .replace("usd", "")
+            .strip()
+        )
         try:
-            price = Decimal(str(raw_price))
+            price = Decimal(cleaned)
             provenance["pricing.amount"] = "extracted"
         except ArithmeticError:
             price = None

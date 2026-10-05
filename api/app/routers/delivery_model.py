@@ -22,6 +22,7 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -140,6 +141,55 @@ async def commercial_proposal(
     try:
         return await propose_component(session, opportunity_id=opportunity_id)
     except ProposalError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+class StaffingAdviceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revenue: str | None = None
+    weeks: str | None = None
+    service_start: date | None = None
+    service_end: date | None = None
+    target_gm: str | None = None
+    required_fte: str | None = None
+    min_onshore_fte: str = "0"
+
+
+@router.post("/{opportunity_id}/commercial/staffing-advice")
+async def commercial_staffing_advice(
+    opportunity_id: uuid.UUID,
+    body: StaffingAdviceBody,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """S22 · scope estimate + rate lookup + pure-Decimal mix solver."""
+    from decimal import Decimal, InvalidOperation
+
+    from app.integrations.bedrock_team_estimate import get_team_estimate
+    from app.services.staffing_advice import AdviceError, advise
+
+    def dec(raw: str | None) -> Decimal | None:
+        if raw is None or raw == "":
+            return None
+        try:
+            return Decimal(raw)
+        except InvalidOperation as exc:
+            raise HTTPException(422, f"not a decimal: {raw!r}") from exc
+
+    try:
+        return await advise(
+            session,
+            opportunity_id=opportunity_id,
+            estimator=get_team_estimate(),
+            revenue=dec(body.revenue),
+            weeks=dec(body.weeks),
+            service_start=body.service_start,
+            service_end=body.service_end,
+            target_gm=dec(body.target_gm),
+            required_fte=dec(body.required_fte),
+            min_onshore_fte=dec(body.min_onshore_fte) or Decimal("0"),
+        )
+    except AdviceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 

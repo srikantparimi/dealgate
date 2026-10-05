@@ -234,3 +234,14 @@ async def test_proposal_endpoint_gates_roles_and_returns_draft(
             assert body["provenance"]["currency"] == "extracted"
     finally:
         main_app.dependency_overrides.pop(get_session, None)
+
+
+@pytest.mark.asyncio
+async def test_price_with_currency_symbol_and_commas_parses(session):
+    fields = _fields(price={"value": "$75,400", "status": "confirmed"})
+    owner, opp, sow, version = await _seed(session, fields=fields)
+    proposal = await propose_component(session, opportunity_id=opp.id)
+    component = COMPONENT.validate_python(proposal["component"])
+    assert component.pricing.total_fee == Decimal("75400")
+    assert proposal["provenance"]["pricing.amount"] == "extracted"
+    assert not any("price" in w.lower() for w in proposal["warnings"])

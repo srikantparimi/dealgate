@@ -205,3 +205,14 @@ guess. Each question names the sprint it blocks.
   data-residency. (Design: §5, §11.)
 - [ ] **Bedrock model access.** Which Claude models are enabled in the AWS
   account and region?
+
+## S22 staffing advisory (2026-10-05)
+
+- [ ] **Advisory GM basis for mixed teams.** The Plan-the-team advisor
+  compares blended GM against a single explicit target (default: US
+  policy floor; user-settable per deal, e.g. Caesars' contractual 35%).
+  Should advisory feasibility instead test per-geography floors
+  (US 35% / India 50%) with revenue attributed by location — and if so,
+  by what attribution rule? The saved commercial model already goes
+  through the real engine and real floors; this question is only about
+  the planning aid's verdict. (Owner directive session, S22.)

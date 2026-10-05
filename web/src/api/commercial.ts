@@ -223,3 +223,53 @@ export const getCommercialProposal = (opportunityId: string) =>
   request<CommercialProposal>(
     `/delivery-model/${opportunityId}/commercial/proposal`,
   );
+
+/** S22 · staffing advice: scope estimate + rate lookup + Decimal mix solver. */
+export interface StaffingAdvice {
+  inputs: {
+    revenue: string;
+    weeks: string;
+    target_gm: string;
+    target_gm_provenance: string;
+    required_fte: string | null;
+    min_onshore_fte: string;
+    onshore_cost_per_hour: string;
+    offshore_cost_per_hour: string;
+    rates_provenance: string;
+  };
+  estimate: {
+    required_fte: string;
+    duration_weeks: string | null;
+    roles: { role: string; fte: string; location_hint: string | null; evidence: string }[];
+    rationale: string;
+    evidence: string[];
+    provenance: string;
+  } | null;
+  suggested: {
+    onshore_fte: string;
+    offshore_fte: string;
+    cost: string;
+    gm: string;
+  } | null;
+  feasible: boolean;
+  max_fte_at_target: string;
+  caution: string | null;
+  warnings: string[];
+  sow_version_id: string;
+}
+export const getStaffingAdvice = (
+  opportunityId: string,
+  body: {
+    revenue?: string | null;
+    weeks?: string | null;
+    service_start?: string | null;
+    service_end?: string | null;
+    target_gm?: string | null;
+    required_fte?: string | null;
+    min_onshore_fte?: string;
+  },
+) =>
+  request<StaffingAdvice>(
+    `/delivery-model/${opportunityId}/commercial/staffing-advice`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
