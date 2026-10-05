@@ -62,7 +62,10 @@ function claimsToUser(claims: IdTokenClaims | null): AuthUser | null {
   return {
     sub: claims.sub,
     email: claims.email ?? "",
-    name: claims.name ?? claims["cognito:username"] ?? claims.email ?? "User",
+    // In this pool `cognito:username` is the sub UUID, so a user without
+    // a `name` attribute used to read as a raw UUID in the header. Email
+    // is always present on our ID tokens — prefer it over the username.
+    name: claims.name ?? claims.email ?? claims["cognito:username"] ?? "User",
     groups,
     role: pickPrimaryRole(groups),
   };
