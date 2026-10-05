@@ -8,7 +8,10 @@ import {
 } from "@testing-library/react";
 import * as api from "../../api/commercial";
 import * as client from "../../api/client";
-import { CommercialModelEditor } from "../../pages/v2/sow-workspace/CommercialModelEditor";
+import {
+  CommercialModelEditor,
+  resetCommercialDraftCache,
+} from "../../pages/v2/sow-workspace/CommercialModelEditor";
 import { StaffingGmTab } from "../../pages/v2/sow-workspace/StaffingGmTab";
 import type { WorkspaceSnapshot } from "../../pages/v2/sow-workspace/readiness";
 
@@ -72,6 +75,11 @@ function snapshot(component = inputs): WorkspaceSnapshot {
 }
 beforeEach(() => {
   vi.restoreAllMocks();
+  resetCommercialDraftCache();
+  vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(
+    new Error("no advice in this test"),
+  );
+  vi.spyOn(api, "getCommercialProposal").mockRejectedValue(new Error("403"));
   vi.spyOn(client, "getMe").mockResolvedValue({
     groups: ["Delivery"],
   } as client.MeResponse);
@@ -96,7 +104,7 @@ describe("Commercial model editor", () => {
         "Signed financial basis. Changes require a separate amendment version.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Total fee")).toBeDisabled();
+    expect(screen.getByLabelText("Contract fee")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save version" })).toBeDisabled();
   });
   it("prefills confirmed SOW evidence, leaving disputed currency and unknown costing unresolved", async () => {
@@ -110,9 +118,9 @@ describe("Commercial model editor", () => {
     await act(async () => {
       render(<CommercialModelEditor snap={snap} />);
     });
-    expect(screen.getByLabelText("Total fee")).toHaveValue("420000.00");
-    expect(screen.getByLabelText("Service start")).toHaveValue("2026-11-01");
-    expect(screen.getByLabelText("Currency")).toHaveValue("");
+    expect(screen.getByLabelText("Contract fee")).toHaveValue("420000.00");
+    expect(screen.getByLabelText("Contract start")).toHaveValue("2026-11-01");
+    expect(screen.getByLabelText("Contract currency")).toHaveValue("");
     expect(screen.getByLabelText("Source evidence")).toHaveValue(
       "SOW version, price, page 2\nSOW version, term_start, page 2",
     );
@@ -144,7 +152,7 @@ describe("Commercial model editor", () => {
       gm_model: { ...snapshot().gmModel!, id: "gm-two" },
     });
     render(<CommercialModelEditor snap={snapshot()} />);
-    expect(screen.getByLabelText("Total fee")).toHaveValue("24000");
+    expect(screen.getByLabelText("Contract fee")).toHaveValue("24000");
     fireEvent.change(screen.getByLabelText("Change reason"), {
       target: { value: "Confirmed loaded cost" },
     });
@@ -176,7 +184,7 @@ describe("Commercial model editor", () => {
     );
     render(<CommercialModelEditor snap={snapshot()} />);
     expect(screen.getByText("24000")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Total fee"), {
+    fireEvent.change(screen.getByLabelText("Contract fee"), {
       target: { value: "25000.01" },
     });
     fireEvent.change(screen.getByLabelText("Change reason"), {
@@ -188,8 +196,8 @@ describe("Commercial model editor", () => {
       ).toBeEnabled(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Save version" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("409");
-    expect(screen.getByLabelText("Total fee")).toHaveValue("25000.01");
+    expect(await screen.findByTestId("commercial-error")).toHaveTextContent("409");
+    expect(screen.getByLabelText("Contract fee")).toHaveValue("25000.01");
   });
   it("never enables writes for Finance and preserves hybrid inputs read-only", async () => {
     vi.spyOn(client, "getMe").mockResolvedValue({
@@ -207,7 +215,7 @@ describe("Commercial model editor", () => {
       );
     });
     expect(screen.getByRole("button", { name: "Save version" })).toBeDisabled();
-    expect(screen.getByLabelText("Total fee")).toBeDisabled();
+    expect(screen.getByLabelText("Contract fee")).toBeDisabled();
     expect(screen.getByText("hybrid")).toBeInTheDocument();
     expect(screen.getByText("24000")).toBeInTheDocument();
   });
@@ -218,7 +226,7 @@ describe("Commercial model editor", () => {
     await act(async () => {
       render(<CommercialModelEditor snap={snapshot()} />);
     });
-    expect(screen.getByLabelText("Total fee")).toBeDisabled();
+    expect(screen.getByLabelText("Contract fee")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save version" })).toBeDisabled();
   });
   it("previews recurring MSP without losing contractual adjustments or usage", async () => {
@@ -293,7 +301,7 @@ describe("Commercial model editor", () => {
         })}
       />,
     );
-    expect(screen.getByLabelText("Currency")).toHaveValue("");
+    expect(screen.getByLabelText("Contract currency")).toHaveValue("");
     expect(screen.getByLabelText("Cost basis")).toHaveValue("");
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),

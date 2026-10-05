@@ -131,11 +131,16 @@ async def advise(
                 "duration_weeks": raw.duration_weeks,
                 "roles": [
                     {"role": r.role, "fte": r.fte,
-                     "location_hint": r.location_hint, "evidence": r.evidence}
+                     "location_hint": r.location_hint, "evidence": r.evidence,
+                     "skills": list(r.skills), "seniority": r.seniority,
+                     "phase": r.phase, "people": r.people,
+                     "allocation": r.allocation, "basis": r.basis}
                     for r in raw.roles
                 ],
                 "rationale": raw.rationale,
                 "evidence": list(raw.evidence),
+                "unknowns": list(raw.unknowns),
+                "coverage": raw.coverage,
                 "provenance": "extracted",
             }
         else:
@@ -151,16 +156,24 @@ async def advise(
                 revenue = Decimal(cleaned)
             except ArithmeticError:
                 revenue = None
-    if revenue is None or revenue <= 0:
-        raise AdviceError(422, "A positive fee is required to advise — enter the fee")
+    # Missing commercial facts block AFFORDABILITY, never the scope
+    # estimate (directive §5): the demand draft above still returns, and
+    # the blocked reasons are explicit states instead of an HTTP error.
+    blocked_reasons: list[str] = []
+    if revenue is None:
+        blocked_reasons.append("No contract fee — enter the fee to assess affordability")
+    elif revenue <= 0:
+        blocked_reasons.append(
+            "Contract fee is zero — a positive fee is required to assess affordability"
+        )
 
     if weeks is None and service_start and service_end and service_end > service_start:
         weeks = (Decimal((service_end - service_start).days) / Decimal(7)).quantize(
             Decimal("0.1")
         )
     if weeks is None or weeks <= 0:
-        raise AdviceError(
-            422, "A duration is required — set the term dates or weeks"
+        blocked_reasons.append(
+            "No engagement duration — set the contract dates or weeks"
         )
 
     if target_gm is None:
@@ -179,15 +192,17 @@ async def advise(
     )
     warnings.extend(rate_warnings)
 
-    result = solve_staffing_mix(
-        revenue=revenue,
-        weeks=weeks,
-        target_gm=target_gm,
-        onshore_cost_per_hour=onshore_rate,
-        offshore_cost_per_hour=offshore_rate,
-        required_fte=required_fte,
-        min_onshore_fte=min_onshore_fte,
-    )
+    result = None
+    if not blocked_reasons:
+        result = solve_staffing_mix(
+            revenue=revenue,
+            weeks=weeks,
+            target_gm=target_gm,
+            onshore_cost_per_hour=onshore_rate,
+            offshore_cost_per_hour=offshore_rate,
+            required_fte=required_fte,
+            min_onshore_fte=min_onshore_fte,
+        )
 
     def _mix(c):
         return None if c is None else {
@@ -197,7 +212,8 @@ async def advise(
 
     return {
         "inputs": {
-            "revenue": str(revenue), "weeks": str(weeks),
+            "revenue": str(revenue) if revenue is not None else None,
+            "weeks": str(weeks) if weeks is not None else None,
             "target_gm": str(target_gm), "target_gm_provenance": target_provenance,
             "required_fte": str(required_fte) if required_fte is not None else None,
             "min_onshore_fte": str(min_onshore_fte),
@@ -206,10 +222,12 @@ async def advise(
             "rates_provenance": rate_provenance,
         },
         "estimate": estimate_payload,
-        "suggested": _mix(result.suggested),
-        "feasible": result.feasible,
-        "max_fte_at_target": str(result.max_fte_at_target),
-        "caution": result.caution,
+        "affordability": "blocked" if blocked_reasons else "calculated",
+        "blocked_reasons": blocked_reasons,
+        "suggested": _mix(result.suggested) if result else None,
+        "feasible": result.feasible if result else False,
+        "max_fte_at_target": str(result.max_fte_at_target) if result else None,
+        "caution": result.caution if result else None,
         "warnings": warnings,
         "sow_version_id": str(version.id),
     }

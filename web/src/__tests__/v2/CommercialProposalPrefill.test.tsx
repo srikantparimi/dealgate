@@ -7,7 +7,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api/commercial";
 import * as client from "../../api/client";
-import { CommercialModelEditor } from "../../pages/v2/sow-workspace/CommercialModelEditor";
+import {
+  CommercialModelEditor,
+  resetCommercialDraftCache,
+} from "../../pages/v2/sow-workspace/CommercialModelEditor";
 import type { WorkspaceSnapshot } from "../../pages/v2/sow-workspace/readiness";
 
 function emptySnapshot(): WorkspaceSnapshot {
@@ -85,6 +88,10 @@ function proposal(): api.CommercialProposal {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  resetCommercialDraftCache();
+  vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(
+    new Error("no advice in this test"),
+  );
   vi.spyOn(client, "getMe").mockResolvedValue({
     groups: ["Delivery"],
   } as client.MeResponse);
@@ -114,16 +121,17 @@ describe("commercial proposal prefill", () => {
     await screen.findByTestId("commercial-proposal-banner");
     expect(screen.getByTestId("proposal-warning")).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByLabelText("Total fee")).toHaveValue("250000.00"),
+      expect(screen.getByLabelText("Contract fee")).toHaveValue("250000.00"),
     );
     expect(screen.getByLabelText("Role")).toHaveValue("Senior Engineer");
-    expect(screen.getByLabelText("Allocation fraction")).toHaveValue("0.5");
+    // Stored fraction "0.5" displays as 50% — plain language, exact schema.
+    expect(screen.getByLabelText("Allocation per person (%)")).toHaveValue("50");
   });
 
   it("offers reset after edits instead of silently overwriting", async () => {
     vi.spyOn(api, "getCommercialProposal").mockResolvedValue(proposal());
     render(<CommercialModelEditor snap={emptySnapshot()} />);
-    const fee = await screen.findByLabelText("Total fee");
+    const fee = await screen.findByLabelText("Contract fee");
     await waitFor(() => expect(fee).toHaveValue("250000.00"));
 
     fireEvent.change(fee, { target: { value: "99" } });

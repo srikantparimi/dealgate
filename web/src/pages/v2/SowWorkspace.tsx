@@ -439,6 +439,30 @@ export function SowWorkspacePage() {
               className="rounded-panel border border-divider bg-surface p-4"
             >
               <h2 className="text-section text-text mb-3">Readiness</h2>
+              {/* S22 redesign: compact state first — the current blocker,
+                  who owns it, and the next action. The full checklist
+                  stays below; this is the only readiness panel in the
+                  shell. */}
+              {(() => {
+                const blocker = readiness.find((item) => item.status === "warn");
+                return (
+                  <p className="text-body text-text mb-3" data-testid="readiness-blocker">
+                    {blocker ? (
+                      <>
+                        Next: <strong>{blocker.label}</strong> — {blocker.statusLabel}
+                        {blocker.owner ? <> · {blocker.owner}</> : null}
+                        {blocker.hint ? (
+                          <span className="block text-secondary text-text-secondary">
+                            {blocker.hint}
+                          </span>
+                        ) : null}
+                      </>
+                    ) : (
+                      "No blockers — all readiness checks are clear."
+                    )}
+                  </p>
+                );
+              })()}
               <ul className="space-y-2">
                 {readiness.map((item) => (
                   <li

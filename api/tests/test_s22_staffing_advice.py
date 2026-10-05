@@ -103,12 +103,47 @@ async def test_estimator_failure_falls_back_to_manual_fte(session):
 
 
 @pytest.mark.asyncio
-async def test_missing_fee_is_a_422_not_a_guess(session):
+async def test_missing_fee_blocks_affordability_not_the_scope_estimate(session):
+    """Redesign directive §5: missing fee/rate data blocks affordability,
+    never the independent scope estimate — and nothing gets guessed."""
     opp = await _seed(session, price="")
-    with pytest.raises(AdviceError) as error:
-        await advise(session, opportunity_id=opp.id, estimator=StubTeamEstimate(),
-                     weeks=D("7"))
-    assert error.value.status_code == 422
+    advice = await advise(session, opportunity_id=opp.id,
+                          estimator=StubTeamEstimate(), weeks=D("7"))
+    assert advice["estimate"]["required_fte"] == "2.5"  # demand still returns
+    assert advice["affordability"] == "blocked"
+    assert any("fee" in r for r in advice["blocked_reasons"])
+    assert advice["suggested"] is None  # no fabricated mix
+    assert advice["inputs"]["revenue"] is None  # no guessed fee
+    assert advice["feasible"] is False
+
+
+@pytest.mark.asyncio
+async def test_missing_duration_is_an_explicit_blocked_state(session):
+    opp = await _seed(session)
+    no_duration = StubTeamEstimate(TeamEstimate(
+        required_fte="2.5", duration_weeks=None, roles=(), rationale="no dates",
+        evidence=("Team Size: 3 consultants",),
+    ))
+    advice = await advise(session, opportunity_id=opp.id, estimator=no_duration)
+    assert advice["affordability"] == "blocked"
+    assert any("duration" in r for r in advice["blocked_reasons"])
+    assert advice["estimate"] is not None
+    assert advice["suggested"] is None
+
+
+@pytest.mark.asyncio
+async def test_estimate_carries_role_shapes_and_unknowns(session):
+    """The demand draft distinguishes stated facts from inference and
+    reports gaps as gaps (directive §5)."""
+    opp = await _seed(session)
+    advice = await advise(session, opportunity_id=opp.id,
+                          estimator=StubTeamEstimate(), target_gm=D("0.35"))
+    role = advice["estimate"]["roles"][0]
+    assert role["basis"] == "stated"
+    assert role["people"] == 2 and role["allocation"] == "1"
+    assert role["skills"] == ["ServiceNow"]
+    assert advice["estimate"]["unknowns"]  # gaps reported, not zeroed
+    assert advice["affordability"] == "calculated"
 
 
 @pytest.mark.asyncio

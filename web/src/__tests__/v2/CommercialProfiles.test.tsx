@@ -9,7 +9,10 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api/commercial";
 import * as client from "../../api/client";
-import { CommercialModelEditor } from "../../pages/v2/sow-workspace/CommercialModelEditor";
+import {
+  CommercialModelEditor,
+  resetCommercialDraftCache,
+} from "../../pages/v2/sow-workspace/CommercialModelEditor";
 import type { WorkspaceSnapshot } from "../../pages/v2/sow-workspace/readiness";
 import { bindCommercialSource } from "../../pages/v2/sow-workspace/commercial-editor/bindings";
 
@@ -50,6 +53,9 @@ function snap(inputs: api.CommercialComponent): WorkspaceSnapshot {
 }
 beforeEach(() => {
   vi.restoreAllMocks();
+  resetCommercialDraftCache();
+  vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("no advice"));
+  vi.spyOn(api, "getCommercialProposal").mockRejectedValue(new Error("403"));
   vi.spyOn(client, "getMe").mockResolvedValue({
     groups: ["Delivery"],
   } as client.MeResponse);
@@ -171,7 +177,7 @@ describe("Commercial pricing profiles", () => {
       },
     ];
     render(<CommercialModelEditor snap={snap(inputs)} />);
-    fireEvent.change(screen.getByLabelText("Loaded cost rate"), {
+    fireEvent.change(screen.getByLabelText("Delivery cost rate ($/paid hour)"), {
       target: { value: "61.000001" },
     });
     expect(screen.getByLabelText("Monday scheduled hours")).toHaveValue("8");

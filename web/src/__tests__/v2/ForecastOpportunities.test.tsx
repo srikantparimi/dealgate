@@ -57,12 +57,12 @@ describe("Next opportunities", () => {
     mount({ ...plan, commercial_inputs: inputs });
     fireEvent.click(screen.getByRole("button", { name: "Edit commercial terms" }));
     expect(screen.getByLabelText("Service start")).toHaveValue("2026-11-01");
-    expect(screen.getByLabelText("Total fee")).toHaveValue("420000");
-    fireEvent.change(screen.getByLabelText("Total fee"), { target: { value: "480000" } });
+    expect(screen.getByLabelText("Contract fee")).toHaveValue("420000");
+    fireEvent.change(screen.getByLabelText("Contract fee"), { target: { value: "480000" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel commercial edit" }));
     expect(inputs.pricing.total_fee).toBe("420000");
     fireEvent.click(screen.getByRole("button", { name: "Edit commercial terms" }));
-    expect(screen.getByLabelText("Total fee")).toHaveValue("420000");
+    expect(screen.getByLabelText("Contract fee")).toHaveValue("420000");
   });
   it("names the lifecycle selector without including its option text in the label", () => {
     mount();

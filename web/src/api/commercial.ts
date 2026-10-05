@@ -225,10 +225,22 @@ export const getCommercialProposal = (opportunityId: string) =>
   );
 
 /** S22 · staffing advice: scope estimate + rate lookup + Decimal mix solver. */
+export interface StaffingAdviceRole {
+  role: string;
+  fte: string;
+  location_hint: string | null;
+  evidence: string;
+  skills?: string[];
+  seniority?: string | null;
+  phase?: string | null;
+  people?: number | null;
+  allocation?: string | null;
+  basis?: "stated" | "inferred";
+}
 export interface StaffingAdvice {
   inputs: {
-    revenue: string;
-    weeks: string;
+    revenue: string | null;
+    weeks: string | null;
     target_gm: string;
     target_gm_provenance: string;
     required_fte: string | null;
@@ -240,11 +252,17 @@ export interface StaffingAdvice {
   estimate: {
     required_fte: string;
     duration_weeks: string | null;
-    roles: { role: string; fte: string; location_hint: string | null; evidence: string }[];
+    roles: StaffingAdviceRole[];
     rationale: string;
     evidence: string[];
+    unknowns?: string[];
+    coverage?: string | null;
     provenance: string;
   } | null;
+  /** "blocked" when fee/duration are missing: the scope estimate still
+   * returns; only affordability waits (redesign directive §5). */
+  affordability: "calculated" | "blocked";
+  blocked_reasons: string[];
   suggested: {
     onshore_fte: string;
     offshore_fte: string;
@@ -252,7 +270,7 @@ export interface StaffingAdvice {
     gm: string;
   } | null;
   feasible: boolean;
-  max_fte_at_target: string;
+  max_fte_at_target: string | null;
   caution: string | null;
   warnings: string[];
   sow_version_id: string;

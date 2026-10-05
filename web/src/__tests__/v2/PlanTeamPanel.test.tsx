@@ -1,13 +1,16 @@
 /**
- * S22 · Plan-the-team panel: advice renders the mix, the caution is loud,
- * and Apply fills Calendar staffing through the editor's own state.
+ * S22 redesign · AI proposal card: independent scope demand first, an
+ * explicit blocked state when the fee is missing, a loud delivery
+ * caution with four resolution actions, and compare → apply → undo
+ * that never silently changes the draft.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api/commercial";
 import { PlanTeamPanel } from "../../pages/v2/sow-workspace/commercial-editor/PlanTeamPanel";
 
-const inputs = {
+const baseInputs = {
   component_id: "c1",
   version: "1",
   source_id: "sow-a",
@@ -34,14 +37,24 @@ function advice(overrides: Partial<api.StaffingAdvice> = {}): api.StaffingAdvice
     inputs: {
       revenue: "75400", weeks: "7", target_gm: "0.35",
       target_gm_provenance: "manual", required_fte: "2.5",
-      min_onshore_fte: "1", onshore_cost_per_hour: "95",
+      min_onshore_fte: "0", onshore_cost_per_hour: "95",
       offshore_cost_per_hour: "30", rates_provenance: "looked_up",
     },
     estimate: {
-      required_fte: "2.5", duration_weeks: "7", roles: [],
-      rationale: "team statement", provenance: "extracted",
+      required_fte: "2.5", duration_weeks: "7",
+      roles: [{
+        role: "ServiceNow Consultant", fte: "2", location_hint: null,
+        evidence: "2 full-time", skills: ["ServiceNow"], seniority: null,
+        phase: null, people: 2, allocation: "1", basis: "stated",
+      }],
+      rationale: "team statement",
       evidence: ["Team Size: 3 consultants (2 full-time, 1 half-time)"],
+      unknowns: ["No shift coverage stated"],
+      coverage: null,
+      provenance: "extracted",
     },
+    affordability: "calculated",
+    blocked_reasons: [],
     suggested: { onshore_fte: "1", offshore_fte: "1.5", cost: "39200", gm: "0.4801" },
     feasible: true,
     max_fte_at_target: "5",
@@ -52,24 +65,74 @@ function advice(overrides: Partial<api.StaffingAdvice> = {}): api.StaffingAdvice
   };
 }
 
+/** The editor owns advice + component state; mirror that here. */
+function Harness({
+  inputs = baseInputs,
+  onApply,
+  onResolve,
+}: {
+  inputs?: api.CommercialComponent;
+  onApply?: (next: api.CommercialComponent) => void;
+  onResolve?: (action: string) => void;
+}) {
+  const [component, setComponent] = useState(inputs);
+  const [current, setCurrent] = useState<api.StaffingAdvice | null>(null);
+  return (
+    <PlanTeamPanel
+      opportunityId="deal-a"
+      inputs={component}
+      advice={current}
+      onAdvice={setCurrent}
+      onApply={(next) => {
+        setComponent(next);
+        onApply?.(next);
+      }}
+      onResolve={onResolve}
+    />
+  );
+}
+
 beforeEach(() => vi.restoreAllMocks());
 
 describe("PlanTeamPanel", () => {
-  it("shows the estimate with quotes and the feasible mix", async () => {
+  it("shows the demand estimate with role shapes, quotes and the feasible mix", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockResolvedValue(advice());
-    render(<PlanTeamPanel opportunityId="deal-a" inputs={inputs} onApply={() => {}} />);
+    render(<Harness />);
     fireEvent.click(screen.getByTestId("plan-team-advise"));
     await screen.findByTestId("plan-team-result");
     expect(screen.getByText(/2.5 FTE/)).toBeInTheDocument();
-    expect(screen.getByText(/2 full-time, 1 half-time/)).toBeInTheDocument();
+    expect(screen.getByTestId("plan-team-roles")).toHaveTextContent(
+      "2 × 100% ServiceNow Consultant",
+    );
+    expect(screen.getByTestId("plan-team-roles")).toHaveTextContent("stated in SOW");
+    expect(screen.getByText(/Unknown: No shift coverage stated/)).toBeInTheDocument();
     expect(screen.getByTestId("plan-team-mix")).toHaveTextContent(
       "1 onshore + 1.5 offshore",
     );
-    expect(screen.getByTestId("plan-team-mix")).toHaveTextContent("48.0%");
+    expect(screen.getByTestId("plan-team-mix")).toHaveTextContent("48.01%");
     expect(screen.queryByTestId("plan-team-caution")).not.toBeInTheDocument();
   });
 
-  it("raises the delivery caution loudly when infeasible", async () => {
+  it("missing fee is an explicit blocked state — demand still shows", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockResolvedValue(
+      advice({
+        affordability: "blocked",
+        blocked_reasons: ["No contract fee — enter the fee to assess affordability"],
+        suggested: null,
+        feasible: false,
+        max_fte_at_target: null,
+        inputs: { ...advice().inputs, revenue: null },
+      }),
+    );
+    render(<Harness />);
+    fireEvent.click(screen.getByTestId("plan-team-advise"));
+    await screen.findByTestId("plan-team-result");
+    expect(screen.getByText(/2.5 FTE/)).toBeInTheDocument();
+    expect(screen.getByTestId("plan-team-blocked")).toHaveTextContent("No contract fee");
+    expect(screen.queryByTestId("plan-team-mix")).not.toBeInTheDocument();
+  });
+
+  it("raises the delivery caution with four resolution actions; exception is labeled as not curing the gap", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockResolvedValue(
       advice({
         feasible: false,
@@ -77,34 +140,51 @@ describe("PlanTeamPanel", () => {
           "Scope needs ~6 FTE but the fee supports at most 4 FTE at the 35% GM target — delivery risk",
       }),
     );
-    render(<PlanTeamPanel opportunityId="deal-a" inputs={inputs} onApply={() => {}} />);
+    const onResolve = vi.fn();
+    render(<Harness onResolve={onResolve} />);
     fireEvent.click(screen.getByTestId("plan-team-advise"));
     const caution = await screen.findByTestId("plan-team-caution");
     expect(caution).toHaveTextContent("delivery risk");
+    expect(caution).toHaveTextContent("does not add people or cure a delivery gap");
+    fireEvent.click(screen.getByTestId("resolve-fee"));
+    expect(onResolve).toHaveBeenCalledWith("fee");
+    for (const id of ["resolve-scope", "resolve-term", "resolve-exception"]) {
+      expect(screen.getByTestId(id)).toBeInTheDocument();
+    }
   });
 
-  it("applies the mix as calendar assignments with utilization intact", async () => {
+  it("applies the mix only after review, and undo restores the prior rows", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockResolvedValue(advice());
     const onApply = vi.fn();
-    render(<PlanTeamPanel opportunityId="deal-a" inputs={inputs} onApply={onApply} />);
+    render(<Harness onApply={onApply} />);
     fireEvent.click(screen.getByTestId("plan-team-advise"));
-    await screen.findByTestId("plan-team-apply");
+    await screen.findByTestId("plan-team-review");
+    expect(screen.queryByTestId("plan-team-apply")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("plan-team-review"));
+    await screen.findByTestId("plan-team-compare");
     fireEvent.click(screen.getByTestId("plan-team-apply"));
     await waitFor(() => expect(onApply).toHaveBeenCalledTimes(1));
     const next = onApply.mock.calls[0][0] as api.CommercialComponent;
-    expect(next.staffing).toHaveLength(3); // 1 US full + 1 India full + 1 India half
-    const half = next.staffing.find((a) => a.allocation === "0.5");
-    expect(half).toBeDefined();
-    expect(half!.location).toBe("India");
-    expect(half!.cost_rate).toBe("30");
+    expect(next.staffing).toHaveLength(3); // 1 US full + 1 India full + 1 India part
+    const part = next.staffing.find((a) => a.allocation === "0.5");
+    expect(part).toBeDefined();
+    expect(part!.location).toBe("India");
+    expect(part!.cost_rate).toBe("30");
     expect(next.staffing[0].cost_rate_basis).toBe("hourly");
+    expect(next.costs_confirmed).toBe(false); // apply never attests costs
+    // Undo restores the pre-apply team (empty here).
+    fireEvent.click(screen.getByTestId("plan-team-undo"));
+    await waitFor(() => expect(onApply).toHaveBeenCalledTimes(2));
+    expect((onApply.mock.calls[1][0] as api.CommercialComponent).staffing).toHaveLength(0);
   });
 
-  it("advises automatically when the model has no staffing yet", async () => {
+  it("requests the scope assessment automatically for an empty draft", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockResolvedValue(advice());
-    render(<PlanTeamPanel opportunityId="deal-a" inputs={inputs} onApply={() => {}} />);
-    // No click: the suggestion appears on its own.
+    render(<Harness />);
+    // No click: the independent scope estimate arrives on its own.
     await screen.findByTestId("plan-team-result");
     expect(screen.getByTestId("plan-team-mix")).toHaveTextContent("1 onshore");
+    // One auto-run, not one per render/keystroke.
+    expect(api.getStaffingAdvice).toHaveBeenCalledTimes(1);
   });
 });

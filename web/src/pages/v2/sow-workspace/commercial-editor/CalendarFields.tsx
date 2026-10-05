@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { Copy, Plus, Trash2 } from "lucide-react";
 import type {
   CalendarHours,
   CommercialCalendar,
@@ -8,7 +8,17 @@ import type {
 } from "../../../../api/commercial";
 import { Button } from "../../../../ui-v2/primitives/button";
 import { Input } from "../../../../ui-v2/primitives/input";
-import { Field, Select } from "./Fields";
+import { fractionToPercent } from "../format";
+import { Field, PercentField, Select } from "./Fields";
+
+/** Display-only effort arithmetic (people × allocation); money stays on
+ * the server. Returns null when either side is not a clean number. */
+function derivedFte(quantity: number, allocation: string): string | null {
+  const alloc = Number(allocation);
+  if (!quantity || !allocation || !Number.isFinite(alloc)) return null;
+  const fte = quantity * alloc;
+  return Number.isFinite(fte) ? String(Math.round(fte * 100) / 100) : null;
+}
 
 const DAYS = [
   "Monday",
@@ -54,13 +64,42 @@ export function CalendarFields({
         ],
       },
     });
+  const duplicate = (index: number) => {
+    const source = assignments[index];
+    const copyId = crypto.randomUUID();
+    const copy: CommercialStaffing = {
+      ...structuredClone(source),
+      assignment_id: copyId,
+      role: source.role ? `${source.role} (copy)` : "",
+    };
+    const sourceRate = rates.find(
+      (rate) => rate.assignment_id === source.assignment_id,
+    );
+    onChange({
+      ...component,
+      staffing: [
+        ...assignments.slice(0, index + 1),
+        copy,
+        ...assignments.slice(index + 1),
+      ],
+      ...(component.profile === "calendar_staff_aug" && sourceRate
+        ? {
+            pricing: {
+              ...component.pricing,
+              rates: [...rates, { ...sourceRate, assignment_id: copyId }],
+            },
+          }
+        : {}),
+    });
+  };
   return (
     <section aria-label="Calendar staffing" className="min-w-0 space-y-5">
-      <h3 className="font-medium">Calendar staffing</h3>
+      <h3 className="font-medium">Team roles & calendars</h3>
       {assignments.map((row, index) => {
         const patch = (key: keyof CommercialStaffing, value: unknown) =>
           update(index, { ...row, [key]: value });
         const rate = rateFor(row);
+        const fte = derivedFte(row.quantity, row.allocation);
         return (
           <section
             key={row.assignment_id}
@@ -69,33 +108,44 @@ export function CalendarFields({
           >
             <div className="flex items-center justify-between gap-2">
               <h4 className="font-medium">
-                {row.role || `Assignment ${index + 1}`}
+                {row.role || `Role ${index + 1}`}
               </h4>
-              <Button
-                variant="ghost"
-                size="icon"
-                title="Remove assignment and its pricing rate"
-                aria-label={`Remove assignment ${index + 1}`}
-                onClick={() =>
-                  onChange({
-                    ...component,
-                    staffing: assignments.filter((_, i) => i !== index),
-                    ...(component.profile === "calendar_staff_aug"
-                      ? {
-                          pricing: {
-                            ...component.pricing,
-                            rates: rates.filter(
-                              (value) =>
-                                value.assignment_id !== row.assignment_id,
-                            ),
-                          },
-                        }
-                      : {}),
-                  })
-                }
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Duplicate this role as an editable copy (totals change until you adjust it)"
+                  aria-label={`Duplicate role ${index + 1}`}
+                  onClick={() => duplicate(index)}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Remove this role and its pricing rate"
+                  aria-label={`Remove assignment ${index + 1}`}
+                  onClick={() =>
+                    onChange({
+                      ...component,
+                      staffing: assignments.filter((_, i) => i !== index),
+                      ...(component.profile === "calendar_staff_aug"
+                        ? {
+                            pricing: {
+                              ...component.pricing,
+                              rates: rates.filter(
+                                (value) =>
+                                  value.assignment_id !== row.assignment_id,
+                              ),
+                            },
+                          }
+                        : {}),
+                    })
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Field
@@ -104,17 +154,18 @@ export function CalendarFields({
                 onChange={(value) => patch("role", value)}
               />
               <Select
-                label="Assignment location"
+                label="Delivery location"
                 value={row.location}
                 options={["US", "India"]}
                 onChange={(value) => patch("location", value || null)}
               />
               <label>
-                Headcount
+                Number of people
                 <Input
                   type="number"
                   min="1"
                   step="1"
+                  aria-label="Number of people"
                   value={row.quantity || ""}
                   onChange={(event) =>
                     patch(
@@ -126,33 +177,22 @@ export function CalendarFields({
                   }
                 />
               </label>
-              <Field
-                label="Allocation fraction"
-                type="decimal"
+              <PercentField
+                label="Allocation per person (%)"
                 value={row.allocation}
                 onChange={(value) => patch("allocation", value)}
               />
               <Field
-                label="Assignment start"
+                label="Role start"
                 type="date"
                 value={row.start}
                 onChange={(value) => patch("start", value || null)}
               />
               <Field
-                label="Assignment end"
+                label="Role end"
                 type="date"
                 value={row.end}
                 onChange={(value) => patch("end", value || null)}
-              />
-              <Field
-                label="Assignment timezone"
-                value={row.timezone}
-                onChange={(value) => patch("timezone", value)}
-              />
-              <Field
-                label="Assignment currency"
-                value={row.currency}
-                onChange={(value) => patch("currency", value || null)}
               />
               <Select
                 label="Cost rate basis"
@@ -172,28 +212,57 @@ export function CalendarFields({
                 />
               )}
               <Field
-                label={row.cost_rate_basis === "monthly" ? "Monthly cost per person" : "Loaded cost rate"}
+                label={
+                  row.cost_rate_basis === "monthly"
+                    ? "Delivery cost — monthly per person"
+                    : "Delivery cost rate ($/paid hour)"
+                }
                 type="decimal"
                 value={row.cost_rate}
                 onChange={(value) => patch("cost_rate", value || null)}
               />
               <Field
-                label="Cost source version"
-                value={row.cost_version}
-                onChange={(value) => patch("cost_version", value || null)}
-              />
-              <Field
-                label="Hourly bill rate"
+                label="Client billing rate ($/hour)"
                 type="decimal"
                 value={row.bill_rate}
                 onChange={(value) => patch("bill_rate", value || null)}
               />
-              <Field
-                label="Bill rate source version"
-                value={row.rate_version}
-                onChange={(value) => patch("rate_version", value || null)}
-              />
             </div>
+            <p className="text-secondary text-text-secondary" data-testid={`role-fte-${index}`}>
+              {fte !== null && row.quantity > 0
+                ? `${row.quantity} ${row.quantity === 1 ? "person" : "people"} × ${fractionToPercent(row.allocation)}% allocation = ${fte} FTE on this role.`
+                : "Set the number of people and each person's allocation — people × allocation = full-time equivalents (FTE)."}
+              {component.profile === "fixed_assignment" || component.profile === "milestone"
+                ? " For fixed-fee pricing the billing rate is reference information; revenue comes from the contract fee."
+                : ""}
+            </p>
+            <details className="text-secondary">
+              <summary className="cursor-pointer py-1">
+                Role details (timezone, currency, rate sources)
+              </summary>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field
+                  label="Role timezone"
+                  value={row.timezone}
+                  onChange={(value) => patch("timezone", value)}
+                />
+                <Field
+                  label="Role currency"
+                  value={row.currency}
+                  onChange={(value) => patch("currency", value || null)}
+                />
+                <Field
+                  label="Cost rate source/version"
+                  value={row.cost_version}
+                  onChange={(value) => patch("cost_version", value || null)}
+                />
+                <Field
+                  label="Billing rate source/version"
+                  value={row.rate_version}
+                  onChange={(value) => patch("rate_version", value || null)}
+                />
+              </div>
+            </details>
             {component.profile === "calendar_staff_aug" && (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <Select
@@ -258,7 +327,7 @@ export function CalendarFields({
                 }
               >
                 <Plus className="h-4 w-4" />
-                Add confirmed calendar
+                Add working calendar (weekly hours & holidays)
               </Button>
             )}
           </section>
@@ -297,7 +366,7 @@ export function CalendarFields({
         }
       >
         <Plus className="h-4 w-4" />
-        Add assignment
+        Add role
       </Button>
     </section>
   );

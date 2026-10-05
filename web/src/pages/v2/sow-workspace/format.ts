@@ -85,6 +85,40 @@ export function formatRate(value: string | null | undefined): string | null {
   return formatUsd(value, 2);
 }
 
+/**
+ * S22 redesign · exact decimal-point shift between a stored fraction
+ * ("0.3333") and its percent display ("33.33") — pure string surgery so
+ * no float ever touches a schema value. Non-decimal input passes through
+ * unchanged, so an in-progress keystroke is never mangled and the server
+ * still sees exactly what the user typed if it is invalid.
+ */
+export function fractionToPercent(value: string | null | undefined): string {
+  return shiftDecimal(value, 2);
+}
+
+/** Percent display ("33.33") → stored fraction ("0.3333"). Exact. */
+export function percentToFraction(value: string | null | undefined): string {
+  return shiftDecimal(value, -2);
+}
+
+function shiftDecimal(value: string | null | undefined, places: number): string {
+  if (value == null || value === "") return "";
+  const match = /^(-?)(\d*)(?:\.(\d*))?$/.exec(value.trim());
+  if (!match || (!match[2] && !match[3])) return value;
+  const sign = match[1];
+  let digits = (match[2] ?? "") + (match[3] ?? "");
+  let point = (match[2] ?? "").length + places;
+  while (point > digits.length) digits += "0";
+  while (point < 0) {
+    digits = "0" + digits;
+    point += 1;
+  }
+  let whole = digits.slice(0, point).replace(/^0+(?=\d)/, "");
+  let frac = digits.slice(point).replace(/0+$/, "");
+  if (whole === "") whole = "0";
+  return sign + whole + (frac ? "." + frac : "");
+}
+
 /** Strip trailing zeros / dots from a raw decimal for a text input's value.
  * A stored "800.000000000" becomes "800" so the input does not display the
  * raw padding while still round-tripping numerically on save. */

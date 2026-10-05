@@ -2,6 +2,50 @@
 
 ## RESUME HERE
 
+**2026-10-05 latest. STAFFING & GM REDESIGN (directive) BUILT LOCALLY —
+NOT DEPLOYED.** Branch `fix/s21-identity-and-owner-display`, worktree
+`/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast`. The owner's
+redesign directive (`~/Downloads/DealGate_Staffing_GM_Redesign_Prompt.txt`
++ `DealGate_Staffing_GM_Design.html` — demo data only, NOT rules) is
+implemented:
+
+- Coverage map: `docs/s21/staffing-gm-redesign-map.md` — all seven
+  registry models with real schema keys → new locations; genuine gaps
+  listed there (reload persistence, version-history browser UI).
+- `CommercialModelEditor` restructured into four sections (Contract &
+  pricing / Team & calendars / Monthly plan & expenses / Review & save)
+  with a Scope-needs / Budget-supports / Currently-planned summary and
+  an understaffed alert a green margin cannot hide; section nav; one
+  readiness panel stays in the shell (now with a compact
+  current-blocker line, `readiness-blocker`). Unsaved drafts survive
+  tab navigation via an in-memory cache (`resetCommercialDraftCache`
+  for tests); reload still loses drafts — documented gap.
+- Plain language: fractions display as percent everywhere via exact
+  string decimal-shift (`fractionToPercent`/`percentToFraction` in
+  format.ts, `PercentInput`); people × allocation = FTE shown per role;
+  Duplicate-role action; role timezone/currency/rate-sources in a
+  details drawer; monthly allocations ("Share of contract (%)", Revenue
+  geography) live in section 3 with conservation text matching the real
+  largest-remainder engine behavior.
+- AI-first: `bedrock_team_estimate` emits role shapes (skills,
+  seniority, phase, people, allocation, stated|inferred basis),
+  unknowns and coverage; `staffing_advice.advise` never 422s on missing
+  fee/duration — scope estimate always returns, affordability is an
+  explicit `blocked` state with reasons. PlanTeamPanel reads the
+  CANONICAL fee/dates (no duplicate inputs), auto-runs once for empty
+  drafts, offers Regenerate, demand-vs-budget cards, four resolution
+  actions (fee/scope/term/GM-exception — exception explicitly does not
+  cure delivery gaps), compare → apply → undo; apply never touches
+  costs_confirmed. min_onshore defaults to none (examples ≠ rules).
+- Tests: api `test_s22_staffing_advice.py` (9, incl. blocked states +
+  role shapes), web `StaffingGmRedesign.test.tsx` (9) + reworked
+  `PlanTeamPanel.test.tsx` (5); all commercial suites relabeled and
+  green; `tsc --noEmit` clean.
+
+NOT done: staging deploy (needs owner authorization per policy), the
+~10 journeys' staging click-through, narrow-width/keyboard Playwright
+pass. Branch still awaits owner "merge" for the earlier eleven commits.
+
 **2026-10-05 later. SIGNATORY LEAK FIX + UX ROUND DEPLOYED; explainer
 published.** Branch HEAD = signatory-filter commit, staging image
 `s21fix-<HEAD8>` smoke GREEN + gate clean. This round: test identities

@@ -64,9 +64,13 @@ export function emptyPricing(profile: string): CommercialPricing {
 export function PricingFields({
   component,
   onChange,
+  monthlyAllocationsElsewhere = false,
 }: {
   component: CommercialComponent;
   onChange: (pricing: CommercialPricing) => void;
+  /** S22 redesign: the four-section layout renders the fixed-fee monthly
+   * allocations in "Monthly plan & expenses" via MonthlyAllocations. */
+  monthlyAllocationsElsewhere?: boolean;
 }) {
   const pricing = component.pricing ?? {};
   const patch = (key: keyof CommercialPricing, value: unknown) =>
@@ -87,43 +91,26 @@ export function PricingFields({
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
           <Field
-            label="Total fee"
+            label="Contract fee"
             type="decimal"
             value={pricing.total_fee}
             onChange={(value) => patch("total_fee", value || null)}
           />
           <Field
-            label="Allocation basis"
+            label="Revenue allocation method"
             value={pricing.allocation_basis}
             onChange={(value) => patch("allocation_basis", value || null)}
           />
           <Field
-            label="Rounding unit (advanced — 0.01 = cents)"
+            label="Rounding precision (advanced — 0.01 = cents)"
             type="decimal"
             value={pricing.minor_unit}
             onChange={(value) => patch("minor_unit", value)}
           />
         </div>
-        <Rows
-          title="Service-month allocations (each month's share of the fee — weights must add to 1)"
-          rows={pricing.allocations ?? []}
-          columns={[
-            { key: "month", label: "Allocation month", type: "date" },
-            {
-              key: "location",
-              label: "Allocation location",
-              options: ["US", "India"],
-            },
-            { key: "weight", label: "Weight (1 = 100%)", type: "decimal" },
-          ]}
-          create={() => ({ month: "", location: "", weight: "" })}
-          onChange={(value) => patch("allocations", value)}
-          addLabel="Add allocation"
-        />
-        <AllocationSummary
-          totalFee={pricing.total_fee}
-          allocations={pricing.allocations ?? []}
-        />
+        {!monthlyAllocationsElsewhere && (
+          <MonthlyAllocations pricing={pricing} onChange={onChange} />
+        )}
       </div>
     );
   if (component.profile === "recurring_msp")
@@ -296,6 +283,50 @@ export function PricingFields({
   );
 }
 
+/**
+ * S22 redesign · fixed-fee monthly revenue plan, rendered inside
+ * "Monthly plan & expenses". Shares are entered and shown in percent;
+ * the schema keeps exact fractions (PercentInput shifts the decimal
+ * point as a string — no floats touch stored weights). The exact
+ * month-by-month currency amounts and remainder placement come from the
+ * server schedule; the summary line's amounts are approximate display
+ * only and say so.
+ */
+export function MonthlyAllocations({
+  pricing,
+  onChange,
+}: {
+  pricing: CommercialPricing;
+  onChange: (pricing: CommercialPricing) => void;
+}) {
+  const patch = (key: keyof CommercialPricing, value: unknown) =>
+    onChange({ ...pricing, [key]: value });
+  return (
+    <div className="space-y-3">
+      <Rows
+        title="Monthly revenue plan (each month's share of the contract fee)"
+        rows={pricing.allocations ?? []}
+        columns={[
+          { key: "month", label: "Month", type: "date" },
+          {
+            key: "location",
+            label: "Revenue geography",
+            options: ["US", "India"],
+          },
+          { key: "weight", label: "Share of contract (%)", type: "percent" },
+        ]}
+        create={() => ({ month: "", location: "", weight: "" })}
+        onChange={(value) => patch("allocations", value)}
+        addLabel="Add monthly allocation"
+      />
+      <AllocationSummary
+        totalFee={pricing.total_fee}
+        allocations={pricing.allocations ?? []}
+      />
+    </div>
+  );
+}
+
 function AllocationSummary({
   totalFee,
   allocations,
@@ -308,24 +339,37 @@ function AllocationSummary({
   const sum = weights.reduce((a, b) => a + b, 0);
   const fee = Number(totalFee ?? 0);
   const ok = Math.abs(sum - 1) < 0.0005;
+  const remaining = 1 - sum;
   return (
-    <p
+    <div
       data-testid="allocation-summary"
-      className={ok ? "text-secondary text-text-secondary" : "text-danger"}
+      className={ok ? "text-secondary text-text-secondary" : "text-secondary text-danger"}
     >
-      {allocations
-        .map((a) => {
-          const w = Number(a.weight ?? 0);
-          const pct = (w * 100).toFixed(2).replace(/\.00$/, "");
-          return fee > 0
-            ? `${pct}% ≈ $${Math.round(w * fee).toLocaleString()}`
-            : `${pct}%`;
-        })
-        .join(" · ")}
-      {" — "}
-      {ok
-        ? "weights add to 100%."
-        : `weights add to ${(sum * 100).toFixed(2)}% — they must total 100%.`}
-    </p>
+      <p>
+        {allocations
+          .map((a) => {
+            const w = Number(a.weight ?? 0);
+            const pct = (w * 100).toFixed(2).replace(/\.00$/, "");
+            return fee > 0
+              ? `${pct}% ≈ $${Math.round(w * fee).toLocaleString()}`
+              : `${pct}%`;
+          })
+          .join(" · ")}
+        {" — "}
+        {ok
+          ? "shares add to 100%."
+          : `shares add to ${(sum * 100).toFixed(2)}% — ${
+              remaining > 0
+                ? `${(remaining * 100).toFixed(2)}% of the fee is unallocated`
+                : `${(-remaining * 100).toFixed(2)}% over-allocated`
+            }. They must total 100%.`}
+      </p>
+      <p className="text-text-secondary">
+        Amounts above are approximate for orientation. The saved schedule
+        allocates the exact contract amount to the currency's rounding
+        precision; leftover rounding units go to the months whose shares
+        were rounded down the most, so the total always matches the fee.
+      </p>
+    </div>
   );
 }

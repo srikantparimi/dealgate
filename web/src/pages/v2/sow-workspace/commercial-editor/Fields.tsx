@@ -1,6 +1,70 @@
+import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "../../../../ui-v2/primitives/button";
 import { Input } from "../../../../ui-v2/primitives/input";
+import { fractionToPercent, percentToFraction } from "../format";
+
+/**
+ * S22 redesign · percent-displayed input over a stored fraction
+ * ("0.3333" shows as "33.33"). The shift is an exact string operation
+ * (format.ts); a local draft keeps in-progress keystrokes like "33."
+ * intact while the schema always holds the fraction.
+ */
+export function PercentInput({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: string | null | undefined;
+  onChange: (fraction: string) => void;
+  ariaLabel?: string;
+}) {
+  const [draft, setDraft] = useState(() => fractionToPercent(value));
+  useEffect(() => {
+    if (percentToFraction(draft) !== (value ?? "")) {
+      setDraft(fractionToPercent(value));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  return (
+    <div className="relative">
+      <Input
+        aria-label={ariaLabel}
+        inputMode="decimal"
+        placeholder="Unconfirmed"
+        className="pr-7"
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          onChange(percentToFraction(event.target.value));
+        }}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-text-secondary"
+      >
+        %
+      </span>
+    </div>
+  );
+}
+
+export function PercentField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | null | undefined;
+  onChange: (fraction: string) => void;
+}) {
+  return (
+    <label className="min-w-0 space-y-1 text-secondary">
+      {label}
+      <PercentInput value={value} onChange={onChange} ariaLabel={label} />
+    </label>
+  );
+}
 
 export function Field({
   label,
@@ -67,7 +131,7 @@ export function Select({
 export interface Column<T> {
   key: keyof T;
   label: string;
-  type?: "date" | "decimal";
+  type?: "date" | "decimal" | "percent";
   options?: Option[];
   readonly?: boolean;
 }
@@ -143,6 +207,20 @@ export function Rows<T extends object>({
                           </option>
                         ))}
                       </select>
+                    ) : column.type === "percent" ? (
+                      <PercentInput
+                        ariaLabel={`${column.label} ${index + 1}`}
+                        value={row[column.key] == null ? "" : String(row[column.key])}
+                        onChange={(fraction) =>
+                          onChange(
+                            rows.map((item, i) =>
+                              i === index
+                                ? { ...item, [column.key]: fraction }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
                     ) : (
                       <Input
                         aria-label={`${column.label} ${index + 1}`}

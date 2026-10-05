@@ -4,6 +4,7 @@ import * as api from "../../api/commercial";
 import * as client from "../../api/client";
 import { CommercialModelEditor } from "../../pages/v2/sow-workspace/CommercialModelEditor";
 import { StaffingGmTab } from "../../pages/v2/sow-workspace/StaffingGmTab";
+import { resetCommercialDraftCache } from "../../pages/v2/sow-workspace/CommercialModelEditor";
 import type { WorkspaceSnapshot } from "../../pages/v2/sow-workspace/readiness";
 
 const profiles = ["fixed_assignment", "recurring_msp", "calendar_staff_aug", "tm", "milestone", "unit", "hybrid"];
@@ -70,6 +71,9 @@ async function preview() {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  resetCommercialDraftCache();
+  vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("no advice"));
+  vi.spyOn(api, "getCommercialProposal").mockRejectedValue(new Error("403"));
   vi.spyOn(client, "getMe").mockResolvedValue({ groups: ["Delivery"] } as client.MeResponse);
   vi.spyOn(api, "getCommercialProfiles").mockResolvedValue({
     profiles: profiles.map((key) => ({ key, version: "1", required_fields: [], calculation_available: true })),
@@ -88,11 +92,11 @@ describe("Independent commercial editor boundary checks", () => {
     const basis = await screen.findByRole("combobox", { name: "Cost rate basis" });
     expect(basis).toHaveValue("hourly");
     fireEvent.change(basis, { target: { value: "monthly" } });
-    expect(screen.getByLabelText("Monthly cost per person")).toHaveValue("");
-    expect(screen.getByLabelText("Cost source version")).toHaveValue("");
+    expect(screen.getByLabelText("Delivery cost — monthly per person")).toHaveValue("");
+    expect(screen.getByLabelText("Cost rate source/version")).toHaveValue("");
     expect(screen.getByRole("combobox", { name: "Partial-month cost policy" })).toHaveValue("");
-    fireEvent.change(screen.getByLabelText("Monthly cost per person"), { target: { value: "4800" } });
-    fireEvent.change(screen.getByLabelText("Cost source version"), { target: { value: "fixture-monthly-allocation-v1" } });
+    fireEvent.change(screen.getByLabelText("Delivery cost — monthly per person"), { target: { value: "4800" } });
+    fireEvent.change(screen.getByLabelText("Cost rate source/version"), { target: { value: "fixture-monthly-allocation-v1" } });
     fireEvent.change(screen.getByRole("combobox", { name: "Partial-month cost policy" }), { target: { value: "full_month" } });
     await preview();
     const saved = vi.mocked(api.previewCommercial).mock.calls[0][0];
@@ -100,8 +104,8 @@ describe("Independent commercial editor boundary checks", () => {
       cost_version: "fixture-monthly-allocation-v1", cost_proration: "full_month" });
     expect(saved.pricing?.rates).toEqual(inputs.pricing?.rates);
     fireEvent.change(basis, { target: { value: "hourly" } });
-    expect(screen.getByLabelText("Loaded cost rate")).toHaveValue("");
-    expect(screen.getByLabelText("Cost source version")).toHaveValue("");
+    expect(screen.getByLabelText("Delivery cost rate ($/paid hour)")).toHaveValue("");
+    expect(screen.getByLabelText("Cost rate source/version")).toHaveValue("");
     expect(screen.queryByRole("combobox", { name: "Partial-month cost policy" })).not.toBeInTheDocument();
   });
   it("preserves monthly cost unknown policy and distinguishes an explicitly unconfirmed cost basis", async () => {
@@ -110,7 +114,7 @@ describe("Independent commercial editor boundary checks", () => {
     render(<CommercialModelEditor snap={snapshot(inputs)} />);
     expect(await screen.findByRole("combobox", { name: "Cost rate basis" })).toHaveValue("monthly");
     expect(screen.getByRole("combobox", { name: "Partial-month cost policy" })).toHaveValue("");
-    expect(screen.getByLabelText("Monthly cost per person")).toHaveValue("4800");
+    expect(screen.getByLabelText("Delivery cost — monthly per person")).toHaveValue("4800");
     fireEvent.change(screen.getByRole("combobox", { name: "Cost rate basis" }), { target: { value: "" } });
     await preview();
     expect(vi.mocked(api.previewCommercial).mock.calls[0][0].staffing[0]).toMatchObject({
@@ -192,9 +196,9 @@ describe("Independent commercial editor boundary checks", () => {
   it.each(["fixed_assignment", "recurring_msp"])("allows adding the first cost-calendar assignment for %s", async (profile) => {
     render(<CommercialModelEditor snap={snapshot(component(profile))} />);
     await waitFor(() => expect(screen.getByLabelText("Pricing profile", { exact: true })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Add assignment" }));
-    expect(screen.getByLabelText("Loaded cost rate")).toHaveValue("");
-    expect(screen.getByLabelText("Headcount")).toHaveValue(null);
+    fireEvent.click(screen.getByRole("button", { name: "Add role" }));
+    expect(screen.getByLabelText("Delivery cost rate ($/paid hour)")).toHaveValue("");
+    expect(screen.getByLabelText("Number of people")).toHaveValue(null);
   });
 
   it.each(["credit", "usage"])("exposes an existing MSP %s value for correction", async (kind) => {
@@ -223,7 +227,7 @@ describe("Independent commercial editor boundary checks", () => {
     expect(screen.getByLabelText("Pricing profile", { exact: true })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save version" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: profile === "hybrid" ? "Add component" : "Add assignment" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: profile === "hybrid" ? "Add component" : "Add role" })).toBeDisabled();
   });
 
   it.each(["calendar_staff_aug", "hybrid"])("locks verified but not yet released %s contracts", async (profile) => {

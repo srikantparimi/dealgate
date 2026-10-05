@@ -1,4 +1,15 @@
-import { useEffect, useState } from "react";
+/**
+ * S22 redesign · Staffing & GM tab content, organized as four local
+ * sections over ONE persisted draft (never a wizard):
+ *   1 Contract & pricing · 2 Team & calendars ·
+ *   3 Monthly plan & expenses · 4 Review & save
+ * A Scope needs / Budget supports / Currently planned summary leads the
+ * page; a green margin cannot hide an understaffed plan. All seven
+ * registered pricing models keep their model-specific editors. Money
+ * stays server-side Decimal — this file only formats and compares for
+ * display. The single readiness panel lives in the workspace shell.
+ */
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Calculator, Plus, Save, Trash2 } from "lucide-react";
 import { getMe, type SowFieldName } from "../../../api/client";
 import {
@@ -10,21 +21,22 @@ import {
   type CommercialSchedule,
   getCommercialProposal,
   type CommercialProposal,
+  type StaffingAdvice,
 } from "../../../api/commercial";
 import { Button } from "../../../ui-v2/primitives/button";
 import { Input } from "../../../ui-v2/primitives/input";
 import type { WorkspaceSnapshot } from "./readiness";
-import { formatPercent } from "./format";
+import { formatPercent, fractionToPercent } from "./format";
 import {
   emptyPricing,
+  MonthlyAllocations,
   PricingFields,
   PROFILE_LABELS,
 } from "./commercial-editor/PricingFields";
 import { CalendarFields } from "./commercial-editor/CalendarFields";
 import { HybridFields } from "./commercial-editor/HybridFields";
 import { bindCommercialSource } from "./commercial-editor/bindings";
-import { MspAdjustmentsFields } from "./commercial-editor/MspAdjustmentsFields";
-import { PlanTeamPanel } from "./commercial-editor/PlanTeamPanel";
+import { PlanTeamPanel, type ResolutionAction } from "./commercial-editor/PlanTeamPanel";
 
 function initialInputs(snap: WorkspaceSnapshot): CommercialComponent {
   if (snap.gmModel?.commercial_inputs)
@@ -73,8 +85,35 @@ function initialInputs(snap: WorkspaceSnapshot): CommercialComponent {
   };
 }
 
+/**
+ * In-memory draft cache so an unsaved draft survives SOW-tab navigation
+ * and section movement within this session (directive §6). Deliberately
+ * NOT browser storage: SOW financials stay out of localStorage. A full
+ * page reload still loses unsaved edits — a listed, known gap.
+ */
+const draftCache = new Map<
+  string,
+  { inputs: CommercialComponent; reason: string; dirty: boolean }
+>();
+
+/** Test isolation hook: drafts must not leak between test renders. */
+export function resetCommercialDraftCache() {
+  draftCache.clear();
+}
+
+const SECTIONS = [
+  { id: "contract", label: "1 · Contract & pricing" },
+  { id: "team", label: "2 · Team & calendars" },
+  { id: "monthly", label: "3 · Monthly plan & expenses" },
+  { id: "review", label: "4 · Review & save" },
+] as const;
+
 export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
-  const [inputs, setInputs] = useState(() => initialInputs(snap));
+  const draftKey = `${snap.sow?.id ?? "none"}:${snap.gmModel?.id ?? "new"}`;
+  const cached = draftCache.get(draftKey);
+  const [inputs, setInputs] = useState(() =>
+    cached?.dirty ? cached.inputs : initialInputs(snap),
+  );
   const [modelId, setModelId] = useState(snap.gmModel?.id ?? null);
   const [result, setResult] = useState<CommercialPreview>({
     computed: snap.gmModel?.computed,
@@ -82,17 +121,28 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   });
   const [canWrite, setCanWrite] = useState(false);
   const [policy, setPolicy] = useState("");
-  const [reason, setReason] = useState("");
+  const [floors, setFloors] = useState<{ us: string; india: string } | null>(null);
+  const [reason, setReason] = useState(cached?.dirty ? cached.reason : "");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(cached?.dirty ?? false);
   const [proposal, setProposal] = useState<CommercialProposal | null>(null);
+  const [advice, setAdvice] = useState<StaffingAdvice | null>(null);
+  const [resolution, setResolution] = useState<ResolutionAction | null>(null);
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  // Draft survives tab navigation: every change lands in the cache.
+  useEffect(() => {
+    draftCache.set(draftKey, { inputs, reason, dirty });
+  }, [draftKey, inputs, reason, dirty]);
+
   // S22 · pre-fill from the SOW + auto-staffing proposal when nothing is
   // saved yet and the human has not started typing. Every value stays
   // editable; the machine never confirms costs.
   useEffect(() => {
     if (snap.gmModel?.commercial_inputs || !snap.deal) return;
+    if (draftCache.get(draftKey)?.dirty) return;
     let active = true;
     getCommercialProposal(snap.deal.id)
       .then((p) => {
@@ -129,7 +179,12 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       });
     getCommercialProfiles()
       .then((registry) => {
-        if (active) setPolicy(registry.policy.version);
+        if (!active) return;
+        setPolicy(registry.policy.version);
+        setFloors({
+          us: registry.policy.us_floor,
+          india: registry.policy.india_floor,
+        });
       })
       .catch((e) => {
         if (active)
@@ -170,8 +225,6 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       state === "saved" ? state : "stale_preview",
     );
   };
-  const pricePatch = (key: string, value: unknown) =>
-    patch("pricing", { ...pricing, [key]: value });
   async function calculate(save: boolean) {
     setBusy(true);
     setError("");
@@ -198,6 +251,7 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
         });
         setNotice("Commercial version saved.");
         setDirty(false);
+        draftCache.delete(draftKey);
         setCalculationState("saved");
       } else {
         setResult(await previewCommercial(body));
@@ -222,30 +276,185 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       </label>
     );
   }
+  const goTo = (id: string) => {
+    sectionRefs.current[id]?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
+  const handleResolve = (action: ResolutionAction) => {
+    setResolution(action);
+    if (action === "fee" || action === "term") goTo("contract");
+  };
+
+  // Display-only effort totals for the summary strip (people × allocation).
+  const plannedPeople = inputs.staffing.reduce((sum, row) => sum + (row.quantity || 0), 0);
+  const plannedFteRaw = inputs.staffing.reduce(
+    (sum, row) => sum + (row.quantity || 0) * (Number(row.allocation) || 0),
+    0,
+  );
+  const plannedFte = Math.round(plannedFteRaw * 100) / 100;
+  const scopeNeeds = advice?.estimate?.required_fte ?? null;
+  const budgetSupports =
+    advice && advice.affordability === "calculated" ? advice.max_fte_at_target : null;
+  const understaffed =
+    scopeNeeds !== null &&
+    Number.isFinite(Number(scopeNeeds)) &&
+    plannedFte < Number(scopeNeeds);
+
+  const sectionStatus: Record<string, string> = {
+    contract: pricing.total_fee
+      ? `${PROFILE_LABELS[inputs.profile] ?? inputs.profile} · fee ${inputs.currency ?? ""} ${pricing.total_fee}`
+      : `${PROFILE_LABELS[inputs.profile] ?? inputs.profile}`,
+    team:
+      inputs.staffing.length > 0
+        ? `${inputs.staffing.length} role${inputs.staffing.length === 1 ? "" : "s"} · ${plannedFte} FTE`
+        : "No roles yet",
+    monthly:
+      (pricing.allocations?.length ?? 0) + inputs.costs.length > 0
+        ? `${pricing.allocations?.length ?? 0} allocations · ${inputs.costs.length} expenses`
+        : "Nothing planned yet",
+    review: dirty ? "Unsaved draft" : "Saved",
+  };
+
+  const sectionShell = (
+    id: (typeof SECTIONS)[number]["id"],
+    children: ReactNode,
+  ) => (
+    <section
+      key={id}
+      id={`sgm-${id}`}
+      ref={(el) => {
+        sectionRefs.current[id] = el;
+      }}
+      aria-label={SECTIONS.find((s) => s.id === id)!.label}
+      data-testid={`sgm-section-${id}`}
+      className="rounded-panel border border-divider bg-surface p-4 space-y-4 scroll-mt-24"
+    >
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-section text-text">
+          {SECTIONS.find((s) => s.id === id)!.label}
+        </h3>
+        <span className="text-secondary text-text-secondary">
+          {sectionStatus[id]}
+        </span>
+      </header>
+      {children}
+    </section>
+  );
+
   return (
-    <section className="min-w-0 space-y-4" aria-label="Commercial model">
+    <section className="min-w-0 space-y-4" aria-label="Staffing & GM plan">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-section">Commercial model</h2>
-        <span className="text-secondary">
-          {snap.gmModel?.commercial_profile ?? inputs.profile}
+        <h2 className="text-section">Staffing & GM</h2>
+        <span className="flex items-center gap-2 text-secondary">
+          <span data-testid="draft-state">{dirty ? "Unsaved draft" : "Saved"}</span>
+          <span>{snap.gmModel?.commercial_profile ?? inputs.profile}</span>
         </span>
       </header>
       {error && (
-        <p role="alert" className="text-danger">
+        <p role="alert" data-testid="commercial-error" className="text-danger">
           {error}
         </p>
       )}
-      {editable && snap.deal && (
-        <PlanTeamPanel
-          opportunityId={snap.deal.id}
-          inputs={inputs}
-          onApply={(next) => {
-            replaceComponent(next);
-            setDirty(true);
-          }}
-        />
-      )}
+
+      {/* Scope needs / Budget supports / Currently planned — one summary
+          above the four sections. Unknown stays Unknown, never zero. */}
+      <div
+        data-testid="sgm-summary"
+        className="rounded-panel border border-divider bg-surface p-4"
+      >
+        <dl className="grid gap-3 sm:grid-cols-3 text-body">
+          <div>
+            <dt className="text-secondary text-text-secondary">Scope needs</dt>
+            <dd className="text-text" data-testid="summary-scope">
+              {scopeNeeds !== null
+                ? `${scopeNeeds} FTE${advice?.estimate?.duration_weeks ? ` over ${advice.estimate.duration_weeks} weeks` : ""} (AI draft)`
+                : "Unknown — no scope estimate yet"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-text-secondary">Budget supports</dt>
+            <dd className="text-text" data-testid="summary-budget">
+              {budgetSupports !== null
+                ? `up to ${budgetSupports} FTE at the ${fractionToPercent(advice!.inputs.target_gm)}% target`
+                : "Unknown — fee, duration or rates missing"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-secondary text-text-secondary">Currently planned</dt>
+            <dd className="text-text" data-testid="summary-planned">
+              {inputs.staffing.length > 0
+                ? `${plannedPeople} ${plannedPeople === 1 ? "person" : "people"} · ${plannedFte} FTE`
+                : "No team planned yet"}
+            </dd>
+          </div>
+        </dl>
+        {understaffed && (
+          <p role="alert" data-testid="summary-understaffed" className="mt-2 text-danger">
+            The planned team covers {plannedFte} of the ~{scopeNeeds} FTE the
+            scope needs. A passing margin does not make this plan
+            delivery-ready — close the staffing gap or change the scope, fee
+            or term.
+          </p>
+        )}
+      </div>
+
+      {/* Section navigation: free movement, status labels, no wizard. */}
+      <nav aria-label="Plan sections" className="flex flex-wrap gap-2">
+        {SECTIONS.map((section) => (
+          <Button
+            key={section.id}
+            type="button"
+            variant="secondary"
+            onClick={() => goTo(section.id)}
+          >
+            {section.label}
+          </Button>
+        ))}
+      </nav>
+
       {notice && <p role="status">{notice}</p>}
+      {resolution && (
+        <div
+          role="note"
+          data-testid="resolution-note"
+          className="rounded-panel border border-primary/40 bg-primary-subtle/30 p-3 text-secondary space-y-1"
+        >
+          {resolution === "fee" && (
+            <p className="text-text">
+              Increase the fee: edit the contract fee in Contract & pricing
+              below, then re-run the suggestion. A fee change on a submitted
+              basis follows the existing material-change and re-approval rules.
+            </p>
+          )}
+          {resolution === "term" && (
+            <p className="text-text">
+              Change the term: adjust the contract dates in Contract & pricing.
+              Role dates default from them; rows you overrode keep their own
+              dates — review them after the change.
+            </p>
+          )}
+          {resolution === "scope" && (
+            <p className="text-text">
+              Reduce the scope: scope lives on the SOW itself. Agree the change
+              with the client, upload the revised SOW in the Documents tab, and
+              confirm it in the Scope tab — the estimate can then be
+              regenerated against the new scope. The original demand stays
+              traceable to the prior SOW version.
+            </p>
+          )}
+          {resolution === "exception" && (
+            <p className="text-text">
+              Request a GM exception: save this version and submit for
+              approval — when the margin is below the policy floor the
+              existing workflow adds the CEO exception step with its required
+              evidence. An exception approves the financial deviation only; it
+              does not cure missing staff, skills or coverage.
+            </p>
+          )}
+          <button type="button" className="underline" onClick={() => setResolution(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {proposal && !snap.gmModel?.commercial_inputs && (
         <div
           role="note"
@@ -288,124 +497,170 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       ) : supported ? (
         <>
           <fieldset disabled={!editable || busy} className="min-w-0 space-y-4">
-            <label className="block text-secondary">
-              Pricing profile
-              <select
-                aria-label="Pricing profile"
-                className="mt-1 h-10 w-full rounded-md border border-divider bg-surface px-3"
-                value={inputs.profile}
-                onChange={(e) => setPendingProfile(e.target.value)}
-              >
-                {Object.entries(PROFILE_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {pendingProfile && (
-              <section
-                aria-label="Confirm pricing model change"
-                className="space-y-3 border-l-4 border-warning p-3"
-              >
-                <p>
-                  Replace {PROFILE_LABELS[inputs.profile]} pricing terms with{" "}
-                  {PROFILE_LABELS[pendingProfile]}? Existing pricing rows will
-                  be removed from this draft. Source evidence, service dates,
-                  staffing and period costs are retained.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => setPendingProfile(null)}
-                  >
-                    Keep current model
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setInputs((previous) => ({
-                        ...previous,
-                        profile: pendingProfile,
-                        pricing: emptyPricing(pendingProfile),
-                      }));
-                      setPendingProfile(null);
-                      setDirty(true);
-                      setCalculationState((state) =>
-                        state === "saved" ? state : "stale_preview",
-                      );
-                      setNotice("");
-                    }}
-                  >
-                    Replace pricing terms
-                  </Button>
-                </div>
-              </section>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {field("Workstream", "workstream_id")}
-              {field("Service start", "service_start", "date")}
-              {field("Service end", "service_end", "date")}
-              {field("Timezone", "timezone")}
-              {field("Currency", "currency")}
-              {field("Billing cadence", "billing_cadence")}
-              {field("Cost basis", "cost_basis")}
-            </div>
-            <label className="block text-secondary">
-              Source evidence
-              <textarea
-                className="mt-1 min-h-20 w-full rounded-md border border-divider bg-surface p-3"
-                value={inputs.source_evidence.join("\n")}
-                onChange={(e) =>
-                  patch("source_evidence", e.target.value.split("\n"))
-                }
-              />
-            </label>
-            {inputs.profile === "fixed_assignment" ? (
+            {sectionShell(
+              "contract",
               <>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <label>
-                    Total fee
-                    <Input
-                      inputMode="decimal"
-                      value={pricing.total_fee ?? ""}
-                      onChange={(e) =>
-                        pricePatch("total_fee", e.target.value || null)
-                      }
-                    />
-                  </label>
-                  <label>
-                    Allocation basis
-                    <Input
-                      value={pricing.allocation_basis ?? ""}
-                      onChange={(e) =>
-                        pricePatch("allocation_basis", e.target.value || null)
-                      }
-                    />
-                  </label>
-                  <label>
-                    Currency minor unit
-                    <Input
-                      inputMode="decimal"
-                      value={pricing.minor_unit ?? ""}
-                      onChange={(e) => pricePatch("minor_unit", e.target.value)}
-                    />
-                  </label>
+                <label className="block text-secondary">
+                  Engagement pricing model
+                  <select
+                    aria-label="Pricing profile"
+                    className="mt-1 h-10 w-full rounded-md border border-divider bg-surface px-3"
+                    value={inputs.profile}
+                    onChange={(e) => setPendingProfile(e.target.value)}
+                  >
+                    {Object.entries(PROFILE_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {pendingProfile && (
+                  <section
+                    aria-label="Confirm pricing model change"
+                    className="space-y-3 border-l-4 border-warning p-3"
+                  >
+                    <p>
+                      Replace {PROFILE_LABELS[inputs.profile]} pricing terms with{" "}
+                      {PROFILE_LABELS[pendingProfile]}? Existing pricing rows will
+                      be removed from this draft. Source evidence, service dates,
+                      staffing and period costs are retained.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => setPendingProfile(null)}
+                      >
+                        Keep current model
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setInputs((previous) => ({
+                            ...previous,
+                            profile: pendingProfile,
+                            pricing: emptyPricing(pendingProfile),
+                          }));
+                          setPendingProfile(null);
+                          setDirty(true);
+                          setCalculationState((state) =>
+                            state === "saved" ? state : "stale_preview",
+                          );
+                          setNotice("");
+                        }}
+                      >
+                        Replace pricing terms
+                      </Button>
+                    </div>
+                  </section>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {field("Workstream", "workstream_id")}
+                  {field("Contract start", "service_start", "date")}
+                  {field("Contract end", "service_end", "date")}
+                  {field("Contract timezone", "timezone")}
+                  {field("Contract currency", "currency")}
+                  {field("Billing schedule", "billing_cadence")}
                 </div>
-                <h3 className="text-body font-medium">
-                  Service-month allocations
-                </h3>
-                {(pricing.allocations ?? []).map((row, i) => (
-                  <div key={i} className="flex flex-wrap items-end gap-2">
+                <p className="text-secondary text-text-secondary">
+                  {inputs.service_start && inputs.service_end
+                    ? `Stated term: ${inputs.service_start} to ${inputs.service_end}.`
+                    : "Contract dates unknown — they stay unknown until set; nothing is guessed. A SOW stating only a duration (e.g. seven weeks from kickoff) needs the kickoff date here."}
+                </p>
+                {inputs.profile === "hybrid" ? (
+                  <HybridFields component={inputs} onChange={replaceComponent} />
+                ) : (
+                  <PricingFields
+                    component={inputs}
+                    onChange={(value) => patch("pricing", value)}
+                    monthlyAllocationsElsewhere={inputs.profile === "fixed_assignment"}
+                  />
+                )}
+                <details className="text-secondary">
+                  <summary className="cursor-pointer py-1">Advanced pricing details</summary>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {field("Cost basis", "cost_basis")}
+                  </div>
+                </details>
+                <details className="text-secondary">
+                  <summary className="cursor-pointer py-1">
+                    Source document & evidence
+                  </summary>
+                  <label className="block text-secondary mt-2">
+                    Evidence lines (document, field, page — from SOW version{" "}
+                    {snap.sow?.version_no ?? "—"})
+                    <textarea
+                      aria-label="Source evidence"
+                      className="mt-1 min-h-20 w-full rounded-md border border-divider bg-surface p-3"
+                      value={inputs.source_evidence.join("\n")}
+                      onChange={(e) =>
+                        patch("source_evidence", e.target.value.split("\n"))
+                      }
+                    />
+                  </label>
+                </details>
+              </>,
+            )}
+
+            {sectionShell(
+              "team",
+              <>
+                {floors && (
+                  <p className="text-secondary text-text-secondary">
+                    Configured policy floors: US {formatPercent(floors.us, 0)} ·
+                    India {formatPercent(floors.india, 0)}. These apply per
+                    geography at approval — a blended margin alone does not
+                    pass them.
+                  </p>
+                )}
+                {editable && snap.deal && (
+                  <PlanTeamPanel
+                    opportunityId={snap.deal.id}
+                    inputs={inputs}
+                    advice={advice}
+                    onAdvice={setAdvice}
+                    onApply={replaceComponent}
+                    onResolve={handleResolve}
+                  />
+                )}
+                {(inputs.profile === "calendar_staff_aug" ||
+                  inputs.profile === "fixed_assignment" ||
+                  inputs.profile === "recurring_msp" ||
+                  inputs.pricing?.calendar_estimates ||
+                  inputs.staffing.length > 0) && (
+                  <CalendarFields component={inputs} onChange={replaceComponent} />
+                )}
+              </>,
+            )}
+
+            {sectionShell(
+              "monthly",
+              <>
+                {inputs.profile === "fixed_assignment" && (
+                  <MonthlyAllocations
+                    pricing={pricing}
+                    onChange={(value) => patch("pricing", value)}
+                  />
+                )}
+                <h3 className="text-body font-medium">Other delivery expenses</h3>
+                <p className="text-secondary text-text-secondary">
+                  Travel, licences, subcontractors — anything that hits
+                  delivery cost beyond the team above.
+                </p>
+                {inputs.costs.map((row, i) => (
+                  <div
+                    key={row.source_id}
+                    className="flex flex-wrap items-end gap-2"
+                  >
                     <label className="min-w-36 flex-1">
                       Month
                       <Input
-                        aria-label={`Allocation month ${i + 1}`}
+                        aria-label={`Cost month ${i + 1}`}
                         type="date"
                         value={row.month}
                         onChange={(e) =>
-                          pricePatch(
-                            "allocations",
-                            pricing.allocations!.map((r, j) =>
+                          patch(
+                            "costs",
+                            inputs.costs.map((r, j) =>
                               j === i ? { ...r, month: e.target.value } : r,
                             ),
                           )
@@ -413,106 +668,27 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
                       />
                     </label>
                     <Location
+                      label={`Cost location ${i + 1}`}
                       value={row.location}
-                      label={`Allocation location ${i + 1}`}
                       onChange={(v) =>
-                        pricePatch(
-                          "allocations",
-                          pricing.allocations!.map((r, j) =>
+                        patch(
+                          "costs",
+                          inputs.costs.map((r, j) =>
                             j === i ? { ...r, location: v } : r,
                           ),
                         )
                       }
                     />
                     <label className="min-w-24 flex-1">
-                      Weight
+                      Expense amount
                       <Input
-                        aria-label={`Allocation weight ${i + 1}`}
-                        value={row.weight}
-                        onChange={(e) =>
-                          pricePatch(
-                            "allocations",
-                            pricing.allocations!.map((r, j) =>
-                              j === i ? { ...r, weight: e.target.value } : r,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    <Remove
-                      label={`Delete allocation ${i + 1}`}
-                      onClick={() =>
-                        pricePatch(
-                          "allocations",
-                          pricing.allocations!.filter((_, j) => j !== i),
-                        )
-                      }
-                    />
-                  </div>
-                ))}
-                <Button
-                  variant="secondary"
-                  onClick={() =>
-                    pricePatch("allocations", [
-                      ...(pricing.allocations ?? []),
-                      { month: "", location: "", weight: "" },
-                    ])
-                  }
-                >
-                  <Plus className="h-4 w-4" /> Add allocation
-                </Button>
-              </>
-            ) : inputs.profile === "recurring_msp" ? (
-              <>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label>
-                    Proration
-                    <select
-                      className="block h-10 w-full rounded-md border border-divider bg-surface px-3"
-                      value={pricing.proration ?? ""}
-                      onChange={(e) =>
-                        pricePatch("proration", e.target.value || null)
-                      }
-                    >
-                      <option value="">Unconfirmed</option>
-                      <option value="calendar_days">Calendar days</option>
-                      <option value="full_month">Full month</option>
-                    </select>
-                  </label>
-                  <label>
-                    Included scope
-                    <Input
-                      value={pricing.included_scope ?? ""}
-                      onChange={(e) =>
-                        pricePatch("included_scope", e.target.value || null)
-                      }
-                    />
-                  </label>
-                </div>
-                {(pricing.fees ?? []).map((row, i) => (
-                  <div key={i} className="flex flex-wrap items-end gap-2">
-                    <Location
-                      label={`Fee location ${i + 1}`}
-                      value={row.location}
-                      onChange={(v) =>
-                        pricePatch(
-                          "fees",
-                          pricing.fees!.map((r, j) =>
-                            j === i ? { ...r, location: v } : r,
-                          ),
-                        )
-                      }
-                    />
-                    <label className="flex-1">
-                      Monthly fee
-                      <Input
-                        aria-label={`Monthly fee ${i + 1}`}
+                        aria-label={`Loaded cost ${i + 1}`}
                         inputMode="decimal"
                         value={row.amount ?? ""}
                         onChange={(e) =>
-                          pricePatch(
-                            "fees",
-                            pricing.fees!.map((r, j) =>
+                          patch(
+                            "costs",
+                            inputs.costs.map((r, j) =>
                               j === i
                                 ? { ...r, amount: e.target.value || null }
                                 : r,
@@ -522,11 +698,11 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
                       />
                     </label>
                     <Remove
-                      label={`Delete fee ${i + 1}`}
+                      label={`Delete cost ${i + 1}`}
                       onClick={() =>
-                        pricePatch(
-                          "fees",
-                          pricing.fees!.filter((_, j) => j !== i),
+                        patch(
+                          "costs",
+                          inputs.costs.filter((_, j) => j !== i),
                         )
                       }
                     />
@@ -535,128 +711,61 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
                 <Button
                   variant="secondary"
                   onClick={() =>
-                    pricePatch("fees", [
-                      ...(pricing.fees ?? []),
-                      { location: "", amount: null },
+                    patch("costs", [
+                      ...inputs.costs,
+                      {
+                        source_id: crypto.randomUUID(),
+                        month: "",
+                        location: "",
+                        amount: null,
+                      },
                     ])
                   }
                 >
-                  <Plus className="h-4 w-4" /> Add monthly fee
+                  <Plus className="h-4 w-4" /> Add expense
                 </Button>
-                <MspAdjustmentsFields
-                  pricing={pricing}
-                  onChange={(value) => patch("pricing", value)}
-                />
-              </>
-            ) : inputs.profile === "hybrid" ? (
-              <HybridFields component={inputs} onChange={replaceComponent} />
-            ) : (
-              <PricingFields
-                component={inputs}
-                onChange={(pricing) => patch("pricing", pricing)}
-              />
+                {result.commercial_snapshot && (
+                  <>
+                    <h3 className="text-body font-medium">Monthly schedule</h3>
+                    <p className="text-secondary">
+                      {calculationState === "stale_preview"
+                        ? "Provisional — edits since the last calculation are not reflected"
+                        : calculationState === "preview"
+                          ? "Provisional preview — not the saved plan"
+                          : dirty
+                            ? "Saved calculation; edits not calculated"
+                            : "Saved calculation"}
+                    </p>
+                    <Schedule schedule={result.commercial_snapshot.schedule} />
+                  </>
+                )}
+              </>,
             )}
-            {(inputs.profile === "calendar_staff_aug" ||
-              inputs.profile === "fixed_assignment" ||
-              inputs.profile === "recurring_msp" ||
-              inputs.pricing?.calendar_estimates ||
-              inputs.staffing.length > 0) && (
-              <CalendarFields component={inputs} onChange={replaceComponent} />
-            )}
-            <h3 className="text-body font-medium">Period costs</h3>
-            {inputs.costs.map((row, i) => (
-              <div
-                key={row.source_id}
-                className="flex flex-wrap items-end gap-2"
-              >
-                <label className="min-w-36 flex-1">
-                  Month
+
+            {sectionShell(
+              "review",
+              <>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={inputs.costs_confirmed}
+                    onChange={(e) => patch("costs_confirmed", e.target.checked)}
+                  />
+                  All delivery costs confirmed
+                </label>
+                <p className="text-secondary text-text-secondary">
+                  A human attestation — AI proposals never set this.
+                </p>
+                <label className="block">
+                  Version note (why this version exists)
                   <Input
-                    aria-label={`Cost month ${i + 1}`}
-                    type="date"
-                    value={row.month}
-                    onChange={(e) =>
-                      patch(
-                        "costs",
-                        inputs.costs.map((r, j) =>
-                          j === i ? { ...r, month: e.target.value } : r,
-                        ),
-                      )
-                    }
+                    aria-label="Change reason"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
                   />
                 </label>
-                <Location
-                  label={`Cost location ${i + 1}`}
-                  value={row.location}
-                  onChange={(v) =>
-                    patch(
-                      "costs",
-                      inputs.costs.map((r, j) =>
-                        j === i ? { ...r, location: v } : r,
-                      ),
-                    )
-                  }
-                />
-                <label className="min-w-24 flex-1">
-                  Loaded cost
-                  <Input
-                    aria-label={`Loaded cost ${i + 1}`}
-                    inputMode="decimal"
-                    value={row.amount ?? ""}
-                    onChange={(e) =>
-                      patch(
-                        "costs",
-                        inputs.costs.map((r, j) =>
-                          j === i
-                            ? { ...r, amount: e.target.value || null }
-                            : r,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-                <Remove
-                  label={`Delete cost ${i + 1}`}
-                  onClick={() =>
-                    patch(
-                      "costs",
-                      inputs.costs.filter((_, j) => j !== i),
-                    )
-                  }
-                />
-              </div>
-            ))}
-            <Button
-              variant="secondary"
-              onClick={() =>
-                patch("costs", [
-                  ...inputs.costs,
-                  {
-                    source_id: crypto.randomUUID(),
-                    month: "",
-                    location: "",
-                    amount: null,
-                  },
-                ])
-              }
-            >
-              <Plus className="h-4 w-4" /> Add period cost
-            </Button>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={inputs.costs_confirmed}
-                onChange={(e) => patch("costs_confirmed", e.target.checked)}
-              />
-              All delivery costs confirmed
-            </label>
-            <label className="block">
-              Change reason
-              <Input
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </label>
+              </>,
+            )}
           </fieldset>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -716,19 +825,16 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
           </div>
         </div>
       )}
-      {result.commercial_snapshot && (
-        <>
-          <p className="text-secondary">
-            {calculationState === "stale_preview"
-              ? "Unsaved preview; edits not calculated"
-              : calculationState === "preview"
-                ? "Unsaved preview"
-                : dirty
-                  ? "Saved calculation; edits not calculated"
-                  : "Saved calculation"}
-          </p>
-          <Schedule schedule={result.commercial_snapshot.schedule} />
-        </>
+      {supported && !rawRestricted && result.commercial_snapshot && (
+        <p className="text-secondary">
+          {calculationState === "stale_preview"
+            ? "Unsaved preview; edits not calculated"
+            : calculationState === "preview"
+              ? "Unsaved preview"
+              : dirty
+                ? "Saved calculation; edits not calculated"
+                : "Saved calculation"}
+        </p>
       )}
       {result.computed && (
         <p>
