@@ -202,3 +202,37 @@ async def test_sender_rechecks_existing_queued_contamination_before_provider(ses
     assert "trusted approval scope" in row.last_error
     assert sink.sent == []
     assert await verify_chain(session)
+
+
+@pytest.mark.asyncio
+async def test_internal_signatories_exclude_test_identities(session, monkeypatch):
+    import httpx
+
+    from app.db import get_session
+    from app.main import app as main_app
+
+    monkeypatch.setenv("DEALGATE_ENV", "local")
+    monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Sales")
+    human = await _seed_user(session, email="ceo-signer@isolation.test", groups=["CEO"])
+    await _seed_user(
+        session,
+        email="bot-signer@isolation.test",
+        groups=["CEO", fixtures.E2E_USER_GROUP],
+    )
+
+    async def _override():
+        yield session
+
+    main_app.dependency_overrides[get_session] = _override
+    try:
+        transport = httpx.ASGITransport(app=main_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            rows = (
+                await c.get("/signatories/internal",
+                            headers={"X-Test-User": human.email})
+            ).json()
+        emails = {r["email"] for r in rows}
+        assert human.email in emails
+        assert "bot-signer@isolation.test" not in emails
+    finally:
+        main_app.dependency_overrides.pop(get_session, None)

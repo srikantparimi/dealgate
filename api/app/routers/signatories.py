@@ -110,9 +110,15 @@ async def list_internal_signatories(
         .scalars()
         .all()
     )
+    from app.services.test_fixtures import is_test_user
+
     out: list[InternalSignatoryRow] = []
     for u in rows:
         groups = list(u.groups or [])
+        # S21-07 isolation: test identities never appear in the business
+        # signatories directory — a contract can't be signed by a bot.
+        if is_test_user(u):
+            continue
         if not any(g in _INTERNAL_SIGNATORY_GROUPS for g in groups):
             continue
         out.append(
