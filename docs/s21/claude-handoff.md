@@ -2,6 +2,27 @@
 
 ## RESUME HERE
 
+**2026-10-05 post-release patch branch `fix/s21-identity-and-owner-display`
+(HEAD 5c79adb), deployed to staging as image `s21fix-1209ba80` + SPA; smoke
+GREEN, leak gate clean, 657-population intact. NOT yet merged to main —
+awaiting owner click-through confirmation.** Fixes: adopted-identity job
+reads (owner's "not authorised to view this job"), owner-mirror name
+resolution on client/deal lists (S20 W1 wiring gap; six skeleton tests
+implemented), Cognito `name` attributes on the six approvers (Terraform,
+6 in-place updates), header never falls back to the sub UUID (web), and
+an ops attribute-set of name="Srikanth Parimi" on the pre-existing
+srikantp@ account (same admin-ops class as the owner-requested password
+reset; visible after re-login).
+
+**Owner UX feedback logged for next release (not a regression):** the
+S21 Staffing & GM commercial editor reads as "not correct" to the owner
+versus the S20 staffing form — people + utilization live under Calendar
+staffing → Add assignment (Allocation fraction 0..1), the sheet shows
+"Unconfirmed" everywhere until Scope is confirmed, and named-person
+detail is deliberately in People planning rather than the GM sheet.
+Requested improvements: clearer entry point for people/utilization,
+percentage-style allocation input, and the old form's directness.
+
 **2026-10-04 release push, FINAL. PRODUCT-OWNER STAGING ACCEPTANCE
 GRANTED ("accepted" in chat) at HEAD `f289e87`, staging rev 76, image
 `s21-8ca0cb3`, digest sha256:9fd48686…929.** Accepted scope: the full
