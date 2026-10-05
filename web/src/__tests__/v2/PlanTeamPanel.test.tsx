@@ -99,4 +99,12 @@ describe("PlanTeamPanel", () => {
     expect(half!.cost_rate).toBe("30");
     expect(next.staffing[0].cost_rate_basis).toBe("hourly");
   });
+
+  it("advises automatically when the model has no staffing yet", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockResolvedValue(advice());
+    render(<PlanTeamPanel opportunityId="deal-a" inputs={inputs} onApply={() => {}} />);
+    // No click: the suggestion appears on its own.
+    await screen.findByTestId("plan-team-result");
+    expect(screen.getByTestId("plan-team-mix")).toHaveTextContent("1 onshore");
+  });
 });

@@ -98,14 +98,14 @@ export function PricingFields({
             onChange={(value) => patch("allocation_basis", value || null)}
           />
           <Field
-            label="Currency minor unit"
+            label="Rounding unit (advanced — 0.01 = cents)"
             type="decimal"
             value={pricing.minor_unit}
             onChange={(value) => patch("minor_unit", value)}
           />
         </div>
         <Rows
-          title="Service-month allocations"
+          title="Service-month allocations (each month's share of the fee — weights must add to 1)"
           rows={pricing.allocations ?? []}
           columns={[
             { key: "month", label: "Allocation month", type: "date" },
@@ -114,11 +114,15 @@ export function PricingFields({
               label: "Allocation location",
               options: ["US", "India"],
             },
-            { key: "weight", label: "Allocation weight", type: "decimal" },
+            { key: "weight", label: "Weight (1 = 100%)", type: "decimal" },
           ]}
           create={() => ({ month: "", location: "", weight: "" })}
           onChange={(value) => patch("allocations", value)}
           addLabel="Add allocation"
+        />
+        <AllocationSummary
+          totalFee={pricing.total_fee}
+          allocations={pricing.allocations ?? []}
         />
       </div>
     );
@@ -289,5 +293,39 @@ export function PricingFields({
         </>
       )}
     </div>
+  );
+}
+
+function AllocationSummary({
+  totalFee,
+  allocations,
+}: {
+  totalFee: string | null | undefined;
+  allocations: { weight?: string | null }[];
+}) {
+  const weights = allocations.map((a) => Number(a.weight ?? 0));
+  if (!weights.length || weights.some((w) => Number.isNaN(w))) return null;
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const fee = Number(totalFee ?? 0);
+  const ok = Math.abs(sum - 1) < 0.0005;
+  return (
+    <p
+      data-testid="allocation-summary"
+      className={ok ? "text-secondary text-text-secondary" : "text-danger"}
+    >
+      {allocations
+        .map((a) => {
+          const w = Number(a.weight ?? 0);
+          const pct = (w * 100).toFixed(2).replace(/\.00$/, "");
+          return fee > 0
+            ? `${pct}% ≈ $${Math.round(w * fee).toLocaleString()}`
+            : `${pct}%`;
+        })
+        .join(" · ")}
+      {" — "}
+      {ok
+        ? "weights add to 100%."
+        : `weights add to ${(sum * 100).toFixed(2)}% — they must total 100%.`}
+    </p>
   );
 }

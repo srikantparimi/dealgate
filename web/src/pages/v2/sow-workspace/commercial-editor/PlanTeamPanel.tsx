@@ -9,7 +9,7 @@
  * supports. "Apply mix" fills Calendar staffing; every value stays
  * editable and nothing is confirmed until Save.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getStaffingAdvice, type CommercialComponent, type StaffingAdvice } from "../../../../api/commercial";
 import { Button } from "../../../../ui-v2/primitives/button";
 import { Field } from "./Fields";
@@ -31,6 +31,7 @@ export function PlanTeamPanel({
   const [advice, setAdvice] = useState<StaffingAdvice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const autoRan = useRef(false);
 
   async function run() {
     setBusy(true);
@@ -56,6 +57,18 @@ export function PlanTeamPanel({
       setBusy(false);
     }
   }
+
+  // The suggestion greets you: when the model has no staffing yet and we
+  // know enough to advise (a fee or term dates), run once on open. Apply
+  // stays a human decision.
+  useEffect(() => {
+    if (autoRan.current || advice || busy) return;
+    const hasBasis = !!fee || (!!inputs.service_start && !!inputs.service_end);
+    if ((inputs.staffing?.length ?? 0) > 0 || !hasBasis) return;
+    autoRan.current = true;
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fee, inputs.service_start, inputs.service_end, inputs.staffing?.length]);
 
   function applyMix() {
     if (!advice?.suggested) return;
