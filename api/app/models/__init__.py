@@ -5,6 +5,11 @@ Importing this package registers every mapper on `Base.metadata` — Alembic's
 """
 
 from app.models.actual import ActualImportBatch, ActualPeriod
+from app.models.people_planning import PeopleSource, PeopleImportBatch, WorkforcePerson, WorkforceVersion, WorkforceInterval
+from app.models.people_demand import DemandPublication, DemandPublicationVersion, DemandLine
+from app.models.people_sourcing import SourcingRuleSet, SourcingRuleVersion, SourcingDraft, SourcingDraftVersion
+from app.models.people_coverage import DemandCoverageRoot, DemandCoverageVersion
+from app.models.automation import AutomationRule, AutomationRuleVersion, AutomationJob
 from app.models.adviser_estimate import AdviserEstimate
 from app.models.approval import Approval, ApprovalPackage
 from app.models.approval_routing import ApprovalAssignment, ApprovalConditionEvidence, ApprovalGroup
@@ -16,6 +21,7 @@ from app.models.client_alias import ClientAlias
 from app.models.client_contact import ClientContact as ClientContact
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
 from app.models.delivery_acceptance import DeliveryAcceptance
+from app.models.deletion import DeletionFence, DeletionJob
 from app.models.direct_cost_settings import DirectCostSettings
 from app.models.embedding import SowEmbedding
 from app.models.forecast import ForecastPeriod
@@ -75,12 +81,19 @@ __all__ = [
     "CostLine",
     "DealComment",
     "DeliveryAcceptance",
+    "DeletionFence",
+    "DeletionJob",
     "DirectCostSettings",
     "ForecastPeriod",
     "FunctionOwner",
     "GmModel",
     "GmModelPhase",
     "GmModelTemplate",
+    "PeopleSource", "PeopleImportBatch", "WorkforcePerson", "WorkforceVersion", "WorkforceInterval",
+    "DemandPublication", "DemandPublicationVersion", "DemandLine",
+    "SourcingRuleSet", "SourcingRuleVersion", "SourcingDraft", "SourcingDraftVersion",
+    "DemandCoverageRoot", "DemandCoverageVersion",
+    "AutomationRule", "AutomationRuleVersion", "AutomationJob",
     "HubspotPipeline",
     "HubspotStage",
     "HubspotWritebackJob",

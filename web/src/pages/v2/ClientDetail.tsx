@@ -19,11 +19,12 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, ExternalLink } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   getClient,
+  getMe,
   getClientTimeline,
   listPipelineOpportunities,
   type ClientDetail,
@@ -34,9 +35,11 @@ import {
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
+import { ClientAgreementPresence } from "../../ui-v2/ClientAgreementPresence";
 import { WatchStar } from "../../ui-v2/WatchStar";
 import { Badge } from "../../ui-v2/primitives/badge";
 import { Button } from "../../ui-v2/primitives/button";
+import { DeletionConfirmationDialog } from "../../ui-v2/DeletionConfirmationDialog";
 
 const HUBSPOT_COMPANY_URL =
   "https://app.hubspot.com/contacts/48656168/record/0-2/";
@@ -110,6 +113,22 @@ export function ClientDetailPageV2() {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  const [canDelete, setCanDelete] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPermissions = async () => {
+      try {
+        const actor = await getMe();
+        if (!cancelled) setCanDelete(actor.groups.some(group => ["SystemAdmin", "CEO", "SalesLeader", "Finance", "Legal"].includes(group)));
+      } catch {
+        if (!cancelled) setCanDelete(false);
+      }
+    };
+    void loadPermissions();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -228,6 +247,9 @@ export function ClientDetailPageV2() {
         actions={
           <>
             <WatchStar kind="client" itemId={client.id} />
+            {canDelete && !client.hubspot_company_id && <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 size={16} aria-hidden="true" />Delete client
+            </Button>}
             <Button variant="secondary" onClick={() => navigate("/pipeline")}>
               <ArrowLeft className="mr-1 h-4 w-4" aria-hidden />
               Pipeline
@@ -248,6 +270,13 @@ export function ClientDetailPageV2() {
         }
       />
 
+      {canDelete && <DeletionConfirmationDialog open={deleteOpen} onOpenChange={setDeleteOpen}
+        kind="client" id={client.id} name={client.name} onConfirmed={result => {
+          setDeleteOpen(false);
+          if (result.job_id) navigate(`/deletions/${result.job_id}`);
+        }} />}
+
+      <ClientAgreementPresence clientId={client.id} />
       {/* Rollup panel (L05 · L07). */}
       <section
         aria-label="Client rollup"

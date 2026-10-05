@@ -1,13 +1,13 @@
 /**
- * DeletionConfirmationDialog — S13a-FE acceptance tests.
+ * DeletionConfirmationDialog — S21 retention and refusal boundary tests.
  *
- * The dialog is the single UI entry point for hard-delete + archive, so
+ * The dialog is the parent deletion entry point, so
  * three invariants matter:
  *
  *  1. Draft assessment renders the cascade counts verbatim and shows the
  *     red Delete button.
- *  2. Approved (or hubspot_linked) assessment hides Delete and offers
- *     "Archive instead" with the reason the server returned.
+ *  2. Governed local records may delete with retention; mirrored parents
+ *     refuse without an archive bypass. This replaces the S13a-only contract.
  *  3. A 4xx from the API is surfaced inline, and the dialog stays open so
  *     the user can retry (or cancel) — never a silent failure.
  */
@@ -66,6 +66,7 @@ describe("DeletionConfirmationDialog", () => {
       .spyOn(apiClient, "deleteClient")
       .mockResolvedValue({
         state: "deleted",
+        job_id: "job-confirmed",
         reason: "ok",
         counts: { clients: 1 },
       });
@@ -98,54 +99,22 @@ describe("DeletionConfirmationDialog", () => {
     expect(onConfirmed).toHaveBeenCalled();
   });
 
-  it("approved: hides Delete, shows Archive-instead with the server reason", async () => {
+  it("governed client: confirms deletion while explicitly retaining projects and actuals", async () => {
     vi.spyOn(apiClient, "assessClientDeletion").mockResolvedValue({
-      state: "approved",
-      reason:
-        "at least one opportunity has an approval package or a signed SOW; the approval trail is append-only",
-      counts: { opportunities: 2 },
+      state: "draft",
+      reason: "Owned records can be deleted; financial history is retained",
+      counts: { opportunities: 2, retained_projects: 1 },
     });
-    const archiveSpy = vi
-      .spyOn(apiClient, "archiveClient")
-      .mockResolvedValue({
-        state: "archived",
-        reason: "ok",
-        counts: { client: 1 },
-      });
-
     renderDialog();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("deletion-cannot-delete")).toBeInTheDocument();
-    });
-    // The hard-delete button is not rendered for approved records.
-    expect(screen.queryByTestId("deletion-confirm")).toBeNull();
-
-    // The reason the API returned is visible to the user.
-    expect(screen.getByTestId("deletion-server-reason")).toHaveTextContent(
-      /approval package/i,
-    );
-
-    // Archive-instead is the primary action.
-    const archive = screen.getByTestId("deletion-archive");
-    expect(archive).toHaveTextContent("Archive instead");
-
-    // Type a reason then archive.
-    await userEvent.type(
-      screen.getByTestId("deletion-archive-reason"),
-      "cleaning stale record",
-    );
-    await userEvent.click(archive);
-
-    await waitFor(() => {
-      expect(archiveSpy).toHaveBeenCalledWith(
-        CLIENT_ID,
-        "cleaning stale record",
-      );
-    });
+    expect(await screen.findByTestId("deletion-confirm")).toBeEnabled();
+    expect(screen.queryByTestId("deletion-archive")).toBeNull();
+    expect(screen.getByText(/Projects and financial actuals are retained/)).toBeInTheDocument();
+    expect(screen.getByTestId("deletion-retained-list")).toHaveTextContent("1 project");
+    expect(screen.getByTestId("deletion-cascade-list")).not.toHaveTextContent("project");
+    expect(screen.queryByText(/Approved records archive/)).toBeNull();
   });
 
-  it("hubspot_linked: shows the HubSpot warning + Archive-instead button", async () => {
+  it("hubspot_linked: refuses deletion without offering an archive bypass", async () => {
     vi.spyOn(apiClient, "assessClientDeletion").mockResolvedValue({
       state: "hubspot_linked",
       reason:
@@ -161,7 +130,7 @@ describe("DeletionConfirmationDialog", () => {
     expect(screen.getByTestId("deletion-cannot-delete")).toHaveTextContent(
       /HubSpot/,
     );
-    expect(screen.getByTestId("deletion-archive")).toBeInTheDocument();
+    expect(screen.queryByTestId("deletion-archive")).toBeNull();
     expect(screen.queryByTestId("deletion-confirm")).toBeNull();
   });
 

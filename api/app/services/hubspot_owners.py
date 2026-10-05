@@ -203,14 +203,14 @@ async def sync_owner_mirror(
         active_rows = await _iter_owners(client, archived=False)
     except Exception:
         log.exception("hubspot_owner_mirror_active_fetch_failed")
+        await touch_source(session, source="hubspot_owner_mirror", success=False, error="active_owner_fetch_failed")
         return OwnerMirrorCounts(errors=1)
     try:
         archived_rows = await _iter_owners(client, archived=True)
     except Exception:
-        # Archive fetch is best-effort; if HubSpot rejects the flag for
-        # this portal we still get the active mirror correct.
         log.exception("hubspot_owner_mirror_archived_fetch_failed")
-        archived_rows = []
+        await touch_source(session, source="hubspot_owner_mirror", success=False, error="archived_owner_fetch_failed")
+        return OwnerMirrorCounts(errors=1)
 
     counts = OwnerMirrorCounts(
         active_seen=len(active_rows),

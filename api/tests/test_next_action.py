@@ -23,6 +23,7 @@ from app.services.next_action import (
     ApprovalCompletionForbidden,
     NextActionCreate,
     NextActionPatch,
+    action_revision,
     complete_via_approval,
     create_action,
     list_actions,
@@ -151,7 +152,8 @@ async def test_patch_reassigns_and_records_event(session, seeded):
         session,
         actor=actor,
         action=a,
-        patch=NextActionPatch(assignee_user_id=seeded["other"].id),
+        patch=NextActionPatch(assignee_user_id=seeded["other"].id,
+                              expected_revision=await action_revision(session, a)),
     )
     await session.commit()
 
@@ -182,7 +184,7 @@ async def test_status_change_writes_from_and_to(session, seeded):
         session,
         actor=actor,
         action=a,
-        patch=NextActionPatch(status="in_progress"),
+        patch=NextActionPatch(status="in_progress", expected_revision=await action_revision(session, a)),
     )
     await session.commit()
 
@@ -225,7 +227,7 @@ async def test_unauthorised_third_party_cannot_edit(session, seeded):
             session,
             actor=third,
             action=a,
-            patch=NextActionPatch(status="in_progress"),
+            patch=NextActionPatch(status="in_progress", expected_revision=await action_revision(session, a)),
         )
     assert exc.value.status_code == 403
 
@@ -248,7 +250,7 @@ async def test_leader_can_edit_any_action(session, seeded):
         session,
         actor=leader,
         action=a,
-        patch=NextActionPatch(status="in_progress"),
+        patch=NextActionPatch(status="in_progress", expected_revision=await action_revision(session, a)),
     )
     await session.commit()
     assert a.status == "in_progress"
@@ -319,7 +321,7 @@ async def test_complete_refused_when_tied_to_approval_package(session, seeded):
             session,
             actor=actor,
             action=a,
-            patch=NextActionPatch(status="complete"),
+            patch=NextActionPatch(status="complete", expected_revision=await action_revision(session, a)),
         )
     assert exc.value.status_code == 409
     assert "approval" in str(exc.value.detail).lower()
@@ -397,10 +399,11 @@ async def test_events_endpoint_returns_history(
             headers={"X-Test-User": "sales@smartek21.com"},
         )
         action_id = r.json()["id"]
+        expected_revision = r.json()["revision"]
 
         r = await c.patch(
             f"/next-actions/{action_id}",
-            json={"status": "in_progress"},
+            json={"status": "in_progress", "expected_revision": expected_revision},
             headers={"X-Test-User": "sales@smartek21.com"},
         )
         assert r.status_code == 200, r.text

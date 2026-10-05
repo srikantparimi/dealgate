@@ -1,0 +1,112 @@
+
+Running 4 tests using 1 worker
+
+[1A[2K(node:80267) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:80267) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/4] s21-editor-defects.spec.ts:49:7 › fixed_assignment: real editor defect regression with immutable saved economics
+[1A[2K[2/4] s21-editor-defects.spec.ts:49:7 › recurring_msp: real editor defect regression with immutable saved economics
+[1A[2K  1) s21-editor-defects.spec.ts:49:7 › recurring_msp: real editor defect regression with immutable saved economics 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      104 |     await page.screenshot({ path: `../../docs/s21/evidence/baseline/editor-${profile}-desktop.png`, fullPage: true });
+      105 |     await page.setViewportSize({ width: 390, height: 844 });
+    > 106 |     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+          |                                                                                           ^
+      107 |     await page.screenshot({ path: `../../docs/s21/evidence/baseline/editor-${profile}-mobile.png`, fullPage: true });
+      108 |   });
+      109 | }
+
+        at /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-editor-defects.spec.ts:106:91
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-recurri-6149e-h-immutable-saved-economics/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-recurri-6149e-h-immutable-saved-economics/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/s21-editor-defects-recurri-6149e-h-immutable-saved-economics/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K(node:80649) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:80649) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[3/4] s21-editor-defects.spec.ts:49:7 › hybrid: real editor defect regression with immutable saved economics
+[1A[2K  2) s21-editor-defects.spec.ts:49:7 › hybrid: real editor defect regression with immutable saved economics 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      104 |     await page.screenshot({ path: `../../docs/s21/evidence/baseline/editor-${profile}-desktop.png`, fullPage: true });
+      105 |     await page.setViewportSize({ width: 390, height: 844 });
+    > 106 |     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+          |                                                                                           ^
+      107 |     await page.screenshot({ path: `../../docs/s21/evidence/baseline/editor-${profile}-mobile.png`, fullPage: true });
+      108 |   });
+      109 | }
+
+        at /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-editor-defects.spec.ts:106:91
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-hybrid--c88ed-h-immutable-saved-economics/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-hybrid--c88ed-h-immutable-saved-economics/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/s21-editor-defects-hybrid--c88ed-h-immutable-saved-economics/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K(node:80777) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:80777) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[4/4] s21-editor-defects.spec.ts:49:7 › custom_formula: real editor defect regression with immutable saved economics
+[1A[2K  2 failed
+    s21-editor-defects.spec.ts:49:7 › recurring_msp: real editor defect regression with immutable saved economics 
+    s21-editor-defects.spec.ts:49:7 › hybrid: real editor defect regression with immutable saved economics 
+  2 passed (2.0m)
+Traceback (most recent call last):
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_editor_journey.py", line 101, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_editor_journey.py", line 83, in main
+    assert await browser.wait() == 0, "Editor browser workflow failed"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Editor browser workflow failed

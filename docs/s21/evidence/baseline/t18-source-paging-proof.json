@@ -1,0 +1,99 @@
+{
+  "run_id": "a674e0c7-6d92-44ac-b2d7-1897ab31f09f",
+  "account_id": "953eae04-b3aa-45b2-ad3a-922c8b3f8d5f",
+  "database": "s21_cov_37ebcb10ed7f4528b7f34c846fed747b",
+  "future_revenue": "900",
+  "pages": [
+    [
+      "7de829b0-3e5f-43ac-badc-4abd9a4fc467",
+      "6319c3da-a84e-46a4-98a4-1e882b8baefc",
+      "b67f354c-98b7-40d6-bd16-bf124d238afe",
+      "26bf9d88-4710-4caa-ac62-e211459742fb",
+      "5040ccc1-1df6-4a58-bca2-f394973ec2bb",
+      "af8fceea-2dc6-437f-8ff8-1efbc2a7f1d8",
+      "cc29a94f-cc0a-4f75-bcc0-b2a364948cf9",
+      "afefd991-332b-412a-84e6-205d9b9bd31b",
+      "d96554d9-ff21-44aa-a401-7f05e8096df9",
+      "4da5d071-d4af-456e-a981-6cee0a860ca4",
+      "5f23bfe5-d741-46e4-a854-142390af2221",
+      "66553989-f2b0-4134-8962-58691a5500d6",
+      "ce77f7e7-1735-44d2-9359-c339bc5e959a",
+      "877af8e7-1759-4a3d-9797-e0b11ec98cc6",
+      "2357119f-68d0-4744-8231-0c5ee60e9af5",
+      "d9d31785-f5ab-469e-8bd5-9bb6cb157ca8",
+      "19c5a74c-6e97-4263-b4d7-727a5cfff312",
+      "5d82cdb6-392d-447e-8d83-7aff0d6afc59",
+      "8e9738b8-612b-4823-ab34-4d3a1cad4e88",
+      "5b78015b-c290-433c-a3d3-508a6bd86211",
+      "d45c1ab9-2d76-45ac-8735-bcac063e4df6",
+      "cc59aa63-8dbd-4235-87a0-a8d6ee5b25df",
+      "856fa7e9-c489-470b-beac-1c8ba5025274",
+      "bfebdd29-79dd-4f9c-b9f4-ac0eb6cb1dae",
+      "fe893a75-418c-43b3-b2de-81c7ed48b1e7",
+      "6234aada-1c86-4bef-9879-188830d5fa60",
+      "52c3bd58-db5c-46c1-b8c0-4047db783611",
+      "8582fda0-bd8d-4d27-ab20-bddc39a6ab9d",
+      "cde945dc-c53a-4490-a5a8-bee52aab992d",
+      "a24afc73-45f7-4d68-bd2f-f6d3aa572a63",
+      "b34a957a-d544-4653-b282-019d1fee0976",
+      "878cec12-4b5d-4f7e-aea7-c73f873aae55",
+      "80667168-a6d6-49e3-823b-f2daf974d8a6",
+      "0ff8889b-3a06-4991-aa3e-4d34481a00c3",
+      "75fdaa9d-6adb-4e83-b049-346a3c80bb77",
+      "3a20a6e5-bb51-45fd-a501-822ba0a9b373",
+      "07b6dca7-26f0-440d-955d-026db690abca",
+      "4ba52721-f8a8-4a10-a7af-a4048ceaa817",
+      "1e31a0d7-afe6-4193-807d-1611754a7b77",
+      "e7e408fd-66c1-4ec0-9d6c-ab2e6d0c2c75",
+      "5afe04d8-c99d-455d-9471-7fb8c7a3f1e5",
+      "c1cd2eaf-30aa-440f-afe9-f0baf71d16f9",
+      "a6ae1b4d-07ae-4bb0-a5bb-9a4843df5a08",
+      "aba51b33-e43a-4a8e-be4f-cda5f825231d",
+      "47e2acc9-074e-4f6a-b6e9-baac5ed5ba03",
+      "29751e84-b088-416b-a9f0-f7638b1c6bdb",
+      "7cee8214-4f92-4d7a-824c-55dc363b63a3",
+      "e805daae-fc47-4929-9ae4-5ba2331574ad",
+      "50d02366-b17b-4d88-a04f-863af46269b7",
+      "51757105-a63f-4104-b49b-35849f29c981"
+    ],
+    [
+      "a614d9b3-ff6c-40ec-8ca6-63c0b794a481"
+    ]
+  ],
+  "context": {
+    "account_id": "953eae04-b3aa-45b2-ad3a-922c8b3f8d5f",
+    "as_of": "2026-10-15T12:00:00Z",
+    "future_quarters": "2",
+    "scenario": "expected",
+    "month": "2027-01-01",
+    "view": "opportunities"
+  },
+  "exclusions": [
+    {
+      "id": "57b14379-1f9e-4c53-8a79-b18519671026",
+      "reason": "Finance-certified service coverage is unavailable"
+    },
+    {
+      "id": "35d5c7a9-5808-4915-97eb-641a7bd3a8d3",
+      "reason": "Finance-certified service coverage is unavailable"
+    },
+    {
+      "id": "33662927-5ee3-430a-9407-d61694b91abc",
+      "reason": "Finance-certified service coverage is unavailable"
+    },
+    {
+      "id": "7ec99e73-972a-440f-835b-019cd3f24c9c",
+      "reason": "Financial measure remains separate from service estimate"
+    },
+    {
+      "id": "b86a8708-cd97-4025-ad7e-22a9f7cfbd17",
+      "reason": "Financial measure remains separate from service estimate"
+    },
+    {
+      "id": "76f94fd1-6a30-4432-a9f6-1039923f83a1",
+      "reason": "Finance-certified service coverage is unavailable"
+    }
+  ],
+  "linked_deal": "0cc6908e-def3-4eae-a725-830128c9501f",
+  "result": "passed"
+}

@@ -1,0 +1,91 @@
+...FFF                                                                   [100%]
+=================================== FAILURES ===================================
+_____ test_parent_deletion_returns_scoped_repeatable_cleanup_job[clients] ______
+
+deletion_api = (<httpx.AsyncClient object at 0x10b041e00>, <app.models.user.User object at 0x10b0408a0>, <app.models.sow.Sow object at 0x10b041350>)
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10b040770>
+kind = 'clients'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("kind", ["clients", "opportunities"])
+    async def test_parent_deletion_returns_scoped_repeatable_cleanup_job(deletion_api, session, kind):
+        from app.models.opportunity import Opportunity
+        client, _, sow = deletion_api
+        deal = await session.get(Opportunity, sow.opportunity_id)
+        identity = deal.client_id if kind == "clients" else deal.id
+        deleted = await client.delete(f"/{kind}/{identity}")
+>       assert deleted.status_code == 202, deleted.text
+E       AssertionError: {"state":"draft","reason":"Source removed; cleanup pending","counts":{"opportunities":1,"sows":1,"sow_versions":1,"gm_models":1,"resource_lines":0,"cost_lines":0,"approval_packages":1,"tasks":0,"retained_projects":0,"actions":0,"renewals":0,"unbound_uploads":0,"agreements":0,"forecast_plans":0}}
+E       assert 200 == 202
+E        +  where 200 = <Response [200 OK]>.status_code
+
+api/tests/test_s21_deletion_api.py:77: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-01 22:59:35 [info     ] role_check                     granted=True required=['SystemAdmin', 'CEO', 'SalesLeader', 'Finance', 'Legal'] user=del-owner@example.com user_groups=['Finance']
+__ test_parent_deletion_returns_scoped_repeatable_cleanup_job[opportunities] ___
+
+deletion_api = (<httpx.AsyncClient object at 0x10b043820>, <app.models.user.User object at 0x10b042d70>, <app.models.sow.Sow object at 0x10b043360>)
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10b041480>
+kind = 'opportunities'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("kind", ["clients", "opportunities"])
+    async def test_parent_deletion_returns_scoped_repeatable_cleanup_job(deletion_api, session, kind):
+        from app.models.opportunity import Opportunity
+        client, _, sow = deletion_api
+        deal = await session.get(Opportunity, sow.opportunity_id)
+        identity = deal.client_id if kind == "clients" else deal.id
+        deleted = await client.delete(f"/{kind}/{identity}")
+>       assert deleted.status_code == 202, deleted.text
+E       AssertionError: {"state":"draft","reason":"Source removed; cleanup pending","counts":{"sows":1,"sow_versions":1,"gm_models":1,"resource_lines":0,"cost_lines":0,"approval_packages":1,"tasks":0,"retained_projects":0,"actions":0,"renewals":0,"unbound_uploads":0}}
+E       assert 200 == 202
+E        +  where 200 = <Response [200 OK]>.status_code
+
+api/tests/test_s21_deletion_api.py:77: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-01 22:59:36 [info     ] role_check                     granted=True required=['SystemAdmin', 'CEO', 'SalesLeader', 'Finance', 'Legal'] user=del-owner@example.com user_groups=['Finance']
+____ test_parent_retry_resets_failed_descendants_without_recreating_sources ____
+
+deletion_api = (<httpx.AsyncClient object at 0x10b271d90>, <app.models.user.User object at 0x10b271a30>, <app.models.sow.Sow object at 0x10b272210>)
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10b270ef0>
+
+    @pytest.mark.asyncio
+    async def test_parent_retry_resets_failed_descendants_without_recreating_sources(deletion_api, session):
+        from app.models.deletion import DeletionJob
+        from app.models.opportunity import Opportunity
+        client, _, sow = deletion_api
+        deal = await session.get(Opportunity, sow.opportunity_id)
+        deleted = await client.delete(f"/clients/{deal.client_id}")
+>       assert deleted.status_code == 202, deleted.text
+E       AssertionError: {"state":"draft","reason":"Source removed; cleanup pending","counts":{"opportunities":1,"sows":1,"sow_versions":1,"gm_models":1,"resource_lines":0,"cost_lines":0,"approval_packages":1,"tasks":0,"retained_projects":0,"actions":0,"renewals":0,"unbound_uploads":0,"agreements":0,"forecast_plans":0}}
+E       assert 200 == 202
+E        +  where 200 = <Response [200 OK]>.status_code
+
+api/tests/test_s21_deletion_api.py:94: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-01 22:59:36 [info     ] role_check                     granted=True required=['SystemAdmin', 'CEO', 'SalesLeader', 'Finance', 'Legal'] user=del-owner@example.com user_groups=['Finance']
+=============================== warnings summary ===============================
+api/app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED api/tests/test_s21_deletion_api.py::test_parent_deletion_returns_scoped_repeatable_cleanup_job[clients]
+FAILED api/tests/test_s21_deletion_api.py::test_parent_deletion_returns_scoped_repeatable_cleanup_job[opportunities]
+FAILED api/tests/test_s21_deletion_api.py::test_parent_retry_resets_failed_descendants_without_recreating_sources
+3 failed, 3 passed, 2 warnings in 9.26s

@@ -1,0 +1,58 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+__ test_agreement_count_preserves_hidden_archived_and_selected_account_scope ___
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10d785010>
+
+    @pytest.mark.asyncio
+    async def test_agreement_count_preserves_hidden_archived_and_selected_account_scope(session):
+        owner = User(email="agreement-scope@example.test", name="Scope owner", groups=[])
+        clients = [Client(name=name) for name in ("Deal-less", "Matched", "Hidden", "Archived")]
+        session.add_all([owner, *clients])
+        await session.flush()
+        from datetime import UTC, datetime
+        clients[3].archived_at = datetime.now(UTC)
+        session.add(Opportunity(client_id=clients[1].id, owner_id=owner.id, source="hubspot",
+            hubspot_deal_id="agreement-scope-deal", hubspot_pipeline_id="selected", name="Matching deal"))
+        for client in clients:
+            session.add(Agreement(client_id=client.id, kind="NDA", file_key=f"{client.id}.pdf",
+                filename="NDA.pdf", file_size=10, uploaded_by=owner.id))
+        await session.commit()
+        hidden = (clients[2].id,)
+>       assert (await summary(session, filters=PipelineFilters(hidden_client_ids=hidden))).agreements_uploaded == 2
+E       AssertionError: assert 1 == 2
+E        +  where 1 = PipelineSummary(open_count=1, open_value_by_currency={'UNK': Decimal('0')}, closing_this_month=0, overdue_actions=0, pending_approvals=0, agreement_gaps=1, sows_in_progress=0, agreements_uploaded=1, ceo_pending=0).agreements_uploaded
+
+api/tests/test_s21_agreement_summary_scope.py:28: AssertionError
+____________ test_card_agreements_uploaded_matches_agreement_count _____________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10dac5e50>
+
+    @pytest.mark.asyncio
+    async def test_card_agreements_uploaded_matches_agreement_count(session):
+        """`agreements_uploaded` on the summary === count of Agreement rows."""
+        c = Client(name="Agr Corp")
+        session.add(c)
+        await session.flush()
+        for i in range(3):
+            session.add(
+                Agreement(
+                    client_id=c.id,
+                    kind="NDA" if i % 2 == 0 else "MSA",
+                    file_key=f"s3://b/agr_{i}.pdf",
+                    filename=f"agr_{i}.pdf",
+                    file_size=100,
+                    uploaded_by=uuid.uuid4(),
+                )
+            )
+        await session.commit()
+        s = await summary(session, filters=PipelineFilters())
+>       assert s.agreements_uploaded == 3
+E       assert 0 == 3
+E        +  where 0 = PipelineSummary(open_count=0, open_value_by_currency={}, closing_this_month=0, overdue_actions=0, pending_approvals=0, agreement_gaps=0, sows_in_progress=0, agreements_uploaded=0, ceo_pending=0).agreements_uploaded
+
+api/tests/test_s20_w4_session6.py:198: AssertionError
+=========================== short test summary info ============================
+FAILED api/tests/test_s21_agreement_summary_scope.py::test_agreement_count_preserves_hidden_archived_and_selected_account_scope
+FAILED api/tests/test_s20_w4_session6.py::test_card_agreements_uploaded_matches_agreement_count
+2 failed in 2.10s

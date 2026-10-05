@@ -1,0 +1,135 @@
+FF.FFFFFF                                                                [100%]
+=================================== FAILURES ===================================
+__________________ test_cleanup_rejects_invalid_age[nonsense] __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a379e00>
+value = 'nonsense'
+
+    @pytest.mark.parametrize("value", ["nonsense", "-1", "NaN", "Infinity", "-Infinity", ""])
+    def test_cleanup_rejects_invalid_age(monkeypatch, value):
+        from worker.e2e_cleanup import _min_age
+        monkeypatch.setenv("E2E_MIN_AGE_HOURS", value)
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+api/tests/test_s21_trusted_cleanup.py:19: Failed
+------------------------------ Captured log call -------------------------------
+WARNING  dealgate.worker.e2e_cleanup:e2e_cleanup.py:57 e2e_cleanup_invalid_min_age_hours
+_____________________ test_cleanup_rejects_invalid_age[-1] _____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a37a8b0>
+value = '-1'
+
+    @pytest.mark.parametrize("value", ["nonsense", "-1", "NaN", "Infinity", "-Infinity", ""])
+    def test_cleanup_rejects_invalid_age(monkeypatch, value):
+        from worker.e2e_cleanup import _min_age
+        monkeypatch.setenv("E2E_MIN_AGE_HOURS", value)
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+api/tests/test_s21_trusted_cleanup.py:19: Failed
+__________________ test_cleanup_rejects_invalid_age[Infinity] __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a38a690>
+value = 'Infinity'
+
+    @pytest.mark.parametrize("value", ["nonsense", "-1", "NaN", "Infinity", "-Infinity", ""])
+    def test_cleanup_rejects_invalid_age(monkeypatch, value):
+        from worker.e2e_cleanup import _min_age
+        monkeypatch.setenv("E2E_MIN_AGE_HOURS", value)
+        with pytest.raises(ValueError):
+>           _min_age()
+
+api/tests/test_s21_trusted_cleanup.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _min_age() -> timedelta:
+        raw = os.environ.get("E2E_MIN_AGE_HOURS")
+        if raw is None:
+            return timedelta(hours=24)
+        try:
+            hours = float(raw)
+        except ValueError:
+            log.warning("e2e_cleanup_invalid_min_age_hours", extra={"value": raw})
+            return timedelta(hours=24)
+>       return timedelta(hours=max(hours, 0))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       OverflowError: cannot convert float infinity to integer
+
+worker/e2e_cleanup.py:59: OverflowError
+_________________ test_cleanup_rejects_invalid_age[-Infinity] __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a38a7a0>
+value = '-Infinity'
+
+    @pytest.mark.parametrize("value", ["nonsense", "-1", "NaN", "Infinity", "-Infinity", ""])
+    def test_cleanup_rejects_invalid_age(monkeypatch, value):
+        from worker.e2e_cleanup import _min_age
+        monkeypatch.setenv("E2E_MIN_AGE_HOURS", value)
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+api/tests/test_s21_trusted_cleanup.py:19: Failed
+______________________ test_cleanup_rejects_invalid_age[] ______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a3dbb50>
+value = ''
+
+    @pytest.mark.parametrize("value", ["nonsense", "-1", "NaN", "Infinity", "-Infinity", ""])
+    def test_cleanup_rejects_invalid_age(monkeypatch, value):
+        from worker.e2e_cleanup import _min_age
+        monkeypatch.setenv("E2E_MIN_AGE_HOURS", value)
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+api/tests/test_s21_trusted_cleanup.py:19: Failed
+------------------------------ Captured log call -------------------------------
+WARNING  dealgate.worker.e2e_cleanup:e2e_cleanup.py:57 e2e_cleanup_invalid_min_age_hours
+__________________ test_zero_age_requires_exact_run_and_owner __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a46c750>
+
+    def test_zero_age_requires_exact_run_and_owner(monkeypatch):
+        from worker.e2e_cleanup import _min_age
+        monkeypatch.setenv("E2E_MIN_AGE_HOURS", "0")
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+api/tests/test_s21_trusted_cleanup.py:26: Failed
+___ test_manifest_excludes_names_active_untagged_mirrors_and_foreign_grants ____
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10a391be0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a463770>
+
+    @pytest.mark.asyncio
+    async def test_manifest_excludes_names_active_untagged_mirrors_and_foreign_grants(session, monkeypatch):
+>       from app.services.fixture_cleanup import cleanup_manifest
+E       ModuleNotFoundError: No module named 'app.services.fixture_cleanup'
+
+api/tests/test_s21_trusted_cleanup.py:35: ModuleNotFoundError
+______ test_zero_age_does_not_override_active_run_and_revalidates_issuer _______
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10a41f110>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a3fdcd0>
+
+    @pytest.mark.asyncio
+    async def test_zero_age_does_not_override_active_run_and_revalidates_issuer(session, monkeypatch):
+>       from app.services.fixture_cleanup import cleanup_manifest
+E       ModuleNotFoundError: No module named 'app.services.fixture_cleanup'
+
+api/tests/test_s21_trusted_cleanup.py:72: ModuleNotFoundError
+=========================== short test summary info ============================
+FAILED api/tests/test_s21_trusted_cleanup.py::test_cleanup_rejects_invalid_age[nonsense]
+FAILED api/tests/test_s21_trusted_cleanup.py::test_cleanup_rejects_invalid_age[-1]
+FAILED api/tests/test_s21_trusted_cleanup.py::test_cleanup_rejects_invalid_age[Infinity]
+FAILED api/tests/test_s21_trusted_cleanup.py::test_cleanup_rejects_invalid_age[-Infinity]
+FAILED api/tests/test_s21_trusted_cleanup.py::test_cleanup_rejects_invalid_age[]
+FAILED api/tests/test_s21_trusted_cleanup.py::test_zero_age_requires_exact_run_and_owner
+FAILED api/tests/test_s21_trusted_cleanup.py::test_manifest_excludes_names_active_untagged_mirrors_and_foreign_grants
+FAILED api/tests/test_s21_trusted_cleanup.py::test_zero_age_does_not_override_active_run_and_revalidates_issuer
+8 failed, 1 passed in 4.91s

@@ -1,7 +1,7 @@
-import { Button } from "../../../ui-v2/primitives/button";
+import { SignedSowActions, type ExecutionProps } from "./SignedSowActions";
 import { StatusBadge, type StatusTone } from "../../../ui-v2/StatusBadge";
-import type { WorkspaceSnapshot } from "./readiness";
 import type { ReactNode } from "react";
+import { CURRENT_APPROVAL_FUNCTIONS, LEGACY_APPROVAL_FUNCTIONS } from "../../../api/client";
 
 interface Check {
   id: string;
@@ -15,20 +15,10 @@ interface Check {
 }
 
 /**
- * Signature tab — every pre-release check listed as an independent line.
- * When Send is held the user sees the specific reason; disabled without
- * explanation is banned by spec §4.
- *
- * S20 W7 (T22): "prepare only the current approved package". When the
- * package has been superseded by a newer submission, this tab renders a
- * "Superseded by v{N}" banner and disables the primary action with a
- * link to the newer package. The server also enforces the block — a
- * stale URL cannot post to `/signed-sow/{id}` past the supersession.
+ * Current approved source checks and the executed-document workflow.
+ * Server eligibility remains authoritative for upload and verification.
  */
-export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
-  // W3/W7 stashed `snap.approvalPackage.superseded_by` for a future
-  // "Signature superseded" banner; wiring lives in Signature.tsx today
-  // so the tab-level view can stay purely a checklist.
+export function SignatureTab({ snap, viewer, refresh }: ExecutionProps) {
   const checks: Check[] = [];
   // S20 W3 D3: NDA/MSA is *not* a signature check. The upload marker is
   // client-scoped context (rendered in the workspace header) and the
@@ -43,7 +33,7 @@ export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
       .filter((a) => a.decision === "approve")
       .map((a) => a.function),
   );
-  for (const fn of ["delivery", "hr", "finance", "legal"] as const) {
+  for (const fn of pkg?.required_functions ?? (pkg ? LEGACY_APPROVAL_FUNCTIONS : CURRENT_APPROVAL_FUNCTIONS)) {
     const ok = approvedFns.has(fn);
     checks.push({
       id: `fn-${fn}`,
@@ -140,9 +130,6 @@ export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
     ) : undefined,
   });
 
-  const failing = checks.filter((c) => c.status !== "ok");
-  const canSend = failing.length === 0;
-
   return (
     <div className="space-y-4" style={{ maxWidth: "960px" }}>
       <section
@@ -167,33 +154,7 @@ export function SignatureTab({ snap }: { snap: WorkspaceSnapshot }) {
           ))}
         </ul>
       </section>
-      <section
-        aria-label="Send"
-        className="rounded-panel border border-divider bg-surface p-4"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-section text-text">Send for signature</h2>
-            {canSend ? (
-              <p className="text-body text-text-secondary">
-                All pre-signature checks pass — this will send the exact
-                package version above.
-              </p>
-            ) : (
-              <p className="text-body text-danger">
-                Held: {failing.map((f) => f.label).join(" · ")}
-              </p>
-            )}
-          </div>
-          <Button
-            type="button"
-            disabled={!canSend}
-            aria-label="Send for signature"
-          >
-            Send for signature
-          </Button>
-        </div>
-      </section>
+      <SignedSowActions snap={snap} viewer={viewer} refresh={refresh} />
     </div>
   );
 }

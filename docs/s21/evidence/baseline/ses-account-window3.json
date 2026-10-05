@@ -1,0 +1,16 @@
+{
+    "ProductionAccessEnabled": false,
+    "SendingEnabled": true,
+    "EnforcementStatus": "HEALTHY",
+    "SendQuota": {
+        "Max24HourSend": 200.0,
+        "MaxSendRate": 1.0,
+        "SentLast24Hours": 0.0
+    },
+    "SuppressionAttributes": {
+        "SuppressedReasons": [
+            "BOUNCE",
+            "COMPLAINT"
+        ]
+    }
+}

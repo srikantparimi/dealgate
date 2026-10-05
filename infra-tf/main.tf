@@ -131,9 +131,12 @@ module "e2e_approvers" {
 }
 
 module "api" {
-  source      = "./modules/api"
-  name_prefix = local.name_prefix
-  env         = var.env
+  source             = "./modules/api"
+  name_prefix        = local.name_prefix
+  env                = var.env
+  tenant_id          = local.name_prefix
+  reporting_timezone = var.reporting_timezone
+  reporting_currency = var.reporting_currency
   # S19 slice 1: the staging Playwright suite calls /internal/seed. The api
   # module's container_definitions used to gate the env on
   # `var.env == "staging"` too, but this root's `env` is `dev` (the
@@ -142,16 +145,17 @@ module "api" {
   # from every TF-registered task-def. Setting it on the module here + the
   # env-check drop in the container_definitions block is now the single
   # switch. Prod will get its own root without this line.
-  allow_dev_seed_endpoint = true
-  region                 = var.region
-  vpc_id                 = module.network.vpc_id
-  public_subnet_ids      = module.network.public_subnet_ids
-  private_subnet_ids     = module.network.private_subnet_ids
-  ecr_repository_url     = module.ecr.repository_url
-  image_tag              = var.image_tag
+  allow_dev_seed_endpoint  = true
+  region                   = var.region
+  vpc_id                   = module.network.vpc_id
+  public_subnet_ids        = module.network.public_subnet_ids
+  private_subnet_ids       = module.network.private_subnet_ids
+  ecr_repository_url       = module.ecr.repository_url
+  image_tag                = var.image_tag
   db_url_secret_arn        = module.secrets.db_url_secret_arn
   jwt_signing_secret_arn   = module.secrets.jwt_signing_secret_arn
   hubspot_token_secret_arn = module.secrets.hubspot_token_secret_arn
+  hubspot_portal_id        = var.hubspot_portal_id
   cognito_user_pool_id     = module.auth.user_pool_id
   cognito_user_pool_arn    = module.auth.user_pool_arn
   cognito_client_id        = module.auth.client_id
@@ -191,22 +195,28 @@ module "storage" {
   name_prefix = local.name_prefix
   account_id  = data.aws_caller_identity.current.account_id
   kms_key_arn = module.kms.key_arn
+  # v3 removes SOW payloads on deletion; do not introduce new retention on
+  # this existing unlocked staging bucket. Audit-export WORM is unchanged.
+  sow_object_lock_enabled = false
 }
 
 # S2-E3 Wave 2: scheduled alert scheduler + notification sender workers.
 # Reuses the API ECS cluster + SG + subnets to avoid a second Fargate footprint.
 module "schedulers" {
-  source                   = "./modules/schedulers"
-  name_prefix              = local.name_prefix
-  env                      = var.env
-  region                   = var.region
-  ecs_cluster_arn          = module.api.cluster_arn
-  private_subnet_ids       = module.network.private_subnet_ids
-  task_security_group_ids  = [module.api.api_security_group_id]
-  ecr_repository_url       = module.ecr.repository_url
-  image_tag                = var.image_tag
-  db_url_secret_arn        = module.secrets.db_url_secret_arn
-  task_execution_role_arn  = module.api.task_execution_role_arn
+  source                  = "./modules/schedulers"
+  name_prefix             = local.name_prefix
+  env                     = var.env
+  tenant_id               = local.name_prefix
+  s21_jobs_enabled        = var.s21_jobs_enabled
+  trusted_cleanup_enabled = var.trusted_cleanup_enabled
+  region                  = var.region
+  ecs_cluster_arn         = module.api.cluster_arn
+  private_subnet_ids      = module.network.private_subnet_ids
+  task_security_group_ids = [module.api.api_security_group_id]
+  ecr_repository_url      = module.ecr.repository_url
+  image_tag               = var.image_tag
+  db_url_secret_arn       = module.secrets.db_url_secret_arn
+  task_execution_role_arn = module.api.task_execution_role_arn
   # S14a.3 (Kanna, 22 Sep 2026): cognito_user_pool_id + cognito_client_id are
   # intentionally NOT set. The scheduler workers (alert_scheduler,
   # notification_sender, renewals_scheduler, audit_export) do not touch
@@ -226,20 +236,27 @@ module "schedulers" {
   # Still in SES sandbox so recipients must be verified: Kanna's own
   # srikanthp+dealgate-staging@smartek21.com is verified from S14a.3
   # batch 1 and is the test inbox for the proofs below.
-  ses_from_address         = module.dns.ses_from_address
+  ses_from_address           = module.dns.ses_from_address
+  ses_identity_domain        = "dealgateapp.com"
+  retained_sender_identity   = "srikanthp+dealgate-staging@smartek21.com"
+  hubspot_continuous_enabled = var.hubspot_continuous_enabled
+  hubspot_portal_id          = var.hubspot_portal_id
+  hubspot_alarms_topic_arn = (
+    var.operational_hardening_enabled ? module.observability[0].alerts_topic_arn : ""
+  )
 
   # S19 slice 1 §B5 / §B6: hubspot_intake consumer + hubspot_reconcile
   # nightly job. Consumer long-polls the SQS queue and needs the HubSpot
   # token to re-read deals from CRM API; reconcile walks the CRM listing
   # and updates sync_status.
-  hubspot_event_queue_url  = module.hubspot.queue_url
-  hubspot_event_queue_arn  = module.hubspot.queue_arn
+  hubspot_event_queue_url = module.hubspot.queue_url
+  hubspot_event_queue_arn = module.hubspot.queue_arn
   # S20 W1 · freshness alarms consume the queue NAMES as the SQS
   # CloudWatch dimension, so they're wired separately from the URL/ARN
   # (which the consumer worker uses).
   hubspot_events_queue_name = module.hubspot.queue_name
   hubspot_events_dlq_name   = module.hubspot.dlq_name
-  hubspot_token_secret_arn = module.secrets.hubspot_token_secret_arn
+  hubspot_token_secret_arn  = module.secrets.hubspot_token_secret_arn
 }
 
 module "github_oidc" {
@@ -260,11 +277,14 @@ module "github_oidc" {
 # only — the apply (which triggers verification mails) is reserved
 # for Kanna per CLAUDE.md rule 15.
 module "prod_approvers" {
-  source = "./modules/prod-approvers"
+  count        = var.production_approver_identities_enabled ? 1 : 0
+  source       = "./modules/prod-approvers"
+  user_pool_id = module.auth.user_pool_id
 }
 
 # S7: CloudTrail + GuardDuty + CloudWatch alarms + SNS alerts topic.
 module "observability" {
+  count                    = var.operational_hardening_enabled ? 1 : 0
   source                   = "./modules/observability"
   name_prefix              = local.name_prefix
   region                   = var.region

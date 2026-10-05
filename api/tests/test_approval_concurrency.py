@@ -1,4 +1,4 @@
-"""Real Postgres serialization of the two parallel first-stage reviews."""
+"""Real Postgres serialization of three parallel first-stage reviews."""
 
 import asyncio
 import os
@@ -41,11 +41,11 @@ async def test_parallel_reviews_advance_once():
                     reason="Concurrent review verified",
                 )
 
-        await asyncio.gather(approve("delivery"), approve("hr"))
+        await asyncio.gather(approve("delivery"), approve("hr"), approve("sales"))
         async with factory() as session:
             pkg = await load_package(session, package_id)
             assert pkg.status == "pending_finance_legal"
-            assert len(pkg.approvals) == 2
+            assert {a.function for a in pkg.approvals} == {"delivery", "hr", "sales"}
             tasks = list(
                 (
                     await session.scalars(
@@ -53,7 +53,7 @@ async def test_parallel_reviews_advance_once():
                     )
                 ).all()
             )
-            assert len(tasks) == 4
+            assert len(tasks) == 5
             assert sum(t.status == "assigned" for t in tasks) == 2
     finally:
         await engine.dispose()

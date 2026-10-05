@@ -1,0 +1,32 @@
+......................................................................   [100%]
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+tests/test_sow_extract.py::test_upload_url_rejects_bad_content_type
+tests/test_sow_extract.py::test_confirm_unknown_field_returns_422
+tests/test_sow_extract.py::test_submit_without_all_confirmed_returns_422_with_missing_list
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/test_sow_extract.py::test_create_version_over_25mb_returns_413
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_413_REQUEST_ENTITY_TOO_LARGE' is deprecated. Use 'HTTP_413_CONTENT_TOO_LARGE' instead.
+    return await dependant.call(**values)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+70 passed, 6 warnings in 20.94s

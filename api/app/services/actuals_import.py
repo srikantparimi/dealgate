@@ -24,10 +24,14 @@ from __future__ import annotations
 import csv
 import io
 import uuid
+import hashlib
+import json
+import os
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -35,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.gm.core import gross_margin
-from app.models.actual import ActualImportBatch, ActualPeriod
+from app.models.actual import ActualImportBatch, ActualPeriod, FinancialImportBatch, FinancialActual
 from app.models.gm_model import GmModel, ResourceLine
 
 
@@ -502,3 +506,239 @@ __all__ = [
     "assert_role",
     "import_csv",
 ]
+
+
+class FinancialCoverageInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sow_version_id: uuid.UUID
+    schedule_row: int = Field(ge=0, strict=True)
+    fraction_start: str
+    fraction_end: str
+    through_date: date
+    basis_evidence: str = Field(min_length=1, max_length=2000, pattern=r"\S")
+
+    @field_validator("basis_evidence")
+    @classmethod
+    def normalize_evidence(cls, value):
+        return value.strip()
+
+    @model_validator(mode="after")
+    def explicit_interval(self):
+        try:
+            start, end = Decimal(self.fraction_start), Decimal(self.fraction_end)
+        except InvalidOperation as exc:
+            raise ValueError("Coverage fractions require exact decimals") from exc
+        if not start.is_finite() or not end.is_finite() or not Decimal(0) <= start < end <= Decimal(1):
+            raise ValueError("Coverage requires 0 <= start < end <= 1")
+        return self
+
+
+class FinancialRowInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_id: uuid.UUID
+    gm_model_id: uuid.UUID | None = None
+    source_id: str = Field(min_length=1, max_length=255, pattern=r"\S")
+    revision: int = Field(ge=1, strict=True)
+    expected_previous_revision: int = Field(default=0, ge=0, strict=True)
+    period_month: date
+    measure: Literal["recognized_revenue", "billed", "cash_collected", "delivery_cost"]
+    amount: str
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    source_date: date
+    fx_rate: str | None = None
+    fx_version: str | None = Field(default=None, max_length=128)
+    fx_date: date | None = None
+    reason: str = Field(min_length=1, max_length=2000, pattern=r"\S")
+    coverage: FinancialCoverageInput | None = None
+
+    @field_validator("amount", "fx_rate")
+    @classmethod
+    def finite_money(cls, value):
+        if value is not None:
+            try:
+                amount = Decimal(value)
+            except InvalidOperation as exc:
+                raise ValueError("Expected a Decimal string") from exc
+            if not amount.is_finite():
+                raise ValueError("Financial facts must be finite")
+        return value
+
+    @field_validator("period_month")
+    @classmethod
+    def first_of_month(cls, value):
+        if value.day != 1:
+            raise ValueError("period_month must be the first day of its accounting month")
+        return value
+
+
+class FinancialImportInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_system: str = Field(min_length=1, max_length=128, pattern=r"\S")
+    idempotency_key: uuid.UUID
+    rows: list[FinancialRowInput] = Field(min_length=1, max_length=1000)
+
+
+def _financial_scope():
+    tenant = os.environ.get("DEALGATE_TENANT_ID")
+    if not tenant:
+        raise HTTPException(409, "Financial imports require an explicit tenant")
+    return tenant, os.environ.get("DEALGATE_ENV", "local")
+
+
+async def import_financial(session, *, actor, body: FinancialImportInput):
+    from app.models.client import Client
+    from app.models.opportunity import Opportunity
+    from app.services.test_fixtures import account_scope, is_test_user, user_allowed
+    from sqlalchemy.exc import IntegrityError
+
+    assert_role(actor.groups)
+    tenant, environment = _financial_scope()
+    key = f"{actor.id}:{body.idempotency_key}"
+    payload = body.model_dump(mode="json")
+    for row in payload["rows"]:
+        if row.get("coverage") is None:
+            row.pop("coverage", None)
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    if session.bind is not None and session.bind.dialect.name == "postgresql":
+        from sqlalchemy import text
+        # Serialize replay by request, not User: identity synchronization must
+        # not wait for account locks while holding the global audit-chain lock.
+        identity = json.dumps(["financial-request", tenant, environment, body.source_system, key])
+        lock = -(int.from_bytes(hashlib.sha256(identity.encode()).digest()[:8], "big") >> 1) - 1
+        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock})
+    existing = await session.scalar(select(FinancialImportBatch).where(
+        FinancialImportBatch.tenant_id == tenant, FinancialImportBatch.environment == environment,
+        FinancialImportBatch.source_system == body.source_system, FinancialImportBatch.request_key == key))
+    if existing:
+        if existing.request_hash != digest:
+            raise HTTPException(409, "Import idempotency key already contains different inputs")
+        for identity in {row.account_id for row in body.rows}:
+            account = await session.get(Client, identity)
+            if (account is not None and not user_allowed(actor, await account_scope(session, identity))) or (
+                account is None and (existing.test_fixture or is_test_user(actor))
+            ):
+                raise HTTPException(403, "Import replay is outside current trusted scope")
+        if existing.status == "failed":
+            status = 409 if any(error.get("status_code") == 409 for error in existing.errors or []) else 422
+            raise HTTPException(status, {"batch_id": str(existing.id), "errors": existing.errors})
+        return existing
+    # Source identity survives account deletion; account locks alone cannot serialize corrections.
+    if session.bind is not None and session.bind.dialect.name == "postgresql":
+        from sqlalchemy import text
+        for source_id in sorted({row.source_id for row in body.rows}):
+            identity = json.dumps(["financial-source", tenant, environment, body.source_system, source_id])
+            lock = -(int.from_bytes(hashlib.sha256(identity.encode()).digest()[:8], "big") >> 1) - 1
+            await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock})
+    batch = FinancialImportBatch(id=uuid.uuid4(), tenant_id=tenant, environment=environment,
+        source_system=body.source_system, request_key=key, request_hash=digest, uploaded_by=actor.id,
+        status="uploading", row_count=len(body.rows), errors=None, test_fixture=is_test_user(actor))
+    session.add(batch)
+    await session.flush()
+    for account_id in sorted({row.account_id for row in body.rows}):
+        await session.execute(select(Client.id).where(Client.id == account_id).with_for_update())
+    errors, prepared, seen, conflict = [], [], set(), False
+    for index, row in enumerate(body.rows, 1):
+        def reject(message, status_code=422):
+            errors.append({"row": index, "source_id": row.source_id, "error": message, "status_code": status_code})
+        if row.source_id in seen:
+            reject("Duplicate source row in batch")
+        seen.add(row.source_id)
+        prior = await session.scalar(select(FinancialActual).where(
+            FinancialActual.tenant_id == tenant, FinancialActual.environment == environment,
+            FinancialActual.source_system == body.source_system, FinancialActual.source_id == row.source_id
+        ).order_by(FinancialActual.revision.desc()).limit(1))
+        prior_revision = prior.revision if prior else 0
+        if row.expected_previous_revision != prior_revision or row.revision != prior_revision + 1:
+            reject("Source revision changed; refresh before correcting", 409)
+            conflict = True
+        if prior and (prior.original_account_id != row.account_id or prior.measure != row.measure):
+            reject("Correction cannot move source identity to another account or measure")
+        account = await session.get(Client, row.account_id)
+        retained = prior and prior.account_id is None and not prior.test_fixture and not is_test_user(actor)
+        if account is None and not retained:
+            reject("Account unavailable")
+        elif account is not None and not user_allowed(actor, await account_scope(session, account.id)):
+            reject("Account is outside trusted import scope")
+        gm = await session.get(GmModel, row.gm_model_id) if row.gm_model_id else None
+        if row.gm_model_id:
+            deal = await session.get(Opportunity, gm.opportunity_id) if gm else None
+            retained_gm = prior and prior.gm_model_id is None and prior.original_gm_model_id == row.gm_model_id
+            if not retained_gm and (gm is None or deal is None or deal.client_id != row.account_id):
+                reject("GM source must belong to the same account")
+            if gm and gm.commercial_snapshot and (
+                gm.commercial_snapshot.get("tenant_id"), gm.commercial_snapshot.get("environment")
+            ) != (tenant, environment):
+                reject("GM source is outside the financial tenant or environment")
+        if row.fx_rate is not None and (Decimal(row.fx_rate) <= 0 or not row.fx_version or not row.fx_version.strip() or not row.fx_date):
+            reject("Reporting FX requires positive rate, version and date")
+        if row.coverage:
+            from app.services.financial_coverage import validate_coverage_source
+            for message in await validate_coverage_source(session, row=row, gm=gm, tenant=tenant, environment=environment):
+                reject(message)
+        prepared.append(FinancialActual(id=uuid.uuid4(), tenant_id=tenant, environment=environment,
+            source_system=body.source_system, source_id=row.source_id, revision=row.revision, batch_id=batch.id,
+            account_id=account.id if account else None, original_account_id=row.account_id,
+            gm_model_id=gm.id if gm else None, original_gm_model_id=row.gm_model_id,
+            period_month=row.period_month, measure=row.measure, amount=Decimal(row.amount), currency=row.currency,
+            source_date=row.source_date, fx_rate=Decimal(row.fx_rate) if row.fx_rate else None,
+            fx_version=row.fx_version, fx_date=row.fx_date, reason=row.reason.strip(),
+            coverage=row.coverage.model_dump(mode="json") if row.coverage else None,
+            test_fixture=is_test_user(actor)))
+    if any(row.coverage for row in prepared):
+        from app.services.financial_coverage import coverage_conflicts
+        for index, message in await coverage_conflicts(session, prepared, tenant=tenant, environment=environment):
+            errors.append({"row": index, "source_id": prepared[index - 1].source_id,
+                           "error": message, "status_code": 422})
+    if errors:
+        batch.status, batch.errors = "failed", errors
+        await append_audit(session, actor_id=actor.id, action="actuals.financial_import_rejected",
+            entity="financial_import_batch", entity_id=str(batch.id), before=None,
+            after={"row_count": len(body.rows), "error_count": len(errors), "source_system": body.source_system})
+        await session.commit()
+        raise HTTPException(409 if conflict else 422, {"batch_id": str(batch.id), "errors": errors})
+    session.add_all(prepared)
+    batch.status = "committed"
+    try:
+        await append_audit(session, actor_id=actor.id, action="actuals.financial_imported",
+            entity="financial_import_batch", entity_id=str(batch.id), before=None,
+            after={"row_count": len(prepared), "source_system": body.source_system, "source_hash": digest})
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(409, "Concurrent financial source revision; refresh before import") from exc
+    return batch
+
+
+async def financial_records(session, *, actor, account_id=None, history=False):
+    from app.services.test_fixtures import account_scope, is_test_user, user_allowed
+    assert_role(actor.groups)
+    tenant, environment = _financial_scope()
+    query = select(FinancialActual).where(FinancialActual.tenant_id == tenant, FinancialActual.environment == environment)
+    if account_id:
+        query = query.where(FinancialActual.original_account_id == account_id)
+    records = (await session.scalars(query.order_by(FinancialActual.source_system, FinancialActual.source_id,
+                                                   FinancialActual.revision.desc()))).all()
+    result, seen = [], set()
+    for row in records:
+        identity = (row.source_system, row.source_id)
+        if identity in seen and not history:
+            continue
+        seen.add(identity)
+        if row.account_id:
+            if not user_allowed(actor, await account_scope(session, row.account_id)):
+                continue
+        elif row.test_fixture or is_test_user(actor):
+            continue
+        amount = format(row.amount, "f")
+        if "." in amount:
+            amount = amount.rstrip("0").rstrip(".")
+        result.append({"id": str(row.id), "source_system": row.source_system, "source_id": row.source_id,
+            "revision": row.revision, "batch_id": str(row.batch_id), "account_id": str(row.original_account_id),
+            "gm_model_id": str(row.original_gm_model_id) if row.original_gm_model_id else None,
+            "source_detached": row.account_id is None or (row.original_gm_model_id is not None and row.gm_model_id is None),
+            "period_month": row.period_month.isoformat(), "measure": row.measure, "amount": amount,
+            "currency": row.currency, "source_date": row.source_date.isoformat(), "reason": row.reason,
+            "coverage": row.coverage,
+            "fx_rate": str(row.fx_rate) if row.fx_rate is not None else None,
+            "fx_version": row.fx_version, "fx_date": row.fx_date.isoformat() if row.fx_date else None})
+    return result

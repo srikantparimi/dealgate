@@ -1,0 +1,16 @@
+
+Error: Module not installed
+
+  on modules/schedulers/tests/s21_jobs.tftest.hcl line 36, in run "jobs_disabled_until_reviewed_cutover":
+  36:   module { source = "./modules/schedulers" }
+
+This module is not yet installed. Run "terraform init" to install all modules
+required by this configuration.
+
+Error: Module not installed
+
+  on modules/schedulers/tests/s21_jobs.tftest.hcl line 50, in run "both_jobs_use_exact_release_image":
+  50:   module { source = "./modules/schedulers" }
+
+This module is not yet installed. Run "terraform init" to install all modules
+required by this configuration.

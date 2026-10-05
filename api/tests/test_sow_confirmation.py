@@ -121,7 +121,7 @@ async def test_build_confirmation_serialises_cleanly(seeded_sow, session):
     dumped = serialize_confirmation(payload)
     assert dumped["engagement"]["primary"]["type"] == payload.engagement.primary.type
     assert "approvers" in dumped
-    assert set(dumped["approvers"].keys()) == {"delivery", "hr", "finance", "legal"}
+    assert set(dumped["approvers"].keys()) == {"delivery", "hr", "sales", "finance", "legal"}
     assert "needs_you" in dumped
     assert "ceo_gate" in dumped
 
@@ -205,6 +205,7 @@ def test_fixed_fee_blocks_on_cost_not_bill_rate():
                 "deliverables", "signatories",
             )
         }
+        extracted_fields["currency"] = {"value": "USD", "provenance": "extracted", "page_ref": 1}
 
     def _line(bill: str, cost: str | None) -> StaffingLine:
         return StaffingLine(

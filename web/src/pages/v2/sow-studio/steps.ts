@@ -51,7 +51,7 @@ export const STEPS: StepDef[] = [
     title: "Review routing",
     short: "Routing",
     purpose:
-      "Name a Delivery, HR, Finance and Legal owner; add CEO if below floor.",
+      "Name a Delivery, HR, Sales, Finance and Legal reviewer; add CEO if below floor.",
   },
   {
     id: "submit",

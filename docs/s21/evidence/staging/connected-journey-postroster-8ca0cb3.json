@@ -1,0 +1,524 @@
+{
+ "amendment_draft_version_id": "33668c1d-9519-4787-b300-9a940b178669",
+ "base": "https://app.dealgateapp.com",
+ "cleanup_status": "done",
+ "client_id": "fbbd07ea-8d12-467a-86ac-d123553470a4",
+ "comment_id": "59e126c1-bbca-4130-958d-152537cb3803",
+ "deal_id": "b823cb13-7c4f-4263-a8f8-40ffe16b19d9",
+ "deletion_job_id": "c79aad3e-ba99-422c-9f71-212a37343115",
+ "demand_publication_id": "54c179ba-4b76-4fda-ba6d-9184353b4c23",
+ "economics": {
+  "cost": "10000",
+  "revenue": "24000"
+ },
+ "fixture": {
+  "client_id": "fbbd07ea-8d12-467a-86ac-d123553470a4",
+  "expires_at": "2026-10-05T06:21:43.513721+00:00",
+  "opportunity_id": "b823cb13-7c4f-4263-a8f8-40ffe16b19d9",
+  "run_id": "912f2abf-68f5-446b-b391-e52870eee3e3"
+ },
+ "forecast_id": "db15ad94-bc47-4e62-a9de-ff2f6185b97b",
+ "functions": [
+  "delivery",
+  "hr",
+  "sales",
+  "finance",
+  "legal"
+ ],
+ "gm_model_id": "3026c0e7-f4e5-4ff2-8406-a2e7b5a4181a",
+ "label": "S21 e2e staging-core bdddb13e9d42",
+ "next_action_id": "f72416c4-b3b1-4215-959f-ce7edca67e24",
+ "package_id": "d51bbd83-488d-45a0-abd2-aedbc62c4fdf",
+ "project_id": "c9cd807e-ae85-4dc5-9d9c-c429afeade7e",
+ "run": "bdddb13e9d42490e8f589823792d408c",
+ "sow_version_id": "3e528bd1-a85b-4d78-84a6-4f70a6d97fa1",
+ "status": "passed",
+ "steps": [
+  {
+   "method": "GET",
+   "path": "/clients?size=1",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/me",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/clients?size=1",
+   "role": "delivery",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/me",
+   "role": "delivery",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/clients?size=1",
+   "role": "finance",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/me",
+   "role": "finance",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/clients?size=1",
+   "role": "hr",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/me",
+   "role": "hr",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/clients?size=1",
+   "role": "legal",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/me",
+   "role": "legal",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/clients?size=1",
+   "role": "submitter",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/me",
+   "role": "submitter",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/dev/test-fixtures",
+   "role": "system",
+   "status": 201
+  },
+  {
+   "method": "GET",
+   "path": "/pipeline/opportunities/b823cb13-7c4f-4263-a8f8-40ffe16b19d9",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/pipeline/opportunities",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deals/b823cb13-7c4f-4263-a8f8-40ffe16b19d9",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/sows/upload",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/client_legal_name",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/client_domain",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/billing_basis_normalized",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/scope_summary",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/price",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/currency",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/billing_basis",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/term_start",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/term_end",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/notice_date",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/deliverables",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/milestones",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/acceptance_criteria",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/assumptions",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/exclusions",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/signatories",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "PATCH",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/fields/engagement_type_suggested",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/delivery-model/commercial/profiles",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/delivery-model/b823cb13-7c4f-4263-a8f8-40ffe16b19d9",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/delivery-model/b823cb13-7c4f-4263-a8f8-40ffe16b19d9/commercial/versions",
+   "role": "system",
+   "status": 201
+  },
+  {
+   "method": "POST",
+   "path": "/sow/versions/3e528bd1-a85b-4d78-84a6-4f70a6d97fa1/submit",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/approvals/plan/b823cb13-7c4f-4263-a8f8-40ffe16b19d9",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/approvals/packages/b823cb13-7c4f-4263-a8f8-40ffe16b19d9",
+   "role": "system",
+   "status": 201
+  },
+  {
+   "method": "GET",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf",
+   "role": "delivery",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/decisions/delivery",
+   "role": "delivery",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf",
+   "role": "hr",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/decisions/hr",
+   "role": "hr",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf",
+   "role": "submitter",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/decisions/sales",
+   "role": "submitter",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf",
+   "role": "finance",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/decisions/finance",
+   "role": "finance",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf",
+   "role": "legal",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/approvals/packages/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/decisions/legal",
+   "role": "legal",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/signed-sow/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/file",
+   "role": "system",
+   "status": 201
+  },
+  {
+   "method": "POST",
+   "path": "/signed-sow/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/verify",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/handoff/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/accept",
+   "role": "delivery",
+   "status": 201
+  },
+  {
+   "method": "POST",
+   "path": "/signed-sow/d51bbd83-488d-45a0-abd2-aedbc62c4fdf/release",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/projects",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/forecast/3026c0e7-f4e5-4ff2-8406-a2e7b5a4181a",
+   "role": "delivery",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/forecast/outlook",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/forecast/outlook",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/people/demand",
+   "role": "delivery",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/people/demand/project-publications",
+   "role": "delivery",
+   "status": 201
+  },
+  {
+   "method": "GET",
+   "path": "/people/demand/allocation",
+   "role": "delivery",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/sows/b823cb13-7c4f-4263-a8f8-40ffe16b19d9/versions",
+   "role": "system",
+   "status": 201
+  },
+  {
+   "method": "GET",
+   "path": "/forecast/outlook",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/deals/b823cb13-7c4f-4263-a8f8-40ffe16b19d9/comments",
+   "role": "system",
+   "status": 201
+  },
+  {
+   "method": "GET",
+   "path": "/deals/b823cb13-7c4f-4263-a8f8-40ffe16b19d9/comments",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "POST",
+   "path": "/next-actions",
+   "role": "system",
+   "status": 201
+  },
+  {
+   "method": "GET",
+   "path": "/next-actions/f72416c4-b3b1-4215-959f-ce7edca67e24",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/pipeline/opportunities/b823cb13-7c4f-4263-a8f8-40ffe16b19d9",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "DELETE",
+   "path": "/clients/fbbd07ea-8d12-467a-86ac-d123553470a4?reason=connected%20staging%20teardown",
+   "role": "system",
+   "status": 202
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  },
+  {
+   "method": "GET",
+   "path": "/deletion-jobs/c79aad3e-ba99-422c-9f71-212a37343115",
+   "role": "system",
+   "status": 200
+  }
+ ]
+}

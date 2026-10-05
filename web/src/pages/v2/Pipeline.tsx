@@ -29,11 +29,12 @@
  * when the URL is empty.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ExternalLink, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Download, ExternalLink, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ApiError,
+  downloadPipelineCsv,
   getPipelineFacets,
   getPipelineSummary,
   getSyncStatus,
@@ -42,7 +43,6 @@ import {
   listPipelineOpportunities,
   listSavedViews,
   listTrackingGroups,
-  listWatchlist,
   putUserPreference,
   type PipelineClientRow,
   type PipelineFacets,
@@ -54,7 +54,6 @@ import {
   type SavedView,
   type SyncStatusRow,
   type TrackingGroup,
-  type WatchedList,
 } from "../../api/client";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
@@ -215,9 +214,19 @@ function summariseSync(rows: SyncStatusRow[]): {
 // cache keyed by the exact URL so Back returns to the same spot.
 // ---------------------------------------------------------------------------
 
+function savedViewFilters(view: SavedView): Partial<PipelineFilters> {
+  const filters = { ...view.filter_json } as Partial<PipelineFilters>;
+  const sort = view.sort_json;
+  if (sort && typeof sort === "object" && "column" in sort && typeof sort.column === "string") {
+    filters.sort = `${"descending" in sort && sort.descending === true ? "-" : ""}${sort.column}`;
+  }
+  return filters;
+}
+
 function readFiltersFromURL(sp: URLSearchParams): PipelineFilters & {
   page: number;
   page_size: PageSize;
+  show_clients_without_matches?: boolean;
 } {
   const size = Number(sp.get("page_size") || "25");
   const page_size: PageSize = isPageSize(size) ? size : 25;
@@ -229,6 +238,7 @@ function readFiltersFromURL(sp: URLSearchParams): PipelineFilters & {
     owner: sp.getAll("owner"),
     account_owner: sp.getAll("account_owner"),
     business_unit: sp.getAll("business_unit"),
+    client: sp.getAll("client"),
     readiness: sp.getAll("readiness"),
     attention: sp.getAll("attention"),
     missing: sp.getAll("missing"),
@@ -240,6 +250,7 @@ function readFiltersFromURL(sp: URLSearchParams): PipelineFilters & {
     include_closed: sp.get("include_closed") === "true" || undefined,
     group: sp.getAll("group"),
     watching: sp.get("watching") === "true" || undefined,
+    show_clients_without_matches: sp.get("show_clients_without_matches") === "true" || undefined,
     page,
     page_size,
     sort: sp.get("sort") || undefined,
@@ -247,7 +258,7 @@ function readFiltersFromURL(sp: URLSearchParams): PipelineFilters & {
 }
 
 function writeFiltersToURL(
-  filters: PipelineFilters & { page: number; page_size: PageSize },
+  filters: PipelineFilters & { page: number; page_size: PageSize; show_clients_without_matches?: boolean },
   view: ViewMode,
 ): URLSearchParams {
   const p = new URLSearchParams();
@@ -258,6 +269,7 @@ function writeFiltersToURL(
   filters.owner?.forEach((o) => p.append("owner", o));
   filters.account_owner?.forEach((o) => p.append("account_owner", o));
   filters.business_unit?.forEach((b) => p.append("business_unit", b));
+  filters.client?.forEach((c) => p.append("client", c));
   filters.readiness?.forEach((r) => p.append("readiness", r));
   filters.attention?.forEach((a) => p.append("attention", a));
   filters.missing?.forEach((m) => p.append("missing", m));
@@ -269,6 +281,7 @@ function writeFiltersToURL(
   if (filters.include_closed) p.set("include_closed", "true");
   filters.group?.forEach((g) => p.append("group", g));
   if (filters.watching) p.set("watching", "true");
+  if (filters.show_clients_without_matches) p.set("show_clients_without_matches", "true");
   if (filters.page && filters.page > 1) p.set("page", String(filters.page));
   if (filters.page_size !== 25) p.set("page_size", String(filters.page_size));
   if (filters.sort) p.set("sort", filters.sort);
@@ -305,6 +318,9 @@ export function PipelinePage() {
   });
 
   const filters = useMemo(() => readFiltersFromURL(searchParams), [searchParams]);
+  const latestURL = useRef(searchParams.toString());
+  latestURL.current = searchParams.toString();
+  const requestVersion = useRef(0);
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
 
   const [clientsPage, setClientsPage] = useState<PipelineListPage<PipelineClientRow> | null>(null);
@@ -314,22 +330,39 @@ export function PipelinePage() {
   const [facets, setFacets] = useState<PipelineFacets>({ owners: [], business_units: [] });
   const [groups, setGroups] = useState<TrackingGroup[]>([]);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
-  const [watchlist, setWatchlist] = useState<WatchedList>({
-    items: [],
-    counts: {},
-  });
+  const [watchCount, setWatchCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Facets are portal-static-ish (owners + BUs). Fetch once per mount;
-  // no need to hit the endpoint on every filter change.
+  const exportCsv = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const blob = await downloadPipelineCsv(filters);
+      const url = URL.createObjectURL(blob);
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = "pipeline.csv";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Saved-view navigation is independent of the active query.
   useEffect(() => {
-    getPipelineFacets()
-      .then(setFacets)
-      .catch(() => {
-        setFacets({ owners: [], business_units: [] });
-      });
+    const initialURL = searchParams.toString();
     listTrackingGroups({ member_kind: "opportunity" })
       .then((r) => setGroups(r.items))
       .catch(() => setGroups([]));
@@ -348,11 +381,11 @@ export function PipelinePage() {
           )) ?? null;
         const lastKey =
           pref?.view_id ?? window.localStorage.getItem(PREF_KEY_LAST_VIEW);
-        if (!hasExplicitFilter && lastKey) {
+        if (!hasExplicitFilter && lastKey && latestURL.current === initialURL) {
           const v = r.items.find((it) => it.id === lastKey);
           if (v) {
             const sp = new URLSearchParams();
-            for (const [k, val] of Object.entries(v.filter_json)) {
+            for (const [k, val] of Object.entries(savedViewFilters(v))) {
               if (Array.isArray(val)) val.forEach((x) => sp.append(k, String(x)));
               else if (val != null && val !== false) sp.set(k, String(val));
             }
@@ -361,9 +394,6 @@ export function PipelinePage() {
         }
       })
       .catch(() => setSavedViews([]));
-    listWatchlist()
-      .then(setWatchlist)
-      .catch(() => setWatchlist({ items: [], counts: {} }));
   }, []);
 
   // Local UI-only echo of search + open_closed so typing doesn't rebuild
@@ -374,29 +404,46 @@ export function PipelinePage() {
   }, [filters.search]);
 
   const load = useCallback(async () => {
+    const version = ++requestVersion.current;
     setLoading(true);
     setError(null);
+    setWatchCount(null);
     try {
-      const [clientRes, oppRes, summaryRes, syncRes] = await Promise.all([
+      const opportunities = listPipelineOpportunities(filters);
+      // Reuse the selected population when Watching is already active.
+      const watched = filters.watching ? opportunities : listPipelineOpportunities({
+        ...filters, watching: true, page: 1, page_size: 25,
+      });
+      const [clientRes, oppRes, summaryRes, syncRes, facetsRes, watchedRes] = await Promise.all([
         listPipelineClients(filters),
-        listPipelineOpportunities(filters),
+        opportunities,
         getPipelineSummary(filters),
         getSyncStatus().catch(() => ({ items: [] as SyncStatusRow[] })),
+        getPipelineFacets(filters),
+        watched,
       ]);
+      if (version !== requestVersion.current) return;
       setClientsPage(clientRes);
       setOppsPage(oppRes);
       setSummary(summaryRes);
       setSync(syncRes.items);
+      setFacets(facetsRes);
+      setWatchCount(watchedRes.total);
     } catch (err) {
-      setError(err);
+      if (version === requestVersion.current) setError(err);
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, [filters]);
 
   useEffect(() => {
     void load();
+    return () => { requestVersion.current++; };
   }, [load]);
+
+  useEffect(() => {
+    setViewInternal(searchParams.get("view") === "opportunities" ? "opportunities" : "clients");
+  }, [searchParams]);
 
   // Persist view choice so a fresh landing without any URL state remembers
   // it, but never override an explicit `?view=…` URL (contracts §4).
@@ -405,9 +452,8 @@ export function PipelinePage() {
       setViewInternal(next);
       window.localStorage.setItem(PREF_KEY_VIEW, next);
       const p = new URLSearchParams(searchParams);
-      if (next === "clients") p.delete("view");
-      else p.set("view", next);
-      setSearchParams(p, { replace: true });
+      p.set("view", next);
+      setSearchParams(p);
     },
     [searchParams, setSearchParams],
   );
@@ -484,12 +530,38 @@ export function PipelinePage() {
     commitFilters((prev) => ({ ...prev, open_closed: v }));
   }
 
+  const chipLabels: Record<string, string> = {
+    search: "Search", pipeline: "Pipeline", stage: "Stage", owner: "Owner",
+    account_owner: "Account owner", business_unit: "BU", readiness: "SOW",
+    attention: "Attention", missing: "Missing", open_closed: "Status",
+    date_field: "Date field", date_from: "From", date_to: "To", date_preset: "Date",
+    group: "Group", watching: "Watching", include_closed: "Include closed",
+  };
+  const activeChips = Array.from(searchParams.entries()).filter(([key]) => key in chipLabels);
+  function chipValue(key: string, value: string) {
+    if (key === "owner") return facets.owners.find(o => o.id === value)?.name ?? "Unavailable owner";
+    if (key === "stage") return stageCounts.find(s => s.stage_id === value)?.stage_label ?? "Unavailable stage";
+    if (key === "group") return groups.find(g => g.id === value)?.name ?? "Unavailable group";
+    if (key === "open_closed") return OPEN_CLOSED_LABELS[value] ?? value;
+    if (key === "readiness") return SOW_STATE_LABELS[value] ?? value;
+    if (key === "attention") return ATTENTION_LABELS[value] ?? value;
+    if (key === "date_field") return DATE_FIELD_LABELS[value] ?? value;
+    if (key === "date_preset") return DATE_PRESET_LABELS[value] ?? value;
+    return value;
+  }
+
   return (
     <div>
       <PageHeader
         title="Pipeline"
-        subtitle="Clients and opportunities from HubSpot, kept current by the sync worker."
+        subtitle="Clients and opportunities"
         actions={
+          <>
+          <Button variant="secondary" size="icon" title="Export filtered CSV"
+            aria-label="Export filtered CSV" disabled={exporting || loading}
+            onClick={exportCsv}>
+            <Download className="h-4 w-4" aria-hidden />
+          </Button>
           <a
             href={HUBSPOT_NEW_DEAL_URL}
             target="_blank"
@@ -502,8 +574,10 @@ export function PipelinePage() {
               <ExternalLink className="ml-1 h-4 w-4" aria-hidden />
             </Button>
           </a>
+          </>
         }
       />
+      {exportError && <p role="alert" className="mb-4 text-danger">{exportError}</p>}
 
       <div
         className="mb-4 flex flex-wrap items-center gap-3 rounded-panel border border-divider bg-surface px-4 py-3 text-body"
@@ -571,10 +645,30 @@ export function PipelinePage() {
         facets={facets}
         groups={groups}
         savedViews={savedViews}
-        watchCount={
-          (watchlist.counts.opportunity || 0) + (watchlist.counts.client || 0)
-        }
+        watchCount={watchCount}
       />
+
+      {view === "clients" && <label className="mb-3 flex items-center gap-2 text-secondary">
+        <input type="checkbox" checked={filters.show_clients_without_matches === true}
+          onChange={event => commitFilters(previous => ({ ...previous, show_clients_without_matches: event.target.checked || undefined }))} />
+        Show clients with no match
+      </label>}
+
+      {activeChips.length > 0 && <div className="mb-4 flex flex-wrap gap-2" aria-label="Active filters">
+        {activeChips.map(([key, value]) => {
+          const label = `${chipLabels[key]}: ${chipValue(key, value)}`;
+          return <button type="button" key={`${key}:${value}`} aria-label={`Remove ${label}`}
+            className="inline-flex items-center gap-2 border border-divider px-2 py-1 text-secondary"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              const remaining = next.getAll(key).filter(item => item !== value);
+              next.delete(key);
+              remaining.forEach(item => next.append(key, item));
+              next.delete("page");
+              setSearchParams(next);
+            }}>{label}<X className="h-3 w-3" aria-hidden /></button>;
+        })}
+      </div>}
 
       {stageCounts.length ? (
         <div
@@ -674,7 +768,7 @@ export function PipelinePage() {
       <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)}>
         <TabsList aria-label="Pipeline view">
           <TabsTrigger value="clients">
-            Clients ({totalClients.toLocaleString("en-US")})
+            Clients ({totalClients.toLocaleString("en-US")} matching)
           </TabsTrigger>
           <TabsTrigger value="opportunities">
             Opportunities ({totalOpps.toLocaleString("en-US")})
@@ -774,7 +868,7 @@ function FilterBar({
   facets: PipelineFacets;
   groups: TrackingGroup[];
   savedViews: SavedView[];
-  watchCount: number;
+  watchCount: number | null;
   commitFilters: (
     updater: (
       prev: PipelineFilters & { page: number; page_size: PageSize },
@@ -939,11 +1033,7 @@ function FilterBar({
         </select>
       </label>
 
-      {/* S3b Rev-2 · BU select. Options from `/pipeline/facets`
-        * (distinct opportunity/client `hubspot_business_unit`). Empty
-        * on portals that don't mirror BU today (D10 evidence — property
-        * absent on the deal schema). Axis stays visible with an honest
-        * "not mirrored" hint per Rule 11. */}
+      {/* BU options follow the same active population as rows and totals. */}
       <label className="inline-flex items-center gap-2 text-body text-text-secondary">
         BU
         <select
@@ -961,7 +1051,7 @@ function FilterBar({
         >
           <option value="">
             {facets.business_units.length === 0
-              ? "— BU not mirrored on this portal —"
+              ? "— no matching BU —"
               : "— any BU —"}
           </option>
           {facets.business_units.map((b) => (
@@ -1013,8 +1103,7 @@ function FilterBar({
             const view = savedViews.find((v) => v.id === viewId);
             if (!view) return;
             commitFilters((prev) => ({
-              ...prev,
-              ...(view.filter_json as Partial<PipelineFilters>),
+              ...savedViewFilters(view),
               page: 1,
               page_size: prev.page_size,
             }));
@@ -1054,7 +1143,7 @@ function FilterBar({
           }}
           data-testid="filter-watching"
         />
-        Watching ({watchCount})
+        Watching ({watchCount ?? "..."})
       </label>
 
       <label className="inline-flex items-center gap-2 text-body text-text-secondary">
@@ -1088,7 +1177,7 @@ function FilterBar({
           data-testid="clear-filters"
         >
           <X className="h-3 w-3" aria-hidden />
-          Clear {activeCount} filter{activeCount === 1 ? "" : "s"}
+          Clear all
         </button>
       ) : null}
     </div>
@@ -1348,6 +1437,9 @@ function OpportunitiesTable({
                 <td className="sticky left-0 z-10 bg-surface px-3 py-3 align-top">
                   <div className="flex items-center gap-2">
                     <span className="text-text">{displayName}</span>
+                    {row.source_origin === "local_test_fixture" ? (
+                      <span className="text-xs text-text-secondary">Local test fixture</span>
+                    ) : null}
                     {row.is_closed_lost ? (
                       <Badge tone="danger" data-testid="closed-lost-pill">
                         Closed Lost

@@ -1,0 +1,169 @@
+..............F......................................................... [ 98%]
+.                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_approved_package_still_pins_gm_after_later_edit _____________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x11381f930>
+
+    @pytest.mark.asyncio
+    async def test_approved_package_still_pins_gm_after_later_edit(session):
+        """CLAUDE.md rule 4 in practice: the immutable gm_model_id stays valid."""
+    
+        from app.services.sow_extract import create_sow_version
+    
+        opp = Opportunity(
+            id=uuid.uuid4(),
+            hubspot_deal_id=f"H-PIN-{uuid.uuid4().hex[:8]}",
+            owner_id=OWNER,
+            governance_status="SOWDraft",
+        )
+        session.add(opp)
+        await session.commit()
+    
+        state = await create_sow_version(
+            session,
+            opportunity_id=opp.id,
+            uploaded_by=OWNER,
+            file_s3_key="sow/pin.pdf",
+            file_hash=f"sha256:{uuid.uuid4().hex}",
+        )
+        await run_extract(session, sow_version_id=state.id, bedrock=StubBedrock())
+        for name in EXTRACTED_FIELDS:
+            await confirm_field(
+                session,
+                actor_id=OWNER,
+                sow_version_id=state.id,
+                field_name=name,
+                value=f"c-{name}" if name != "price" else "50000",
+            )
+        row = (
+            await session.execute(select(SowVersion).where(SowVersion.id == state.id))
+        ).scalar_one()
+        fields = dict(row.extracted_fields or {})
+        fields["price"] = wrap("50000", provenance="extracted", page_ref=1)
+        fields.pop("resource_table", None)
+        row.extracted_fields = fields
+        await session.commit()
+    
+        # Save M1.
+        result_1 = await update_resources(
+            session,
+            opportunity_id=opp.id,
+            actor_id=OWNER,
+            payload={
+                "engagement_type": "fixed_price",
+                "resource_lines": [_sme_line("80"), _sme_line("160")],
+                "cost_lines": [],
+                "sow_version_id": str(state.id),
+            },
+        )
+        await session.commit()
+        m1_id = result_1.gm_model_id
+    
+        package = ApprovalPackage(
+            id=uuid.uuid4(),
+            opportunity_id=opp.id,
+            sow_version_id=state.id,
+            gm_model_id=m1_id,
+            package_hash="test-hash-pin",
+            status="pending_delivery_hr",
+            submitted_by=OWNER,
+            submitted_at=datetime.now(timezone.utc),
+        )
+        session.add(package)
+        await session.commit()
+    
+        # Later edit creates M2. Does NOT touch M1.
+>       result_2 = await update_resources(
+            session,
+            opportunity_id=opp.id,
+            actor_id=OWNER,
+            payload={
+                "engagement_type": "fixed_price",
+                "resource_lines": [_sme_line("40"), _sme_line("60")],
+                "cost_lines": [],
+                "sow_version_id": str(state.id),
+            },
+        )
+
+tests/test_sow_id_scoping.py:212: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+app/services/sow_resources.py:318: in update_resources
+    model = await create_gm_model_version(
+app/services/delivery_model.py:846: in create_gm_model_version
+    await on_gm_model_created(
+app/services/approvals_hooks.py:59: in on_gm_model_created
+    await void_on_change(
+app/services/approvals.py:983: in void_on_change
+    await queue_notification(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x11381f930>
+user_id = UUID('6e67a945-224c-50b3-8874-b3d59b6f13a7')
+category = 'approval_pending', subject = 'Approval package voided'
+body_md = 'Package `523959f7-10fd-42e1-8ae5-a65bbb511f49` was voided because gm_model changed (new version 5fe171a0-eb6f-471b-9571-63884b727634). Submit a fresh package once the change is settled.'
+related_entity = 'approval_package'
+related_entity_id = '523959f7-10fd-42e1-8ae5-a65bbb511f49', channels = None
+
+    async def queue_notification(
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        category: str,
+        subject: str,
+        body_md: str,
+        related_entity: str | None = None,
+        related_entity_id: str | None = None,
+        channels: tuple[str, ...] | None = None,
+    ) -> list[Notification]:
+        """Fan out one logical notification into one row per enabled channel.
+    
+        ``channels`` defaults to every channel in :data:`NOTIFICATION_CHANNELS`.
+        Rows whose channel is disabled land as ``suppressed`` so the audit + admin
+        tools can see the intent even when nothing was sent.
+    
+        Caller owns the transaction — this function flushes but does not commit.
+        That keeps the notification row atomic with whatever state transition
+        produced it (CLAUDE.md rule 5).
+        """
+    
+        _validate_category(category)
+        from fastapi import HTTPException
+        from app.services.test_fixtures import notification_block_reason
+    
+        blocked = await notification_block_reason(
+            session, user_id=user_id, related_entity=related_entity,
+            related_entity_id=related_entity_id,
+        )
+        if blocked:
+>           raise HTTPException(403, blocked)
+E           fastapi.exceptions.HTTPException: 403: Test identity or fixture is outside the trusted approval scope
+
+app/services/notifications.py:229: HTTPException
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+tests/test_ceo_exception.py::test_approve_requires_rationale
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/ceo_exception.py:183: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await decide(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_sow_id_scoping.py::test_approved_package_still_pins_gm_after_later_edit
+1 failed, 72 passed, 3 warnings in 51.99s

@@ -36,7 +36,7 @@ try:  # Python 3.9+
 except ImportError:  # pragma: no cover — python <3.9 not supported
     ZoneInfo = None  # type: ignore[assignment]
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -492,6 +492,7 @@ async def patch_renewal(
     outcome_summary: str | None = None,
     to_status: str | None = None,
     replacement_sow_version_id: uuid.UUID | None = None,
+    outcome: str | None = None,
     _summary_provided: bool = True,
 ) -> Renewal:
     """Router-friendly PATCH — update outcome_summary + optionally status.
@@ -499,10 +500,20 @@ async def patch_renewal(
     Status transitions accepted: ``open`` → ``closed`` | ``extended``.
     Setting ``replacement_sow_version_id`` implies ``extended`` if not
     otherwise specified.
+
+    S21-16 (T14.06): the explicit ``outcome='not_renewing'`` closes the
+    renewal AND files closeout + roll-off tasks on the account owner, due
+    at term end. Current delivery is deliberately untouched — the signed
+    contract stays active through its end date.
     """
 
     if to_status is None and replacement_sow_version_id is not None:
         to_status = "extended"
+    if outcome == "not_renewing" and to_status != "closed":
+        raise RenewalError(
+            status_code=422,
+            detail="a nonrenewal decision closes the renewal; status must be 'closed'",
+        )
 
     if to_status is not None and to_status not in ("closed", "extended"):
         raise RenewalError(
@@ -545,6 +556,53 @@ async def patch_renewal(
         return renewal
 
     await session.flush()
+    if outcome == "not_renewing" and renewal.status == "closed":
+        deal = await session.get(Opportunity, renewal.opportunity_id)
+        task_owner = deal.owner_id if deal is not None and deal.owner_id else actor_id
+        label = deal.hubspot_deal_id if deal is not None and deal.hubspot_deal_id else str(renewal.opportunity_id)
+        for category, subject in (
+            ("closeout", f"Closeout — {label}"),
+            ("roll_off", f"Team roll-off — {label}"),
+        ):
+            task = Task(
+                id=uuid.uuid4(),
+                owner_id=task_owner,
+                subject=subject,
+                category=category,
+                due_date=renewal.term_end,
+                status="assigned",
+            )
+            session.add(task)
+            await session.flush()
+            await append_audit(
+                session,
+                actor_id=actor_id,
+                action="task.created",
+                entity="task",
+                entity_id=str(task.id),
+                before=None,
+                after={
+                    "owner_id": str(task_owner),
+                    "subject": subject,
+                    "category": category,
+                    "due_date": renewal.term_end.isoformat(),
+                    "source": "renewal_nonrenewal",
+                    "renewal_id": str(renewal.id),
+                },
+            )
+            await queue_notification(
+                session,
+                user_id=task_owner,
+                category="task_assigned",
+                subject=subject,
+                body_md=(
+                    f"The client is not renewing. `{subject}` is due "
+                    f"{renewal.term_end.isoformat()}; delivery stays active "
+                    "through the end date."
+                ),
+                related_entity="task",
+                related_entity_id=str(task.id),
+            )
     await append_audit(
         session,
         actor_id=actor_id,

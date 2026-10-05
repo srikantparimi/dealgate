@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,11 @@ from app.services.deal_comment import (
     list_comments,
     load_comment,
     patch_comment,
+    comment_revision,
+    _is_leader,
 )
+from app.models.user import User
+from app.services.tracking_access import require_deal_access
 
 
 router = APIRouter(tags=["deal-comments"])
@@ -67,11 +71,16 @@ class CommentRow(BaseModel):
     created_at: datetime
     edited_at: datetime | None
     deleted_at: datetime | None
+    author_name: str | None = None
+    revision: str = ""
+    can_edit: bool = False
+    can_delete: bool = False
 
 
 class CommentList(BaseModel):
     items: list[CommentRow]
     latest: CommentRow | None
+    can_create: bool = False
 
 
 class CommentCreateBody(BaseModel):
@@ -82,10 +91,19 @@ class CommentCreateBody(BaseModel):
 class CommentPatchBody(BaseModel):
     body: str | None = None
     pinned: bool | None = None
+    expected_revision: str | None = None
 
 
-def _to_row(c) -> CommentRow:
-    return CommentRow.model_validate(c)
+async def _to_row(session, user, c) -> CommentRow:
+    author = await session.get(User, c.author_id) if c.author_id else None
+    editable = (c.source == "internal" and c.deleted_at is None
+                and bool(set(user.groups or []) & COMMENT_WRITE_ROLES)
+                and (_is_leader(user) or c.author_id == user.id))
+    return CommentRow.model_validate(c).model_copy(update={
+        "author_name": (author.name or author.email) if author else c.author_name_fallback,
+        "revision": await comment_revision(session, c),
+        "can_edit": editable, "can_delete": editable,
+    })
 
 
 @router.get(
@@ -100,6 +118,7 @@ async def list_comments_endpoint(
     if not _can_read_comments(user):
         # Item 9 · a user without comment rights sees no comments.
         return CommentList(items=[], latest=None)
+    await require_deal_access(session, user, opportunity_id)
     rows = await list_comments(
         session,
         opportunity_id=opportunity_id,
@@ -107,8 +126,9 @@ async def list_comments_endpoint(
     )
     latest = await latest_visible_comment(session, opportunity_id=opportunity_id)
     return CommentList(
-        items=[_to_row(c) for c in rows],
-        latest=_to_row(latest) if latest is not None else None,
+        items=[await _to_row(session, user, c) for c in rows],
+        latest=await _to_row(session, user, latest) if latest is not None else None,
+        can_create=bool(set(user.groups or []) & COMMENT_WRITE_ROLES),
     )
 
 
@@ -134,7 +154,7 @@ async def create_comment_endpoint(
         ),
     )
     await session.commit()
-    return _to_row(c)
+    return await _to_row(session, user, c)
 
 
 @router.patch("/deal-comments/{comment_id}", response_model=CommentRow)
@@ -150,10 +170,10 @@ async def patch_comment_endpoint(
         session,
         actor=user,
         comment=c,
-        patch=CommentPatch(body=body.body, pinned=body.pinned),
+        patch=CommentPatch(body=body.body, pinned=body.pinned, expected_revision=body.expected_revision),
     )
     await session.commit()
-    return _to_row(c)
+    return await _to_row(session, user, c)
 
 
 @router.delete(
@@ -161,11 +181,14 @@ async def patch_comment_endpoint(
 )
 async def delete_comment_endpoint(
     comment_id: uuid.UUID,
+    if_match: str | None = Header(default=None, alias="If-Match"),
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     _require_comment_writer(user)
     c = await load_comment(session, comment_id)
-    await delete_comment(session, actor=user, comment=c)
+    if if_match and if_match.startswith('"') and if_match.endswith('"'):
+        if_match = if_match[1:-1]
+    await delete_comment(session, actor=user, comment=c, expected_revision=if_match)
     await session.commit()
     return None

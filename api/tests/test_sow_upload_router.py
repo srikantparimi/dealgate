@@ -29,6 +29,7 @@ from app.models.audit import AuditEvent
 from app.models.client import Client, LegalEntity
 from app.models.client_alias import ClientAlias
 from app.models.opportunity import Opportunity
+from app.models.sow import Sow, SowVersion
 from app.models.sow_upload_job import SowUploadJob
 
 
@@ -541,3 +542,6 @@ async def test_failed_job_does_not_poison_the_file_hash(app_with_deps, session):
         )
     ).scalars().all()
     assert len(rows) == 1
+    assert len((await session.scalars(select(Opportunity))).all()) == 1
+    assert len((await session.scalars(select(Sow))).all()) == 1
+    assert len((await session.scalars(select(SowVersion))).all()) == 1

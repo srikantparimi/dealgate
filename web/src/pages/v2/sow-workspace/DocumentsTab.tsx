@@ -1,4 +1,4 @@
-import { EmptyState } from "../../../ui-v2/EmptyState";
+import { ClientAgreementPresence } from "../../../ui-v2/ClientAgreementPresence";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
 import type { WorkspaceSnapshot } from "./readiness";
 import { SowVersionHistory } from "./SowVersionHistory";
@@ -10,17 +10,6 @@ import { SowVersionHistory } from "./SowVersionHistory";
  * anymore.
  */
 export function DocumentsTab({ snap }: { snap: WorkspaceSnapshot }) {
-  const agreementCount = snap.agreements.length;
-
-  if (!snap.sow && agreementCount === 0) {
-    return (
-      <EmptyState
-        title="No documents on this SOW"
-        description="Upload the SOW to see its version chain. NDA/MSA lives on the Agreements page."
-      />
-    );
-  }
-
   return (
     <section
       aria-label="Documents"
@@ -40,14 +29,10 @@ export function DocumentsTab({ snap }: { snap: WorkspaceSnapshot }) {
           />
         </div>
       ) : null}
-      <p className="mb-3 text-body text-text-secondary">
-        NDA & MSA are stored per client in the Agreements register.{" "}
-        <a href="/agreements" className="text-primary underline">
-          Open Agreements
-        </a>
-        .
-      </p>
-      {snap.deal?.id ? <SowVersionHistory opportunityId={snap.deal.id} /> : null}
+      <ClientAgreementPresence clientId={snap.deal?.client_id} />
+      {snap.deal?.id ? (
+        <SowVersionHistory opportunityId={snap.deal.id} />
+      ) : null}
     </section>
   );
 }

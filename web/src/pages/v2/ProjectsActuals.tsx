@@ -71,17 +71,17 @@ export function ProjectsActualsPage() {
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
-                <Link
+                {row.source_deleted ? <h2 className="text-section font-semibold break-words">{row.title}</h2> : <Link
                   className="text-section font-semibold text-primary break-words"
                   to={`/sows/${row.id}`}
                 >
                   {row.title}
-                </Link>
+                </Link>}
                 <p className="mt-1 text-body text-text-secondary">
                   {row.client_name} · {row.owner_name}
                 </p>
                 <p className="mt-1 text-secondary text-text-secondary">
-                  SOW v{row.sow_version} · GM v{row.gm_version} · Released{" "}
+                  <span>{row.source_deleted ? "Source SOW deleted; project retained" : `SOW v${row.sow_version} · GM v${row.gm_version}`}</span> · Released{" "}
                   {row.released_at.slice(0, 10)}
                   {row.term_end ? ` · Ends ${row.term_end}` : ""}
                 </p>

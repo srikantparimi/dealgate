@@ -1,0 +1,15 @@
+
+> dealgate-web@0.0.1 test
+> vitest --run --maxWorkers=1 --minWorkers=1 src/__tests__/v2/ApprovalReadiness.test.ts src/__tests__/ui-v2/FunctionMark.test.tsx
+
+
+ RUN  v2.1.9 /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/web
+
+ ✓ src/__tests__/v2/ApprovalReadiness.test.ts (13 tests) 10ms
+ ✓ src/__tests__/ui-v2/FunctionMark.test.tsx (3 tests) 70ms
+
+ Test Files  2 passed (2)
+      Tests  16 passed (16)
+   Start at  19:07:22
+   Duration  7.60s (transform 575ms, setup 818ms, collect 1.33s, tests 80ms, environment 3.68s, prepare 441ms)
+

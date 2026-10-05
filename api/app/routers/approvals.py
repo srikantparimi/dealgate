@@ -33,6 +33,7 @@ from app.services.approvals import (
     ListFilters,
     decide,
     list_packages,
+    list_in_review_packages,
     load_package,
     manual_void,
     serialize_package_with_floors,
@@ -58,6 +59,7 @@ _READ_ROLES: frozenset[str] = frozenset(
 _FUNCTION_ROLES: dict[str, frozenset[str]] = {
     "delivery": frozenset({"Delivery", "SystemAdmin"}),
     "hr": frozenset({"HR", "SystemAdmin"}),
+    "sales": frozenset({"Sales", "SalesLeader", "SystemAdmin"}),
     "finance": frozenset({"Finance", "SystemAdmin"}),
     "legal": frozenset({"Legal", "SystemAdmin"}),
 }
@@ -151,6 +153,7 @@ class PackageListResponse(BaseModel):
     page: int
     size: int
     total: int
+    population_revision: str | None = None
 
 
 # ---- helpers ------------------------------------------------------------
@@ -264,19 +267,28 @@ async def list_endpoint(
     opportunity_id: uuid.UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     size: int = Query(default=25, ge=1, le=200),
+    population_revision: str | None = Query(default=None, max_length=64),
     _user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> PackageListResponse:
     filters = ListFilters(
         status=status_, opportunity_id=opportunity_id, page=page, size=size,
         reader_id=None if _has_any(_user, _READ_ROLES) else _user.id,
+        actor_id=_user.id,
     )
-    rows, total = await list_packages(session, filters)
+    revision = None
+    if status_ == "in_review":
+        rows, total, revision = await list_in_review_packages(
+            session, filters, expected_population_revision=population_revision,
+        )
+    else:
+        rows, total = await list_packages(session, filters)
     return PackageListResponse(
         items=[await review_projection(session, r, _user.id) for r in rows],
         page=page,
         size=size,
         total=total,
+        population_revision=revision,
     )
 
 

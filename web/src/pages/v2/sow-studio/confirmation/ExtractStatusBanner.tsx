@@ -9,8 +9,8 @@
  *
  * The Retry button re-runs Bedrock on the stored S3 object via
  * `POST /sow/versions/{id}/reextract`. Idempotent — re-running against
- * a version that is already `complete` re-extracts and overwrites the
- * fields per `run_extract`'s documented semantics.
+ * a version that is already `complete` preserves confirmed fields and
+ * exposes conflicting new candidates for explicit review.
  *
  * Only two states render:
  *   1. `pending` / `manual_required` → warning banner + Retry.
@@ -58,6 +58,7 @@ export function ExtractStatusBanner({
   const status = payload.sow_version.extract_status;
   const reason = payload.sow_version.extract_error ?? null;
   const versionId = payload.sow_version.id as UUID;
+  const hasConflicts = payload.needs_you.some((item) => item.field.startsWith("extraction_conflict:"));
 
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -65,7 +66,9 @@ export function ExtractStatusBanner({
   if (status === "complete") return null;
 
   const heading =
-    status === "pending"
+    hasConflicts
+      ? "Extraction needs review"
+      : status === "pending"
       ? "Extraction has not run yet"
       : "We couldn't read this document";
 
@@ -104,7 +107,7 @@ export function ExtractStatusBanner({
           <div className="min-w-0">
             <p className="text-body text-text font-medium">{heading}</p>
             <p className="mt-1 text-secondary text-text-secondary">
-              {status === "pending"
+              {hasConflicts ? humanise(reason) : status === "pending"
                 ? "The pipeline is still preparing this SOW. Retry the extraction, or fill the fields below manually."
                 : `Reason: ${humanise(reason)}. Retry extraction, or fill the fields below manually — fields you enter carry provenance "manual".`}
             </p>

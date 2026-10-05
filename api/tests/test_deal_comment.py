@@ -18,6 +18,7 @@ from app.models.user import User
 from app.services.deal_comment import (
     CommentCreate,
     CommentPatch,
+    comment_revision,
     create_comment,
     delete_comment,
     latest_visible_comment,
@@ -106,7 +107,8 @@ async def test_patch_internal_comment_records_edited_at(session, seeded):
     assert c.edited_at is None
 
     c = await patch_comment(
-        session, actor=actor, comment=c, patch=CommentPatch(body="Final")
+        session, actor=actor, comment=c,
+        patch=CommentPatch(body="Final", expected_revision=await comment_revision(session, c))
     )
     await session.commit()
     assert c.body == "Final"
@@ -123,7 +125,8 @@ async def test_pin_toggle(session, seeded):
     await session.commit()
     assert c.pinned is False
     c = await patch_comment(
-        session, actor=actor, comment=c, patch=CommentPatch(pinned=True)
+        session, actor=actor, comment=c,
+        patch=CommentPatch(pinned=True, expected_revision=await comment_revision(session, c))
     )
     await session.commit()
     assert c.pinned is True
@@ -146,12 +149,14 @@ async def test_hubspot_note_is_readonly(session, seeded):
 
     with pytest.raises(HTTPException) as exc:
         await patch_comment(
-            session, actor=actor, comment=hn, patch=CommentPatch(body="Edit")
+            session, actor=actor, comment=hn,
+            patch=CommentPatch(body="Edit", expected_revision=await comment_revision(session, hn))
         )
     assert exc.value.status_code == 409
 
     with pytest.raises(HTTPException) as exc:
-        await delete_comment(session, actor=actor, comment=hn)
+        await delete_comment(session, actor=actor, comment=hn,
+                             expected_revision=await comment_revision(session, hn))
     assert exc.value.status_code == 409
 
 
@@ -197,7 +202,8 @@ async def test_soft_delete_hides_from_latest(session, seeded):
     assert latest is not None
     assert latest.id == b.id
 
-    await delete_comment(session, actor=actor, comment=b)
+    await delete_comment(session, actor=actor, comment=b,
+                         expected_revision=await comment_revision(session, b))
     await session.commit()
 
     latest = await latest_visible_comment(session, opportunity_id=seeded["opp"].id)
@@ -219,7 +225,8 @@ async def test_third_party_cannot_edit_others_comment(session, seeded):
 
     with pytest.raises(HTTPException) as exc:
         await patch_comment(
-            session, actor=third, comment=c, patch=CommentPatch(body="bye")
+            session, actor=third, comment=c,
+            patch=CommentPatch(body="bye", expected_revision=await comment_revision(session, c))
         )
     assert exc.value.status_code == 403
 

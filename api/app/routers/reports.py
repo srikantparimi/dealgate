@@ -29,15 +29,16 @@ from __future__ import annotations
 import csv
 import io
 import re
+import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
@@ -700,8 +701,28 @@ async def approvals_aging(
 
 @router.get("/pipeline/export.csv")
 async def pipeline_export_csv(
+    request: Request,
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
+    pipeline: str | None = Query(None),
+    stage: list[str] | None = Query(None),
+    owner: list[uuid.UUID] | None = Query(None),
+    account_owner: list[str] | None = Query(None),
+    business_unit: list[str] | None = Query(None),
+    readiness: list[str] | None = Query(None),
+    attention: list[str] | None = Query(None),
+    date_field: str | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    date_preset: str | None = Query(None),
+    search: str | None = Query(None, max_length=200),
+    include_closed: bool = Query(False),
+    open_closed: str | None = Query(None),
+    missing: list[str] | None = Query(None),
+    client: list[uuid.UUID] | None = Query(None),
+    group: list[uuid.UUID] | None = Query(None),
+    watching: bool = Query(False),
+    sort: str | None = Query(None),
 ) -> StreamingResponse:
     """W4 item 3 · CSV export of the current open-pipeline filter set.
 
@@ -712,16 +733,44 @@ async def pipeline_export_csv(
 
     _require_reader(user)
 
-    # Compute totals BEFORE pagination via `summary()` on the same
-    # filter. This proves A5/T35 at the CSV layer: the "Total" row
-    # at the top equals the row count below (which comes from
-    # list_opportunities page_size=1000 — any env with > 1000 open
-    # deals exposes this gap and the test will catch it).
-    filters = PipelineFilters(open_closed="open")
-    pre_summary = await pipeline_summary(session, filters=filters)
-    page = await list_opportunities(
-        session, filters=filters, page=1, page_size=1000
-    )
+    from dataclasses import replace
+    from app.routers.pipeline import _parse_filters, _parse_sort, _resolve_scope
+    from app.services.hubspot_pipeline import DEFAULT_SORT_OPPS, scope_pipeline_filters
+
+    supported = {"pipeline", "stage", "owner", "account_owner", "business_unit", "readiness", "attention",
+        "date_field", "date_from", "date_to", "date_preset", "search", "include_closed", "open_closed",
+        "missing", "client", "group", "watching", "sort"}
+    if set(request.query_params) - supported:
+        raise HTTPException(400, "Unsupported Pipeline export query parameters")
+    # No earlier scope/summary/page query may establish a READ COMMITTED snapshot.
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        if session.in_transaction():
+            raise HTTPException(409, "Pipeline export requires a fresh snapshot transaction")
+        await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+        await session.execute(text("SET TRANSACTION READ ONLY"))
+    elif dialect == "sqlite" and not session.in_transaction():
+        await session.execute(text("BEGIN"))
+    snapshot_time = datetime.now(UTC)
+    scope = await _resolve_scope(session, user=user, group_ids=group, watching=watching)
+    filters = _parse_filters(pipeline, stage, owner, readiness, attention, date_field, date_from,
+        date_to, date_preset, search, include_closed, account_owner=account_owner,
+        business_unit=business_unit, open_closed=open_closed, missing=missing,
+        client=tuple((client or []) + list(scope["client"] or ())) or None,
+        watching_ids=scope["watching_ids"])
+    if scope["opportunity_id"] is not None:
+        filters = replace(filters, opportunity_id=scope["opportunity_id"])
+    filters = await scope_pipeline_filters(session, user, filters)
+    sort_spec = _parse_sort(sort, DEFAULT_SORT_OPPS)
+    pre_summary = await pipeline_summary(session, filters=filters, now=snapshot_time)
+    rows, page_number = [], 1
+    while True:
+        page = await list_opportunities(session, filters=filters, page=page_number, page_size=1000,
+            sort=sort_spec, now=snapshot_time)
+        rows.extend(page.items)
+        if len(rows) >= page.total or not page.items:
+            break
+        page_number += 1
 
     def _iter_csv():
         buf = io.StringIO()
@@ -738,19 +787,20 @@ async def pipeline_export_csv(
                 "close_date",
                 "sow_state",
                 "attention",
+                "source_origin",
             ]
         )
         totals_label = (
-            f"TOTAL: {pre_summary.open_count} open · "
+            f"TOTAL: {pre_summary.open_count} matching · "
             + ", ".join(
                 f"{v} {k}" for k, v in pre_summary.open_value_by_currency.items()
             )
         )
-        w.writerow([totals_label, "", "", "", "", "", "", "", ""])
+        w.writerow([totals_label, "", "", "", "", "", "", "", "", ""])
         yield buf.getvalue()
         buf.seek(0)
         buf.truncate()
-        for row in page.items:
+        for row in rows:
             w.writerow(
                 [
                     row.name or row.hubspot_deal_id or "",
@@ -762,6 +812,7 @@ async def pipeline_export_csv(
                     row.close_date.isoformat() if row.close_date else "",
                     row.sow_approval_state,
                     "|".join(row.attention_flags),
+                    row.source_origin,
                 ]
             )
             yield buf.getvalue()

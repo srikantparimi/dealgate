@@ -1,0 +1,31 @@
+..........................                                               [100%]
+=============================== warnings summary ===============================
+api/app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+tests/test_sow_upload_binding.py::test_upload_missing_one_of_two_bindings_returns_422
+tests/test_sow_upload_binding.py::test_upload_mismatched_client_and_opportunity_returns_422
+tests/test_sow_upload_router.py::test_upload_resume_pdf_returns_422_and_creates_no_rows
+tests/test_sow_upload_router.py::test_upload_empty_file_returns_422
+tests/test_sow_upload_router.py::test_upload_wrong_content_type_returns_422
+tests/test_sow_upload_router.py::test_pick_requires_client_id_or_create_new
+tests/test_sow_upload_router.py::test_unreadable_file_says_so_rather_than_blaming_the_content
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

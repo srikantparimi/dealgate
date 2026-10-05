@@ -1,0 +1,68 @@
+{"run": "8b7df92b9f924313a4c79542489a6c47", "tenant": "parent-8b7df92b9f924313a4c79542489a6c47", "client_id": "c4907524-b097-4a61-bdfd-c3caefa7ca2b"}
+
+Running 1 test using 1 worker
+
+[1A[2K(node:78033) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:78033) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/1] s21-parent-deletion.spec.ts:3:5 › client deletion follows real retained-history cleanup through the worker
+[1A[2K  1) s21-parent-deletion.spec.ts:3:5 › client deletion follows real retained-history cleanup through the worker 
+
+    Error: expect.toBeVisible: Error: strict mode violation: getByText('Parent retained project', { exact: true }) resolved to 2 elements:
+        1) <h2 class="text-section font-semibold break-words">Parent retained project</h2> aka locator('section').filter({ hasText: 'Parent retained projectParent deletion proof 253b364c · Source removedSource' }).getByRole('heading')
+        2) <h2 class="text-section font-semibold break-words">Parent retained project</h2> aka locator('section').filter({ hasText: 'Parent retained projectParent deletion proof 8b7df92b · Source removedSource' }).getByRole('heading')
+
+    Call log:
+      [2m- expect.toBeVisible with timeout 5000ms[22m
+    [2m  - waiting for getByText('Parent retained project', { exact: true })[22m
+
+
+      27 |   await page.screenshot({ path: "../../docs/s21/evidence/baseline/parent-deletion-mobile.png", fullPage: true });
+      28 |   await page.getByRole("link", { name: "Projects", exact: true }).last().click();
+    > 29 |   await expect(page.getByText("Parent retained project", { exact: true })).toBeVisible();
+         |                                                                            ^
+      30 |   await expect(page.getByText("Source SOW deleted; project retained", { exact: true })).toBeVisible();
+      31 | });
+      32 |
+
+        at /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-parent-deletion.spec.ts:29:76
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/s21-parent-deletion-client-117a7--cleanup-through-the-worker/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/s21-parent-deletion-client-117a7--cleanup-through-the-worker/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/s21-parent-deletion-client-117a7--cleanup-through-the-worker/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K  Slow test file: s21-parent-deletion.spec.ts (1.7m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    s21-parent-deletion.spec.ts:3:5 › client deletion follows real retained-history cleanup through the worker 
+Traceback (most recent call last):
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_parent_journey.py", line 179, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_parent_journey.py", line 143, in main
+    assert await browser.wait() == 0, "Connected parent deletion browser assertions failed"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Connected parent deletion browser assertions failed

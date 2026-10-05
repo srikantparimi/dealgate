@@ -67,6 +67,7 @@ from app.services.staffing_sheet import (
     parse_staffing_xlsx,
 )
 from app.services.user_provisioning import ensure_user
+from app.services.test_fixtures import account_scope, reviewer_scope, user_allowed
 
 router = APIRouter(prefix="/sows", tags=["sows"])
 
@@ -80,6 +81,9 @@ _STAFFING_ROLES: tuple[str, ...] = (
     "CEO",
     "SystemAdmin",
 )
+
+# Documents history is readable without permission to edit staffing.
+_HISTORY_READ_ROLES: tuple[str, ...] = (*_STAFFING_ROLES, "Legal", "HR")
 
 _XLSX_MEDIA_TYPE = (
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -180,15 +184,26 @@ def _lifecycle_http(exc: SowLifecycleError) -> HTTPException:
 @router.get("/{opportunity_id}/versions")
 async def list_sow_versions(
     opportunity_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*_STAFFING_ROLES)),
+    _user: AuthUser = Depends(require_role(*_HISTORY_READ_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Every version of this SOW, newest first, discarded ones included."""
 
+    actor = await ensure_user(session, _user)
+    _user = AuthUser(actor.id, actor.email, actor.name, tuple(actor.groups))
+    await session.commit()
+    opportunity = await session.get(Opportunity, opportunity_id)
+    if opportunity is None:
+        raise HTTPException(404, "opportunity not found")
+    scope = await account_scope(session, opportunity.client_id, opportunity_id=opportunity.id) if opportunity.client_id else None
+    if not user_allowed(_user, scope):
+        raise HTTPException(404, "opportunity not found")
     sow = await sow_for_opportunity(session, opportunity_id)
     if sow is None:
         return {"sow_id": None, "versions": []}
     versions = await list_versions(session, sow.id)
+    versions = [version for version in versions if user_allowed(_user,
+        await reviewer_scope(session, await session.get(SowVersion, version.id)))]
     return {
         "sow_id": str(sow.id),
         "versions": [
@@ -338,9 +353,40 @@ async def create_sow_revision(
     session.add(version)
     await session.flush()
 
+    # S21-16 (T14.02/T14.04): a revision of a *signed* version is an
+    # amendment draft. The original stays active — its schedule keeps
+    # counting — until the amendment itself releases; activation performs
+    # the supersession there. Only an unsigned current version is
+    # superseded at upload.
+    amendment_draft_of: uuid.UUID | None = None
     if existing is not None:
-        await supersede(session, old=existing, new=version, actor_id=db_user.id)
+        from app.models.approval import ApprovalPackage
+        from app.models.signed_sow import SignedSowUpload
+        from sqlalchemy import or_
 
+        signed_basis = await session.scalar(
+            select(ApprovalPackage.id)
+            .where(
+                ApprovalPackage.sow_version_id == existing.id,
+                or_(
+                    ApprovalPackage.status == "released",
+                    ApprovalPackage.id.in_(
+                        select(SignedSowUpload.package_id).where(
+                            SignedSowUpload.verify_status == "verified"
+                        )
+                    ),
+                ),
+            )
+            .limit(1)
+        )
+        if signed_basis is not None:
+            amendment_draft_of = existing.id
+        else:
+            await supersede(session, old=existing, new=version, actor_id=db_user.id)
+
+    superseded_id = (
+        str(existing.id) if existing is not None and amendment_draft_of is None else None
+    )
     await append_audit(
         session,
         actor_id=db_user.id,
@@ -350,7 +396,8 @@ async def create_sow_revision(
         before=None,
         after={
             "version_no": version_no,
-            "supersedes": str(existing.id) if existing else None,
+            "supersedes": superseded_id,
+            "amendment_draft_of": str(amendment_draft_of) if amendment_draft_of else None,
             "extract_status": extract_status,
             "file_hash": file_hash,
         },
@@ -360,7 +407,8 @@ async def create_sow_revision(
     return {
         "sow_version_id": str(version.id),
         "version_no": version_no,
-        "supersedes": str(existing.id) if existing else None,
+        "supersedes": superseded_id,
+        "amendment_draft_of": str(amendment_draft_of) if amendment_draft_of else None,
         "extract_status": extract_status,
     }
 

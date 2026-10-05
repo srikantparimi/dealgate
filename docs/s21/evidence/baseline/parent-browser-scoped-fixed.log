@@ -1,0 +1,17 @@
+{"run": "1925e81f6cb443c283e5d77106fd92cd", "tenant": "parent-1925e81f6cb443c283e5d77106fd92cd", "client_id": "278a0e2f-8a31-4e19-ba64-ce942876bdee"}
+
+Running 1 test using 1 worker
+
+[1A[2K(node:82637) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:82637) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/1] s21-parent-deletion.spec.ts:3:5 › client deletion follows real retained-history cleanup through the worker
+[1A[2K  Slow test file: s21-parent-deletion.spec.ts (1.5m)
+  Consider splitting slow test files to speed up parallel execution
+  1 passed (1.5m)
+{"run": "1925e81f6cb443c283e5d77106fd92cd", "browser_api_worker_storage": "passed", "retained_recognized_revenue": "24680.125", "project_retained": true, "client_deletion_audit_lines": 1, "cleanup_jobs_done": 3}

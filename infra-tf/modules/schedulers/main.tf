@@ -26,6 +26,7 @@ locals {
   renewals_family  = "${var.name_prefix}-renewals-scheduler"
   base_env = [
     { name = "DEALGATE_ENV", value = var.env },
+    { name = "DEALGATE_TENANT_ID", value = var.tenant_id != "" ? var.tenant_id : var.name_prefix },
     { name = "AWS_REGION", value = var.region },
     { name = "COGNITO_REGION", value = var.region },
     { name = "COGNITO_USER_POOL_ID", value = var.cognito_user_pool_id },
@@ -69,10 +70,15 @@ data "aws_iam_policy_document" "ses_send" {
       "ses:SendEmail",
       "ses:SendRawEmail",
     ]
-    # Scope by verified identity ARN. The identity is created below.
+    # Domain identity may authorize this mailbox; retain exact From restriction.
     resources = [
-      "arn:${data.aws_partition.current.partition}:ses:${var.region}:${data.aws_caller_identity.current.account_id}:identity/${var.ses_from_address}",
+      "arn:${data.aws_partition.current.partition}:ses:${var.region}:${data.aws_caller_identity.current.account_id}:identity/${var.ses_identity_domain != "" ? var.ses_identity_domain : var.ses_from_address}",
     ]
+    condition {
+      test     = "StringEquals"
+      variable = "ses:FromAddress"
+      values   = [var.ses_from_address]
+    }
   }
 }
 
@@ -88,7 +94,10 @@ resource "aws_iam_role_policy" "ses_send" {
 # ------------------------------------------------------------------
 
 resource "aws_ses_email_identity" "sender" {
-  email = var.ses_from_address
+  email = var.retained_sender_identity != "" ? var.retained_sender_identity : var.ses_from_address
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # ------------------------------------------------------------------
@@ -271,6 +280,8 @@ resource "aws_cloudwatch_event_rule" "alert_scheduler" {
   name                = "${var.name_prefix}-alert-scheduler"
   description         = "Run the DealGate alert scheduler tick."
   schedule_expression = var.schedule_expression
+  # EventBridge owns recurrence; the container processes one tick and exits.
+  state = "ENABLED"
 }
 
 resource "aws_cloudwatch_event_target" "alert_scheduler" {
@@ -297,6 +308,7 @@ resource "aws_cloudwatch_event_rule" "renewals_scheduler" {
   name                = "${var.name_prefix}-renewals-scheduler"
   description         = "Run the DealGate renewals scheduler tick."
   schedule_expression = var.renewals_schedule_expression
+  state               = "ENABLED"
 }
 
 resource "aws_cloudwatch_event_target" "renewals_scheduler" {
@@ -323,6 +335,7 @@ resource "aws_cloudwatch_event_rule" "notification_sender" {
   name                = "${var.name_prefix}-notification-sender"
   description         = "Drain the DealGate notification outbox."
   schedule_expression = var.schedule_expression
+  state               = "ENABLED"
 }
 
 resource "aws_cloudwatch_event_target" "notification_sender" {
@@ -497,6 +510,7 @@ resource "aws_cloudwatch_event_target" "audit_export" {
 # ------------------------------------------------------------------
 
 resource "aws_ecs_task_definition" "e2e_cleanup" {
+  count                    = var.trusted_cleanup_enabled ? 1 : 0
   family                   = "${var.name_prefix}-e2e-cleanup"
   cpu                      = tostring(var.cpu)
   memory                   = tostring(var.memory)
@@ -533,10 +547,11 @@ resource "aws_ecs_task_definition" "e2e_cleanup" {
 }
 
 data "aws_iam_policy_document" "events_runtask_e2e_cleanup" {
+  count = var.trusted_cleanup_enabled ? 1 : 0
   statement {
     effect    = "Allow"
     actions   = ["ecs:RunTask"]
-    resources = [aws_ecs_task_definition.e2e_cleanup.arn]
+    resources = [aws_ecs_task_definition.e2e_cleanup[0].arn]
 
     condition {
       test     = "ArnEquals"
@@ -553,25 +568,35 @@ data "aws_iam_policy_document" "events_runtask_e2e_cleanup" {
 }
 
 resource "aws_iam_role_policy" "events_runtask_e2e_cleanup" {
+  count  = var.trusted_cleanup_enabled ? 1 : 0
   name   = "${var.name_prefix}-schedulers-events-runtask-e2e-cleanup"
   role   = aws_iam_role.events.id
-  policy = data.aws_iam_policy_document.events_runtask_e2e_cleanup.json
+  policy = data.aws_iam_policy_document.events_runtask_e2e_cleanup[0].json
+}
+
+variable "trusted_cleanup_enabled" {
+  type        = bool
+  description = "Enable fixture cleanup only after trusted provenance cleanup is reviewed."
+  default     = false
 }
 
 resource "aws_cloudwatch_event_rule" "e2e_cleanup" {
+  count               = var.trusted_cleanup_enabled ? 1 : 0
   name                = "${var.name_prefix}-e2e-cleanup"
-  description         = "S17: sweep e2e/smoke residue every hour so it never surfaces in Kanna's lists."
+  description         = "Sweep trusted expired fixture runs after explicit reviewed enablement."
   schedule_expression = "rate(1 hour)"
+  state               = "ENABLED"
 }
 
 resource "aws_cloudwatch_event_target" "e2e_cleanup" {
-  rule      = aws_cloudwatch_event_rule.e2e_cleanup.name
+  count     = var.trusted_cleanup_enabled ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.e2e_cleanup[0].name
   target_id = "e2e-cleanup"
   arn       = var.ecs_cluster_arn
   role_arn  = aws_iam_role.events.arn
 
   ecs_target {
-    task_definition_arn = aws_ecs_task_definition.e2e_cleanup.arn
+    task_definition_arn = aws_ecs_task_definition.e2e_cleanup[0].arn
     launch_type         = "FARGATE"
     task_count          = 1
     platform_version    = "LATEST"
@@ -608,6 +633,7 @@ locals {
     [
       { name = "HUBSPOT_EVENT_QUEUE_URL", value = var.hubspot_event_queue_url },
       { name = "HUBSPOT_TOKEN_SECRET_ARN", value = var.hubspot_token_secret_arn },
+      { name = "HUBSPOT_PORTAL_ID", value = var.hubspot_portal_id },
     ],
   )
   hubspot_base_secrets = [
@@ -746,8 +772,9 @@ resource "aws_iam_role_policy" "events_runtask_hubspot" {
 
 resource "aws_cloudwatch_event_rule" "hubspot_intake" {
   name                = "${var.name_prefix}-hubspot-intake"
-  description         = "Drain the DealGate HubSpot events SQS queue."
+  description         = "Legacy scheduled HubSpot intake; disabled because historical long-poll tasks accumulated instead of exiting."
   schedule_expression = var.hubspot_intake_schedule_expression
+  state               = "DISABLED"
 }
 
 resource "aws_cloudwatch_event_target" "hubspot_intake" {

@@ -69,9 +69,20 @@ async def _seed(session, *, signed: bool = False):
     await session.flush()
 
     if signed:
+        from app.services.sow_extract import create_sow_version
+        from app.services.policy import active_policy
+
+        version = await create_sow_version(
+            session, opportunity_id=opp.id, uploaded_by=user.id,
+            file_s3_key="sow/resource-change.pdf", file_hash=uuid.uuid4().hex,
+        )
+        model = await update_resources(
+            session, opportunity_id=opp.id, actor_id=user.id, payload=_payload(),
+        )
+        policy = await active_policy(session)
         pkg = ApprovalPackage(
-            id=uuid.uuid4(), opportunity_id=opp.id, sow_version_id=uuid.uuid4(),
-            gm_model_id=uuid.uuid4(), policy_version_id=uuid.uuid4(),
+            id=uuid.uuid4(), opportunity_id=opp.id, sow_version_id=version.id,
+            gm_model_id=model.gm_model_id, policy_version_id=policy.id,
             package_hash="x" * 64, status="released", submitted_by=user.id,
         )
         session.add(pkg)

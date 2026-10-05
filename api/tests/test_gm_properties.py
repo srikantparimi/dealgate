@@ -4,15 +4,20 @@ We use very small ``max_examples`` because the invariants are algebraic and
 Hypothesis finds counterexamples fast — no need to burn CI time.
 """
 
-from decimal import Decimal, getcontext
+from decimal import Decimal, localcontext
 
+import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from app.gm import gross_margin, min_price
 
-# Comfortable precision for the intermediate divisions.
-getcontext().prec = 50
+@pytest.fixture(autouse=True)
+def arithmetic_context():
+    # Do not mutate process-wide precision while pytest imports this module.
+    with localcontext() as context:
+        context.prec = 50
+        yield
 
 
 def _money(min_value: str = "0", max_value: str = "1000000"):

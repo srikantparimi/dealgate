@@ -21,7 +21,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
@@ -60,4 +60,76 @@ class ForecastPeriod(Base):
     )
 
 
-__all__ = ["ForecastPeriod"]
+class ForecastPlan(Base):
+    __tablename__ = "forecast_plan"
+    __table_args__ = (UniqueConstraint("tenant_id", "environment", "request_key", name="uq_forecast_plan_request"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    environment: Mapped[str] = mapped_column(String(32), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("client.id", ondelete="CASCADE"), nullable=False)
+    opportunity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("opportunity.id", ondelete="SET NULL"))
+    owner_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("user.id"), nullable=False)
+    request_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ForecastPlanVersion(Base):
+    __tablename__ = "forecast_plan_version"
+    __table_args__ = (UniqueConstraint("plan_id", "version", name="uq_forecast_plan_version"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("forecast_plan.id", ondelete="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    scope_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    lifecycle: Mapped[str] = mapped_column(String(32), nullable=False)
+    probability: Mapped[Decimal | None] = mapped_column(Numeric())
+    probability_source: Mapped[str | None] = mapped_column(String(2000))
+    assumptions: Mapped[list] = mapped_column(JsonB, nullable=False)
+    component_inputs: Mapped[dict] = mapped_column(JsonB, nullable=False)
+    policy_snapshot: Mapped[dict] = mapped_column(JsonB, nullable=False)
+    scenario_group: Mapped[str | None] = mapped_column(String(255))
+    selected: Mapped[bool] = mapped_column(nullable=False, default=True)
+    fx_rate: Mapped[Decimal | None] = mapped_column(Numeric())
+    fx_version: Mapped[str | None] = mapped_column(String(128))
+    fx_date: Mapped[date | None] = mapped_column(Date)
+    change_reason: Mapped[str] = mapped_column(String(2000), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("user.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ForecastSchedule(Base):
+    __tablename__ = "forecast_schedule"
+    plan_version_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("forecast_plan_version.id", ondelete="CASCADE"), primary_key=True)
+    snapshot: Mapped[dict] = mapped_column(JsonB, nullable=False)
+    calculation_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ForecastJob(Base):
+    __tablename__ = "forecast_job"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    plan_version_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("forecast_plan_version.id", ondelete="CASCADE"), unique=True, nullable=False)
+    tenant_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    environment: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(1024))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ForecastConversion(Base):
+    __tablename__ = "forecast_conversion"
+    __table_args__ = (UniqueConstraint("plan_id", "gm_model_id", name="uq_forecast_conversion_source"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("forecast_plan.id", ondelete="CASCADE"), nullable=False)
+    gm_model_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("gm_model.id", ondelete="SET NULL"))
+    scope_fraction: Mapped[Decimal] = mapped_column(Numeric(), nullable=False)
+    reason: Mapped[str] = mapped_column(String(2000), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("user.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+__all__ = ["ForecastPeriod", "ForecastPlan", "ForecastPlanVersion", "ForecastSchedule", "ForecastJob", "ForecastConversion"]

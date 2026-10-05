@@ -1,0 +1,22 @@
+modules/schedulers/tests/s21_jobs.tftest.hcl... in progress
+  run "jobs_disabled_until_reviewed_cutover"... fail
+
+Error: Test assertion failed
+
+  on modules/schedulers/tests/s21_jobs.tftest.hcl line 42, in run "jobs_disabled_until_reviewed_cutover":
+  42:     condition     = aws_cloudwatch_event_rule.e2e_cleanup.state == "DISABLED"
+    ├────────────────
+    │ Diff:
+    │ --- actual
+    │ +++ expected
+    │ - null
+    │ + "DISABLED"
+
+
+Scheduled cleanup must remain disabled until trusted provenance cleanup is
+reviewed.
+  run "both_jobs_use_exact_release_image"... pass
+modules/schedulers/tests/s21_jobs.tftest.hcl... tearing down
+modules/schedulers/tests/s21_jobs.tftest.hcl... fail
+
+Failure! 1 passed, 1 failed.

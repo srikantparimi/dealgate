@@ -12,49 +12,18 @@ from app.models.sow import Sow, SowVersion
 from app.models.user import User
 from app.audit import append_audit
 from app.services.user_identity import display_user_name
+from app.services.test_fixtures import E2E_USER_GROUP as E2E_USER_GROUP
+from app.services.test_fixtures import reviewer_scope, user_allowed
 
-FUNCTIONS = ("delivery", "hr", "finance", "legal")
+FUNCTIONS = ("delivery", "hr", "sales", "finance", "legal")
 LABELS = {
     "delivery": "Delivery",
     "hr": "HR",
+    "sales": "Sales",
     "finance": "Finance",
     "legal": "Legal",
     "executive": "Executive",
 }
-
-# S21 item 7: Cognito group used to flag e2e test users. Members in this
-# group are ineligible as approvers unless the SOW itself is an e2e
-# fixture (its client name is matched by `worker.e2e_cleanup._PREFIX_RE`).
-E2E_USER_GROUP = "officeapp-e2e"
-
-
-def _is_e2e_user(user) -> bool:
-    return E2E_USER_GROUP in (user.groups or [])
-
-
-async def _is_e2e_scoped(session, sow_version) -> bool:
-    """Return True iff the SOW's client name matches the e2e tag regex.
-
-    An e2e run tag on the SOW (its client name begins with one of the
-    tag prefixes in `worker.e2e_cleanup._PREFIX_RE`) authorises
-    e2e-grouped users to receive routing on this SOW. A real SOW never
-    matches.
-    """
-    from worker.e2e_cleanup import _PREFIX_RE
-    from app.models.opportunity import Opportunity
-    from app.models.client import Client
-
-    sow_row = await session.scalar(select(Sow).where(Sow.id == sow_version.sow_id))
-    if not sow_row or not sow_row.opportunity_id:
-        return False
-    opp = await session.scalar(
-        select(Opportunity).where(Opportunity.id == sow_row.opportunity_id)
-    )
-    if not opp or not opp.client_id:
-        return False
-    client = await session.scalar(select(Client).where(Client.id == opp.client_id))
-    return bool(client and _PREFIX_RE.match(client.name or ""))
-
 
 def fail(message, status=422):
     from app.services.approvals import ApprovalError
@@ -70,12 +39,10 @@ def person(user):
     }
 
 
-async def groups(session, *, include_e2e_users: bool = False):
+async def groups(session, *, sow_version=None):
     users_all = list((await session.scalars(select(User).order_by(User.email))).all())
-    # S21 item 7 (leak gate): e2e users never appear in default
-    # eligibility; callers that explicitly need them (an e2e-tagged run)
-    # pass include_e2e_users=True after proving scope.
-    users = users_all if include_e2e_users else [u for u in users_all if not _is_e2e_user(u)]
+    scope = await reviewer_scope(session, sow_version) if sow_version is not None else None
+    users = [u for u in users_all if user_allowed(u, scope)]
     configured = {r.function: r for r in (await session.scalars(select(ApprovalGroup))).all()}
     owners = list(
         (
@@ -224,6 +191,8 @@ async def submission_plan(
     )
     if not sow or not sow.confirmed_at:
         fail("Complete scope before submitting for review", 409)
+    if (((sow.extracted_fields or {}).get("metadata") or {}).get("reextract_conflicts")):
+        fail("Resolve extraction conflicts before submitting for review", 409)
     assert_not_legacy_for_approval(sow)
     gm = await _latest_gm_model(session, opportunity_id)
     if not gm:
@@ -242,11 +211,8 @@ async def submission_plan(
     choices = choices or {}
     if set(choices) - set(FUNCTIONS):
         fail("Unknown approval function")
-    # S21 item 7: e2e users are eligible only when the SOW is itself an
-    # e2e fixture (its client name matches the test-data prefix regex).
-    e2e_scoped = await _is_e2e_scoped(session, sow)
     rows, used = [], set()
-    for group in await groups(session, include_e2e_users=e2e_scoped):
+    for group in await groups(session, sow_version=sow):
         fn = group["function"]
         eligible = [m for m in group["members"] if m["id"] != str(actor_id)]
         if fn == "executive":
@@ -314,7 +280,8 @@ async def route_missing(session, *, actor_id, package_id):
         "pending_ceo_exception",
     ):
         fail("Package is no longer awaiting review", 409)
-    roster = {g["function"]: g for g in await groups(session)}
+    version = await session.get(SowVersion, package.sow_version_id)
+    roster = {g["function"]: g for g in await groups(session, sow_version=version)}
     assignments = list(
         (
             await session.scalars(

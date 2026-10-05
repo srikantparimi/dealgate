@@ -10,13 +10,14 @@
  * opportunity + deal metadata when available.
  */
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Search } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import {
   listAgreements,
-  listApprovalPackages,
   type AgreementRow,
   type ApprovalPackage,
 } from "../../api/client";
+import { loadApprovalPopulation } from "../../api/approvalPopulation";
 import { useAuth } from "../../auth/AuthProvider";
 import { PageHeader } from "../../ui-v2/PageHeader";
 import { EmptyState } from "../../ui-v2/EmptyState";
@@ -27,7 +28,7 @@ import { LANES, laneForPackage, type LaneDef, type LaneId } from "./sow-approval
 import { PackageCard, type CardMeta } from "./sow-approvals/PackageCard";
 import { DraftSowStrip } from "./sow-approvals/DraftSowStrip";
 
-type ChipId = "all" | "blocked" | "mine" | "new";
+type ChipId = "all" | "in_review" | "blocked" | "mine" | "new";
 
 interface Chip {
   id: ChipId;
@@ -36,6 +37,7 @@ interface Chip {
 
 const CHIPS: Chip[] = [
   { id: "all", label: "All packages" },
+  { id: "in_review", label: "In review" },
   { id: "blocked", label: "Blocked" },
   { id: "mine", label: "My decisions" },
   { id: "new", label: "New drafts" },
@@ -66,20 +68,27 @@ function isNewDraft(pkg: ApprovalPackage): boolean {
 
 export function SowApprovalsPage() {
   const { user } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const inReview = params.get("status") === "in_review";
+  const pinnedRevision = inReview ? params.get("population_revision") ?? undefined : undefined;
   const groups = user?.groups ?? [];
 
   const [packages, setPackages] = useState<ApprovalPackage[] | null>(null);
   const [agreements, setAgreements] = useState<AgreementRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [chip, setChip] = useState<ChipId>("all");
+  const [localChip, setLocalChip] = useState<ChipId>("all");
+  const chip = inReview ? "in_review" : localChip;
   const [search, setSearch] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setPackages(null);
+    setError(null);
     async function load() {
       try {
         const [pkgRes, agRes] = await Promise.all([
-          listApprovalPackages({ size: 100 }),
+          loadApprovalPopulation({ status: inReview ? "in_review" : undefined, population_revision: pinnedRevision }),
           listAgreements().catch(() => ({
             items: [] as AgreementRow[],
             allowed_states: [],
@@ -96,9 +105,9 @@ export function SowApprovalsPage() {
     }
     void load();
     return () => {
-      cancelled = false;
+      cancelled = true;
     };
-  }, []);
+  }, [inReview, pinnedRevision, reload]);
 
   const ownedLane = laneOwnedByRole(groups);
 
@@ -168,7 +177,7 @@ export function SowApprovalsPage() {
       {/* Work in progress, above the board. A SOW that has not reached an
        * approval package appears in no lane, so without this the only route
        * back to an unfinished upload was browser history. */}
-      <DraftSowStrip />
+      {!inReview && <DraftSowStrip />}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div
@@ -182,7 +191,14 @@ export function SowApprovalsPage() {
               type="button"
               role="tab"
               aria-selected={chip === c.id}
-              onClick={() => setChip(c.id)}
+              onClick={() => {
+                setLocalChip(c.id === "in_review" ? "all" : c.id);
+                const next = new URLSearchParams(params);
+                next.delete("population_revision");
+                if (c.id === "in_review") next.set("status", "in_review");
+                else next.delete("status");
+                setParams(next);
+              }}
               className={cn(
                 "rounded-control border px-3 py-1 text-secondary font-medium transition-motion",
                 "focus-visible:outline-focus",
@@ -223,6 +239,14 @@ export function SowApprovalsPage() {
         >
           <AlertTriangle className="h-4 w-4" />
           <span>We couldn't load approvals. {error}</span>
+          <Button variant="secondary" onClick={() => {
+            const next = new URLSearchParams(params);
+            next.delete("population_revision");
+            setParams(next);
+            setReload(value => value + 1);
+          }} aria-label="Reload approvals">
+            <RefreshCw className="h-4 w-4" aria-hidden /> Reload
+          </Button>
         </div>
       ) : null}
 

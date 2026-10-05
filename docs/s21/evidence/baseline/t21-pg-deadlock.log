@@ -1,0 +1,12 @@
+2026-10-03 00:23:47.854 UTC [8597] ERROR:  deadlock detected
+2026-10-03 00:23:47.854 UTC [8597] DETAIL:  Process 8597 waits for ShareLock on transaction 3905; blocked by process 8571.
+	Process 8571 waits for ExclusiveLock on advisory lock [103346,0,42424242,1]; blocked by process 8597.
+	Process 8597: SELECT client.id 
+	FROM client 
+	WHERE client.id = $1::UUID FOR UPDATE
+	Process 8571: SELECT pg_advisory_xact_lock($1::INTEGER)
+2026-10-03 00:23:47.854 UTC [8597] HINT:  See server log for query details.
+2026-10-03 00:23:47.854 UTC [8597] CONTEXT:  while locking tuple (1,18) in relation "client"
+2026-10-03 00:23:47.854 UTC [8597] STATEMENT:  SELECT client.id 
+	FROM client 
+	WHERE client.id = $1::UUID FOR UPDATE

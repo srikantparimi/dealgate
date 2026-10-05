@@ -26,7 +26,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,6 +78,70 @@ router = APIRouter(prefix="/delivery-model", tags=["delivery-model"])
 class PreviewRequest(BaseModel):
     engagement_type: str
     inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class CommercialRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sow_version_id: uuid.UUID
+    expected_gm_model_id: uuid.UUID | None
+    inputs: dict[str, Any]
+    change_reason: str = Field(min_length=1, max_length=2000)
+
+
+@router.get("/commercial/profiles")
+async def commercial_profiles(
+    _actor: AuthUser = Depends(require_role(*_PREVIEW_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from dataclasses import asdict
+    from app.gm.commercial import CALCULATION_VERSION, PRICING_PROFILES
+    from app.services.policy import active_policy
+    policy = await active_policy(session)
+    return {"profiles": [asdict(profile) for profile in PRICING_PROFILES.values()],
+            "calculation_version": CALCULATION_VERSION,
+            "policy": {"version": str(policy.id) if policy.id else "blueprint-defaults-v1",
+                       "us_floor": str(policy.us_floor), "india_floor": str(policy.india_floor)}}
+
+
+@router.post("/commercial/preview")
+async def commercial_preview(
+    body: dict[str, Any],
+    actor: AuthUser = Depends(require_role(*_PREVIEW_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from app.gm.commercial_adapter import compute_commercial
+    from app.services.commercial_models import SCHEDULE, CommercialInputError, parse_component
+    from app.services.policy import active_policy
+    try:
+        component = parse_component(body)
+        policy = await active_policy(session)
+        result = compute_commercial(component, us_floor=policy.us_floor, india_floor=policy.india_floor)
+        return redact_costs({
+            "computed": build_compute_response(result, us_floor=policy.us_floor, india_floor=policy.india_floor),
+            "commercial_snapshot": {"schedule": SCHEDULE.dump_python(result.commercial_schedule, mode="json")},
+        }, set(actor.groups))
+    except CommercialInputError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/{opportunity_id}/commercial/versions", status_code=201)
+async def create_commercial_version(
+    opportunity_id: uuid.UUID, body: CommercialRequest,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from app.services.commercial_models import CommercialInputError, save_commercial_model
+    from app.services.delivery_model import _model_to_payload
+    try:
+        model = await save_commercial_model(
+            session, opportunity_id=opportunity_id, actor_id=actor.id,
+            sow_version_id=body.sow_version_id, expected_gm_model_id=body.expected_gm_model_id,
+            inputs=body.inputs, change_reason=body.change_reason,
+        )
+    except CommercialInputError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return redact_costs({"gm_model": serialize_gm_model(model, result=compute_live(_model_to_payload(model)))},
+                        set(actor.groups))
 
 
 def _bad_request(exc: Exception) -> HTTPException:

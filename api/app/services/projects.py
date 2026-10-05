@@ -22,6 +22,7 @@ from app.services.deals import is_leader
 from app.services.delivery_model import _extra_inputs_for_model, _model_to_payload, compute_live
 from app.services.provenance import value_of
 from app.services.user_identity import display_user_name
+from app.services.project_source import project_scope_allowed
 
 
 def decimal_string(value):
@@ -46,6 +47,9 @@ async def list_projects(session, *, actor):
     for package, opportunity, client, sow, owner, project in rows:
         if opportunity.id in seen or (client and client.archived_at):
             continue
+        if project is not None and "source_scope" in project.baseline_snapshot_json and not await project_scope_allowed(
+            session, actor=actor, project=project):
+            continue
         seen.add(opportunity.id)
         model = await session.scalar(
             select(GmModel)
@@ -66,7 +70,7 @@ async def list_projects(session, *, actor):
         # It never mutates. Forecast rows and actuals rows go alongside,
         # not on top of, this snapshot.
         baseline_block = None
-        if project is not None:
+        if project is not None and set(actor.groups) & {"Delivery", "Finance", "CEO", "SystemAdmin"}:
             baseline_block = project.baseline_snapshot_json
         result.append(
             {
@@ -123,4 +127,33 @@ async def list_projects(session, *, actor):
                 ],
             }
         )
+    from app.services.test_fixtures import account_scope, is_test_user, user_allowed
+    retained = (await session.scalars(select(Project).where(
+        Project.source_deleted_at.is_not(None), Project.archived_at.is_(None)
+    ))).all()
+    for project in retained:
+        source = project.retained_source or {}
+        if "source_scope" in project.baseline_snapshot_json and not await project_scope_allowed(
+            session, actor=actor, project=project):
+            continue
+        if project.client_id:
+            if not user_allowed(actor, await account_scope(session, project.client_id)):
+                continue
+        elif source.get("test_fixture") or is_test_user(actor):
+            continue
+        if not is_leader(actor) and source.get("owner_id") != str(actor.id):
+            continue
+        baseline = project.baseline_snapshot_json
+        result.append({"id": str(project.id), "project_id": str(project.id), "source_deleted": True,
+            "source_deleted_at": project.source_deleted_at.isoformat(), "provenance": source,
+            "package_id": None, "gm_model_id": None, "title": project.title,
+            "client_name": source.get("client_name"), "owner_name": "Source removed",
+            "sow_version": baseline.get("sow_version_no"), "gm_version": baseline.get("gm_version"),
+            "released_at": project.created_at.isoformat(), "term_end": baseline.get("term_end"),
+            "baseline": baseline if set(actor.groups) & {"Delivery", "Finance", "CEO", "SystemAdmin"} else None,
+            "approved": {"us": None, "india": None}, "forecast": {"us": None, "india": None, "as_of": None},
+            "resources": [{"id": row["id"], "name": row.get("person_name"), "role": row.get("role"),
+                "location": row.get("location"), "allocation": row.get("allocation_pct"),
+                "hours": row.get("billable_hours"), "start_date": row.get("start_date"), "end_date": row.get("end_date")}
+                for row in baseline.get("resource_lines", [])]})
     return result

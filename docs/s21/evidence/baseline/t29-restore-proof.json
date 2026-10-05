@@ -1,0 +1,77 @@
+{
+  "run": "46488f9f1143",
+  "started": "2026-10-04T06:16:17.479778+00:00",
+  "legs": {
+    "populated_rollback": {
+      "window": "head..20261002_0061_automation_jobs..head",
+      "fingerprint_stable": true,
+      "tables": {
+        "user": [
+          1,
+          "4d02800511bda3943a2750d59f96363e"
+        ],
+        "client": [
+          1,
+          "20b2b2426809142f4b76a6aef859f57b"
+        ],
+        "opportunity": [
+          1,
+          "c962bd4d2d707af2b1941c592b7e1265"
+        ],
+        "sow": [
+          1,
+          "fde420256a8c1ce6fde2fec3805fa60c"
+        ],
+        "sow_version": [
+          1,
+          "e76266ce38c7ae9f9fff82c266cd2e61"
+        ],
+        "gm_model": [
+          1,
+          "46c4e621092ac21cbe28984f3a9b54a3"
+        ],
+        "approval_package": [
+          1,
+          "f0a8438844e7c86d337d834a24244fd0"
+        ],
+        "renewal": [
+          1,
+          "0bd7449cafce850672859bba753affe9"
+        ],
+        "task": [
+          1,
+          "70e7613c5f981bd680815c98fb60248a"
+        ],
+        "deletion_job": [
+          1,
+          "3b49d00c95c3e47ed746c1f6f8101668"
+        ]
+      }
+    },
+    "populated_loss_refusal": {
+      "refused": true,
+      "still_at_head": true,
+      "history_rows": 1
+    },
+    "backup_restore": {
+      "tool": "pg_dump -Fc / pg_restore (container pg16)",
+      "fingerprint_equal": true,
+      "restored_alembic_head": "20261003_0063_agreement_versions"
+    },
+    "malformed_atomicity": {
+      "error": "IntegrityError",
+      "version_unchanged": true,
+      "no_partial_ddl": true
+    },
+    "concurrent_upgrade": {
+      "final_head": "20261003_0063_agreement_versions",
+      "version_rows": 1,
+      "loser_errors": [
+        "(Background on this error at: https://sqlalche.me/e/21/gkpj)"
+      ],
+      "winners": 1
+    }
+  },
+  "finished": "2026-10-04T06:17:07.889242+00:00",
+  "cleanup": "all owned databases dropped; container dump removed"
+}

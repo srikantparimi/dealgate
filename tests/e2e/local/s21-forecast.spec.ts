@@ -1,0 +1,77 @@
+import { expect, test } from "@playwright/test";
+
+test("persisted account forecast preserves fifteen months and authoritative source detail", async ({ page, request }) => {
+  test.setTimeout(60_000);
+  const account = process.env.S21_FORECAST_ACCOUNT;
+  expect(account, "Supply the isolated persisted planning account").toBeTruthy();
+  const params = new URLSearchParams({ account_id: account!, as_of: "2026-10-01T12:00:00Z", future_quarters: "4" });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(`/forecast?${params}`);
+  await expect(page.getByRole("heading", { name: "Forecast", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Account outlook" }).getByRole("row")).toHaveCount(2);
+  await expect(page.getByText(/^Selected total/)).toBeVisible();
+  const response = await request.get(`http://127.0.0.1:8210/forecast/outlook?${params}`, {
+    headers: { "X-Test-User": "s21-browser@example.test" },
+  });
+  expect(response.ok()).toBe(true);
+  const data = await response.json();
+  expect(data.future.revenue).toMatch(/^140000(?:\.0+)?$/);
+  expect(data.future.cost).toMatch(/^70000(?:\.0+)?$/);
+  expect(data.months).toHaveLength(15);
+  if (process.env.S21_FINANCIAL === "1") {
+    const actuals = page.getByRole("region", { name: "Financial actuals" });
+    await expect(actuals).toContainText("Recognized revenue");
+    await expect(actuals).toContainText("11000.99");
+    await expect(actuals).toContainText("Cash collected");
+    await expect(actuals).toContainText("8000");
+    expect(data.financial_actuals.blended_with_forecast).toBe(false);
+  }
+  const november = page.getByRole("button", { name: "Inspect November 2026" });
+  const potential = november.locator(".bg-sky-600");
+  expect((await potential.boundingBox())?.height).toBeGreaterThan(100);
+  await page.getByRole("region", { name: "Account outlook" }).getByRole("button").click();
+  await expect(page.getByLabel("Future quarters")).toHaveValue("4");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/forecast-accounts-desktop.png", fullPage: true });
+  await page.getByRole("tab", { name: "Overview", exact: true }).click();
+  const overview = page.getByRole("region", { name: "Forecast overview", exact: true });
+  await expect(overview).toContainText("USD 140000");
+  await expect(page.getByRole("region", { name: "Future planning basis", exact: true })).toContainText("70000");
+  await expect(overview).toContainText("Six months starting November");
+  await page.getByRole("region", { name: "Overview sources", exact: true }).getByRole("button", { name: "Company X implementation", exact: true }).first().click();
+  await expect(page.getByRole("region", { name: "Source detail", exact: true })).toContainText("USD");
+  await expect(page.getByRole("region", { name: "Source detail", exact: true })).toContainText("FX date");
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Overview", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(overview).toContainText("USD 140000");
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/forecast-overview-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/forecast-overview-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByRole("tab", { name: "Revenue projection" }).click();
+  await expect(page.getByRole("region", { name: "Monthly revenue projection" }).getByRole("row")).toHaveCount(16);
+  await page.getByRole("region", { name: "Forecast source rows" }).getByRole("button", { name: "Company X implementation" }).first().click();
+  await expect(page.getByRole("region", { name: "Source detail" })).toContainText("commercial-schedule-v1");
+  await expect(page.getByRole("region", { name: "Source detail" })).toContainText("Synthetic Company X findings, scenario A");
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Monthly revenue projection" }).getByRole("row")).toHaveCount(16);
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export rows" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toContain("forecast-expected-2026-10-01.csv");
+  const stream = await download.createReadStream();
+  expect(stream).not.toBeNull();
+  let csv = "";
+  for await (const chunk of stream!) csv += chunk.toString();
+  expect(csv).toContain('"timezone"');
+  expect(csv).toContain('"fx_date"');
+  expect(csv).toContain('"America/Los_Angeles"');
+  expect(csv).toContain('"Company X implementation"');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: "Forecast", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/forecast-revenue-mobile.png", fullPage: true });
+  expect(errors).toEqual([]);
+});

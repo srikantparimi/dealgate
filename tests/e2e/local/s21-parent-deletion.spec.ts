@@ -1,0 +1,34 @@
+import { expect, test } from "@playwright/test";
+
+test("client deletion follows real retained-history cleanup through the worker", async ({ page }) => {
+  test.setTimeout(180_000);
+  const clientId = process.env.S21_PARENT_CLIENT;
+  if (!clientId) throw new Error("S21_PARENT_CLIENT must identify the isolated parent journey fixture");
+  await page.goto(`/clients/${clientId}`);
+  await expect(page.getByTestId("client-heading")).toHaveText(/Parent deletion proof/);
+  await page.getByRole("button", { name: "Delete client", exact: true }).click();
+  await expect(page.getByText(/Projects and financial actuals are retained/)).toBeVisible();
+  await expect(page.getByTestId("deletion-retained-list")).toContainText("1 project");
+  await expect(page.getByTestId("deletion-cascade-list")).not.toContainText("project");
+  await expect(page.getByRole("button", { name: "Archive instead" })).toHaveCount(0);
+  await page.getByTestId("deletion-confirm").click();
+  await expect(page).toHaveURL(/\/deletions\//);
+  await expect(page.getByRole("heading", { name: "Client deletion", exact: true })).toBeVisible();
+  await expect(page.getByText("Client removed from active records", { exact: true })).toBeVisible();
+  await expect(page.getByText("File cleanup pending", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/parent-deletion-pending.png", fullPage: true });
+  await expect(page.getByText("File cleanup complete", { exact: true })).toBeVisible({ timeout: 130_000 });
+  await expect(page.getByText("retained projects: 1", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("File cleanup complete", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/parent-deletion-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/parent-deletion-mobile.png", fullPage: true });
+  await page.getByRole("link", { name: "Projects", exact: true }).last().click();
+  const projectTitle = process.env.S21_PARENT_PROJECT_TITLE;
+  if (!projectTitle) throw new Error("Owned retained project title is required");
+  const project = page.locator("section").filter({ has: page.getByRole("heading", { name: projectTitle, exact: true }) });
+  await expect(project.getByRole("heading", { name: projectTitle, exact: true })).toBeVisible();
+  await expect(project.getByText("Source SOW deleted; project retained", { exact: true })).toBeVisible();
+});

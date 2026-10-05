@@ -24,7 +24,10 @@ from app.services.next_action import (
     list_events,
     load_action,
     patch_action,
+    action_revision,
+    _is_leader,
 )
+from app.services.tracking_access import assignable_users, require_deal_access, visible_deal_ids
 
 
 router = APIRouter(prefix="/next-actions", tags=["next-actions"])
@@ -44,10 +47,14 @@ class NextActionRow(BaseModel):
     blocker: str | None
     outcome: str | None
     approval_package_id: uuid.UUID | None
+    revision: str = ""
+    can_edit: bool = False
 
 
 class NextActionListResponse(BaseModel):
     items: list[NextActionRow]
+    can_create: bool = False
+    assignees: list[dict[str, str]] = Field(default_factory=list)
 
 
 class NextActionCreateBody(BaseModel):
@@ -70,6 +77,7 @@ class NextActionPatchBody(BaseModel):
     clear_due_date: bool = False
     clear_blocker: bool = False
     clear_outcome: bool = False
+    expected_revision: str | None = None
 
 
 class NextActionEventRow(BaseModel):
@@ -90,8 +98,11 @@ class NextActionEventList(BaseModel):
     items: list[NextActionEventRow]
 
 
-def _to_row(a) -> NextActionRow:
-    return NextActionRow.model_validate(a)
+async def _to_row(session, user, a) -> NextActionRow:
+    return NextActionRow.model_validate(a).model_copy(update={
+        "revision": await action_revision(session, a),
+        "can_edit": _is_leader(user) or user.id in {a.assignee_user_id, a.owner_user_id, a.created_by},
+    })
 
 
 @router.get("", response_model=NextActionListResponse)
@@ -102,6 +113,13 @@ async def list_next_actions_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> NextActionListResponse:
+    candidates = []
+    if opportunity_id is not None:
+        await require_deal_access(session, user, opportunity_id)
+        allowed = {opportunity_id}
+        candidates = await assignable_users(session, user, opportunity_id)
+    else:
+        allowed = set(await visible_deal_ids(session, user))
     status_tuple: tuple[str, ...] = tuple(
         s.strip() for s in (status_.split(",") if status_ else []) if s.strip()
     )
@@ -111,7 +129,11 @@ async def list_next_actions_endpoint(
         assignee_user_id=assignee_user_id,
         status_in=status_tuple,
     )
-    return NextActionListResponse(items=[_to_row(a) for a in rows])
+    return NextActionListResponse(
+        items=[await _to_row(session, user, a) for a in rows if a.opportunity_id in allowed],
+        can_create=opportunity_id is not None,
+        assignees=[{"id": str(person.id), "name": person.name or person.email} for person in candidates],
+    )
 
 
 @router.post("", response_model=NextActionRow, status_code=status.HTTP_201_CREATED)
@@ -134,7 +156,7 @@ async def create_next_action_endpoint(
         ),
     )
     await session.commit()
-    return _to_row(action)
+    return await _to_row(session, user, action)
 
 
 @router.get("/{action_id}", response_model=NextActionRow)
@@ -144,7 +166,8 @@ async def get_next_action_endpoint(
     session: AsyncSession = Depends(get_session),
 ) -> NextActionRow:
     action = await load_action(session, action_id)
-    return _to_row(action)
+    await require_deal_access(session, user, action.opportunity_id)
+    return await _to_row(session, user, action)
 
 
 @router.patch("/{action_id}", response_model=NextActionRow)
@@ -169,10 +192,11 @@ async def patch_next_action_endpoint(
             clear_due_date=body.clear_due_date,
             clear_blocker=body.clear_blocker,
             clear_outcome=body.clear_outcome,
+            expected_revision=body.expected_revision,
         ),
     )
     await session.commit()
-    return _to_row(action)
+    return await _to_row(session, user, action)
 
 
 @router.get("/{action_id}/events", response_model=NextActionEventList)
@@ -181,7 +205,8 @@ async def get_next_action_events_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> NextActionEventList:
-    _ = await load_action(session, action_id)
+    action = await load_action(session, action_id)
+    await require_deal_access(session, user, action.opportunity_id)
     events = await list_events(session, action_id)
     return NextActionEventList(
         items=[NextActionEventRow.model_validate(e) for e in events]

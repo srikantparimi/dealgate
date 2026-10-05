@@ -39,8 +39,9 @@ resource "aws_db_parameter_group" "pg16" {
   description = "Postgres 16 params for ${var.name_prefix}"
 
   parameter {
-    name  = "rds.force_ssl"
-    value = "1"
+    name         = "rds.force_ssl"
+    value        = "1"
+    apply_method = "pending-reboot"
   }
 
   parameter {

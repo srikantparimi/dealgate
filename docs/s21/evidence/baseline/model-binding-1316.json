@@ -1,0 +1,14 @@
+{
+  "observed_at": "2026-10-02T13:16:09.578359+00:00",
+  "region": "us-east-2",
+  "cluster": "arn:aws:ecs:us-east-2:669810405473:cluster/officeapp-dev-cluster",
+  "service": "arn:aws:ecs:us-east-2:669810405473:service/officeapp-dev-cluster/officeapp-dev-api",
+  "task": "arn:aws:ecs:us-east-2:669810405473:task/officeapp-dev-cluster/2454dc792dd64a8e92ecad6edf468dc7",
+  "task_definition": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-api:70",
+  "container": "api",
+  "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s20-27e2edec",
+  "digest": "sha256:d1d19897a16f7400d2f92153b9d0f27b3ee627e11838fa159d4f110fa13ad10b",
+  "model_id": "us.anthropic.claude-sonnet-4-6",
+  "profile_status": "ACTIVE",
+  "boundary": "Read-only service/task/profile binding; no invocation, deployment or S21 verification"
+}

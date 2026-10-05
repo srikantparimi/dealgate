@@ -1,0 +1,28 @@
+{
+  "run_id": "5d48f11e-99e7-485e-b33f-d95752c1c115",
+  "database": "s21_cov_37ebcb10ed7f4528b7f34c846fed747b",
+  "actor_id": "f18d5882-5347-5daf-bb00-35fdc88bf1e2",
+  "second_token_groups": [
+    "Finance",
+    "officeapp-e2e"
+  ],
+  "observed_waiter": {
+    "pid": 8728,
+    "wait_event_type": "Lock",
+    "query": "SELECT client.id \nFROM client \nWHERE client.id = $1::UUID FOR UPDATE"
+  },
+  "http_status": 201,
+  "response": {
+    "id": "d9de40b3-fe3b-4436-b5b6-c89eaa4d8b7e",
+    "source_system": "identity-race-5d48f11e-99e7-485e-b33f-d95752c1c115",
+    "status": "committed",
+    "row_count": 1,
+    "errors": null,
+    "uploaded_at": "2026-10-03T00:34:09.199214+00:00",
+    "uploaded_by": "f18d5882-5347-5daf-bb00-35fdc88bf1e2"
+  },
+  "passed": false,
+  "failure": "DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) canceling statement due to statement timeout\n[SQL: UPDATE \"user\" SET groups=$1::JSONB, last_login=$2::TIMESTAMP WITH TIME ZONE, updated_at=now() WHERE \"user\".id = $3::UUID]\n[parameters: ('[\"Finance\", \"officeapp-e2e\"]', datetime.datetime(2026, 10, 3, 0, 34, 9, 277507, tzinfo=datetime.timezone.utc), UUID('f18d5882-5347-5daf-bb00-35fdc88bf1e2'))]\n(Background on this error at: https://sqlalche.me/e/21/dbapi)",
+  "preserved": true,
+  "boundary": "Real local HTTP import plus real ensure_user in independent PG session; local auth, no Cognito token verification"
+}

@@ -326,7 +326,7 @@ export function SignatoriesPicker({
     <div
       id={rootId}
       data-testid="signatories-picker"
-      className={cn("flex flex-col gap-3", className)}
+      className={cn("flex min-w-0 flex-col gap-3", className)}
     >
       {/* Current list */}
       <div className="flex flex-col gap-2" data-testid="signatories-current">
@@ -341,7 +341,7 @@ export function SignatoriesPicker({
               className="flex items-center justify-between gap-2 rounded-panel border border-divider bg-surface-sunken px-3 py-2"
               data-testid={`signatory-row-${i}`}
             >
-              <div className="min-w-0">
+              <div className="min-w-0 break-words">
                 <p className="text-body text-text font-medium">{s.name}</p>
                 <p className="text-secondary text-text-secondary">
                   {[
@@ -370,9 +370,9 @@ export function SignatoriesPicker({
       </div>
 
       {/* Two-panel add UI */}
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
         {/* Internal */}
-        <div className="flex flex-col gap-2 rounded-panel border border-divider bg-surface p-3">
+        <div className="flex min-w-0 flex-col gap-2 rounded-panel border border-divider bg-surface p-3">
           <Label htmlFor={`${rootId}-internal-input`}>
             Internal (People &amp; access)
           </Label>
@@ -409,7 +409,7 @@ export function SignatoriesPicker({
                     data-testid={`signatories-internal-pick-${u.id}`}
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-body text-text hover:bg-primary-subtle focus-visible:outline-focus"
                   >
-                    <span className="min-w-0">
+                    <span className="min-w-0 break-words">
                       <span className="block font-medium">{u.name}</span>
                       <span className="block text-secondary text-text-secondary">
                         {u.email}
@@ -423,8 +423,8 @@ export function SignatoriesPicker({
         </div>
 
         {/* Client */}
-        <div className="flex flex-col gap-2 rounded-panel border border-divider bg-surface p-3">
-          <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-col gap-2 rounded-panel border border-divider bg-surface p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Label htmlFor={`${rootId}-client-input`}>Client contact</Label>
             <Button
               type="button"
@@ -489,7 +489,7 @@ export function SignatoriesPicker({
                     data-testid={`signatories-client-pick-${c.id}`}
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-body text-text hover:bg-primary-subtle focus-visible:outline-focus"
                   >
-                    <span className="min-w-0">
+                    <span className="min-w-0 break-words">
                       <span className="block font-medium">{c.name}</span>
                       <span className="block text-secondary text-text-secondary">
                         {[c.email, c.title].filter(Boolean).join(" · ")}

@@ -1,0 +1,56 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+________ test_http_verification_reads_recorded_key_and_parses_document _________
+
+app_with_session = <fastapi.applications.FastAPI object at 0x112d83620>
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x112ea0ec0>
+
+    async def test_http_verification_reads_recorded_key_and_parses_document(app_with_session, session):  # noqa: F811
+        response, upload, storage, extractor = await exercise(session, app_with_session, valid_hash=True)
+        assert response.status_code == 200, response.text
+>       assert storage.keys == [upload.file_s3_key]
+E       AssertionError: assert [] == ['sow/owned/executed.docx']
+E         
+E         Right contains one more item: 'sow/owned/executed.docx'
+E         Use -v to get more diff
+
+tests/test_s21_signed_document_binding.py:62: AssertionError
+___________________ test_mutated_storage_bytes_cannot_verify ___________________
+
+app_with_session = <fastapi.applications.FastAPI object at 0x112d83620>
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x113548a50>
+
+    async def test_mutated_storage_bytes_cannot_verify(app_with_session, session):  # noqa: F811
+        response, upload, storage, extractor = await exercise(session, app_with_session, valid_hash=False)
+        assert response.status_code == 200, response.text
+>       assert storage.keys == [upload.file_s3_key]
+E       AssertionError: assert [] == ['sow/owned/executed.docx']
+E         
+E         Right contains one more item: 'sow/owned/executed.docx'
+E         Use -v to get more diff
+
+tests/test_s21_signed_document_binding.py:70: AssertionError
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_s21_signed_document_binding.py::test_http_verification_reads_recorded_key_and_parses_document
+FAILED tests/test_s21_signed_document_binding.py::test_mutated_storage_bytes_cannot_verify
+2 failed, 2 warnings in 12.69s

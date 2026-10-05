@@ -1,0 +1,23 @@
+{
+  "revision": "60457f343d1017e338d4d41c0923624e5599b41a",
+  "boundary": "Read-only local identity adapter and actual API/PG/UI; not Cognito or staging",
+  "database": "s21_t17_8d7c388a1eda40cfbe2a184eb00524ad",
+  "evidence": [
+    {
+      "role": "owner",
+      "route": "/sows/bd55ab45-63b1-4093-93b5-0ca8c6c45568/handoff",
+      "readiness": "recorded/released/named owner"
+    },
+    {
+      "role": "legal",
+      "route": "/sows/bd55ab45-63b1-4093-93b5-0ca8c6c45568/documents",
+      "history_status": 200
+    },
+    {
+      "role": "hr",
+      "route": "/sows/bd55ab45-63b1-4093-93b5-0ca8c6c45568/documents",
+      "history_status": 200
+    }
+  ],
+  "errors": []
+}

@@ -373,6 +373,9 @@ resource "aws_ecs_task_definition" "api" {
       }]
       environment = concat([
         { name = "DEALGATE_ENV", value = var.env },
+        { name = "DEALGATE_TENANT_ID", value = var.tenant_id != "" ? var.tenant_id : var.name_prefix },
+        { name = "DEALGATE_REPORTING_TIMEZONE", value = var.reporting_timezone },
+        { name = "DEALGATE_REPORTING_CURRENCY", value = var.reporting_currency },
         { name = "AWS_REGION", value = var.region },
         { name = "COGNITO_REGION", value = var.region },
         { name = "COGNITO_USER_POOL_ID", value = var.cognito_user_pool_id },
@@ -400,6 +403,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "HUBSPOT_TOKEN_SECRET_ARN", value = var.hubspot_token_secret_arn },
         # S19 slice 1 §B4: webhook handler enqueues verified events here.
         { name = "HUBSPOT_EVENT_QUEUE_URL", value = var.hubspot_event_queue_url },
+        { name = "HUBSPOT_PORTAL_ID", value = var.hubspot_portal_id },
         ], var.allow_dev_seed_endpoint ? [
         { name = "ALLOW_DEV_SEED_ENDPOINT", value = "1" },
       ] : [])
@@ -423,6 +427,53 @@ resource "aws_ecs_task_definition" "api" {
   ])
 }
 
+resource "aws_ecs_task_definition" "migrate" {
+  family                   = "${var.name_prefix}-api-migrate"
+  cpu                      = tostring(var.cpu)
+  memory                   = tostring(var.memory)
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  execution_role_arn       = aws_iam_role.task_execution.arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    merge(jsondecode(aws_ecs_task_definition.api.container_definitions)[0], {
+      name           = "migrate"
+      mountPoints    = []
+      portMappings   = []
+      systemControls = []
+      volumesFrom    = []
+      environment = concat(
+        jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment,
+        [{ name = "RUN_MIGRATIONS", value = "true" }],
+      )
+    })
+  ])
+}
+
+# The migration task is a release gate, not a long-running service. Terraform
+# owns its exact image and invokes the idempotent Alembic upgrade before it is
+# allowed to point the API service at the same task-definition revision.
+resource "terraform_data" "api_migration" {
+  triggers_replace = [aws_ecs_task_definition.migrate.arn]
+
+  provisioner "local-exec" {
+    command = join(" ", [
+      "bash ${path.root}/../scripts/run-ecs-migration.sh",
+      "${aws_ecs_cluster.this.arn}",
+      "${aws_ecs_task_definition.migrate.arn}",
+      "${join(",", var.private_subnet_ids)}",
+      "${aws_security_group.api.id}",
+      "${var.region}",
+    ])
+  }
+}
+
 resource "aws_ecs_service" "api" {
   name            = "${var.name_prefix}-api"
   cluster         = aws_ecs_cluster.this.id
@@ -442,14 +493,15 @@ resource "aws_ecs_service" "api" {
     container_port   = var.container_port
   }
 
-  deployment_minimum_healthy_percent = 0
+  deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 
-  # CI updates the task def image; ignore that drift so `terraform apply` from
-  # a laptop doesn't roll deploys backwards.
+  # desired_count may be adjusted during an incident. Release bindings are
+  # Terraform-owned: the service changes only after the candidate migration
+  # task succeeds.
   lifecycle {
-    ignore_changes = [task_definition, desired_count]
+    ignore_changes = [desired_count]
   }
 
-  depends_on = [aws_lb_listener.http]
+  depends_on = [aws_lb_listener.http, terraform_data.api_migration]
 }

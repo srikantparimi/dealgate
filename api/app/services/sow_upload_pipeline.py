@@ -40,6 +40,7 @@ from app.integrations.bedrock_sow_extract import (
     ManualRequired,
     StubBedrock,
 )
+from app.integrations.textract import TextractClient
 from app.models.client import Client
 from app.models.client_alias import ClientAlias
 from app.models.opportunity import Opportunity
@@ -51,18 +52,18 @@ from app.services.delivery_model import (
     parse_resource_line,
 )
 from app.services.auto_staffing import lines_to_payload_dicts
-from app.services.document_text import (
-    DocumentText,
-    UnreadableDocument,
-    extract_document_text,
-)
+from app.services.document_text import DocumentText
 from app.services.document_type import (
     ALLOWED_START_TYPES,
     DocumentTypeResult,
-    classify_document,
+    classify_text_document,
 )
 from app.services.engagement_classifier import classify as classify_engagement
 from app.services.provenance import value_of, wrap as wrap_provenance
+from app.services.sow_extract import (
+    PreparedExtractionDocument,
+    prepare_extraction_document,
+)
 
 
 CLIENT_MATCH_MIN_SCORE = Decimal("0.85")
@@ -100,6 +101,7 @@ class PipelineResult:
     extract_fields: dict[str, Any] | None = None
     extract_model: str | None = None
     extract_prompt_version: str | None = None
+    extract_source: str | None = None
     client_signals: dict[str, Any] | None = None
     create_new: dict[str, Any] | None = None
 
@@ -111,9 +113,7 @@ def sha256_hex(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-async def find_sow_by_hash(
-    session: AsyncSession, file_hash: str
-) -> SowVersion | None:
+async def find_sow_by_hash(session: AsyncSession, file_hash: str) -> SowVersion | None:
     return (
         await session.execute(
             select(SowVersion).where(SowVersion.file_hash == file_hash).limit(1)
@@ -122,9 +122,9 @@ async def find_sow_by_hash(
 
 
 def _classify_type(
-    file_bytes: bytes, content_type: str | None = None
+    text_doc: DocumentText,
 ) -> DocumentTypeResult:
-    return classify_document(file_bytes, content_type=content_type)
+    return classify_text_document(text_doc)
 
 
 @dataclass
@@ -215,9 +215,7 @@ def _client_signals(fields: dict[str, Any]) -> dict[str, Any]:
                         address_lines = [str(x) for x in addr if x]
                     elif isinstance(addr, str):
                         address_lines = [
-                            line.strip()
-                            for line in addr.splitlines()
-                            if line.strip()
+                            line.strip() for line in addr.splitlines() if line.strip()
                         ]
     # Fall back to a scope-scan for "for {name}".
     if legal_name is None:
@@ -286,7 +284,9 @@ async def _resolve_client(
         )
         if best_ratio >= 85:
             # Normalise 0-100 → 0-1 to 3 dp.
-            scored.append((c, Decimal(str(best_ratio / 100)).quantize(Decimal("0.001"))))
+            scored.append(
+                (c, Decimal(str(best_ratio / 100)).quantize(Decimal("0.001")))
+            )
 
     scored.sort(key=lambda t: t[1], reverse=True)
     if not scored:
@@ -294,7 +294,10 @@ async def _resolve_client(
 
     top = scored[0]
     second_score = scored[1][1] if len(scored) > 1 else Decimal("0")
-    if top[1] >= CLIENT_MATCH_MIN_SCORE and (top[1] - second_score) >= CLIENT_MATCH_MIN_GAP:
+    if (
+        top[1] >= CLIENT_MATCH_MIN_SCORE
+        and (top[1] - second_score) >= CLIENT_MATCH_MIN_GAP
+    ):
         return top[0].id, top[1], []
 
     candidates = [
@@ -347,9 +350,7 @@ async def _persist_sow_version(
     """
 
     sow_row = (
-        await session.execute(
-            select(Sow).where(Sow.opportunity_id == opportunity.id)
-        )
+        await session.execute(select(Sow).where(Sow.opportunity_id == opportunity.id))
     ).scalar_one_or_none()
     if sow_row is None:
         sow_row = Sow(id=uuid.uuid4(), opportunity_id=opportunity.id)
@@ -398,6 +399,9 @@ def _wrap_extract_for_storage(
         return None
     out: dict[str, Any] = {}
     for name, entry in fields.items():
+        if name == "metadata" and isinstance(entry, dict):
+            out[name] = dict(entry)
+            continue
         if isinstance(entry, dict) and "value" in entry:
             out[name] = wrap_provenance(
                 entry.get("value"),
@@ -407,7 +411,9 @@ def _wrap_extract_for_storage(
                 status=entry.get("status", "unconfirmed"),
             )
         else:
-            out[name] = wrap_provenance(entry, provenance="extracted", status="unconfirmed")
+            out[name] = wrap_provenance(
+                entry, provenance="extracted", status="unconfirmed"
+            )
     return out
 
 
@@ -570,6 +576,8 @@ async def apply_pipeline(
     source: str,
     content_type: str | None = None,
     bedrock: BedrockSowExtract | None = None,
+    textract: TextractClient | None = None,
+    prepared_document: PreparedExtractionDocument | None = None,
 ) -> PipelineResult:
     """Drive one SOW/MSA/NDA file through the full derive chain.
 
@@ -618,23 +626,39 @@ async def apply_pipeline(
             opportunity_id=opp_id,
         )
 
-    # 2. Read the text once — both the type gate and the extractor use it.
+    # 2. Read/OCR the text once — both the type gate and extractor use it.
     #    A file we cannot open is REJECTED, not raised: bulk import must
     #    never crash the batch over one bad file. `detected_type` is
     #    "unreadable" (not "other") so the caller can tell "we could not open
     #    this" apart from "this is not a SOW" and say so to the user.
-    try:
-        text_doc = extract_document_text(file_bytes, content_type)
-    except UnreadableDocument as exc:
+    prepared = prepared_document or prepare_extraction_document(
+        file_bytes,
+        content_type=content_type,
+        textract=textract,
+    )
+    if prepared.error is not None and prepared.extract_source != "textract":
         return PipelineResult(
             outcome=PipelineOutcome.REJECTED,
             sha256=file_hash,
             detected_type="unreadable",
-            errors=[exc.reason],
+            errors=[prepared.error],
         )
+    if prepared.error is not None or prepared.text is None:
+        error = prepared.error or "OCR unavailable"
+        return PipelineResult(
+            outcome=PipelineOutcome.NEEDS_PICK,
+            sha256=file_hash,
+            detected_type="scanned_document",
+            detected_confidence=0.0,
+            warnings=[f"extract manual_required: {error}"],
+            extract_source=prepared.extract_source,
+            client_signals={},
+            create_new={},
+        )
+    text_doc = prepared.text
 
     # 3. Document-type gate.
-    doc = _classify_type(file_bytes, content_type)
+    doc = _classify_type(text_doc)
     if doc.type not in ALLOWED_START_TYPES:
         return PipelineResult(
             outcome=PipelineOutcome.REJECTED,
@@ -662,6 +686,15 @@ async def apply_pipeline(
     warnings: list[str] = []
     if ex.error is not None:
         warnings.append(ex.error)
+    if fields is not None:
+        fields = {
+            **fields,
+            "metadata": {
+                "extract_source": prepared.extract_source,
+                "ref_unit": text_doc.ref_unit,
+                "document_kind": text_doc.kind,
+            },
+        }
 
     # 5. Client resolution.
     signals = _client_signals(fields or {})
@@ -685,6 +718,7 @@ async def apply_pipeline(
             extract_fields=fields,
             extract_model=ex.model,
             extract_prompt_version=ex.prompt_version,
+            extract_source=prepared.extract_source,
             client_signals=signals,
             create_new=create_new,
         )
@@ -714,12 +748,6 @@ async def apply_pipeline(
     # provenance truthfully instead of labelling every ref "p." — and it is
     # the one piece of context a reader needs to verify a field against the
     # source document.
-    if fields is not None:
-        metadata = dict(fields.get("metadata") or {})
-        metadata["ref_unit"] = text_doc.ref_unit
-        metadata["document_kind"] = text_doc.kind
-        fields = {**fields, "metadata": metadata}
-
     sow_version = await _persist_sow_version(
         session,
         opportunity=opportunity,

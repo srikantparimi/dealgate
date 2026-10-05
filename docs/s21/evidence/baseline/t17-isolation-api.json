@@ -1,0 +1,47 @@
+{
+  "revision": "a612b717d4277cccf4588a96eb29b63fd283dbbf",
+  "timestamp": "2026-10-03T05:41:38.603Z",
+  "boundary": "Actual local API/PG, local identity adapter; not staging",
+  "checks": [
+    {
+      "path": "/clients?size=200",
+      "status": 200,
+      "fixture_visible": false
+    },
+    {
+      "path": "/deals?size=200",
+      "status": 200,
+      "fixture_visible": false
+    },
+    {
+      "path": "/projects",
+      "status": 200,
+      "fixture_visible": false
+    },
+    {
+      "path": "/clients/11ceb7d9-1693-49e8-9ab1-596a5d6e5941",
+      "status": 404,
+      "fixture_visible": false
+    },
+    {
+      "path": "/deals/0a66db62-3619-4762-a96e-afe1473864a9",
+      "status": 404,
+      "fixture_visible": false
+    },
+    {
+      "path": "/pipeline/opportunities/0a66db62-3619-4762-a96e-afe1473864a9",
+      "status": 404,
+      "fixture_visible": false
+    },
+    {
+      "path": "/sow/opportunity/0a66db62-3619-4762-a96e-afe1473864a9/current",
+      "status": 404,
+      "fixture_visible": false
+    },
+    {
+      "path": "/agreements?client_id=11ceb7d9-1693-49e8-9ab1-596a5d6e5941",
+      "status": 404,
+      "fixture_visible": false
+    }
+  ]
+}

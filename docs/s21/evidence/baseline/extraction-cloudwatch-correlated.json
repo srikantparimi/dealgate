@@ -1,0 +1,55 @@
+{
+  "observation_window": "2026-10-02 12:03-12:07 UTC",
+  "observation": "read-only AWS CLI; no provider call or cloud mutation",
+  "log_group": "/officeapp/dev/api",
+  "log_stream": "api/api/2454dc792dd64a8e92ecad6edf468dc7",
+  "events": [
+    {
+      "timestamp": 1790898588794,
+      "event_id": "39938373105103064348734820325818088726523714016176963584",
+      "message": "extract failed schema validation: payload.fields must be a dict"
+    },
+    {
+      "timestamp": 1790898589481,
+      "event_id": "39938373120423676300125358424053127179833138370785509379",
+      "message": "POST /sows/jobs/9c68a34a-65e9-4466-8923-0b7d6a4e6edc/pick HTTP/1.1 200 OK",
+      "redaction": "client IP and access-log framing omitted"
+    },
+    {
+      "timestamp": 1790898591743,
+      "event_id": "39938373170867961939201627976238129117258859723976540161",
+      "message": "GET /sows/jobs/9c68a34a-65e9-4466-8923-0b7d6a4e6edc HTTP/1.1 200 OK",
+      "redaction": "client IP and access-log framing omitted"
+    }
+  ],
+  "service": {
+    "cluster": "officeapp-dev-cluster",
+    "name": "officeapp-dev-api",
+    "task_definition_revision": 70,
+    "desired": 1,
+    "running": 1,
+    "pending": 0,
+    "rollout": "COMPLETED"
+  },
+  "task": {
+    "id": "2454dc792dd64a8e92ecad6edf468dc7",
+    "task_definition_revision": 70,
+    "status": "RUNNING",
+    "started_at": "2026-10-01T23:09:07.239Z",
+    "container": "api",
+    "image_tag": "s20-27e2edec",
+    "image_digest": "sha256:d1d19897a16f7400d2f92153b9d0f27b3ee627e11838fa159d4f110fa13ad10b",
+    "selected_environment": {
+      "AWS_REGION": "us-east-2",
+      "DEALGATE_ENV": "dev",
+      "SOW_EXTRACT_MODEL_ID": "us.anthropic.claude-sonnet-4-6"
+    }
+  },
+  "limits": [
+    "Schema warning lacks job/provider request ID; same-task 687ms proximity is correlation, not a complete request trace.",
+    "Malformed fields value was not logged; missing, null, list and other invalid types are not distinguished.",
+    "Environment query selected an allowlist; it is not a full secret/override or stub-exclusion audit.",
+    "Image tag is not independently verified source-SHA attribution.",
+    "No new smoke, staging fix verification or main-image verification was performed."
+  ]
+}

@@ -31,7 +31,7 @@ from app.db import get_session
 from app.main import app as main_app
 from app.models.approval import ApprovalPackage
 from app.models.audit import AuditEvent
-from app.models.ceo_exception import CeoDelegate, CeoException
+from app.models.ceo_exception import CeoDelegate
 from app.models.notification import Notification
 from app.models.opportunity import Opportunity
 from app.models.user import User
@@ -75,6 +75,12 @@ DELEGATE_EMAIL = "dele@smartek21.com"
 ADMIN_EMAIL = "admin@smartek21.com"
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _persist_ceo_identity(session):
+    session.add(User(id=_fake_user_id(CEO_EMAIL), email=CEO_EMAIL, name="CEO", groups=["CEO"]))
+    await session.flush()
+
+
 async def _seed_owner(session) -> User:
     owner = User(
         id=_fake_user_id(OWNER_EMAIL),
@@ -105,8 +111,7 @@ async def _seed_package(session, *, owner_id: uuid.UUID) -> ApprovalPackage:
     session.add(opp)
     await session.flush()
 
-    # Ephemeral SOW + gm_model rows so the FK constraints hold. The CEO
-    # service never dereferences them beyond the package.status check.
+    # Real SOW and GM parents also let the fixture-scope guard resolve the deal.
     from app.models.gm_model import GmModel
     from app.models.sow import Sow, SowVersion
 

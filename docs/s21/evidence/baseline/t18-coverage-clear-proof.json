@@ -1,0 +1,44 @@
+{
+  "database": "s21_cov_37ebcb10ed7f4528b7f34c846fed747b",
+  "account_id": "953eae04-b3aa-45b2-ad3a-922c8b3f8d5f",
+  "before": "81aeef36-16b5-4d58-8a3d-1ade6646b8d5",
+  "cleared": "6bcf1f2a-71fe-4585-9db9-aadc491e7740",
+  "covered": [
+    {
+      "start": "2027-01-01",
+      "heads": 8
+    },
+    {
+      "start": "2027-01-15",
+      "heads": 7
+    },
+    {
+      "start": "2027-02-01",
+      "heads": 7
+    },
+    {
+      "start": "2027-02-16",
+      "heads": 8
+    },
+    {
+      "start": "2027-03-01",
+      "heads": 8
+    }
+  ],
+  "uncovered": [
+    {
+      "start": "2027-01-01",
+      "heads": 8
+    },
+    {
+      "start": "2027-02-01",
+      "heads": 8
+    },
+    {
+      "start": "2027-03-01",
+      "heads": 8
+    }
+  ],
+  "restored_revision": 53,
+  "stage": "restored"
+}

@@ -1,0 +1,402 @@
+....................................................................s... [  6%]
+..........................................s............................. [ 12%]
+........................s.................FF............................ [ 18%]
+........................................................................ [ 24%]
+........................................................................ [ 30%]
+........................................................................ [ 37%]
+........................................................................ [ 43%]
+........................................................................ [ 49%]
+........................................................................ [ 55%]
+....sss................................................................. [ 61%]
+................................................................xxxxxxxx [ 67%]
+xxxxxxxxxxxxxxxxxxxxxxxxxxx......xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [ 74%]
+xxxx.....xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxx [ 80%]
+xxxx.......xxxxxx....................................................... [ 86%]
+...............................F..............F......................... [ 92%]
+........................................................................ [ 98%]
+.............                                                            [100%]
+=================================== FAILURES ===================================
+___________ test_reject_sends_owner_notification_and_reverts_status ____________
+
+app_with_session = <fastapi.applications.FastAPI object at 0x10cba3380>
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x111515250>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10fd825f0>
+
+    async def test_reject_sends_owner_notification_and_reverts_status(
+        app_with_session, session, monkeypatch
+    ):
+        from app.services.ceo_exception import draft_for_package
+    
+        owner = await _seed_owner(session)
+        pkg = await _seed_package(session, owner_id=owner.id)
+        exc = await draft_for_package(session, pkg.id, brief_inputs=_brief_inputs())
+    
+        monkeypatch.setenv("DEALGATE_TEST_GROUPS", "CEO")
+        async with _client(app_with_session) as c:
+            r = await c.post(
+                f"/ceo-exceptions/{exc.id}/decisions",
+                headers={"X-Test-User": CEO_EMAIL},
+                json={"decision": "reject"},
+            )
+>       assert r.status_code == 201, r.text
+E       AssertionError: {"detail":"Test identity or fixture is outside the trusted approval scope"}
+E       assert 403 == 201
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+
+tests/test_ceo_exception.py:349: AssertionError
+__________________ test_return_for_changes_reverts_and_audits __________________
+
+app_with_session = <fastapi.applications.FastAPI object at 0x10cba3380>
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1113d13d0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1101277e0>
+
+    async def test_return_for_changes_reverts_and_audits(
+        app_with_session, session, monkeypatch
+    ):
+        from app.services.ceo_exception import draft_for_package
+    
+        owner = await _seed_owner(session)
+        pkg = await _seed_package(session, owner_id=owner.id)
+        exc = await draft_for_package(session, pkg.id, brief_inputs=_brief_inputs())
+    
+        monkeypatch.setenv("DEALGATE_TEST_GROUPS", "CEO")
+        async with _client(app_with_session) as c:
+            r = await c.post(
+                f"/ceo-exceptions/{exc.id}/decisions",
+                headers={"X-Test-User": CEO_EMAIL},
+                json={"decision": "return_for_changes"},
+            )
+>       assert r.status_code == 201, r.text
+E       AssertionError: {"detail":"Test identity or fixture is outside the trusted approval scope"}
+E       assert 403 == 201
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+
+tests/test_ceo_exception.py:394: AssertionError
+_____________ test_approved_package_still_pins_gm_after_later_edit _____________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x117424fd0>
+
+    @pytest.mark.asyncio
+    async def test_approved_package_still_pins_gm_after_later_edit(session):
+        """CLAUDE.md rule 4 in practice: the immutable gm_model_id stays valid."""
+    
+        from app.services.sow_extract import create_sow_version
+    
+        opp = Opportunity(
+            id=uuid.uuid4(),
+            hubspot_deal_id=f"H-PIN-{uuid.uuid4().hex[:8]}",
+            owner_id=OWNER,
+            governance_status="SOWDraft",
+        )
+        session.add(opp)
+        await session.commit()
+    
+        state = await create_sow_version(
+            session,
+            opportunity_id=opp.id,
+            uploaded_by=OWNER,
+            file_s3_key="sow/pin.pdf",
+            file_hash=f"sha256:{uuid.uuid4().hex}",
+        )
+        await run_extract(session, sow_version_id=state.id, bedrock=StubBedrock())
+        for name in EXTRACTED_FIELDS:
+            await confirm_field(
+                session,
+                actor_id=OWNER,
+                sow_version_id=state.id,
+                field_name=name,
+                value=f"c-{name}" if name != "price" else "50000",
+            )
+        row = (
+            await session.execute(select(SowVersion).where(SowVersion.id == state.id))
+        ).scalar_one()
+        fields = dict(row.extracted_fields or {})
+        fields["price"] = wrap("50000", provenance="extracted", page_ref=1)
+        fields.pop("resource_table", None)
+        row.extracted_fields = fields
+        await session.commit()
+    
+        # Save M1.
+        result_1 = await update_resources(
+            session,
+            opportunity_id=opp.id,
+            actor_id=OWNER,
+            payload={
+                "engagement_type": "fixed_price",
+                "resource_lines": [_sme_line("80"), _sme_line("160")],
+                "cost_lines": [],
+                "sow_version_id": str(state.id),
+            },
+        )
+        await session.commit()
+        m1_id = result_1.gm_model_id
+    
+        package = ApprovalPackage(
+            id=uuid.uuid4(),
+            opportunity_id=opp.id,
+            sow_version_id=state.id,
+            gm_model_id=m1_id,
+            package_hash="test-hash-pin",
+            status="pending_delivery_hr",
+            submitted_by=OWNER,
+            submitted_at=datetime.now(timezone.utc),
+        )
+        session.add(package)
+        await session.commit()
+    
+        # Later edit creates M2. Does NOT touch M1.
+>       result_2 = await update_resources(
+            session,
+            opportunity_id=opp.id,
+            actor_id=OWNER,
+            payload={
+                "engagement_type": "fixed_price",
+                "resource_lines": [_sme_line("40"), _sme_line("60")],
+                "cost_lines": [],
+                "sow_version_id": str(state.id),
+            },
+        )
+
+tests/test_sow_id_scoping.py:212: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+app/services/sow_resources.py:318: in update_resources
+    model = await create_gm_model_version(
+app/services/delivery_model.py:846: in create_gm_model_version
+    await on_gm_model_created(
+app/services/approvals_hooks.py:59: in on_gm_model_created
+    await void_on_change(
+app/services/approvals.py:983: in void_on_change
+    await queue_notification(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x117424fd0>
+user_id = UUID('6e67a945-224c-50b3-8874-b3d59b6f13a7')
+category = 'approval_pending', subject = 'Approval package voided'
+body_md = 'Package `8fdc95a9-9439-435c-aacb-cd01829c86ad` was voided because gm_model changed (new version 69f613a6-36ae-4208-83c1-937a056a5bea). Submit a fresh package once the change is settled.'
+related_entity = 'approval_package'
+related_entity_id = '8fdc95a9-9439-435c-aacb-cd01829c86ad', channels = None
+
+    async def queue_notification(
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        category: str,
+        subject: str,
+        body_md: str,
+        related_entity: str | None = None,
+        related_entity_id: str | None = None,
+        channels: tuple[str, ...] | None = None,
+    ) -> list[Notification]:
+        """Fan out one logical notification into one row per enabled channel.
+    
+        ``channels`` defaults to every channel in :data:`NOTIFICATION_CHANNELS`.
+        Rows whose channel is disabled land as ``suppressed`` so the audit + admin
+        tools can see the intent even when nothing was sent.
+    
+        Caller owns the transaction — this function flushes but does not commit.
+        That keeps the notification row atomic with whatever state transition
+        produced it (CLAUDE.md rule 5).
+        """
+    
+        _validate_category(category)
+        from fastapi import HTTPException
+        from app.services.test_fixtures import notification_block_reason
+    
+        blocked = await notification_block_reason(
+            session, user_id=user_id, related_entity=related_entity,
+            related_entity_id=related_entity_id,
+        )
+        if blocked:
+>           raise HTTPException(403, blocked)
+E           fastapi.exceptions.HTTPException: 403: Test identity or fixture is outside the trusted approval scope
+
+app/services/notifications.py:229: HTTPException
+______________ test_signed_sow_change_notifies_with_both_margins _______________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x119e82bd0>
+
+    async def test_signed_sow_change_notifies_with_both_margins(session):
+        opp, user = await _seed(session, signed=True)
+    
+>       result = await update_resources(
+            session,
+            opportunity_id=opp.id,
+            actor_id=user.id,
+            payload=_payload(),
+            effective_from=date(2026, 10, 1),
+            reason="Consultant rolled off; replaced by a senior engineer",
+        )
+
+tests/test_sow_resources.py:136: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+app/services/sow_resources.py:318: in update_resources
+    model = await create_gm_model_version(
+app/services/delivery_model.py:846: in create_gm_model_version
+    await on_gm_model_created(
+app/services/approvals_hooks.py:59: in on_gm_model_created
+    await void_on_change(
+app/services/approvals.py:983: in void_on_change
+    await queue_notification(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x119e82bd0>
+user_id = UUID('ecc4c97b-51dd-4769-8d75-314187910223')
+category = 'approval_pending', subject = 'Approval package voided'
+body_md = 'Package `92c9db79-573c-4f60-91eb-fe4754b0dec4` was voided because gm_model changed (new version c54a1b37-3476-49c1-9924-6e6e9f459858). Submit a fresh package once the change is settled.'
+related_entity = 'approval_package'
+related_entity_id = '92c9db79-573c-4f60-91eb-fe4754b0dec4', channels = None
+
+    async def queue_notification(
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        category: str,
+        subject: str,
+        body_md: str,
+        related_entity: str | None = None,
+        related_entity_id: str | None = None,
+        channels: tuple[str, ...] | None = None,
+    ) -> list[Notification]:
+        """Fan out one logical notification into one row per enabled channel.
+    
+        ``channels`` defaults to every channel in :data:`NOTIFICATION_CHANNELS`.
+        Rows whose channel is disabled land as ``suppressed`` so the audit + admin
+        tools can see the intent even when nothing was sent.
+    
+        Caller owns the transaction — this function flushes but does not commit.
+        That keeps the notification row atomic with whatever state transition
+        produced it (CLAUDE.md rule 5).
+        """
+    
+        _validate_category(category)
+        from fastapi import HTTPException
+        from app.services.test_fixtures import notification_block_reason
+    
+        blocked = await notification_block_reason(
+            session, user_id=user_id, related_entity=related_entity,
+            related_entity_id=related_entity_id,
+        )
+        if blocked:
+>           raise HTTPException(403, blocked)
+E           fastapi.exceptions.HTTPException: 403: Test identity or fixture is outside the trusted approval scope
+
+app/services/notifications.py:229: HTTPException
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_actuals_import.py: 1 warning
+tests/test_client_rate_cards.py: 1 warning
+tests/test_legacy_import.py: 1 warning
+tests/test_sow_extract.py: 3 warnings
+tests/test_sow_lifecycle.py: 1 warning
+tests/test_sow_upload_binding.py: 2 warnings
+tests/test_sow_upload_router.py: 5 warnings
+tests/test_staffing_sheet.py: 1 warning
+tests/test_tasks_lifecycle.py: 1 warning
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/test_admin_users.py::test_invite_unknown_group_returns_422_no_audit
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/admin_users.py:201: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    groups = _validate_groups(list(payload.groups))
+
+tests/test_admin_users.py::test_patch_unknown_group_returns_422_no_audit
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/admin_users.py:245: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    add = _validate_groups(list(payload.add))
+
+tests/test_ceo_exception.py::test_approve_requires_rationale
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/ceo_exception.py:183: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await decide(
+
+tests/test_channels_disabled.py::test_patch_notification_setting_rejects_disabled_channel[teams]
+tests/test_channels_disabled.py::test_patch_notification_setting_rejects_disabled_channel[slack]
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/notifications.py:164: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await upsert_setting(
+
+tests/test_client_rate_cards.py::test_publish_rejects_bad_location
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/client_rate_cards.py:133: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_row(row, idx)
+
+tests/test_gm_model_templates.py::test_save_template_rejects_duplicate_name
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/delivery_model.py:233: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _bad_request(exc) from exc
+
+tests/test_hubspot_writeback.py::test_queue_writeback_rejects_property_outside_map
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/hubspot_writeback.py:131: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_target_state(target_state)
+
+tests/test_hubspot_writeback.py::test_worker_second_line_guard_rejects_bad_target_state
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/hubspot_writeback.py:297: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_target_state(job.target_state or {})
+
+tests/test_notifications.py::test_queue_rejects_unknown_category
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:220: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_category(category)
+
+tests/test_notifications.py::test_settings_patch_rejects_unknown_channel
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:150: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_channel(channel)
+
+tests/test_policy.py::test_publish_rejects_us_ge_india
+tests/test_policy.py::test_publish_rejects_out_of_range_floors
+tests/test_policy.py::test_publish_rejects_unknown_fx_convention
+tests/test_policy.py::test_publish_via_http_us_gt_india_returns_422
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/policy.py:99: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_publish(us_floor, india_floor, fx_convention)
+
+tests/test_rate_cards.py::test_publish_rejects_non_positive_cost
+tests/test_rate_cards.py::test_publish_rejects_ordering
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/admin_rate_cards.py:162: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_row(row, idx)
+
+tests/test_sow_extract.py::test_create_version_over_25mb_returns_413
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_413_REQUEST_ENTITY_TOO_LARGE' is deprecated. Use 'HTTP_413_CONTENT_TOO_LARGE' instead.
+    return await dependant.call(**values)
+
+tests/test_tasks_lifecycle.py: 15 warnings
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:141: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await transition_task(session, actor=user, task=task, to_status=target)
+
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[cancelled-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[done-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[reassigned-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[snoozed-snoozed]
+tests/test_tasks_lifecycle.py::test_snooze_requires_future_wake_at
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:139: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await snooze_task(session, actor=user, task=task, wake_at=wake_at)
+
+tests/test_tasks_lifecycle.py::test_reassign_completed_task_rejected
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:153: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await reassign_task(
+
+tests/test_wbs.py::test_reorder_rejects_bad_id_set
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/delivery_model.py:330: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _bad_request(exc) from exc
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_ceo_exception.py::test_reject_sends_owner_notification_and_reverts_status
+FAILED tests/test_ceo_exception.py::test_return_for_changes_reverts_and_audits
+FAILED tests/test_sow_id_scoping.py::test_approved_package_still_pins_gm_after_later_edit
+FAILED tests/test_sow_resources.py::test_signed_sow_change_notifies_with_both_margins
+4 failed, 1005 passed, 6 skipped, 150 xfailed, 59 warnings in 452.79s (0:07:32)

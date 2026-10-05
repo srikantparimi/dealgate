@@ -1,0 +1,67 @@
+
+Running 1 test using 1 worker
+
+[1A[2K(node:59731) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:59731) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/1] s21-deletion.spec.ts:3:5 › deletion result shows real cleanup status and retained project
+[1A[2K  1) s21-deletion.spec.ts:3:5 › deletion result shows real cleanup status and retained project ─────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByRole('navigation', { name: 'Breadcrumb' })
+    Expected string: [32m"[7mD[27meletion[7m status[27m"[39m
+    Received string: [31m"[7md[27meletion[7ms86733d3f 35f4 471b bb13 f23f561b1314[27m"[39m
+    Call log:
+      [2m- expect.toContainText with timeout 5000ms[22m
+    [2m  - waiting for getByRole('navigation', { name: 'Breadcrumb' })[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+    [2m  -   locator resolved to <nav class="min-w-0 flex-1" aria-label="Breadcrumb">…</nav>[22m
+    [2m  -   unexpected value "deletions86733d3f 35f4 471b bb13 f23f561b1314"[22m
+
+
+       6 |   await page.goto(`/deletions/${jobId}`);
+       7 |   await expect(page.getByRole("heading", { name: "SOW deletion" })).toBeVisible();
+    >  8 |   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Deletion status");
+         |                                                                      ^
+       9 |   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).not.toContainText(jobId.slice(0, 8));
+      10 |   await expect(page.getByText("File cleanup complete", { exact: true })).toBeVisible();
+      11 |   await expect(page.getByText("retained projects: 1", { exact: true })).toBeVisible();
+
+        at /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-deletion.spec.ts:8:70
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/s21-deletion-deletion-resu-f2b37-status-and-retained-project/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/s21-deletion-deletion-resu-f2b37-status-and-retained-project/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/s21-deletion-deletion-resu-f2b37-status-and-retained-project/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K  1 failed
+    s21-deletion.spec.ts:3:5 › deletion result shows real cleanup status and retained project ──────

@@ -1,0 +1,964 @@
+{
+  "database": "s21_cov_37ebcb10ed7f4528b7f34c846fed747b",
+  "fixture_boundary": "Seeded released package/signature prerequisite, not extraction/approval/signature/provider proof",
+  "before": {
+    "schema_version": "forecast-outlook-v1",
+    "as_of": "2026-10-03T00:29:55.299684+00:00",
+    "timezone": "America/Los_Angeles",
+    "currency": "USD",
+    "scenario": "expected",
+    "future_quarters": 2,
+    "current_month": {
+      "start": "2026-10-01",
+      "end_exclusive": "2026-11-01",
+      "revenue": "24000",
+      "signed": "24000",
+      "potential": "0",
+      "expected": "24000",
+      "cost": "10000",
+      "known_cost": "10000",
+      "cost_complete": true,
+      "gm": "0.5833333333333333333333333333",
+      "signed_coverage": "1",
+      "provisional": "0",
+      "unavoidable_cost": "0"
+    },
+    "current_quarter": {
+      "start": "2026-10-01",
+      "end_exclusive": "2027-01-01",
+      "revenue": "24000",
+      "signed": "24000",
+      "potential": "0",
+      "expected": "24000",
+      "cost": "10000",
+      "known_cost": "10000",
+      "cost_complete": true,
+      "gm": "0.5833333333333333333333333333",
+      "signed_coverage": "1",
+      "provisional": "0",
+      "unavoidable_cost": "0"
+    },
+    "future": {
+      "start": "2027-01-01",
+      "end_exclusive": "2027-07-01",
+      "revenue": "0",
+      "signed": "0",
+      "potential": "0",
+      "expected": "0",
+      "cost": "0",
+      "known_cost": "0",
+      "cost_complete": true,
+      "gm": null,
+      "signed_coverage": null,
+      "provisional": "0",
+      "unavoidable_cost": "0"
+    },
+    "quarters": [
+      {
+        "start": "2026-10-01",
+        "end_exclusive": "2027-01-01",
+        "revenue": "24000",
+        "signed": "24000",
+        "potential": "0",
+        "expected": "24000",
+        "cost": "10000",
+        "known_cost": "10000",
+        "cost_complete": true,
+        "gm": "0.5833333333333333333333333333",
+        "signed_coverage": "1",
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-01-01",
+        "end_exclusive": "2027-04-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-04-01",
+        "end_exclusive": "2027-07-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      }
+    ],
+    "accounts": [
+      {
+        "account_id": "cd9c4de7-e648-4104-8663-32658d33fee5",
+        "current_month": {
+          "start": "2026-10-01",
+          "end_exclusive": "2026-11-01",
+          "revenue": "24000",
+          "signed": "24000",
+          "potential": "0",
+          "expected": "24000",
+          "cost": "10000",
+          "known_cost": "10000",
+          "cost_complete": true,
+          "gm": "0.5833333333333333333333333333",
+          "signed_coverage": "1",
+          "provisional": "0",
+          "unavoidable_cost": "0"
+        },
+        "current_quarter": {
+          "start": "2026-10-01",
+          "end_exclusive": "2027-01-01",
+          "revenue": "24000",
+          "signed": "24000",
+          "potential": "0",
+          "expected": "24000",
+          "cost": "10000",
+          "known_cost": "10000",
+          "cost_complete": true,
+          "gm": "0.5833333333333333333333333333",
+          "signed_coverage": "1",
+          "provisional": "0",
+          "unavoidable_cost": "0"
+        },
+        "future": {
+          "start": "2027-01-01",
+          "end_exclusive": "2027-07-01",
+          "revenue": "0",
+          "signed": "0",
+          "potential": "0",
+          "expected": "0",
+          "cost": "0",
+          "known_cost": "0",
+          "cost_complete": true,
+          "gm": null,
+          "signed_coverage": null,
+          "provisional": "0",
+          "unavoidable_cost": "0"
+        },
+        "quarters": [
+          {
+            "start": "2026-10-01",
+            "end_exclusive": "2027-01-01",
+            "revenue": "24000",
+            "signed": "24000",
+            "potential": "0",
+            "expected": "24000",
+            "cost": "10000",
+            "known_cost": "10000",
+            "cost_complete": true,
+            "gm": "0.5833333333333333333333333333",
+            "signed_coverage": "1",
+            "provisional": "0",
+            "unavoidable_cost": "0"
+          },
+          {
+            "start": "2027-01-01",
+            "end_exclusive": "2027-04-01",
+            "revenue": "0",
+            "signed": "0",
+            "potential": "0",
+            "expected": "0",
+            "cost": "0",
+            "known_cost": "0",
+            "cost_complete": true,
+            "gm": null,
+            "signed_coverage": null,
+            "provisional": "0",
+            "unavoidable_cost": "0"
+          },
+          {
+            "start": "2027-04-01",
+            "end_exclusive": "2027-07-01",
+            "revenue": "0",
+            "signed": "0",
+            "potential": "0",
+            "expected": "0",
+            "cost": "0",
+            "known_cost": "0",
+            "cost_complete": true,
+            "gm": null,
+            "signed_coverage": null,
+            "provisional": "0",
+            "unavoidable_cost": "0"
+          }
+        ],
+        "name": "S21 e2e d042612b-7c91-495e-a862-21c6713896e3 T21 Certified Actual Coverage"
+      }
+    ],
+    "months": [
+      {
+        "start": "2026-10-01",
+        "end_exclusive": "2026-11-01",
+        "revenue": "24000",
+        "signed": "24000",
+        "potential": "0",
+        "expected": "24000",
+        "cost": "10000",
+        "known_cost": "10000",
+        "cost_complete": true,
+        "gm": "0.5833333333333333333333333333",
+        "signed_coverage": "1",
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2026-11-01",
+        "end_exclusive": "2026-12-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2026-12-01",
+        "end_exclusive": "2027-01-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-01-01",
+        "end_exclusive": "2027-02-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-02-01",
+        "end_exclusive": "2027-03-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-03-01",
+        "end_exclusive": "2027-04-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-04-01",
+        "end_exclusive": "2027-05-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-05-01",
+        "end_exclusive": "2027-06-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-06-01",
+        "end_exclusive": "2027-07-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      }
+    ],
+    "rows": [
+      {
+        "row_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b:0",
+        "account_id": "cd9c4de7-e648-4104-8663-32658d33fee5",
+        "source_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b",
+        "source_version": "8c7e3bd6-60cb-43ab-8e56-246c5f24252f",
+        "scope_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b:US",
+        "month": "2026-10-01",
+        "lifecycle": "signed",
+        "revenue": "24000",
+        "signed": "24000",
+        "potential": "0",
+        "expected": "24000",
+        "cost": "10000",
+        "unavoidable_cost": "0",
+        "provisional": "0",
+        "scope_remaining": "1",
+        "revenue_uses_ratio": false,
+        "cost_uses_ratio": false,
+        "probability": null,
+        "currency": "USD",
+        "original_currency": "USD",
+        "fx_version": null,
+        "fx_date": null,
+        "source_name": "T21 Synthetic Certified Actual Coverage",
+        "assumptions": [],
+        "source_evidence": [
+          "Declared synthetic confirmed coverage fixture; no real uploaded document"
+        ],
+        "opportunity_id": "91cf3ea2-3716-4937-867b-ed5fa5f2fc83",
+        "source_url": "/sows/91cf3ea2-3716-4937-867b-ed5fa5f2fc83/staffing",
+        "calculation_version": "commercial-schedule-v1"
+      }
+    ],
+    "excluded": [],
+    "actuals_basis": "Separate financial measures; service schedule unchanged",
+    "actuals_available": true,
+    "financial_actuals": {
+      "totals": [
+        {
+          "period_month": "2026-10-01",
+          "measure": "billed",
+          "currency": "USD",
+          "amount": "15000"
+        },
+        {
+          "period_month": "2026-10-01",
+          "measure": "cash_collected",
+          "currency": "USD",
+          "amount": "8000"
+        },
+        {
+          "period_month": "2026-10-01",
+          "measure": "delivery_cost",
+          "currency": "USD",
+          "amount": "6000"
+        },
+        {
+          "period_month": "2026-10-01",
+          "measure": "recognized_revenue",
+          "currency": "USD",
+          "amount": "11000.99"
+        }
+      ],
+      "excluded": [],
+      "included_ids": [
+        "7ec99e73-972a-440f-835b-019cd3f24c9c",
+        "b86a8708-cd97-4025-ad7e-22a9f7cfbd17",
+        "ee0c802a-6cf9-43a0-83a1-903f254179dc",
+        "da954e0b-2b41-4d1f-8f9b-83614f96087d"
+      ],
+      "cutoff": "2026-10-02",
+      "blended_with_forecast": false
+    },
+    "current_period_estimate": {
+      "rows": [
+        {
+          "row_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b:0",
+          "source_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b",
+          "source_version": "8c7e3bd6-60cb-43ab-8e56-246c5f24252f",
+          "account_id": "cd9c4de7-e648-4104-8663-32658d33fee5",
+          "month": "2026-10-01",
+          "revenue": {
+            "scheduled": "24000",
+            "actual_to_date": "0",
+            "covered_fraction": "0",
+            "uncovered_forecast": "24000",
+            "estimate": "24000",
+            "actual_ids": []
+          },
+          "cost": {
+            "scheduled": "10000",
+            "actual_to_date": "0",
+            "covered_fraction": "0",
+            "uncovered_forecast": "10000",
+            "estimate": "10000",
+            "actual_ids": []
+          }
+        }
+      ],
+      "excluded": [
+        {
+          "id": "7ec99e73-972a-440f-835b-019cd3f24c9c",
+          "reason": "Financial measure remains separate from service estimate"
+        },
+        {
+          "id": "b86a8708-cd97-4025-ad7e-22a9f7cfbd17",
+          "reason": "Financial measure remains separate from service estimate"
+        },
+        {
+          "id": "ee0c802a-6cf9-43a0-83a1-903f254179dc",
+          "reason": "Finance-certified service coverage is unavailable"
+        },
+        {
+          "id": "da954e0b-2b41-4d1f-8f9b-83614f96087d",
+          "reason": "Finance-certified service coverage is unavailable"
+        }
+      ],
+      "cutoff": "2026-10-02",
+      "currency": "USD",
+      "totals": {
+        "revenue": "24000",
+        "cost": "10000",
+        "profit": "14000",
+        "gm_pct": "0.5833333333333333333333333333"
+      }
+    },
+    "pending_sources": [],
+    "unresolved_sources": [],
+    "source_watermark": "0810b7eb19c25407afe44b8cee5c8fa4e3c4f2b8d2d7b717ed34686b43a1f546",
+    "scope_label": "Selected total",
+    "source_count": 1,
+    "stale": false,
+    "source_coverage": "Tenant-bound commercial schedules and versioned plans",
+    "legacy_sources_included": false
+  },
+  "after": {
+    "schema_version": "forecast-outlook-v1",
+    "as_of": "2026-10-03T00:29:58.871135+00:00",
+    "timezone": "America/Los_Angeles",
+    "currency": "USD",
+    "scenario": "expected",
+    "future_quarters": 2,
+    "current_month": {
+      "start": "2026-10-01",
+      "end_exclusive": "2026-11-01",
+      "revenue": "24000",
+      "signed": "24000",
+      "potential": "0",
+      "expected": "24000",
+      "cost": "10000",
+      "known_cost": "10000",
+      "cost_complete": true,
+      "gm": "0.5833333333333333333333333333",
+      "signed_coverage": "1",
+      "provisional": "0",
+      "unavoidable_cost": "0"
+    },
+    "current_quarter": {
+      "start": "2026-10-01",
+      "end_exclusive": "2027-01-01",
+      "revenue": "24000",
+      "signed": "24000",
+      "potential": "0",
+      "expected": "24000",
+      "cost": "10000",
+      "known_cost": "10000",
+      "cost_complete": true,
+      "gm": "0.5833333333333333333333333333",
+      "signed_coverage": "1",
+      "provisional": "0",
+      "unavoidable_cost": "0"
+    },
+    "future": {
+      "start": "2027-01-01",
+      "end_exclusive": "2027-07-01",
+      "revenue": "0",
+      "signed": "0",
+      "potential": "0",
+      "expected": "0",
+      "cost": "0",
+      "known_cost": "0",
+      "cost_complete": true,
+      "gm": null,
+      "signed_coverage": null,
+      "provisional": "0",
+      "unavoidable_cost": "0"
+    },
+    "quarters": [
+      {
+        "start": "2026-10-01",
+        "end_exclusive": "2027-01-01",
+        "revenue": "24000",
+        "signed": "24000",
+        "potential": "0",
+        "expected": "24000",
+        "cost": "10000",
+        "known_cost": "10000",
+        "cost_complete": true,
+        "gm": "0.5833333333333333333333333333",
+        "signed_coverage": "1",
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-01-01",
+        "end_exclusive": "2027-04-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-04-01",
+        "end_exclusive": "2027-07-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      }
+    ],
+    "accounts": [
+      {
+        "account_id": "cd9c4de7-e648-4104-8663-32658d33fee5",
+        "current_month": {
+          "start": "2026-10-01",
+          "end_exclusive": "2026-11-01",
+          "revenue": "24000",
+          "signed": "24000",
+          "potential": "0",
+          "expected": "24000",
+          "cost": "10000",
+          "known_cost": "10000",
+          "cost_complete": true,
+          "gm": "0.5833333333333333333333333333",
+          "signed_coverage": "1",
+          "provisional": "0",
+          "unavoidable_cost": "0"
+        },
+        "current_quarter": {
+          "start": "2026-10-01",
+          "end_exclusive": "2027-01-01",
+          "revenue": "24000",
+          "signed": "24000",
+          "potential": "0",
+          "expected": "24000",
+          "cost": "10000",
+          "known_cost": "10000",
+          "cost_complete": true,
+          "gm": "0.5833333333333333333333333333",
+          "signed_coverage": "1",
+          "provisional": "0",
+          "unavoidable_cost": "0"
+        },
+        "future": {
+          "start": "2027-01-01",
+          "end_exclusive": "2027-07-01",
+          "revenue": "0",
+          "signed": "0",
+          "potential": "0",
+          "expected": "0",
+          "cost": "0",
+          "known_cost": "0",
+          "cost_complete": true,
+          "gm": null,
+          "signed_coverage": null,
+          "provisional": "0",
+          "unavoidable_cost": "0"
+        },
+        "quarters": [
+          {
+            "start": "2026-10-01",
+            "end_exclusive": "2027-01-01",
+            "revenue": "24000",
+            "signed": "24000",
+            "potential": "0",
+            "expected": "24000",
+            "cost": "10000",
+            "known_cost": "10000",
+            "cost_complete": true,
+            "gm": "0.5833333333333333333333333333",
+            "signed_coverage": "1",
+            "provisional": "0",
+            "unavoidable_cost": "0"
+          },
+          {
+            "start": "2027-01-01",
+            "end_exclusive": "2027-04-01",
+            "revenue": "0",
+            "signed": "0",
+            "potential": "0",
+            "expected": "0",
+            "cost": "0",
+            "known_cost": "0",
+            "cost_complete": true,
+            "gm": null,
+            "signed_coverage": null,
+            "provisional": "0",
+            "unavoidable_cost": "0"
+          },
+          {
+            "start": "2027-04-01",
+            "end_exclusive": "2027-07-01",
+            "revenue": "0",
+            "signed": "0",
+            "potential": "0",
+            "expected": "0",
+            "cost": "0",
+            "known_cost": "0",
+            "cost_complete": true,
+            "gm": null,
+            "signed_coverage": null,
+            "provisional": "0",
+            "unavoidable_cost": "0"
+          }
+        ],
+        "name": "S21 e2e d042612b-7c91-495e-a862-21c6713896e3 T21 Certified Actual Coverage"
+      }
+    ],
+    "months": [
+      {
+        "start": "2026-10-01",
+        "end_exclusive": "2026-11-01",
+        "revenue": "24000",
+        "signed": "24000",
+        "potential": "0",
+        "expected": "24000",
+        "cost": "10000",
+        "known_cost": "10000",
+        "cost_complete": true,
+        "gm": "0.5833333333333333333333333333",
+        "signed_coverage": "1",
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2026-11-01",
+        "end_exclusive": "2026-12-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2026-12-01",
+        "end_exclusive": "2027-01-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-01-01",
+        "end_exclusive": "2027-02-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-02-01",
+        "end_exclusive": "2027-03-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-03-01",
+        "end_exclusive": "2027-04-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-04-01",
+        "end_exclusive": "2027-05-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-05-01",
+        "end_exclusive": "2027-06-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      },
+      {
+        "start": "2027-06-01",
+        "end_exclusive": "2027-07-01",
+        "revenue": "0",
+        "signed": "0",
+        "potential": "0",
+        "expected": "0",
+        "cost": "0",
+        "known_cost": "0",
+        "cost_complete": true,
+        "gm": null,
+        "signed_coverage": null,
+        "provisional": "0",
+        "unavoidable_cost": "0"
+      }
+    ],
+    "rows": [
+      {
+        "row_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b:0",
+        "account_id": "cd9c4de7-e648-4104-8663-32658d33fee5",
+        "source_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b",
+        "source_version": "8c7e3bd6-60cb-43ab-8e56-246c5f24252f",
+        "scope_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b:US",
+        "month": "2026-10-01",
+        "lifecycle": "signed",
+        "revenue": "24000",
+        "signed": "24000",
+        "potential": "0",
+        "expected": "24000",
+        "cost": "10000",
+        "unavoidable_cost": "0",
+        "provisional": "0",
+        "scope_remaining": "1",
+        "revenue_uses_ratio": false,
+        "cost_uses_ratio": false,
+        "probability": null,
+        "currency": "USD",
+        "original_currency": "USD",
+        "fx_version": null,
+        "fx_date": null,
+        "source_name": "T21 Synthetic Certified Actual Coverage",
+        "assumptions": [],
+        "source_evidence": [
+          "Declared synthetic confirmed coverage fixture; no real uploaded document"
+        ],
+        "opportunity_id": "91cf3ea2-3716-4937-867b-ed5fa5f2fc83",
+        "source_url": "/sows/91cf3ea2-3716-4937-867b-ed5fa5f2fc83/staffing",
+        "calculation_version": "commercial-schedule-v1"
+      }
+    ],
+    "excluded": [],
+    "actuals_basis": "Separate financial measures; service schedule unchanged",
+    "actuals_available": true,
+    "financial_actuals": {
+      "totals": [
+        {
+          "period_month": "2026-10-01",
+          "measure": "billed",
+          "currency": "USD",
+          "amount": "15000"
+        },
+        {
+          "period_month": "2026-10-01",
+          "measure": "cash_collected",
+          "currency": "USD",
+          "amount": "8000"
+        },
+        {
+          "period_month": "2026-10-01",
+          "measure": "delivery_cost",
+          "currency": "USD",
+          "amount": "6000"
+        },
+        {
+          "period_month": "2026-10-01",
+          "measure": "recognized_revenue",
+          "currency": "USD",
+          "amount": "11000.99"
+        }
+      ],
+      "excluded": [],
+      "included_ids": [
+        "7ec99e73-972a-440f-835b-019cd3f24c9c",
+        "b86a8708-cd97-4025-ad7e-22a9f7cfbd17",
+        "790e53d5-da44-4163-8e1d-db8926792ee2",
+        "3be473a1-e575-4874-a4a2-15f3dd448b26"
+      ],
+      "cutoff": "2026-10-02",
+      "blended_with_forecast": false
+    },
+    "current_period_estimate": {
+      "rows": [
+        {
+          "row_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b:0",
+          "source_id": "43f638e8-2f40-4856-a894-aea5e0d05a8b",
+          "source_version": "8c7e3bd6-60cb-43ab-8e56-246c5f24252f",
+          "account_id": "cd9c4de7-e648-4104-8663-32658d33fee5",
+          "month": "2026-10-01",
+          "revenue": {
+            "scheduled": "24000",
+            "actual_to_date": "11000.99",
+            "covered_fraction": "0.5",
+            "uncovered_forecast": "12000",
+            "estimate": "23000.99",
+            "actual_ids": [
+              "3be473a1-e575-4874-a4a2-15f3dd448b26"
+            ]
+          },
+          "cost": {
+            "scheduled": "10000",
+            "actual_to_date": "6000",
+            "covered_fraction": "0.5",
+            "uncovered_forecast": "5000",
+            "estimate": "11000",
+            "actual_ids": [
+              "790e53d5-da44-4163-8e1d-db8926792ee2"
+            ]
+          }
+        }
+      ],
+      "excluded": [
+        {
+          "id": "7ec99e73-972a-440f-835b-019cd3f24c9c",
+          "reason": "Financial measure remains separate from service estimate"
+        },
+        {
+          "id": "b86a8708-cd97-4025-ad7e-22a9f7cfbd17",
+          "reason": "Financial measure remains separate from service estimate"
+        }
+      ],
+      "cutoff": "2026-10-02",
+      "currency": "USD",
+      "totals": {
+        "revenue": "23000.99",
+        "cost": "11000",
+        "profit": "12000.99",
+        "gm_pct": "0.5217597155600693709270774867"
+      }
+    },
+    "pending_sources": [],
+    "unresolved_sources": [],
+    "source_watermark": "837d6be2939e9f25b53e7360c9b0eb9254fb207ab5ed437fbd3c234df120be74",
+    "scope_label": "Selected total",
+    "source_count": 1,
+    "stale": false,
+    "source_coverage": "Tenant-bound commercial schedules and versioned plans",
+    "legacy_sources_included": false
+  },
+  "race_statuses": [
+    201,
+    422
+  ],
+  "blocker": 8789,
+  "waiting": [
+    {
+      "pid": 8728,
+      "query": "SELECT client.id \nFROM client \nWHERE client.id = $1::UUID FOR UPDATE",
+      "blockers": [
+        8753
+      ]
+    },
+    {
+      "pid": 8753,
+      "query": "SELECT client.id \nFROM client \nWHERE client.id = $1::UUID FOR UPDATE",
+      "blockers": [
+        8789
+      ]
+    }
+  ],
+  "baseline_unchanged": true,
+  "final_rows": 9,
+  "migration_history_guard": true
+}

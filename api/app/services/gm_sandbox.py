@@ -488,6 +488,14 @@ def build_response(
     policy: ResolvedPolicy,
     raw_inputs: Optional[dict] = None,
 ) -> dict:
+    if result.gm_outcome is not None:
+        from app.services.delivery_model import build_compute_response
+        response = build_compute_response(result, us_floor=policy.us_floor, india_floor=policy.india_floor)
+        response.update(engagement_type=engagement_type.value,
+                        policy_version_id=str(policy.policy_version_id) if policy.policy_version_id else None,
+                        rate_card_version_id=str(policy.rate_card_version_id) if policy.rate_card_version_id else None)
+        response["policy"]["source"] = policy.source
+        return response
     gm_us, gm_india, gm_blended = _mask_incomplete_gm(result, raw_inputs or {})
     # Build a mutable copy of the result for the policy check so masked GMs
     # feed straight into the pass/fail evaluation.

@@ -149,6 +149,23 @@ Then the correlation_id in the alarm links to CloudTrail + application logs
 
 ## R-S21-01 · SES production access (sandbox exit) — AWS support
 
+**2026-10-02 v3 reconciliation (OP-02/OP-05):** The historical paragraph below
+is superseded where it says all application mail is refused in sandbox.
+SES permits verified-recipient/domain and simulator delivery in sandbox;
+verification is regional. Current us-east-2 account is sandbox (200/day,
+1/sec), sender domain dealgateapp.com reports SUCCESS, and none of the six
+exact real reviewer addresses or their smartek21.com domain is verified.
+Readiness includes Delivery fallback Srikanth, not just five recipients.
+No request has been submitted in this work. Lead has prepared truthful
+request text and a control checklist in [S21 operations](../s21/operations.md).
+Bounce/complaint ingestion, actual volumes and controlled inbox delivery
+remain unproved; do not assert them as implemented to AWS. Owner: authorized
+AWS operator for submission, AWS for decision, Lead for tracking/verification.
+Infrastructure identities require the corrected whole-root plan and human
+approval; identity creation is not recipient verification or reviewer eligibility.
+See [AWS sandbox rules](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html)
+and [regional identity rules](https://docs.aws.amazon.com/ses/latest/dg/creating-identities.html).
+
 Added 2026-10-01 per S21 item 8. SES account for us-east-2 is in
 sandbox. S21 item 8 landed TF for the five production approver
 sending identities (Shawnna, Janice, Seema, Scott, Al). Each can

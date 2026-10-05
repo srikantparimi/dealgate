@@ -1,0 +1,13 @@
+{
+  "account_id": "953eae04-b3aa-45b2-ad3a-922c8b3f8d5f",
+  "project_id": "a01e219c-d20d-4bda-a530-3ffbbe38c828",
+  "source": "/people/demand#demand-a01e219c-d20d-4bda-a530-3ffbbe38c828",
+  "returned_context": {
+    "view": "resources",
+    "account_id": "953eae04-b3aa-45b2-ad3a-922c8b3f8d5f",
+    "scenario": "expected",
+    "as_of": "2026-10-15T12:00:00Z",
+    "future_quarters": "2"
+  },
+  "result": "passed"
+}

@@ -1,0 +1,75 @@
+{
+  "run": "d279bfde99c0",
+  "recorded_at": "2026-10-04T07:49:18.811207+00:00",
+  "population": {
+    "deals": 10000,
+    "clients": 200,
+    "sows": 1000,
+    "close_date_buckets": 24,
+    "stages": 9,
+    "owners": 26,
+    "seed_seconds": 6.4
+  },
+  "environment": {
+    "hardware": "macOS-13.7.8-x86_64-i386-64bit-Mach-O / 4 cpus",
+    "database": "pgvector/pgvector:pg16 in Docker (dealgate-s21-lead-db), same host",
+    "transport": "in-process ASGI (httpx ASGITransport); no network or TLS hop",
+    "concurrency": "sequential, single client \u2014 single-user latency, not throughput"
+  },
+  "thresholds": {
+    "list_p95_ms": 2000,
+    "summary_p95_ms": 3000
+  },
+  "results": {
+    "list": {
+      "requests": 30,
+      "p50_ms": 559.0,
+      "p95_ms": 1078.4,
+      "max_ms": 22315.5,
+      "sql_statements_min": 8,
+      "sql_statements_max": 8
+    },
+    "filter": {
+      "requests": 30,
+      "p50_ms": 241.7,
+      "p95_ms": 302.1,
+      "max_ms": 370.9,
+      "sql_statements_min": 8,
+      "sql_statements_max": 8
+    },
+    "summary": {
+      "requests": 30,
+      "p50_ms": 71.2,
+      "p95_ms": 97.7,
+      "max_ms": 151.2,
+      "sql_statements_min": 4,
+      "sql_statements_max": 4
+    },
+    "export_csv": {
+      "requests": 30,
+      "p50_ms": 82656.0,
+      "p95_ms": 92923.3,
+      "max_ms": 105307.8,
+      "sql_statements_min": 35,
+      "sql_statements_max": 35
+    }
+  },
+  "pagination": {
+    "sampled_pages": [
+      1,
+      2,
+      50,
+      99,
+      100
+    ],
+    "rows_per_page": 100,
+    "total_reported": 10000,
+    "distinct_rows_seen": 500,
+    "overlap": false
+  },
+  "verdict": {
+    "list_within_2s": true,
+    "filter_within_2s": true,
+    "summary_within_3s": true
+  }
+}

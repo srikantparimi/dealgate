@@ -14,7 +14,7 @@ surfaces.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -418,8 +418,12 @@ async def test_reports_pipeline_csv_totals_row_computed_before_pagination(sessio
     BEFORE any pagination — not a sum over the materialised rows (which
     could silently be capped at the service's page cap).
     """
-    from app.auth import AuthUser
-    from app.routers.reports import pipeline_export_csv
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from app.auth import AuthUser, current_user
+    from app.db import get_session
+    from app.routers.reports import router as reports_router
 
     owner = User(email="csv@dealgate.local", name="CSV", groups=[])
     c = Client(name="CSV Corp")
@@ -440,7 +444,19 @@ async def test_reports_pipeline_csv_totals_row_computed_before_pagination(sessio
         name="CSV",
         groups=("SystemAdmin",),
     )
-    resp = await pipeline_export_csv(user=sysadmin, session=session)
+    app = FastAPI()
+    app.include_router(reports_router)
+    app.dependency_overrides[current_user] = lambda: sysadmin
+
+    async def database():
+        yield session
+
+    app.dependency_overrides[get_session] = database
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://reports"
+    ) as http:
+        resp = await http.get("/reports/pipeline/export.csv")
+    assert resp.status_code == 200, resp.text
     # X-Totals-Count comes from `summary()` which is a global aggregate
     # (totals BEFORE pagination). This proves the invariant without
     # streaming the body (StreamingResponse is iterable but we assert on

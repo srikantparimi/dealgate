@@ -31,6 +31,9 @@ function buildCrumbs(pathname: string): Crumb[] {
   if (segments.length === 0) {
     return [{ label: "Command center" }];
   }
+  if (segments[0] === "deletions") {
+    return [{ label: "SOWs", to: "/sows" }, { label: "Deletion status" }];
+  }
   // Resolve the primary nav label for the first segment where possible.
   const first = `/${segments[0]}`;
   const primary = NAV_GROUPS.flatMap((g) => g.items).find(

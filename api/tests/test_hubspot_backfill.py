@@ -289,12 +289,14 @@ async def test_backfill_tolerates_404_owner_lookup(factory):
 
 async def test_backfill_re_unarchives_deal_that_returns(factory):
     stub = StubHubSpotClient(deals={"555": _deal("555")}, owners={"42": _owner()})
+    stub.deals["555"]["properties"]["hs_lastmodifieddate"] = "2026-10-01T10:00:00Z"
     await run_backfill(stub, session_factory=factory)
 
     # Simulate HubSpot deletion then restoration.
     stub.deals.pop("555")
     await run_backfill(stub, session_factory=factory)
     stub.deals["555"] = _deal("555", stage="contractsent")
+    stub.deals["555"]["properties"]["hs_lastmodifieddate"] = "2026-10-01T11:00:00Z"
     counts = await run_backfill(stub, session_factory=factory)
     assert counts.deals_archived == 0
     assert counts.deals_updated == 1

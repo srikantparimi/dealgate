@@ -115,6 +115,7 @@ export function RenewalWorkspaceSheet({
       const patched = await patchRenewal(renewal.id as UUID, {
         outcome_summary: summary,
         status: isSignedOutcome(outcome) ? "extended" : "closed",
+        outcome,
       });
       onSaved?.(patched);
       onOpenChange(false);

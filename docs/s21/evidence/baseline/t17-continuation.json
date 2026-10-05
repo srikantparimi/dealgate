@@ -1,0 +1,125 @@
+{
+  "revision": "7f4202cccebc41c607ec4ac2e42fdc3a4e130a54",
+  "database": "s21_t17_61d71c0b4bf7436d957723c632fe1aba",
+  "boundary": "Local named identities, real PG/S3/Bedrock, explicit SES sink. No staging or inbox proof.",
+  "proof": [
+    {
+      "condition": "diagnostic continuation, not continuous T17 proof",
+      "value": {
+        "version": "d95a10b3-9811-418a-b6ef-958d148c00b7"
+      },
+      "at": "2026-10-03T04:26:06.913Z"
+    },
+    {
+      "condition": "independent fixed assessment economics",
+      "value": {
+        "component": {
+          "component_id": "71984781-8fea-402e-9bb9-eea7d476f64d",
+          "version": "1",
+          "source_id": "cc35a4b4-fafd-403d-8ff2-21dcc537db11",
+          "source_version": "d95a10b3-9811-418a-b6ef-958d148c00b7",
+          "workstream_id": "assessment",
+          "profile": "fixed_assignment",
+          "profile_version": "1",
+          "policy_version": "blueprint-defaults-v1",
+          "source_evidence": [
+            "SOW d95a10b3-9811-418a-b6ef-958d148c00b7: synthetic fixed fee, US October allocation and loaded subcontract cost clauses; SHA256 7104c0fe8432aac30032689e0e8d89d6fe752bff0001b730826f08083561c0fc"
+          ],
+          "service_start": "2026-10-01",
+          "service_end": "2026-10-31",
+          "timezone": "America/New_York",
+          "currency": "USD",
+          "billing_cadence": "upon_delivery",
+          "cost_basis": "Fixed subcontracted assessment fee including all labor",
+          "costs_confirmed": true,
+          "costs": [
+            {
+              "source_id": "0e9c27f1-36d6-40ed-8167-bb1cc041643b",
+              "month": "2026-10-01",
+              "location": "US",
+              "amount": "10000"
+            }
+          ],
+          "pricing": {
+            "total_fee": "24000",
+            "allocations": [
+              {
+                "month": "2026-10-01",
+                "location": "US",
+                "weight": "1"
+              }
+            ],
+            "allocation_basis": "Explicit single-month US allocation in signed test source",
+            "minor_unit": "0.01"
+          },
+          "staffing": []
+        },
+        "rows": [
+          {
+            "month": "2026-10-01",
+            "location": "US",
+            "revenue": "24000.00",
+            "cost": "10000",
+            "scheduled_hours": null,
+            "billable_hours": null,
+            "paid_hours": null,
+            "revenue_uses_ratio": false
+          }
+        ],
+        "missing": [],
+        "status": "ok",
+        "calculation_version": "commercial-schedule-v1",
+        "calendar_rows": [],
+        "children": []
+      },
+      "at": "2026-10-03T04:26:09.940Z"
+    },
+    {
+      "condition": "scope/financials/review submission",
+      "value": {
+        "sow_version": "d95a10b3-9811-418a-b6ef-958d148c00b7"
+      },
+      "at": "2026-10-03T04:26:18.042Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "delivery",
+        "person": "b5d0ac56-6397-5e4e-863b-1059d2e51afd"
+      },
+      "at": "2026-10-03T04:26:25.385Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "hr",
+        "person": "9500fd1b-abc5-5eb7-a8a6-dc8fa3d04926"
+      },
+      "at": "2026-10-03T04:26:30.127Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "sales",
+        "person": "0d697777-7dd3-5bfa-931a-36ebe7160fef"
+      },
+      "at": "2026-10-03T04:26:35.994Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "finance",
+        "person": "e58aec4a-c0cc-555b-ba24-f55032d9f36e"
+      },
+      "at": "2026-10-03T04:26:40.063Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "legal",
+        "person": "2e7518fd-302b-5836-8c8e-5d6f7f97fe97"
+      },
+      "at": "2026-10-03T04:26:44.347Z"
+    }
+  ]
+}

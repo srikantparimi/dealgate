@@ -52,6 +52,23 @@ class HubSpotClient:
             "Accept": "application/json",
         }
 
+    def scan_scope(self) -> dict[str, str]:
+        values = {"tenant": os.environ.get("DEALGATE_TENANT_ID"),
+            "environment": os.environ.get("DEALGATE_ENV"),
+            "portal_id": os.environ.get("HUBSPOT_PORTAL_ID")}
+        if not all(values.values()):
+            raise ValueError("HubSpot scan requires explicit tenant, environment and portal ID")
+        return values
+
+    async def get_archived_deal(self, deal_id: str) -> dict[str, Any] | None:
+        """Only an explicit archived record proves deletion; a 404 is unresolved."""
+        try:
+            return await self._get(f"/crm/v3/objects/deals/{deal_id}", params={"archived": "true"})
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 404:
+                return None
+            raise
+
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """GET with 429 retry (S18 §2 F7).
 
@@ -110,25 +127,26 @@ class HubSpotClient:
         "hs_lastmodifieddate,notes_last_updated"
     )
 
-    async def get_deal(self, deal_id: str) -> dict[str, Any]:
+    async def get_deal(self, deal_id: str, *, additional_properties: tuple[str, ...] = ()) -> dict[str, Any]:
         """Return the deal record including hubspot_owner_id and associated company."""
 
         return await self._get(
             f"/crm/v3/objects/deals/{deal_id}",
             params={
-                "properties": self._DEAL_PROPERTIES,
+                "properties": ",".join(dict.fromkeys([*self._DEAL_PROPERTIES.split(","), *additional_properties])),
                 "associations": "companies",
             },
         )
 
     async def list_deals_page(
-        self, *, after: str | None = None, limit: int = 100
+        self, *, after: str | None = None, limit: int = 100,
+        additional_properties: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         """Paged deal fetch for the backfill worker. Returns raw payload —
         caller handles ``.results`` and ``.paging.next.after``."""
 
         params: dict[str, Any] = {
-            "properties": self._DEAL_PROPERTIES,
+            "properties": ",".join(dict.fromkeys([*self._DEAL_PROPERTIES.split(","), *additional_properties])),
             "associations": "companies",
             "limit": limit,
         }
@@ -152,12 +170,14 @@ class HubSpotClient:
 
         return await self._get("/crm/v3/pipelines/deals")
 
-    async def get_company(self, company_id: str) -> dict[str, Any]:
+    async def get_company(self, company_id: str, *, additional_properties: tuple[str, ...] = ()) -> dict[str, Any]:
         """Return the company record."""
 
         return await self._get(
             f"/crm/v3/objects/companies/{company_id}",
-            params={"properties": "name,domain"},
+            params={"properties": ",".join(dict.fromkeys([
+                "name", "domain", "hubspot_owner_id", "hs_lastmodifieddate", *additional_properties,
+            ]))},
         )
 
     async def update_deal(self, deal_id: str, properties: dict[str, Any]) -> None:
@@ -208,14 +228,30 @@ class StubHubSpotClient(HubSpotClient):
         # Tests use this to simulate HubSpot 429 / 404 / 500 responses.
         self.update_error: Exception | None = None
 
-    async def get_deal(self, deal_id: str) -> dict[str, Any]:
+    def scan_scope(self) -> dict[str, str]:
+        return {"tenant": "synthetic", "environment": "local", "portal_id": "stub"}
+
+    async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if path == "/crm/v3/owners":
+            archived = (params or {}).get("archived") == "true"
+            return {"results": [row for row in self.owners.values()
+                if row and bool(row.get("archived", False)) == archived]}
+        if path in {"/crm/v3/properties/deals", "/crm/v3/properties/companies"}:
+            return {"results": []}
+        raise KeyError(f"No stub response for {path}")
+
+    async def get_archived_deal(self, deal_id: str) -> dict[str, Any] | None:
+        return {"id": deal_id, "archived": True} if deal_id not in self.deals else None
+
+    async def get_deal(self, deal_id: str, *, additional_properties: tuple[str, ...] = ()) -> dict[str, Any]:
         return self.deals[deal_id]
 
     async def list_pipelines(self) -> dict[str, Any]:
         return {"results": list(getattr(self, "pipelines", []))}
 
     async def list_deals_page(
-        self, *, after: str | None = None, limit: int = 100
+        self, *, after: str | None = None, limit: int = 100,
+        additional_properties: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         deal_ids = sorted(self.deals.keys())
         start = 0
@@ -239,7 +275,7 @@ class StubHubSpotClient(HubSpotClient):
             raise KeyError(owner_id)
         return owner
 
-    async def get_company(self, company_id: str) -> dict[str, Any]:
+    async def get_company(self, company_id: str, *, additional_properties: tuple[str, ...] = ()) -> dict[str, Any]:
         return self.companies[company_id]
 
     async def update_deal(self, deal_id: str, properties: dict[str, Any]) -> None:

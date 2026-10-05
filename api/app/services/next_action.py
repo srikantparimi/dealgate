@@ -36,6 +36,9 @@ from app.models.next_action import (
 )
 from app.models.opportunity import Opportunity
 from app.models.user import User
+from app.services.tracking_access import (
+    check_revision, locked_row, require_assignee, require_deal_access, revision,
+)
 
 
 LEADER_ROLES: frozenset[str] = frozenset(
@@ -69,6 +72,11 @@ class NextActionPatch:
     clear_due_date: bool = False
     clear_blocker: bool = False
     clear_outcome: bool = False
+    expected_revision: str | None = None
+
+
+async def action_revision(session, action):
+    return await revision(session, "next_action", action.id, _row_to_dict(action))
 
 
 # --- Errors --------------------------------------------------------------
@@ -244,12 +252,14 @@ async def create_action(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="title is required",
         )
-    await _assert_opportunity_exists(session, payload.opportunity_id)
-    await _assert_user_exists(session, payload.assignee_user_id)
+    await require_deal_access(session, actor, payload.opportunity_id)
+    await require_assignee(session, actor, payload.opportunity_id, payload.assignee_user_id)
     if payload.approval_package_id is not None:
-        await _assert_approval_package_exists(
+        package = await _assert_approval_package_exists(
             session, payload.approval_package_id
         )
+        if package.opportunity_id != payload.opportunity_id:
+            raise HTTPException(403, "Approval package belongs to a different deal")
 
     title = payload.title.strip()[:255]
     action = NextAction(
@@ -317,7 +327,10 @@ async def patch_action(
     action: NextAction,
     patch: NextActionPatch,
 ) -> NextAction:
+    action = await locked_row(session, NextAction, action.id)
+    await require_deal_access(session, actor, action.opportunity_id)
     await _authorize_mutation(action, actor)
+    check_revision(patch.expected_revision, await action_revision(session, action))
 
     before = _row_to_dict(action)
     kind = "edited"
@@ -337,7 +350,7 @@ async def patch_action(
         changed = True
 
     if patch.assignee_user_id is not None:
-        await _assert_user_exists(session, patch.assignee_user_id)
+        await require_assignee(session, actor, action.opportunity_id, patch.assignee_user_id)
         if action.assignee_user_id != patch.assignee_user_id:
             kind = "reassigned"
             action.assignee_user_id = patch.assignee_user_id

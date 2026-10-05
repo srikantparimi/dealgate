@@ -20,6 +20,7 @@ queue an `escalation` notification. See T24.
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from decimal import Decimal
 from typing import Any
 
@@ -68,6 +69,8 @@ def _baseline_snapshot(
         "gm_model_id": str(gm_model.id),
         "sow_version_no": sow_version.version_no,
         "gm_version": gm_model.version,
+        "commercial_inputs": deepcopy(gm_model.commercial_inputs),
+        "commercial_snapshot": deepcopy(gm_model.commercial_snapshot),
         "engagement_type": gm_model.engagement_type,
         "delivery_pattern": gm_model.delivery_pattern,
         "contingency_pct": _decimal_str(gm_model.contingency_pct),
@@ -189,6 +192,16 @@ async def create_or_link(
         gm_model=gm_model,
     )
 
+    from fastapi import HTTPException
+    from app.services.project_source import capture_project_scope
+
+    try:
+        baseline["source_scope"] = await capture_project_scope(
+            session, opportunity=opp, sow_version=sow_version, gm_model=gm_model,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, "Project source provenance conflicts with this release") from exc
+
     project = Project(
         id=uuid.uuid4(),
         opportunity_id=opp.id,
@@ -223,6 +236,9 @@ async def create_or_link(
             "baseline_hash_len": len(str(baseline)),
         },
     )
+    from app.services.automation_jobs import enqueue_project_created
+
+    await enqueue_project_created(session, project=project)
     return project, True
 
 

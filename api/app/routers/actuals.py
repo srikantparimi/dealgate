@@ -21,13 +21,15 @@ from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.models.actual import ActualImportBatch
+from app.models.actual import FinancialImportBatch
+from app.services.actuals_import import FinancialImportInput, import_financial, financial_records
 from app.services.actuals_import import (
     ACTUALS_ROLES,
     ActualsImportError,
@@ -93,6 +95,49 @@ def _batch_row(batch: ActualImportBatch) -> ActualBatchRow:
 
 
 # --- endpoints -----------------------------------------------------------
+
+
+def _financial_batch(row):
+    return {"id": str(row.id), "source_system": row.source_system, "status": row.status,
+            "row_count": row.row_count, "errors": row.errors, "uploaded_at": row.uploaded_at,
+            "uploaded_by": str(row.uploaded_by)}
+
+
+@router.post("/financial-import", status_code=201)
+async def financial_import(body: FinancialImportInput, actor: AuthUser = Depends(_finance_user),
+                           session: AsyncSession = Depends(get_session)):
+    from dataclasses import replace
+    from app.services.user_provisioning import ensure_user
+    user = await ensure_user(session, actor)
+    identity = user.id
+    # Identity sync may hold the audit-chain lock. Release it before acquiring
+    # financial source/account locks; each state change retains its own audit.
+    await session.commit()
+    return _financial_batch(await import_financial(session, actor=replace(actor, id=identity), body=body))
+
+
+@router.get("/financial-records")
+async def list_financial_records(account_id: uuid.UUID | None = None, history: bool = False,
+                                 page: int = Query(1, ge=1), size: int = Query(100, ge=1, le=500),
+                                 actor: AuthUser = Depends(_finance_user), session: AsyncSession = Depends(get_session)):
+    rows = await financial_records(session, actor=actor, account_id=account_id, history=history)
+    return {"items": rows[(page - 1) * size:page * size], "total": len(rows), "page": page, "size": size}
+
+
+@router.get("/financial-imports")
+async def financial_imports(page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200),
+                            actor: AuthUser = Depends(_finance_user), session: AsyncSession = Depends(get_session)):
+    from app.services.actuals_import import _financial_scope
+    from app.services.test_fixtures import is_test_user
+    tenant, environment = _financial_scope()
+    query = select(FinancialImportBatch).where(FinancialImportBatch.tenant_id == tenant,
+        FinancialImportBatch.environment == environment, FinancialImportBatch.test_fixture == is_test_user(actor))
+    if is_test_user(actor):
+        query = query.where(FinancialImportBatch.uploaded_by == actor.id)
+    total = await session.scalar(select(func.count()).select_from(query.subquery()))
+    rows = (await session.scalars(query.order_by(FinancialImportBatch.uploaded_at.desc(), FinancialImportBatch.id)
+                                 .offset((page - 1) * size).limit(size))).all()
+    return {"items": [_financial_batch(row) for row in rows], "total": total, "page": page, "size": size}
 
 
 @router.post("/import", response_model=ActualBatchRow, status_code=201)

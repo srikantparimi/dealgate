@@ -35,6 +35,7 @@ from app.integrations.bedrock_sow_extract import (
     get_bedrock_sow,
 )
 from app.integrations.s3_sow import SowS3, get_sow_s3
+from app.integrations.textract import TextractClient, get_textract_client
 from app.services.user_provisioning import ensure_user
 from app.services.sow_upload_job_service import (
     RejectedDocumentType,
@@ -139,14 +140,10 @@ def _job_to_response(job) -> JobStatusResponse:
         resolution=payload["resolution"],
         error=payload["error"],
         opportunity_id=(
-            uuid.UUID(payload["opportunity_id"])
-            if payload["opportunity_id"]
-            else None
+            uuid.UUID(payload["opportunity_id"]) if payload["opportunity_id"] else None
         ),
         sow_version_id=(
-            uuid.UUID(payload["sow_version_id"])
-            if payload["sow_version_id"]
-            else None
+            uuid.UUID(payload["sow_version_id"]) if payload["sow_version_id"] else None
         ),
         file_hash=payload["file_hash"],
         s3_key=payload["s3_key"],
@@ -157,9 +154,7 @@ def _job_to_response(job) -> JobStatusResponse:
 # --- endpoints ------------------------------------------------------------
 
 
-async def _other_open_sows(
-    session: AsyncSession, job: Any
-) -> list[dict[str, Any]]:
+async def _other_open_sows(session: AsyncSession, job: Any) -> list[dict[str, Any]]:
     """Other in-progress SOWs for the same client, if any."""
 
     from app.models.opportunity import Opportunity
@@ -213,6 +208,7 @@ async def upload_sow(
     session: AsyncSession = Depends(get_session),
     s3: SowS3 = Depends(get_sow_s3),
     bedrock: BedrockSowExtract = Depends(get_bedrock_sow),
+    textract: TextractClient = Depends(get_textract_client),
 ) -> UploadResponse:
     """Kick off the pipeline for a single-file upload.
 
@@ -331,6 +327,7 @@ async def upload_sow(
             bound_opportunity_id=opportunity_id,
             s3=s3,
             bedrock_sow=bedrock,
+            textract=textract,
         )
     except RejectedDocumentType as exc:
         # No DB rows created — safe to bail without a commit. The message

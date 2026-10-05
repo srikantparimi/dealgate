@@ -47,7 +47,7 @@ from app.services.delivery_model import (
 )
 from app.services.embeddings import search_capabilities, search_sow
 from app.services.engagement_classifier import ClassifierResult, classify
-from app.services.provenance import read as read_provenance, wrap as wrap_provenance
+from app.services.provenance import read as read_provenance
 from app.services.sow_extract import SowNotFound
 
 # Rate-card resolver import is deferred to survive Agent WW's rename
@@ -350,29 +350,20 @@ def _is_fixed_fee(engagement_type: str) -> bool:
 # --- needs_you ------------------------------------------------------------
 
 
-# Fields a human must resolve before submit.
-#
-# `currency` is deliberately absent. SmarTek21 contracts in USD, so a SOW
-# that shows "$50,000.00" without naming a currency is not ambiguous — it is
-# normal. Blocking submit on it made every SOW carry a gap that the reviewer
-# could only ever close one way, which trains people to click through the
-# gaps rather than read them. The extractor is asked to answer USD for $
-# amounts, and `_default_currency` fills it when the document truly is silent.
+# Material source terms cannot inherit the reporting currency.
 _ESSENTIAL_FIELDS: tuple[str, ...] = (
     "scope_summary",
     "price",
+    "currency",
     "term_start",
     "term_end",
     "deliverables",
     "signatories",
 )
 
-# The house currency. Everything SmarTek21 signs is in USD.
-DEFAULT_CURRENCY = "USD"
-
-
 def scope_blockers(payload: ConfirmationPayload) -> list[NeedsYou]:
-    return [n for n in payload.needs_you if n.field in (*_ESSENTIAL_FIELDS, "engagement_type")]
+    return [n for n in payload.needs_you if n.field in (*_ESSENTIAL_FIELDS, "engagement_type")
+            or n.field.startswith("extraction_conflict:")]
 
 
 def _needs_you_for(
@@ -385,12 +376,19 @@ def _needs_you_for(
 
     gaps: list[NeedsYou] = []
     fields = sow_version.extracted_fields or {}
+    conflicts = (fields.get("metadata") or {}).get("reextract_conflicts") or {}
+    gaps.extend(NeedsYou(field=f"extraction_conflict:{name}", reason="Review the new extraction against the confirmed value")
+                for name in sorted(conflicts))
 
     # 1. Essential extracted fields with no value.
     for name in _ESSENTIAL_FIELDS:
         entry = read_provenance(fields.get(name))
         if entry.get("value") in (None, "", [], {}):
             gaps.append(NeedsYou(field=name, reason="extracted value missing"))
+        elif name == "currency" and entry.get("status") == "disputed":
+            gaps.append(NeedsYou(field=name, reason="Resolve the disputed contract currency"))
+        elif name == "currency" and entry.get("provenance") == "defaulted" and entry.get("status") != "confirmed":
+            gaps.append(NeedsYou(field=name, reason="Confirm the contract currency; an unreviewed default is not source evidence"))
 
     # 2. Ambiguous classifier — needs a pick.
     if not engagement.auto_confirm:
@@ -507,36 +505,6 @@ def _projected_tasks(sow_version: SowVersion) -> list[dict[str, Any]]:
             {"kind": "notice_deadline", "due": notice_val, "owner_role": "Legal"}
         )
     return out
-
-
-def _default_currency(version: SowVersion) -> None:
-    """Fill an absent currency with USD, marked as defaulted.
-
-    Not as `extracted` — the document did not say it. `defaulted` is one of
-    the five provenance flavours precisely so a value the system supplied is
-    distinguishable from one it read (CLAUDE.md rule 10), and the confirm
-    screen renders it with the source of the default.
-    """
-
-    fields = version.extracted_fields
-    if not isinstance(fields, dict):
-        return
-    entry = fields.get("currency")
-    current = read_provenance(entry).get("value") if entry else None
-    if current not in (None, ""):
-        return
-    fields["currency"] = wrap_provenance(
-        DEFAULT_CURRENCY,
-        provenance="defaulted",
-        page_ref=(read_provenance(entry).get("page_ref") if entry else None),
-        source_id="policy.house_currency",
-        warning="not stated in the SOW — SmarTek21 contracts in USD",
-        status="unconfirmed",
-    )
-    # JSONB is mutated in place; tell SQLAlchemy the attribute changed.
-    from sqlalchemy.orm.attributes import flag_modified
-
-    flag_modified(version, "extracted_fields")
 
 
 # --- source block ---------------------------------------------------------
@@ -675,6 +643,7 @@ async def build_confirmation(
     bedrock_classifier: BedrockClassifier | None = None,
     embedder: Embedder | None = None,
     auto_create_gm: bool = True,
+    lock_source: bool = False,
 ) -> ConfirmationPayload:
     """Assemble the confirmation payload for one opportunity.
 
@@ -690,11 +659,10 @@ async def build_confirmation(
     if state is None:
         raise SowNotFound(f"no sow_version for opportunity {opportunity_id}")
 
-    version = (
-        await session.execute(
-            select(SowVersion).where(SowVersion.id == state.id)
-        )
-    ).scalar_one()
+    query = select(SowVersion).where(SowVersion.id == state.id)
+    if lock_source:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    version = (await session.execute(query)).scalar_one()
 
     # 2. Classify.
     engagement = classify(
@@ -749,6 +717,7 @@ async def build_confirmation(
                     opportunity_id=opportunity_id,
                     actor_id=actor_id,
                     payload=payload,
+                    commit=False,
                 )
 
     # 5. Floors + approvers + tasks + CEO pre-draft.
@@ -758,8 +727,6 @@ async def build_confirmation(
     ceo_draft = await _predraft_ceo_exception(
         session, sow_version=version, gm_model=gm_model, floors=floors
     )
-
-    _default_currency(version)
 
     source = await _source_block(session, opportunity_id=opportunity_id, version=version)
 
@@ -792,8 +759,13 @@ async def submit_confirmation(
     call is a no-op transition (same status, still audits the attempt).
     """
 
+    # Serialize with replay and new-version creation before choosing the source.
+    parent = await session.scalar(select(Opportunity).where(Opportunity.id == opportunity_id)
+        .with_for_update().execution_options(populate_existing=True))
+    if parent is None:
+        raise SowNotFound(f"opportunity {opportunity_id} not found")
     payload = await build_confirmation(
-        session, opportunity_id=opportunity_id, actor_id=actor_id
+        session, opportunity_id=opportunity_id, actor_id=actor_id, lock_source=True
     )
 
     # Confirmation commits scope; financial completeness is checked at review submission.

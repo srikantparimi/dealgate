@@ -17,16 +17,19 @@ Coverage:
 from __future__ import annotations
 
 import uuid
+from io import BytesIO
 from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
+from pypdf import PdfWriter
 from sqlalchemy import select
 
 from app.db import get_session
 from app.integrations.bedrock_sow_extract import StubBedrock, get_bedrock_sow
 from app.integrations.s3_sow import StubS3, get_sow_s3
+from app.integrations.textract import StubTextract, get_textract_client
 from app.main import app as main_app
 from app.models.client import Client, LegalEntity
 from app.models.opportunity import Opportunity
@@ -46,6 +49,14 @@ def _client(app):
     )
 
 
+def _scanned_pdf() -> bytes:
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 OWNER_EMAIL = "bind-owner@smartek21.com"
 
 
@@ -61,18 +72,27 @@ async def app_with_deps(session):
         yield session
 
     stub_s3 = StubS3()
+    stub_textract = StubTextract(
+        text="Statement of Work\nScope: scanned assessment\nDeliverables: report"
+    )
     main_app.dependency_overrides[get_session] = _override
     main_app.dependency_overrides[get_sow_s3] = lambda: stub_s3
     main_app.dependency_overrides[get_bedrock_sow] = lambda: StubBedrock()
+    main_app.dependency_overrides[get_textract_client] = lambda: stub_textract
+    main_app.state.stub_s3 = stub_s3
+    main_app.state.stub_textract = stub_textract
     try:
         yield main_app
     finally:
         main_app.dependency_overrides.pop(get_session, None)
         main_app.dependency_overrides.pop(get_sow_s3, None)
         main_app.dependency_overrides.pop(get_bedrock_sow, None)
+        main_app.dependency_overrides.pop(get_textract_client, None)
 
 
-async def _seed_deal(session, client_name: str = "Bound Client") -> tuple[Client, Opportunity]:
+async def _seed_deal(
+    session, client_name: str = "Bound Client"
+) -> tuple[Client, Opportunity]:
     client = Client(id=uuid.uuid4(), name=client_name)
     session.add(client)
     session.add(LegalEntity(id=uuid.uuid4(), client_id=client.id, name=client_name))
@@ -127,6 +147,78 @@ async def test_upload_with_both_bound_creates_sow_under_deal(app_with_deps, sess
         ).scalars()
     )
     assert len(versions) == 1
+
+
+async def test_bound_scanned_sow_uses_ocr_and_preserves_source_evidence(
+    app_with_deps, session
+):
+    client, opp = await _seed_deal(session, client_name="Scanned SOW Client")
+    scan = _scanned_pdf()
+    async with _client(app_with_deps) as c:
+        response = await c.post(
+            "/sows/upload",
+            headers={"X-Test-User": OWNER_EMAIL},
+            files={"file": ("scanned-sow.pdf", scan, "application/pdf")},
+            data={"client_id": str(client.id), "opportunity_id": str(opp.id)},
+        )
+
+    assert response.status_code == 200, response.text
+    version = await session.get(
+        SowVersion, uuid.UUID(response.json()["sow_version_id"])
+    )
+    assert version is not None and version.extract_status == "complete"
+    assert version.extracted_fields["metadata"]["extract_source"] == "textract"
+    assert main_app.state.stub_textract.calls == [len(scan)]
+    assert version.file_hash
+    assert main_app.state.stub_s3.put_calls == [
+        (version.file_s3_key, len(scan), "application/pdf")
+    ]
+
+
+async def test_bound_scanned_sow_preserves_file_when_ocr_requires_manual_review(
+    app_with_deps, session
+):
+    client, opp = await _seed_deal(session, client_name="Unreadable Scan Client")
+    scan = _scanned_pdf()
+    main_app.state.stub_textract.fail_with = "Textract rate limited"
+
+    async with _client(app_with_deps) as c:
+        response = await c.post(
+            "/sows/upload",
+            headers={"X-Test-User": OWNER_EMAIL},
+            files={"file": ("unreadable-scan.pdf", scan, "application/pdf")},
+            data={"client_id": str(client.id), "opportunity_id": str(opp.id)},
+        )
+
+    assert response.status_code == 200, response.text
+    version = await session.get(
+        SowVersion, uuid.UUID(response.json()["sow_version_id"])
+    )
+    assert version is not None and version.extract_status == "manual_required"
+    assert "OCR unavailable" in (version.extract_error or "")
+    assert version.extracted_fields["metadata"]["extract_source"] == "textract"
+    assert main_app.state.stub_textract.calls == [len(scan)]
+    assert main_app.state.stub_s3.put_calls == [
+        (version.file_s3_key, len(scan), "application/pdf")
+    ]
+
+
+async def test_unbound_scanned_sow_caches_ocr_evidence_for_client_picker(app_with_deps):
+    scan = _scanned_pdf()
+    async with _client(app_with_deps) as c:
+        response = await c.post(
+            "/sows/upload",
+            headers={"X-Test-User": OWNER_EMAIL},
+            files={"file": ("unbound-scan.pdf", scan, "application/pdf")},
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "needs_pick"
+    assert body["sow_version_id"] is None
+    assert body["needs_pick"]["extract"]["extract_source"] == "textract"
+    assert main_app.state.stub_textract.calls == [len(scan)]
+    assert main_app.state.stub_s3.put_calls[0][1:] == (len(scan), "application/pdf")
 
 
 async def test_upload_missing_one_of_two_bindings_returns_422(app_with_deps, session):

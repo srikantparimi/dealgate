@@ -191,9 +191,9 @@ export function ClientDetailPage() {
           kind="client"
           id={client.id}
           name={client.name}
-          onConfirmed={() => {
+          onConfirmed={(result) => {
             setDeleteOpen(false);
-            navigate("/pipeline");
+            if (result.job_id) navigate(`/deletions/${result.job_id}`);
           }}
         />
       ) : null}

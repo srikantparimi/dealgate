@@ -110,6 +110,9 @@ class RenewalPatch(BaseModel):
     outcome_summary: str | None = Field(default=None, max_length=4000)
     status: str | None = Field(default=None, max_length=16)
     replacement_sow_version_id: uuid.UUID | None = None
+    # S21-16 (T14.06): the explicit decision kind. `not_renewing` files
+    # closeout/roll-off tasks; other outcomes are recorded in the summary.
+    outcome: str | None = Field(default=None, max_length=32)
 
 
 def _wrap(exc: RenewalError) -> HTTPException:
@@ -202,6 +205,7 @@ async def patch_endpoint(
             outcome_summary=provided.get("outcome_summary"),
             to_status=provided.get("status"),
             replacement_sow_version_id=provided.get("replacement_sow_version_id"),
+            outcome=provided.get("outcome"),
             _summary_provided=summary_provided,
         )
     except RenewalError as exc:

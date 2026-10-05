@@ -33,10 +33,12 @@ DOCX = FIXTURES / "08_assessment_fixed_fee.docx"
 
 
 def _good_fields() -> dict[str, Any]:
-    return {
+    fields = {
         name: {"value": f"v-{name}", "page_ref": 3, "status": "unconfirmed"}
         for name in EXTRACTED_FIELDS
     }
+    fields["signatories"]["value"] = [{"name": "Alex Example", "role": "Client"}]
+    return fields
 
 
 class _FakeBody:
@@ -63,12 +65,17 @@ class _FakeRuntime:
 
 
 def _tool_use_response(fields: dict[str, Any]) -> dict[str, Any]:
+    separate = {"direct_costs", "billing_basis_normalized", "engagement_type_suggested", "signatories"}
+    tool_input = {"fields": fields}
+    if isinstance(fields, dict):
+        tool_input = {"fields": [dict(name=name, **entry) for name, entry in fields.items() if name not in separate],
+                      **{name: entry for name, entry in fields.items() if name in separate}}
     return {
         "content": [
             {
                 "type": "tool_use",
                 "name": "emit_sow_extract",
-                "input": {"fields": fields},
+                "input": tool_input,
             }
         ],
         "stop_reason": "tool_use",
@@ -94,11 +101,7 @@ def test_happy_path_returns_validated_fields(doc) -> None:
 
 
 def test_request_uses_forced_tool_use_and_the_configured_model(doc, monkeypatch) -> None:
-    """Schema enforcement is by forced tool use.
-
-    This Bedrock deployment rejects `output_config.format` and `strict: true`
-    with a ValidationException, so `tool_choice` is the mechanism. Pin it.
-    """
+    """Forced selection plus strict schema; local validation remains mandatory."""
 
     monkeypatch.setenv("SOW_EXTRACT_MODEL_ID", "us.anthropic.claude-sonnet-5")
     runtime = _FakeRuntime(_tool_use_response(_good_fields()))
@@ -111,9 +114,101 @@ def test_request_uses_forced_tool_use_and_the_configured_model(doc, monkeypatch)
     assert body["tool_choice"] == {"type": "tool", "name": "emit_sow_extract"}
     assert body["tools"][0]["name"] == "emit_sow_extract"
     assert "output_config" not in body
-    assert "strict" not in body["tools"][0]
+    assert body["tools"][0]["strict"] is True
     # The document reaches the model as numbered blocks, not as raw bytes.
     assert "[[1]] STATEMENT OF WORK" in body["messages"][0]["content"][0]["text"]
+
+
+def test_strict_wire_schema_is_closed_and_uses_supported_constraints(doc):
+    runtime = _FakeRuntime(_tool_use_response(_good_fields()))
+    BedrockSowExtract(client=runtime).extract(doc)
+    schema = runtime.calls[0]["body"]["tools"][0]["input_schema"]
+
+    def check(node):
+        if isinstance(node, dict):
+            assert not {"minimum", "maximum", "minLength", "maxLength"} & node.keys()
+            if node.get("type") == "object":
+                assert node["additionalProperties"] is False
+                assert set(node["required"]) == set(node["properties"])
+            for value in node.values():
+                check(value)
+        elif isinstance(node, list):
+            for value in node:
+                check(value)
+
+    check(schema)
+    assert schema["properties"]["fields"]["type"] == "array"
+    assert set(schema["properties"]["fields"]["items"]["properties"]["name"]["enum"]) | {
+        "billing_basis_normalized", "engagement_type_suggested", "signatories",
+    } == set(EXTRACTED_FIELDS)
+
+
+def test_signatories_have_separate_identity_and_role_in_provider_contract(doc):
+    fields = _good_fields()
+    people = [{"name": "Alex Example", "role": "Client"},
+              {"name": "Casey Example", "role": "SmarTek21"}]
+    fields["signatories"]["value"] = people
+    runtime = _FakeRuntime(_tool_use_response(fields))
+    result = BedrockSowExtract(client=runtime).extract(doc)
+    assert isinstance(result, ExtractedFields)
+    assert result.fields["signatories"]["value"] == people
+    body = runtime.calls[0]["body"]
+    value = body["tools"][0]["input_schema"]["properties"]["signatories"]["properties"]["value"]
+    assert value["type"] == ["array", "null"]
+    assert value["items"]["properties"]["name"]["type"] == "string"
+    assert set(value["items"]["required"]) == {"name", "role"}
+    assert "Do not append" in body["system"]
+
+
+@pytest.mark.parametrize("value", ["Alex Example", ["Alex Example (Client)"],
+    [{"name": "", "role": "Client"}], [{"name": 1, "role": None}],
+    [{"name": "Alex Example", "role": [], "extra": True}]])
+def test_real_provider_rejects_untyped_or_invalid_signatory_identity(doc, value):
+    fields = _good_fields()
+    fields["signatories"]["value"] = value
+    runtime = _FakeRuntime(_tool_use_response(fields))
+    assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
+    assert len(runtime.calls) == 1
+
+
+@pytest.mark.parametrize("entry", [{"page_ref": 1},
+    {"value": [{"name": "Alex Example", "role": None}], "page_ref": 1},
+    {"value": [], "page_ref": 1, "status": []},
+    {"value": [], "page_ref": 1, "status": "unconfirmed", "extra": True}])
+def test_real_provider_rejects_malformed_signatory_wrapper(doc, entry):
+    fields = _good_fields()
+    fields["signatories"] = entry
+    runtime = _FakeRuntime(_tool_use_response(fields))
+    assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
+    assert len(runtime.calls) == 1
+
+
+def test_duplicate_named_entries_are_rejected(doc):
+    payload = _tool_use_response(_good_fields())
+    payload["content"][0]["input"]["fields"].append(dict(name="price", value="1", page_ref=1, status="unconfirmed"))
+    assert isinstance(BedrockSowExtract(client=_FakeRuntime(payload)).extract(doc), ManualRequired)
+
+
+@pytest.mark.parametrize("payload", [[], None, {"content": None}, {"content": [None]},
+    {"content": [{"type": "tool_use", "name": "emit_sow_extract", "input": []}]}])
+def test_malformed_provider_envelope_never_crashes_or_retries(doc, payload):
+    runtime = _FakeRuntime(payload)
+    assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
+    assert len(runtime.calls) == 1
+
+
+@pytest.mark.parametrize("fields", ["{}", [], None, 1])
+def test_malformed_fields_are_not_coerced_or_retried(doc, fields):
+    runtime = _FakeRuntime(_tool_use_response(fields))
+    assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
+    assert len(runtime.calls) == 1
+
+
+def test_boolean_page_reference_is_not_an_integer_locator(doc):
+    fields = _good_fields()
+    fields["price"]["page_ref"] = True
+    runtime = _FakeRuntime(_tool_use_response(fields))
+    assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
 
 
 def test_model_id_defaults_to_an_inference_profile(doc) -> None:

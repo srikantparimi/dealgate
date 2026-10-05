@@ -1,3 +1,39 @@
+variable "trusted_cleanup_enabled" {
+  type        = bool
+  description = "Enable fixture cleanup only after trusted provenance cleanup is reviewed."
+  default     = false
+}
+
+variable "operational_hardening_enabled" {
+  type        = bool
+  description = "Create the irreversible CloudTrail/GuardDuty/SNS hardening bundle only after its separate cost, retention and notification review."
+  default     = false
+}
+
+variable "production_approver_identities_enabled" {
+  type        = bool
+  description = "Create real-person SES identities only after the recipients and verification-email side effects are approved."
+  default     = false
+}
+
+variable "s21_jobs_enabled" {
+  type        = bool
+  description = "Enable new persisted Forecast and deletion workers after the release plan is approved."
+  default     = false
+}
+
+variable "reporting_timezone" {
+  type        = string
+  description = "Organization-approved reporting timezone. Must be resolved before S21 staging acceptance."
+  default     = ""
+}
+
+variable "reporting_currency" {
+  type        = string
+  description = "Organization-approved reporting currency. Must be resolved before S21 staging acceptance."
+  default     = ""
+}
+
 variable "env" {
   description = "Deployment environment slug (dev|staging|prod). Drives naming prefix and defaults."
   type        = string
@@ -16,9 +52,35 @@ variable "region" {
 }
 
 variable "image_tag" {
-  description = "ECR image tag the ECS task should run. CI updates this per deploy; the default here is the last known-good tag for a laptop-run `terraform plan/apply` (see git log for what's in ECR right now). Never set to 'bootstrap' — that tag stopped being pushed months ago and any task using it fails with CannotPullContainerError."
+  description = "Explicit reviewed ECR release tag shared by API and workers. No default may silently downgrade deployed code."
   type        = string
-  default     = "s14a.3b-workers-creds-fix"
+  validation {
+    condition     = length(trimspace(var.image_tag)) > 0 && !contains(["latest", "bootstrap"], var.image_tag)
+    error_message = "Supply an explicit immutable release tag."
+  }
+}
+
+variable "allowed_account_ids" {
+  description = "Account guard for this root, including the CloudFront alias provider."
+  type        = list(string)
+  default     = ["669810405473"]
+}
+
+variable "hubspot_continuous_enabled" {
+  description = "Reviewed paired cutover: one continuous consumer and disabled legacy intake schedule. False restores scheduled intake."
+  type        = bool
+  default     = false
+}
+
+variable "hubspot_portal_id" {
+  description = "HubSpot portal ID used to scope resumable deal scans to this deployment."
+  type        = string
+  default     = "48656168"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.hubspot_portal_id))
+    error_message = "hubspot_portal_id must contain only decimal digits."
+  }
 }
 
 variable "domain" {
@@ -49,5 +111,5 @@ variable "create_github_oidc_provider" {
 variable "alert_email" {
   description = "Email that receives SNS alerts (RDS CPU / free storage / ECS task failures). Recipient must confirm the SNS subscription."
   type        = string
-  default     = "srikantp@smartek21.com"
+  default     = "srikanthp@smartek21.com"
 }

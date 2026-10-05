@@ -9,6 +9,13 @@ import {
 } from "../../ui-v2/FunctionMark";
 
 describe("FunctionMark", () => {
+  it("shows all five frozen S21 functions without marking Sales approved", () => {
+    render(<FunctionMarkRow letters={["D", "H", "S", "F", "L"]}
+      states={{ D: "ok", H: "ok", S: "pending", F: "pending", L: "pending" }} />);
+    expect(screen.getByLabelText("Sales pending")).toBeInTheDocument();
+    expect(screen.getByLabelText("HR approved")).toBeInTheDocument();
+    expect(screen.getByText("2/5 reviews")).toBeInTheDocument();
+  });
   it("renders the letter with an accessible state label", () => {
     render(<FunctionMark letter="D" state="ok" />);
     expect(screen.getByLabelText("Delivery approved")).toBeInTheDocument();

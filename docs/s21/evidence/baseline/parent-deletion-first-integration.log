@@ -1,0 +1,309 @@
+F.FF......F.................................                             [100%]
+=================================== FAILURES ===================================
+______ test_legacy_client_entry_retains_project_and_exact_account_actuals ______
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x110061e80>
+
+    @pytest.mark.asyncio
+    async def test_legacy_client_entry_retains_project_and_exact_account_actuals(session):
+        owner, deal, sow = await _seed(session, with_package=True)
+        account_id = deal.client_id
+        package = await session.scalar(select(ApprovalPackage).where(ApprovalPackage.opportunity_id == deal.id))
+        baseline = {"revenue_us": "24680.12", "cost_us": "12340.06"}
+        project = Project(id=uuid.uuid4(), opportunity_id=deal.id, client_id=account_id,
+            sow_version_id=package.sow_version_id, gm_model_id=package.gm_model_id, package_id=package.id,
+            title="Retained parent delivery", baseline_snapshot_json=baseline, created_by=owner.id)
+        batch = FinancialImportBatch(id=uuid.uuid4(), tenant_id="parent-delete", environment="test",
+            source_system="parent-proof", request_key="parent-import", request_hash="a" * 64,
+            uploaded_by=owner.id, status="committed", row_count=1)
+        session.add_all([project, batch])
+        await session.flush()
+        fact = FinancialActual(id=uuid.uuid4(), tenant_id="parent-delete", environment="test",
+            source_system="parent-proof", source_id="retained-fact", revision=1, batch_id=batch.id,
+            account_id=account_id, original_account_id=account_id, gm_model_id=package.gm_model_id,
+            original_gm_model_id=package.gm_model_id, period_month=date(2026, 9, 1),
+            measure="recognized_revenue", amount=Decimal("24680.125"), currency="USD",
+            source_date=date(2026, 9, 30), reason="Independent known recognized amount")
+        session.add(fact)
+        await session.commit()
+>       await delete_client(session, actor_id=owner.id, client_id=account_id)
+
+api/tests/test_s21_parent_deletion.py:51: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+api/app/services/deletion.py:683: in delete_client
+    job = await request_client_deletion(session, actor_id=actor_id, client_id=client_id)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x110061e80>
+actor_id = UUID('8ffd4f5b-b6f8-4000-b2fb-59bc769d1575')
+client_id = UUID('e94442f5-fa2c-453e-9911-f61bff42f3d1')
+
+    async def request_client_deletion(session, *, actor_id, client_id):
+        previous = await _previous(session, "client", client_id)
+        if previous:
+            return previous
+        client = await session.scalar(select(Client).where(Client.id == client_id).with_for_update())
+        if client is None:
+            raise DeletionError("client not found", status_code=404)
+        if client.hubspot_company_id is not None:
+            raise DeletionError("Cannot delete a mirrored client")
+        deals = (await session.scalars(select(Opportunity).where(Opportunity.client_id == client_id).with_for_update())).all()
+        if any(deal.hubspot_deal_id is not None or deal.source == "hubspot" for deal in deals):
+            raise DeletionError("Cannot delete a client containing a mirrored opportunity")
+        tenant, environment = _scope()
+        for model in (FinancialActual, ForecastPlan):
+            if await session.scalar(select(model.id).where(model.account_id == client_id,
+                or_(model.tenant_id != tenant, model.environment != environment)).limit(1)):
+                raise DeletionError("Client has records outside the deletion runtime scope", status_code=404)
+        job = await _new_job(session, "client", client.id, actor_id, client.id, client.name)
+        children, counts = [], {"opportunities": len(deals)}
+        for deal in deals:
+            child = await request_opportunity_deletion(session, actor_id=actor_id, opportunity_id=deal.id)
+            children.append(child)
+            _add_counts(counts, child)
+        projects = (await session.scalars(select(Project).where(Project.client_id == client_id).with_for_update())).all()
+        for project in projects:
+            if not project.source_deleted_at:
+                raise DeletionError("Project source ownership must be resolved before deleting its client")
+            project.client_id = None
+        await session.execute(update(FinancialActual).where(FinancialActual.account_id == client_id).values(account_id=None))
+        plans = (await session.scalars(select(ForecastPlan.id).where(ForecastPlan.account_id == client_id))).all()
+        versions = select(ForecastPlanVersion.id).where(ForecastPlanVersion.plan_id.in_(plans))
+        await session.execute(delete(ForecastJob).where(ForecastJob.plan_version_id.in_(versions)))
+        await session.execute(delete(ForecastSchedule).where(ForecastSchedule.plan_version_id.in_(versions)))
+        await session.execute(delete(ForecastConversion).where(ForecastConversion.plan_id.in_(plans)))
+        await session.execute(delete(ForecastPlanVersion).where(ForecastPlanVersion.plan_id.in_(plans)))
+        await session.execute(delete(ForecastPlan).where(ForecastPlan.id.in_(plans)))
+        agreements = (await session.scalars(select(Agreement).where(Agreement.client_id == client_id))).all()
+        job.objects = [{"bucket": agreement_bucket(), "key": agreement.file_key} for agreement in agreements]
+        await session.execute(delete(Agreement).where(Agreement.client_id == client_id))
+        await session.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
+        await session.execute(delete(ClientAlias).where(ClientAlias.client_id == client_id))
+        cards = select(ClientRateCard.id).where(ClientRateCard.client_id == client_id)
+>       await session.execute(delete(ClientRateCardRow).where(ClientRateCardRow.rate_card_id.in_(cards)))
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'ClientRateCardRow' has no attribute 'rate_card_id'
+
+api/app/services/parent_deletion.py:177: AttributeError
+__________ test_parent_job_waits_for_child_storage_and_is_repeat_safe __________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1100d1590>
+
+    @pytest.mark.asyncio
+    async def test_parent_job_waits_for_child_storage_and_is_repeat_safe(session):
+        from app.services.parent_deletion import request_client_deletion
+        from app.services.deletion_cleanup import process_deletion_jobs
+        owner, deal, _ = await _seed(session, with_package=False)
+        account_id = deal.client_id
+>       job = await request_client_deletion(session, actor_id=owner.id, client_id=account_id)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+api/tests/test_s21_parent_deletion.py:80: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1100d1590>
+actor_id = UUID('610b2658-9253-4f8a-809f-2801869d8468')
+client_id = UUID('5ed66cc8-92c5-4c40-a0b6-4341fe27c66e')
+
+    async def request_client_deletion(session, *, actor_id, client_id):
+        previous = await _previous(session, "client", client_id)
+        if previous:
+            return previous
+        client = await session.scalar(select(Client).where(Client.id == client_id).with_for_update())
+        if client is None:
+            raise DeletionError("client not found", status_code=404)
+        if client.hubspot_company_id is not None:
+            raise DeletionError("Cannot delete a mirrored client")
+        deals = (await session.scalars(select(Opportunity).where(Opportunity.client_id == client_id).with_for_update())).all()
+        if any(deal.hubspot_deal_id is not None or deal.source == "hubspot" for deal in deals):
+            raise DeletionError("Cannot delete a client containing a mirrored opportunity")
+        tenant, environment = _scope()
+        for model in (FinancialActual, ForecastPlan):
+            if await session.scalar(select(model.id).where(model.account_id == client_id,
+                or_(model.tenant_id != tenant, model.environment != environment)).limit(1)):
+                raise DeletionError("Client has records outside the deletion runtime scope", status_code=404)
+        job = await _new_job(session, "client", client.id, actor_id, client.id, client.name)
+        children, counts = [], {"opportunities": len(deals)}
+        for deal in deals:
+            child = await request_opportunity_deletion(session, actor_id=actor_id, opportunity_id=deal.id)
+            children.append(child)
+            _add_counts(counts, child)
+        projects = (await session.scalars(select(Project).where(Project.client_id == client_id).with_for_update())).all()
+        for project in projects:
+            if not project.source_deleted_at:
+                raise DeletionError("Project source ownership must be resolved before deleting its client")
+            project.client_id = None
+        await session.execute(update(FinancialActual).where(FinancialActual.account_id == client_id).values(account_id=None))
+        plans = (await session.scalars(select(ForecastPlan.id).where(ForecastPlan.account_id == client_id))).all()
+        versions = select(ForecastPlanVersion.id).where(ForecastPlanVersion.plan_id.in_(plans))
+        await session.execute(delete(ForecastJob).where(ForecastJob.plan_version_id.in_(versions)))
+        await session.execute(delete(ForecastSchedule).where(ForecastSchedule.plan_version_id.in_(versions)))
+        await session.execute(delete(ForecastConversion).where(ForecastConversion.plan_id.in_(plans)))
+        await session.execute(delete(ForecastPlanVersion).where(ForecastPlanVersion.plan_id.in_(plans)))
+        await session.execute(delete(ForecastPlan).where(ForecastPlan.id.in_(plans)))
+        agreements = (await session.scalars(select(Agreement).where(Agreement.client_id == client_id))).all()
+        job.objects = [{"bucket": agreement_bucket(), "key": agreement.file_key} for agreement in agreements]
+        await session.execute(delete(Agreement).where(Agreement.client_id == client_id))
+        await session.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
+        await session.execute(delete(ClientAlias).where(ClientAlias.client_id == client_id))
+        cards = select(ClientRateCard.id).where(ClientRateCard.client_id == client_id)
+>       await session.execute(delete(ClientRateCardRow).where(ClientRateCardRow.rate_card_id.in_(cards)))
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'ClientRateCardRow' has no attribute 'rate_card_id'
+
+api/app/services/parent_deletion.py:177: AttributeError
+___________ test_agreement_only_client_has_durable_exact_key_cleanup ___________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1105ee8b0>
+
+    @pytest.mark.asyncio
+    async def test_agreement_only_client_has_durable_exact_key_cleanup(session):
+        from app.services.parent_deletion import request_client_deletion
+        client = Client(name="Only agreements")
+        session.add(client)
+        await session.flush()
+        session.add(Agreement(client_id=client.id, kind="MSA", file_key="owned/msa.pdf",
+            filename="msa.pdf", file_size=10, uploaded_by=uuid.uuid4()))
+        await session.commit()
+>       job = await request_client_deletion(session, actor_id=None, client_id=client.id)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+api/tests/test_s21_parent_deletion.py:108: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1105ee8b0>
+actor_id = None, client_id = UUID('7d81837b-7dba-4dbb-be9c-e3744543f745')
+
+    async def request_client_deletion(session, *, actor_id, client_id):
+        previous = await _previous(session, "client", client_id)
+        if previous:
+            return previous
+        client = await session.scalar(select(Client).where(Client.id == client_id).with_for_update())
+        if client is None:
+            raise DeletionError("client not found", status_code=404)
+        if client.hubspot_company_id is not None:
+            raise DeletionError("Cannot delete a mirrored client")
+        deals = (await session.scalars(select(Opportunity).where(Opportunity.client_id == client_id).with_for_update())).all()
+        if any(deal.hubspot_deal_id is not None or deal.source == "hubspot" for deal in deals):
+            raise DeletionError("Cannot delete a client containing a mirrored opportunity")
+        tenant, environment = _scope()
+        for model in (FinancialActual, ForecastPlan):
+            if await session.scalar(select(model.id).where(model.account_id == client_id,
+                or_(model.tenant_id != tenant, model.environment != environment)).limit(1)):
+                raise DeletionError("Client has records outside the deletion runtime scope", status_code=404)
+        job = await _new_job(session, "client", client.id, actor_id, client.id, client.name)
+        children, counts = [], {"opportunities": len(deals)}
+        for deal in deals:
+            child = await request_opportunity_deletion(session, actor_id=actor_id, opportunity_id=deal.id)
+            children.append(child)
+            _add_counts(counts, child)
+        projects = (await session.scalars(select(Project).where(Project.client_id == client_id).with_for_update())).all()
+        for project in projects:
+            if not project.source_deleted_at:
+                raise DeletionError("Project source ownership must be resolved before deleting its client")
+            project.client_id = None
+        await session.execute(update(FinancialActual).where(FinancialActual.account_id == client_id).values(account_id=None))
+        plans = (await session.scalars(select(ForecastPlan.id).where(ForecastPlan.account_id == client_id))).all()
+        versions = select(ForecastPlanVersion.id).where(ForecastPlanVersion.plan_id.in_(plans))
+        await session.execute(delete(ForecastJob).where(ForecastJob.plan_version_id.in_(versions)))
+        await session.execute(delete(ForecastSchedule).where(ForecastSchedule.plan_version_id.in_(versions)))
+        await session.execute(delete(ForecastConversion).where(ForecastConversion.plan_id.in_(plans)))
+        await session.execute(delete(ForecastPlanVersion).where(ForecastPlanVersion.plan_id.in_(plans)))
+        await session.execute(delete(ForecastPlan).where(ForecastPlan.id.in_(plans)))
+        agreements = (await session.scalars(select(Agreement).where(Agreement.client_id == client_id))).all()
+        job.objects = [{"bucket": agreement_bucket(), "key": agreement.file_key} for agreement in agreements]
+        await session.execute(delete(Agreement).where(Agreement.client_id == client_id))
+        await session.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
+        await session.execute(delete(ClientAlias).where(ClientAlias.client_id == client_id))
+        cards = select(ClientRateCard.id).where(ClientRateCard.client_id == client_id)
+>       await session.execute(delete(ClientRateCardRow).where(ClientRateCardRow.rate_card_id.in_(cards)))
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'ClientRateCardRow' has no attribute 'rate_card_id'
+
+api/app/services/parent_deletion.py:177: AttributeError
+____________ test_non_mirror_client_hard_deletes_with_governed_sow _____________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x11390f200>
+
+    @pytest.mark.asyncio
+    async def test_non_mirror_client_hard_deletes_with_governed_sow(session):
+        """A client with no hubspot_company_id is scratch / e2e data; it
+        must hard-delete even when its SOW has reached approval."""
+    
+        from app.services.deletion import delete_client
+    
+        owner, opp, sow = await _seed(session, with_package=True)
+        client = await session.get(Client, opp.client_id)
+        assert client is not None and client.hubspot_company_id is None, "fixture sanity"
+        # Baseline: delete_sow refuses the governed row.
+        with pytest.raises(DeletionError):
+            await delete_sow(session, actor_id=owner.id, sow_id=sow.id)
+        # delete_client cascades through anyway because the client is non-mirror.
+>       result = await delete_client(session, actor_id=owner.id, client_id=client.id)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+api/tests/test_deletion_by_state.py:183: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+api/app/services/deletion.py:683: in delete_client
+    job = await request_client_deletion(session, actor_id=actor_id, client_id=client_id)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x11390f200>
+actor_id = UUID('930efb7a-0f5a-42a7-a301-a16904b7429f')
+client_id = UUID('5ead8668-5894-4f6d-9bb5-d318bac608d8')
+
+    async def request_client_deletion(session, *, actor_id, client_id):
+        previous = await _previous(session, "client", client_id)
+        if previous:
+            return previous
+        client = await session.scalar(select(Client).where(Client.id == client_id).with_for_update())
+        if client is None:
+            raise DeletionError("client not found", status_code=404)
+        if client.hubspot_company_id is not None:
+            raise DeletionError("Cannot delete a mirrored client")
+        deals = (await session.scalars(select(Opportunity).where(Opportunity.client_id == client_id).with_for_update())).all()
+        if any(deal.hubspot_deal_id is not None or deal.source == "hubspot" for deal in deals):
+            raise DeletionError("Cannot delete a client containing a mirrored opportunity")
+        tenant, environment = _scope()
+        for model in (FinancialActual, ForecastPlan):
+            if await session.scalar(select(model.id).where(model.account_id == client_id,
+                or_(model.tenant_id != tenant, model.environment != environment)).limit(1)):
+                raise DeletionError("Client has records outside the deletion runtime scope", status_code=404)
+        job = await _new_job(session, "client", client.id, actor_id, client.id, client.name)
+        children, counts = [], {"opportunities": len(deals)}
+        for deal in deals:
+            child = await request_opportunity_deletion(session, actor_id=actor_id, opportunity_id=deal.id)
+            children.append(child)
+            _add_counts(counts, child)
+        projects = (await session.scalars(select(Project).where(Project.client_id == client_id).with_for_update())).all()
+        for project in projects:
+            if not project.source_deleted_at:
+                raise DeletionError("Project source ownership must be resolved before deleting its client")
+            project.client_id = None
+        await session.execute(update(FinancialActual).where(FinancialActual.account_id == client_id).values(account_id=None))
+        plans = (await session.scalars(select(ForecastPlan.id).where(ForecastPlan.account_id == client_id))).all()
+        versions = select(ForecastPlanVersion.id).where(ForecastPlanVersion.plan_id.in_(plans))
+        await session.execute(delete(ForecastJob).where(ForecastJob.plan_version_id.in_(versions)))
+        await session.execute(delete(ForecastSchedule).where(ForecastSchedule.plan_version_id.in_(versions)))
+        await session.execute(delete(ForecastConversion).where(ForecastConversion.plan_id.in_(plans)))
+        await session.execute(delete(ForecastPlanVersion).where(ForecastPlanVersion.plan_id.in_(plans)))
+        await session.execute(delete(ForecastPlan).where(ForecastPlan.id.in_(plans)))
+        agreements = (await session.scalars(select(Agreement).where(Agreement.client_id == client_id))).all()
+        job.objects = [{"bucket": agreement_bucket(), "key": agreement.file_key} for agreement in agreements]
+        await session.execute(delete(Agreement).where(Agreement.client_id == client_id))
+        await session.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
+        await session.execute(delete(ClientAlias).where(ClientAlias.client_id == client_id))
+        cards = select(ClientRateCard.id).where(ClientRateCard.client_id == client_id)
+>       await session.execute(delete(ClientRateCardRow).where(ClientRateCardRow.rate_card_id.in_(cards)))
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'ClientRateCardRow' has no attribute 'rate_card_id'
+
+api/app/services/parent_deletion.py:177: AttributeError
+=========================== short test summary info ============================
+FAILED api/tests/test_s21_parent_deletion.py::test_legacy_client_entry_retains_project_and_exact_account_actuals
+FAILED api/tests/test_s21_parent_deletion.py::test_parent_job_waits_for_child_storage_and_is_repeat_safe
+FAILED api/tests/test_s21_parent_deletion.py::test_agreement_only_client_has_durable_exact_key_cleanup
+FAILED api/tests/test_deletion_by_state.py::test_non_mirror_client_hard_deletes_with_governed_sow
+4 failed, 40 passed in 32.78s

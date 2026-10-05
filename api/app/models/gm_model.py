@@ -25,7 +25,7 @@ from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, St
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
-from app.db.base import Base
+from app.db.base import Base, JsonB
 
 
 class GmModel(Base):
@@ -53,15 +53,17 @@ class GmModel(Base):
     delivery_pattern: Mapped[str | None] = mapped_column(String(128), nullable=True)
     contingency_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     warranty_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    revenue_us: Mapped[Decimal] = mapped_column(
-        Numeric(14, 2), nullable=False, default=Decimal("0")
+    revenue_us: Mapped[Decimal | None] = mapped_column(
+        Numeric(), nullable=True, default=Decimal("0")
     )
-    revenue_india: Mapped[Decimal] = mapped_column(
-        Numeric(14, 2), nullable=False, default=Decimal("0")
+    revenue_india: Mapped[Decimal | None] = mapped_column(
+        Numeric(), nullable=True, default=Decimal("0")
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     direct_costs_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    commercial_inputs: Mapped[dict | None] = mapped_column(JsonB, nullable=True)
+    commercial_snapshot: Mapped[dict | None] = mapped_column(JsonB, nullable=True)
 
     resource_lines: Mapped[list["ResourceLine"]] = relationship(
         "ResourceLine",

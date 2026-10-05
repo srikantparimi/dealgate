@@ -20,6 +20,7 @@ import type {
   ApprovalFunction,
   ApprovalPackage,
 } from "../../../api/client";
+import { LEGACY_APPROVAL_FUNCTIONS } from "../../../api/client";
 import { StatusBadge, type StatusTone } from "../../../ui-v2/StatusBadge";
 import {
   FunctionMarkRow,
@@ -91,8 +92,6 @@ export interface PackageCardProps {
   href: string;
 }
 
-const FUNCTIONS: ApprovalFunction[] = ["delivery", "hr", "finance", "legal"];
-
 export function PackageCard({ pkg, meta, href }: PackageCardProps) {
   const age = ageInDays(pkg.submitted_at);
   const value = formatMoney(meta.proposedValue, meta.currency ?? "USD");
@@ -106,14 +105,16 @@ export function PackageCard({ pkg, meta, href }: PackageCardProps) {
     ? `${meta.marginPct}${belowFloor ? " · below floor" : ""}`
     : meta.completeness ?? "GM pending";
 
-  const states: Partial<Record<"D" | "H" | "F" | "L", FunctionState>> = {};
-  const LETTER: Record<ApprovalFunction, "D" | "H" | "F" | "L"> = {
+  const states: Partial<Record<"D" | "H" | "S" | "F" | "L", FunctionState>> = {};
+  const LETTER: Record<ApprovalFunction, "D" | "H" | "S" | "F" | "L"> = {
     delivery: "D",
     hr: "H",
+    sales: "S",
     finance: "F",
     legal: "L",
   };
-  for (const fn of FUNCTIONS) {
+  const functions = pkg.required_functions ?? LEGACY_APPROVAL_FUNCTIONS;
+  for (const fn of functions) {
     const dec = pkg.approvals.find((a) => a.function === fn);
     states[LETTER[fn]] = decisionState(dec?.decision);
   }
@@ -155,7 +156,7 @@ export function PackageCard({ pkg, meta, href }: PackageCardProps) {
         ) : null}
       </div>
 
-      <FunctionMarkRow states={states} />
+      <FunctionMarkRow states={states} letters={functions.map(fn => LETTER[fn])} />
 
       <div className="mt-1 flex items-start justify-between gap-2 text-[12px] text-text-muted">
         <span className="min-w-0 break-words">

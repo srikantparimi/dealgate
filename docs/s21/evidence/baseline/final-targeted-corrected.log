@@ -1,0 +1,35 @@
+........................................................................ [ 55%]
+..........................................................               [100%]
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+tests/test_ceo_exception.py::test_approve_requires_rationale
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/ceo_exception.py:183: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await decide(
+
+tests/test_notifications.py::test_queue_rejects_unknown_category
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:220: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_category(category)
+
+tests/test_notifications.py::test_settings_patch_rejects_unknown_channel
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:150: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_channel(channel)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+130 passed, 5 warnings in 33.74s

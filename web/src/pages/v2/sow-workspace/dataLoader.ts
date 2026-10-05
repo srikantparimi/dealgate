@@ -4,11 +4,15 @@ import {
   getDeal,
   getLatestDeliveryModel,
   getSignedSowUpload,
+  getHandoffGate,
+  getDeliveryAcceptance,
   getSowVersion,
   listAgreements,
   listApprovalPackages,
   getCurrentSowVersion,
   type ApprovalPackage,
+  type DeliveryAcceptance,
+  type HandoffGate,
   type UUID,
 } from "../../../api/client";
 import type { WorkspaceSnapshot } from "./readiness";
@@ -71,11 +75,23 @@ export async function loadWorkspace(id: UUID): Promise<{
     );
   }
   let signedSow = null;
+  let handoffGate: HandoffGate | undefined;
+  let deliveryAcceptance: DeliveryAcceptance | null | undefined;
   if (approvalPackage) {
     signedSow = await swallow(
       "getSignedSowUpload",
       () => getSignedSowUpload(approvalPackage.id),
       null,
+    );
+    handoffGate = await swallow(
+      "getHandoffGate",
+      () => getHandoffGate(approvalPackage.id),
+      undefined,
+    );
+    deliveryAcceptance = await swallow(
+      "getDeliveryAcceptance",
+      () => getDeliveryAcceptance(approvalPackage.id),
+      undefined,
     );
   }
 
@@ -99,6 +115,8 @@ export async function loadWorkspace(id: UUID): Promise<{
       approvalHistory: pkgList.items.map(p => p.id === approvalPackage?.id ? approvalPackage : p),
       agreements,
       signedSow,
+      handoffGate,
+      deliveryAcceptance,
     },
     degradedEndpoints: degraded,
   };

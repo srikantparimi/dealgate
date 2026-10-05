@@ -1,0 +1,125 @@
+..............................FFF...........................             [100%]
+=================================== FAILURES ===================================
+______________ test_approve_transitions_package_to_ready_to_sign _______________
+
+app_with_session = <fastapi.applications.FastAPI object at 0x107d00440>
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x108e0cc20>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1084ead60>
+
+    async def test_approve_transitions_package_to_ready_to_sign(
+        app_with_session, session, monkeypatch
+    ):
+        from app.services.ceo_exception import draft_for_package, set_rationale
+    
+        owner = await _seed_owner(session)
+        pkg = await _seed_package(session, owner_id=owner.id)
+        exc = await draft_for_package(session, pkg.id, brief_inputs=_brief_inputs())
+        await set_rationale(
+            session,
+            actor_id=owner.id,
+            exception_id=exc.id,
+            rationale_text="Strategic customer worth the exception.",
+        )
+    
+        monkeypatch.setenv("DEALGATE_TEST_GROUPS", "CEO")
+        async with _client(app_with_session) as c:
+            r = await c.post(
+                f"/ceo-exceptions/{exc.id}/decisions",
+                headers={"X-Test-User": CEO_EMAIL},
+                json={
+                    "decision": "approve",
+                    "conditions_text": "Quarterly steering committee.",
+                    "valid_until": "2027-01-01",
+                },
+            )
+>       assert r.status_code == 201, r.text
+E       AssertionError: {"detail":"Test identity or fixture is outside the trusted approval scope"}
+E       assert 403 == 201
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+
+tests/test_ceo_exception.py:303: AssertionError
+___________ test_reject_sends_owner_notification_and_reverts_status ____________
+
+app_with_session = <fastapi.applications.FastAPI object at 0x107d00440>
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x108ec1bd0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108aa6430>
+
+    async def test_reject_sends_owner_notification_and_reverts_status(
+        app_with_session, session, monkeypatch
+    ):
+        from app.services.ceo_exception import draft_for_package
+    
+        owner = await _seed_owner(session)
+        pkg = await _seed_package(session, owner_id=owner.id)
+        exc = await draft_for_package(session, pkg.id, brief_inputs=_brief_inputs())
+    
+        monkeypatch.setenv("DEALGATE_TEST_GROUPS", "CEO")
+        async with _client(app_with_session) as c:
+            r = await c.post(
+                f"/ceo-exceptions/{exc.id}/decisions",
+                headers={"X-Test-User": CEO_EMAIL},
+                json={"decision": "reject"},
+            )
+>       assert r.status_code == 201, r.text
+E       AssertionError: {"detail":"Test identity or fixture is outside the trusted approval scope"}
+E       assert 403 == 201
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+
+tests/test_ceo_exception.py:349: AssertionError
+__________________ test_return_for_changes_reverts_and_audits __________________
+
+app_with_session = <fastapi.applications.FastAPI object at 0x107d00440>
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x108e1c950>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108e94440>
+
+    async def test_return_for_changes_reverts_and_audits(
+        app_with_session, session, monkeypatch
+    ):
+        from app.services.ceo_exception import draft_for_package
+    
+        owner = await _seed_owner(session)
+        pkg = await _seed_package(session, owner_id=owner.id)
+        exc = await draft_for_package(session, pkg.id, brief_inputs=_brief_inputs())
+    
+        monkeypatch.setenv("DEALGATE_TEST_GROUPS", "CEO")
+        async with _client(app_with_session) as c:
+            r = await c.post(
+                f"/ceo-exceptions/{exc.id}/decisions",
+                headers={"X-Test-User": CEO_EMAIL},
+                json={"decision": "return_for_changes"},
+            )
+>       assert r.status_code == 201, r.text
+E       AssertionError: {"detail":"Test identity or fixture is outside the trusted approval scope"}
+E       assert 403 == 201
+E        +  where 403 = <Response [403 Forbidden]>.status_code
+
+tests/test_ceo_exception.py:394: AssertionError
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+tests/test_ceo_exception.py::test_approve_requires_rationale
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/ceo_exception.py:183: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await decide(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_ceo_exception.py::test_approve_transitions_package_to_ready_to_sign
+FAILED tests/test_ceo_exception.py::test_reject_sends_owner_notification_and_reverts_status
+FAILED tests/test_ceo_exception.py::test_return_for_changes_reverts_and_audits
+3 failed, 57 passed, 3 warnings in 22.31s

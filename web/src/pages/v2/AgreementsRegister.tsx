@@ -8,7 +8,16 @@
  */
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, FilePlus2, ShieldCheck, Trash2 } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  Download,
+  FilePlus2,
+  FileText,
+  History,
+  Replace,
+  Trash2,
+  RefreshCw,
+} from "lucide-react";
 import {
   type AgreementKind,
   type AgreementRow,
@@ -18,13 +27,23 @@ import {
   getAgreementDownloadUrl,
   listAgreements,
   listClients,
+  getClient,
   uploadAgreement,
+  getMe,
+  listAgreementVersions,
+  replaceAgreement,
+  getAgreementVersionDownloadUrl,
+  type AgreementFileVersion,
+  type DeletionJobResponse,
+  getDeletionJob,
+  retryDeletionJob,
 } from "../../api/client";
 import { PageHeader } from "../../ui-v2/PageHeader";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { Button } from "../../ui-v2/primitives/button";
 import { Input } from "../../ui-v2/primitives/input";
+import { ClientAgreementPresence } from "../../ui-v2/ClientAgreementPresence";
 import {
   Dialog,
   DialogContent,
@@ -80,23 +99,216 @@ const INITIAL_UPLOAD: UploadState = {
 };
 
 export function AgreementsRegisterPage() {
+  const [params] = useSearchParams();
+  return (
+    <AgreementsRegister
+      key={params.toString()}
+      clientId={params.get("client_id") || undefined}
+      kind={params.get("kind")}
+      openUpload={params.get("upload") === "1"}
+    />
+  );
+}
+
+function RevisionDialog({
+  row,
+  canWrite,
+  onClose,
+  onSaved,
+}: {
+  row: AgreementRow;
+  canWrite: boolean;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [versions, setVersions] = useState<AgreementFileVersion[] | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [expected, setExpected] = useState(row.version_no ?? 1);
+  useEffect(() => {
+    let live = true;
+    setVersions(null);
+    listAgreementVersions(row.id).then(
+      (result) => {
+        if (!live) return;
+        setVersions(result.items);
+        if (result.items.length) setExpected(result.items[0].version_no);
+        setError(null);
+      },
+      (e) => {
+        if (live)
+          setError(e instanceof Error ? e.message : "History unavailable");
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [row.id, reload]);
+  const save = async () => {
+    if (!file || !canWrite || !versions) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await replaceAgreement(row.id, expected, file);
+      await onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Replacement failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const downloadVersion = async (version: number) => {
+    try {
+      const result = await getAgreementVersionDownloadUrl(row.id, version);
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Download failed");
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{row.kind} document history</DialogTitle>
+        </DialogHeader>
+        <p>{row.client_name}</p>
+        {error && (
+          <p role="alert" className="text-danger">
+            {error}
+          </p>
+        )}
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={() => setReload((n) => n + 1)}
+        >
+          Reload latest version
+        </Button>
+        {versions === null ? (
+          <p role="status">Loading history...</p>
+        ) : (
+          <ul className="max-h-64 overflow-y-auto space-y-3">
+            {versions.map((version) => (
+              <li
+                key={version.version_no}
+                className="border-b border-divider py-2"
+              >
+                <p className="break-words">
+                  v{version.version_no}: {version.filename}
+                </p>
+                <p>
+                  {version.uploaded_by_name} · {formatDate(version.uploaded_at)}
+                </p>
+                <Button
+                  variant="secondary"
+                  aria-label={`Download version ${version.version_no}`}
+                  onClick={() => void downloadVersion(version.version_no)}
+                >
+                  <Download size={16} />
+                  Download
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {canWrite && (
+          <>
+            <label htmlFor="agreement-replacement">Replacement file</label>
+            <input
+              id="agreement-replacement"
+              type="file"
+              accept={ACCEPT}
+              disabled={busy}
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </>
+        )}
+        <DialogFooter>
+          <Button variant="secondary" disabled={busy} onClick={onClose}>
+            Close
+          </Button>
+          {canWrite && (
+            <Button
+              disabled={busy || !file || !versions?.length}
+              onClick={() => void save()}
+            >
+              {busy ? "Saving..." : "Save replacement"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AgreementsRegister({
+  clientId,
+  kind,
+  openUpload,
+}: {
+  clientId?: string;
+  kind: string | null;
+  openUpload: boolean;
+}) {
+  const [canWrite, setCanWrite] = useState(false);
+  const [revision, setRevision] = useState<AgreementRow | null>(null);
+  const [cleanup, setCleanup] = useState<DeletionJobResponse | null>(null);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [rows, setRows] = useState<AgreementRow[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [clients, setClients] = useState<ClientListRow[]>([]);
   const [search, setSearch] = useState("");
-  const [upload, setUpload] = useState<UploadState>(INITIAL_UPLOAD);
+  const [upload, setUpload] = useState<UploadState>({
+    ...INITIAL_UPLOAD,
+    open: openUpload,
+    clientId: clientId || "",
+    kind: kind === "NDA" || kind === "MSA" ? kind : "",
+  });
   const [pendingDelete, setPendingDelete] = useState<AgreementRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const actor = await getMe();
+      const writable = actor.groups.some((group) =>
+        ["Legal", "SystemAdmin"].includes(group),
+      );
+      setCanWrite(writable);
       const [ags, cs] = await Promise.all([
-        listAgreements(),
-        listClients({ size: 200 }),
+        listAgreements({ client_id: clientId }),
+        writable
+          ? listClients({ size: 200 })
+          : Promise.resolve({ items: [] as ClientListRow[] }),
       ]);
       setRows(ags.items);
+      if (
+        writable &&
+        clientId &&
+        !cs.items.some((client) => client.id === clientId)
+      ) {
+        const selected = await getClient(clientId);
+        cs.items.push({
+          id: selected.id,
+          name: selected.name,
+          hubspot_company_id: selected.hubspot_company_id,
+          opportunity_count: selected.opportunities.length,
+          owner_ids: [],
+          owners: [],
+          sources: [],
+        });
+      }
       setClients(cs.items);
     } catch (e) {
       setError(e);
@@ -104,7 +316,7 @@ export function AgreementsRegisterPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clientId]);
 
   useEffect(() => {
     void load();
@@ -113,15 +325,19 @@ export function AgreementsRegisterPage() {
   const filtered = useMemo(() => {
     if (!rows) return [];
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    const scoped =
+      kind === "NDA" || kind === "MSA"
+        ? rows.filter((r) => r.kind === kind)
+        : rows;
+    if (!q) return scoped;
+    return scoped.filter(
       (r) =>
         r.client_name.toLowerCase().includes(q) ||
         r.kind.toLowerCase().includes(q) ||
         r.filename.toLowerCase().includes(q) ||
         r.uploaded_by_name.toLowerCase().includes(q),
     );
-  }, [rows, search]);
+  }, [rows, search, kind]);
 
   const submitUpload = useCallback(async () => {
     if (!upload.clientId || !upload.kind || !upload.file) return;
@@ -147,22 +363,46 @@ export function AgreementsRegisterPage() {
   }, []);
 
   const confirmDelete = useCallback(async () => {
-    if (!pendingDelete) return;
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
     try {
-      await deleteAgreement(pendingDelete.id);
+      const receipt = await deleteAgreement(pendingDelete.id);
+      setCleanup(receipt);
+      setCleanupError(null);
       setPendingDelete(null);
       await load();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Delete failed";
-      alert(message);
+      setDeleteError(message);
+    } finally {
+      setDeleting(false);
     }
-  }, [pendingDelete, load]);
+  }, [pendingDelete, load, deleting]);
+
+  const refreshCleanup = async (retry = false) => {
+    if (!cleanup || cleanupBusy) return;
+    setCleanupBusy(true);
+    setCleanupError(null);
+    try {
+      setCleanup(
+        await (retry
+          ? retryDeletionJob(cleanup.job_id)
+          : getDeletionJob(cleanup.job_id)),
+      );
+    } catch (e) {
+      setCleanupError(
+        e instanceof Error ? e.message : "Cleanup status unavailable",
+      );
+    } finally {
+      setCleanupBusy(false);
+    }
+  };
 
   return (
     <div>
       <PageHeader
         title="NDA & MSA"
-        subtitle="Signed documents by client. Upload, download, delete."
         actions={
           <div className="flex gap-2 items-center">
             <Input
@@ -171,24 +411,75 @@ export function AgreementsRegisterPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <Button
-              onClick={() =>
-                setUpload({
-                  open: true,
-                  clientId: "",
-                  kind: "",
-                  file: null,
-                  submitting: false,
-                  error: null,
-                })
-              }
-            >
-              <FilePlus2 className="h-4 w-4 mr-2" />
-              Upload
-            </Button>
+            {canWrite && (
+              <Button
+                onClick={() =>
+                  setUpload({
+                    open: true,
+                    clientId: clientId || "",
+                    kind: kind === "NDA" || kind === "MSA" ? kind : "",
+                    file: null,
+                    submitting: false,
+                    error: null,
+                  })
+                }
+              >
+                <FilePlus2 className="h-4 w-4 mr-2" />
+                Upload
+              </Button>
+            )}
           </div>
         }
       />
+      {cleanup && (
+        <section
+          aria-label="Agreement deletion receipt"
+          className="my-4 border-y border-divider py-3 space-y-2"
+        >
+          <p>
+            {cleanup.source_deleted
+              ? "Agreement removed from active records"
+              : "Agreement removal pending"}
+          </p>
+          <p role="status">
+            {cleanup.status === "done"
+              ? "File cleanup complete"
+              : cleanup.status === "failed"
+                ? "File cleanup failed"
+                : "File cleanup pending"}
+          </p>
+          {cleanup.last_error && <p role="alert">{cleanup.last_error}</p>}
+          {cleanupError && <p role="alert">{cleanupError}</p>}
+          <Link to={`/deletions/${cleanup.job_id}`} className="underline">
+            Cleanup receipt {cleanup.job_id}
+          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={cleanupBusy}
+              onClick={() => void refreshCleanup()}
+            >
+              <RefreshCw size={16} />
+              Refresh cleanup
+            </Button>
+            {canWrite && cleanup.status === "failed" && (
+              <Button
+                disabled={cleanupBusy}
+                onClick={() => void refreshCleanup(true)}
+              >
+                <RefreshCw size={16} />
+                Retry cleanup
+              </Button>
+            )}
+          </div>
+        </section>
+      )}
+      {clientId && (
+        <ClientAgreementPresence
+          key={rows?.map((row) => `${row.id}:${row.version_no ?? 1}`).join(",")}
+          clientId={clientId}
+        />
+      )}
 
       {error ? (
         <ErrorState
@@ -201,7 +492,7 @@ export function AgreementsRegisterPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           title="No agreements yet"
-          description="Click Upload to attach a signed NDA or MSA for a client."
+          description="No documents on file."
         />
       ) : (
         <div className="overflow-x-auto border border-divider rounded-panel">
@@ -222,12 +513,13 @@ export function AgreementsRegisterPage() {
                   <td className="p-3">{row.client_name}</td>
                   <td className="p-3">
                     <span className="inline-flex items-center gap-1">
-                      <ShieldCheck className="h-4 w-4" />
+                      <FileText className="h-4 w-4" />
                       {row.kind}
                     </span>
                   </td>
                   <td className="p-3">
                     <span className="font-medium">{row.filename}</span>
+                    <span className="ml-2">v{row.version_no ?? 1}</span>
                     <span className="ml-2 text-secondary text-text-secondary">
                       {formatBytes(row.file_size)}
                     </span>
@@ -235,7 +527,25 @@ export function AgreementsRegisterPage() {
                   <td className="p-3">{row.uploaded_by_name}</td>
                   <td className="p-3">{formatDate(row.uploaded_at)}</td>
                   <td className="p-3 text-right">
-                    <div className="inline-flex gap-2">
+                    <div className="inline-flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        aria-label={`History ${row.filename}`}
+                        onClick={() => setRevision(row)}
+                      >
+                        <History size={16} />
+                        History
+                      </Button>
+                      {canWrite && (
+                        <Button
+                          variant="secondary"
+                          aria-label={`Replace ${row.filename}`}
+                          onClick={() => setRevision(row)}
+                        >
+                          <Replace size={16} />
+                          Replace
+                        </Button>
+                      )}
                       <Button
                         variant="secondary"
                         onClick={() => void download(row)}
@@ -244,14 +554,19 @@ export function AgreementsRegisterPage() {
                         <Download className="h-4 w-4 mr-1" />
                         Download
                       </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => setPendingDelete(row)}
-                        aria-label={`Delete ${row.filename}`}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Delete
-                      </Button>
+                      {canWrite && (
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setPendingDelete(row);
+                          }}
+                          aria-label={`Delete ${row.filename}`}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -262,7 +577,7 @@ export function AgreementsRegisterPage() {
       )}
 
       <Dialog
-        open={upload.open}
+        open={upload.open && canWrite}
         onOpenChange={(open) => setUpload((s) => (open ? s : INITIAL_UPLOAD))}
       >
         <DialogContent>
@@ -288,8 +603,8 @@ export function AgreementsRegisterPage() {
                 ))}
               </select>
             </label>
-            <label className="block">
-              <span className="text-secondary">Type</span>
+            <fieldset className="block">
+              <legend className="text-secondary">Type</legend>
               <div className="mt-1 flex gap-4 text-body">
                 {(["NDA", "MSA"] as AgreementKind[]).map((k) => (
                   <label key={k} className="inline-flex items-center gap-2">
@@ -304,7 +619,7 @@ export function AgreementsRegisterPage() {
                   </label>
                 ))}
               </div>
-            </label>
+            </fieldset>
             <label className="block">
               <span className="text-secondary">File (PDF or DOCX)</span>
               <input
@@ -313,7 +628,10 @@ export function AgreementsRegisterPage() {
                 accept={ACCEPT}
                 className="mt-1 block w-full text-body"
                 onChange={(e) =>
-                  setUpload((s) => ({ ...s, file: e.target.files?.[0] ?? null }))
+                  setUpload((s) => ({
+                    ...s,
+                    file: e.target.files?.[0] ?? null,
+                  }))
                 }
               />
             </label>
@@ -334,7 +652,10 @@ export function AgreementsRegisterPage() {
             <Button
               onClick={() => void submitUpload()}
               disabled={
-                !upload.clientId || !upload.kind || !upload.file || upload.submitting
+                !upload.clientId ||
+                !upload.kind ||
+                !upload.file ||
+                upload.submitting
               }
             >
               {upload.submitting ? "Uploading…" : "Upload"}
@@ -342,15 +663,30 @@ export function AgreementsRegisterPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {revision && (
+        <RevisionDialog
+          key={revision.id}
+          row={revision}
+          canWrite={canWrite}
+          onClose={() => setRevision(null)}
+          onSaved={async () => {
+            setRevision(null);
+            await load();
+          }}
+        />
+      )}
 
       <Dialog
         open={pendingDelete !== null}
-        onOpenChange={(open) => (open ? undefined : setPendingDelete(null))}
+        onOpenChange={(open) =>
+          !open && !deleting ? setPendingDelete(null) : undefined
+        }
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete this agreement?</DialogTitle>
           </DialogHeader>
+          {deleteError && <p role="alert">{deleteError}</p>}
           {pendingDelete ? (
             <div className="space-y-2 text-body">
               <p>
@@ -359,15 +695,22 @@ export function AgreementsRegisterPage() {
               </p>
               <p>Client: {pendingDelete.client_name}</p>
               <p className="text-secondary text-text-secondary">
-                The row goes and the stored file is removed. This cannot be undone.
+                This removes the document and all its versions. Stored files are
+                queued for cleanup. This cannot be undone.
               </p>
             </div>
           ) : null}
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+            <Button
+              variant="secondary"
+              disabled={deleting}
+              onClick={() => setPendingDelete(null)}
+            >
               Cancel
             </Button>
-            <Button onClick={() => void confirmDelete()}>Delete</Button>
+            <Button disabled={deleting} onClick={() => void confirmDelete()}>
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

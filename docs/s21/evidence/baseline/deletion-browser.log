@@ -1,0 +1,13 @@
+
+Running 1 test using 1 worker
+
+[1A[2K(node:59424) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:59424) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/1] s21-deletion.spec.ts:3:5 › deletion result shows real cleanup status and retained project
+[1A[2K  1 passed (10.6s)

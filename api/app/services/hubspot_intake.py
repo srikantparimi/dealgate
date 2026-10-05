@@ -8,6 +8,7 @@ HubSpot is master — re-read the deal via the API.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -27,12 +28,106 @@ from app.services.clients import (
     upsert_unknown_client_for_deal,
 )
 from app.services.sync_status import touch_source
+from app.services.hubspot_properties import HubspotPropertyMapping
 
 log = structlog.get_logger("hubspot_intake")
 
 
 INTAKE_SUBJECT = "Confirm engagement type and next client check-in"
 INTAKE_DUE_BUSINESS_DAYS = 1
+
+
+@dataclass(frozen=True)
+class BusinessUnitSelection:
+    name: str
+    object_type: str
+    version: int
+
+    def properties(self, object_type: str) -> tuple[str, ...]:
+        return (self.name,) if self.object_type == object_type else ()
+
+
+async def _business_unit_selection(session: AsyncSession) -> BusinessUnitSelection | None:
+    row = await session.get(HubspotPropertyMapping, "business_unit", populate_existing=True)
+    if row and row.availability_state == "configured" and row.internal_name:
+        return BusinessUnitSelection(row.internal_name, row.object_type, row.mapping_version)
+    return None
+
+
+async def _selection_current(session: AsyncSession, selection: BusinessUnitSelection | None) -> bool:
+    if selection is None:
+        return False
+    row = await session.get(HubspotPropertyMapping, "business_unit", populate_existing=True,
+                            with_for_update=True)
+    return bool(row and row.availability_state == "configured"
+                and (row.internal_name, row.object_type, row.mapping_version)
+                == (selection.name, selection.object_type, selection.version))
+
+
+def _source_snapshot(row: Client | Opportunity) -> dict[str, Any]:
+    return {"hubspot_owner_id": row.hubspot_owner_id,
+            "hubspot_last_modified_at": (row.hubspot_last_modified_at.isoformat()
+                if row.hubspot_last_modified_at else None),
+            "owner_observed": row.hubspot_owner_observed_at is not None,
+            "business_unit_value": row.business_unit_value,
+            "business_unit_mapping_version": row.business_unit_mapping_version,
+            "business_unit_observed": row.business_unit_observed_at is not None}
+
+
+def _observe_source(row: Client | Opportunity, props: dict[str, Any],
+                    selection: BusinessUnitSelection | None, object_type: str,
+                    observed_at: datetime) -> None:
+    if "hubspot_owner_id" in props:
+        value = props["hubspot_owner_id"]
+        if value is not None and not isinstance(value, str):
+            raise ValueError("invalid_hubspot_owner_id")
+        row.hubspot_owner_id = value or None
+        row.hubspot_owner_observed_at = observed_at
+    if selection and selection.object_type == object_type and selection.name in props:
+        value = props[selection.name]
+        if value is not None and not isinstance(value, str):
+            raise ValueError("invalid_business_unit_value")
+        row.business_unit_value = value or None
+        row.business_unit_mapping_version = selection.version
+        row.business_unit_observed_at = observed_at
+
+
+def _stale_source(existing: datetime | None, incoming: datetime | None) -> bool:
+    if existing is None:
+        return False
+    if incoming is None:
+        return True
+    return incoming.replace(tzinfo=incoming.tzinfo or UTC) < existing.replace(tzinfo=existing.tzinfo or UTC)
+
+
+async def _observed_company(session: AsyncSession, payload: dict[str, Any],
+                            correlation_id: str,
+                            selection: BusinessUnitSelection | None) -> Client:
+    if not await _selection_current(session, selection):
+        selection = None
+    props = _deal_props(payload)
+    modified = _parse_timestamp(props.get("hs_lastmodifieddate"))
+    existing = await session.scalar(select(Client).where(
+        Client.hubspot_company_id == str(payload["id"])).with_for_update()
+        .execution_options(populate_existing=True))
+    if existing and _stale_source(existing.hubspot_last_modified_at, modified):
+        return existing
+    if existing and "name" not in props:
+        payload = {**payload, "properties": {**props, "name": existing.name}}
+    row = await upsert_client_from_hubspot(
+        session, company_payload=payload, correlation_id=correlation_id)
+    before = _source_snapshot(row)
+    now = datetime.now(UTC)
+    _observe_source(row, props, selection, "company", now)
+    row.hubspot_last_seen_at = now
+    if modified is not None:
+        row.hubspot_last_modified_at = modified
+    after = _source_snapshot(row)
+    if before != after:
+        await append_audit(session, actor_id=None, action="client.source_observed",
+            entity="client", entity_id=str(row.id), before=before, after=after,
+            correlation_id=correlation_id)
+    return row
 
 
 def _next_business_day(from_date: date, business_days: int) -> date:
@@ -192,16 +287,15 @@ async def _resolve_client(
 
     company_id = _extract_company_id(deal_payload)
     if company_id:
+        selection = await _business_unit_selection(session)
+        additional = selection.properties("company") if selection else ()
         try:
-            company_payload = await client.get_company(company_id)
+            company_payload = await client.get_company(company_id, **(
+                {"additional_properties": additional} if additional else {}))
         except KeyError:
             log.info("hubspot_company_missing", company_id=company_id, deal_id=deal_id)
         else:
-            return await upsert_client_from_hubspot(
-                session,
-                company_payload=company_payload,
-                correlation_id=correlation_id,
-            )
+            return await _observed_company(session, company_payload, correlation_id, selection)
     return await upsert_unknown_client_for_deal(
         session, deal_id=deal_id, correlation_id=correlation_id
     )
@@ -302,8 +396,11 @@ async def _resolve_secondary_clients(
 
     out: list[str] = []
     for cid in company_ids:
+        selection = await _business_unit_selection(session)
+        additional = selection.properties("company") if selection else ()
         try:
-            payload = await client.get_company(cid)
+            payload = await client.get_company(cid, **(
+                {"additional_properties": additional} if additional else {}))
         except Exception as exc:  # noqa: BLE001
             log.info(
                 "hubspot_secondary_company_missing",
@@ -311,9 +408,7 @@ async def _resolve_secondary_clients(
                 error_type=type(exc).__name__,
             )
             continue
-        row = await upsert_client_from_hubspot(
-            session, company_payload=payload, correlation_id=correlation_id
-        )
+        row = await _observed_company(session, payload, correlation_id, selection)
         out.append(str(row.id))
     return out
 
@@ -327,6 +422,7 @@ async def _upsert_opportunity(
     correlation_id: str,
     stage_map: Any | None = None,
     secondary_client_ids: list[str] | None = None,
+    business_unit: BusinessUnitSelection | None = None,
 ) -> tuple[Opportunity, bool]:
     """Insert or update the `opportunity` row keyed by `hubspot_deal_id`.
 
@@ -336,6 +432,8 @@ async def _upsert_opportunity(
     """
 
     props = _deal_props(deal_payload)
+    if not await _selection_current(session, business_unit):
+        business_unit = None
     stage = props.get("dealstage")
     engagement = props.get("engagement_type")
     amount = _parse_amount(props.get("amount"))
@@ -346,7 +444,7 @@ async def _upsert_opportunity(
     dealname = raw_dealname.strip() if isinstance(raw_dealname, str) and raw_dealname.strip() else None
     seen_at = datetime.now(UTC)
     # S19 slice 1 B2 — resolve label + closed flags + order from the mirror.
-    stage_info = stage_map.resolve(stage) if stage_map is not None else None
+    stage_info = stage_map.resolve(stage, props.get("pipeline")) if stage_map is not None else None
     stage_label = stage_info.label if stage_info else stage
     is_closed_won = bool(stage_info.is_closed_won) if stage_info else False
     is_closed_lost = bool(stage_info.is_closed_lost) if stage_info else False
@@ -354,15 +452,22 @@ async def _upsert_opportunity(
     pipeline_id = stage_info.pipeline_id if stage_info else (props.get("pipeline") or None)
     hubspot_created_at = _parse_timestamp(props.get("createdate"))
     hubspot_last_modified_at = _parse_timestamp(props.get("hs_lastmodifieddate"))
-    hubspot_last_activity_at = (
-        _parse_timestamp(props.get("notes_last_updated")) or hubspot_last_modified_at
-    )
+    hubspot_last_activity_at = _parse_timestamp(props.get("notes_last_updated"))
     secondary_ids = list(secondary_client_ids or [])
 
     result = await session.execute(
-        select(Opportunity).where(Opportunity.hubspot_deal_id == deal_id)
+        select(Opportunity).where(Opportunity.hubspot_deal_id == deal_id).with_for_update()
+        .execution_options(populate_existing=True)
     )
     opp = result.scalar_one_or_none()
+    if opp is not None and _stale_source(opp.hubspot_last_modified_at, hubspot_last_modified_at):
+        return opp, False
+    if opp is not None and opp.archived_at is not None and opp.archived_reason == "hubspot_deleted":
+        prior = opp.hubspot_last_modified_at
+        incoming = hubspot_last_modified_at
+        if incoming is None or (prior is not None and incoming.replace(tzinfo=incoming.tzinfo or UTC)
+            <= prior.replace(tzinfo=prior.tzinfo or UTC)):
+            return opp, False
 
     if opp is None:
         opp = Opportunity(
@@ -391,6 +496,7 @@ async def _upsert_opportunity(
             hubspot_secondary_client_ids=secondary_ids or None,
         )
         session.add(opp)
+        _observe_source(opp, props, business_unit, "deal", seen_at)
         await session.flush()
         await append_audit(
             session,
@@ -418,12 +524,14 @@ async def _upsert_opportunity(
                 "currency": currency,
                 "primary_client_id": str(client_row.id),
                 "secondary_client_ids": secondary_ids or [],
+                **_source_snapshot(opp),
             },
             correlation_id=correlation_id,
         )
         return opp, True
 
     before = {
+        **_source_snapshot(opp),
         "owner_id": str(opp.owner_id) if opp.owner_id else None,
         "client_id": str(opp.client_id) if opp.client_id else None,
         "engagement_type": opp.engagement_type,
@@ -438,54 +546,57 @@ async def _upsert_opportunity(
         "primary_client_id": str(opp.primary_client_id) if opp.primary_client_id else None,
     }
     changed = False
-    if opp.owner_id != owner.id:
+    _observe_source(opp, props, business_unit, "deal", seen_at)
+    if any(before[key] != value for key, value in _source_snapshot(opp).items()):
+        changed = True
+    if "hubspot_owner_id" in props and opp.owner_id != owner.id:
         opp.owner_id = owner.id
         changed = True
     if opp.client_id != client_row.id:
         opp.client_id = client_row.id
         changed = True
-    if engagement is not None and opp.engagement_type != engagement:
+    if "engagement_type" in props and opp.engagement_type != engagement:
         opp.engagement_type = engagement
         changed = True
-    if stage is not None and opp.sales_stage != stage:
+    if "dealstage" in props and opp.sales_stage != stage:
         opp.sales_stage = stage
         changed = True
-    if stage_label is not None and opp.stage_label != stage_label:
+    if "dealstage" in props and opp.stage_label != stage_label:
         opp.stage_label = stage_label
         changed = True
     # S20 W2 L04 · dealname update. `getattr` guard so a partial-migrated
     # schema (name column not yet applied) is safe.
-    if hasattr(opp, "name") and opp.name != dealname:
+    if "dealname" in props and opp.name != dealname:
         opp.name = dealname
         changed = True
-    if amount != opp.amount:
+    if "amount" in props and amount != opp.amount:
         opp.amount = amount
         changed = True
-    if close_date != opp.close_date:
+    if "closedate" in props and close_date != opp.close_date:
         opp.close_date = close_date
         changed = True
-    if opp.hubspot_pipeline_id != pipeline_id:
+    if ("pipeline" in props or stage_info) and opp.hubspot_pipeline_id != pipeline_id:
         opp.hubspot_pipeline_id = pipeline_id
         changed = True
-    if opp.hubspot_stage_id != stage:
+    if "dealstage" in props and opp.hubspot_stage_id != stage:
         opp.hubspot_stage_id = stage
         changed = True
-    if opp.stage_order != stage_order:
+    if "dealstage" in props and opp.stage_order != stage_order:
         opp.stage_order = stage_order
         changed = True
-    if opp.is_closed_won != is_closed_won:
+    if "dealstage" in props and opp.is_closed_won != is_closed_won:
         opp.is_closed_won = is_closed_won
         changed = True
-    if opp.is_closed_lost != is_closed_lost:
+    if "dealstage" in props and opp.is_closed_lost != is_closed_lost:
         opp.is_closed_lost = is_closed_lost
         changed = True
-    if currency is not None and opp.currency != currency:
+    if "deal_currency_code" in props and opp.currency != currency:
         opp.currency = currency
         changed = True
-    if hubspot_created_at and opp.hubspot_created_at != hubspot_created_at:
+    if "createdate" in props and opp.hubspot_created_at != hubspot_created_at:
         opp.hubspot_created_at = hubspot_created_at
         changed = True
-    if hubspot_last_activity_at and opp.hubspot_last_activity_at != hubspot_last_activity_at:
+    if "notes_last_updated" in props and opp.hubspot_last_activity_at != hubspot_last_activity_at:
         opp.hubspot_last_activity_at = hubspot_last_activity_at
         changed = True
     if hubspot_last_modified_at and opp.hubspot_last_modified_at != hubspot_last_modified_at:
@@ -518,6 +629,7 @@ async def _upsert_opportunity(
             entity_id=str(opp.id),
             before=before,
             after={
+                **_source_snapshot(opp),
                 "owner_id": str(opp.owner_id) if opp.owner_id else None,
                 "client_id": str(opp.client_id) if opp.client_id else None,
                 "engagement_type": opp.engagement_type,
@@ -761,7 +873,10 @@ async def handle_event(
         await session.commit()
         return
 
-    deal_payload = await client.get_deal(deal_id)
+    business_unit = await _business_unit_selection(session)
+    additional = business_unit.properties("deal") if business_unit else ()
+    deal_payload = await client.get_deal(deal_id, **(
+        {"additional_properties": additional} if additional else {}))
     props = _deal_props(deal_payload)
     hubspot_owner_id = props.get("hubspot_owner_id")
 
@@ -770,12 +885,13 @@ async def handle_event(
         session, client, deal_id, deal_payload, correlation_id
     )
     opportunity, created = await _upsert_opportunity(
-        session, deal_id, deal_payload, owner, client_row, correlation_id
+        session, deal_id, deal_payload, owner, client_row, correlation_id,
+        business_unit=business_unit,
     )
     # T28 · property-clear / owner-clear / association-change / merge /
     # delete-on-remote are all handled by ``_upsert_opportunity`` (it
-    # detects an absent field via `props.get(...)` and clears the mirror
-    # row; ``_archive_missing`` in backfill handles remote deletes).
+    # distinguishes explicit blank fields from fields not fetched;
+    # ``_archive_missing`` in backfill handles remote deletes).
     #
     # S17: no more auto-created 'obtain NDA/MSA' tasks. NDA/MSA is a doc store now.
     if created:

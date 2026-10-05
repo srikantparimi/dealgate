@@ -1,0 +1,10 @@
+{"run": "e6ef4cf816344da18cfc4d8829473656", "fixture": {"run_id": "51203ea4-8ce4-41e7-a59f-02b06456d47a", "client_id": "81956317-58ac-41c6-90ae-69450849f0f6", "opportunity_id": "954a0a67-7747-4bb3-b655-f2129c29f74d", "expires_at": "2026-10-02T06:09:38.523442+00:00"}}
+2026-10-01 19:09:38 [info     ] role_check                     granted=True required=['Sales', 'SalesLeader', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=e6ef4cf816344da18cfc4d8829473656-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-01 19:09:47 [info     ] role_check                     granted=True required=['Marketing', 'Sales', 'SalesLeader', 'Presales', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=e6ef4cf816344da18cfc4d8829473656-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"uploaded": "aec19a60-fcfb-459e-ac2c-600fff117308", "extract_status": "complete"}
+2026-10-01 19:09:49 [info     ] role_check                     granted=True required=['Delivery', 'SystemAdmin'] user=e6ef4cf816344da18cfc4d8829473656-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"approved": "ec1780cf-00e3-4547-93a7-be18da8add5c", "functions": ["delivery", "hr", "sales", "finance", "legal"]}
+2026-10-01 19:10:03 [info     ] role_check                     granted=True required=['Sales', 'SalesLeader', 'Presales', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=e6ef4cf816344da18cfc4d8829473656-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"journey": "sales-path-passed", "forecast": "80f961f0-5501-4d24-b8ff-fa30edeef392", "worker_rows": 18, "mail_sink_messages": 13, "s21_sales_present": true, "staging_verified": false}
+{"storage_deleted": "sow/954a0a67-7747-4bb3-b655-f2129c29f74d/20261002T020955Z-02536ab7-executed.docx.docx"}
+{"storage_deleted": "verification/s21/e6ef4cf816344da18cfc4d8829473656/sow/4869883b-ae8c-47a8-a521-d8a584ae9e59/20261002T020938Z-1104fa9c-assessment-e6ef4cf816344da18cfc4d8829473656.docx.docx"}

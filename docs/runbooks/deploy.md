@@ -1,5 +1,15 @@
 # Runbook — DealGate branch → staging deploy (D5, T36)
 
+> S21F-02 safety notice (2 Oct 2026): the historical executable procedure
+> below is superseded and MUST NOT be executed. Steps 2/4/9 mutate ECS outside
+> Terraform, violating CLAUDE.md rule 12; EventBridge targets actually pin
+> revisions, contrary to step 4. Describing the latest family is not worker
+> deployment proof. The smoke retry advice was also invalid. See
+> docs/s21/session-02.md and operations.md. Prepare a fresh whole-root reviewed
+> Terraform plan, preserve required human confirmation, update all real target
+> ARNs, and verify matching API/worker/UI/schema revisions before release.
+> Preserve this historical text as incident evidence, not operational authority.
+
 **Owner:** W4 · **Executed tonight by:** Lead · **Adopted:** S20 (2026-09-29).
 
 This is the pre-merge deploy path the review calls A6 and directive D5:
@@ -225,8 +235,8 @@ S15_BASE_URL="https://app.dealgateapp.com" scripts/deploy-smoke.sh
 
 Green = safe to publish the SPA. Red = **stop**; do not sync S3.
 
-If Bedrock trips its "payload.fields must be a dict" flake, re-run the
-smoke once (per memory `dealgate-staging-constants`).
+If extraction fails schema validation, retain the failure and investigate.
+Do not retry unchanged code until green or relabel the failure as a flake.
 
 ---
 

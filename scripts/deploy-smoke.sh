@@ -16,6 +16,9 @@ set -euo pipefail
 BASE_URL="${S15_BASE_URL:-https://app.dealgateapp.com}"
 E2E_SECRET_ID="${S15_E2E_SECRET_ID:-officeapp-dev-e2e-user}"
 AWS_REGION_="${AWS_REGION:-us-east-2}"
+ECS_CLUSTER="${S15_ECS_CLUSTER:-officeapp-dev-cluster}"
+ECS_SERVICE="${S15_ECS_SERVICE:-officeapp-dev-api}"
+API_CONTAINER="${S15_API_CONTAINER:-api}"
 RUN_TAG="smoke $(date -u +%Y%m%dT%H%M%SZ)"
 FIXTURE_FILE="${S17_FIXTURE_FILE:-docs/reports/s15/input/Peppermill_Casino_AI_Assessment_SOW.docx}"
 
@@ -32,6 +35,11 @@ cleanup() {
   status=$?
   if [ -n "${AUTH_H+x}" ]; then
     local body ids id
+    if [ -n "${CLIENT_ID_TO_DELETE:-}" ]; then
+      log "cleanup · DELETE client $CLIENT_ID_TO_DELETE"
+      curl -sS -o /dev/null -X DELETE "${AUTH_H[@]}" \
+        "$BASE_URL/api/clients/$CLIENT_ID_TO_DELETE?reason=smoke%20teardown" || true
+    fi
     body=$(curl -sS -o - "${AUTH_H[@]}" "$BASE_URL/api/clients?size=200" || echo '{}')
     ids=$(printf '%s' "$body" | python3 -c "
 import json, sys, os
@@ -70,7 +78,10 @@ CREDS_JSON=$(aws --region "$AWS_REGION_" secretsmanager get-secret-value \
 [ -n "$CREDS_JSON" ] || fail "cannot read Secrets Manager $E2E_SECRET_ID"
 POOL=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["user_pool_id"])')
 CLIENT=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["client_id"])')
-USER=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["username"])')
+# The secret's username field is stale (pre-S21 identity); until the
+# reviewed Terraform secret correction lands, S15_E2E_USERNAME overrides
+# it explicitly rather than silently failing auth.
+USER="${S15_E2E_USERNAME:-$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["username"])')}"
 PASS=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])')
 AUTH_JSON=$(aws --region "$AWS_REGION_" cognito-idp admin-initiate-auth \
   --user-pool-id "$POOL" --client-id "$CLIENT" \
@@ -94,39 +105,41 @@ code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/api/healthz" || true)
 [ "$code" = "200" ] || fail "healthz returned $code"
 
 # ---- Step 2: extract-model guard proof -----------------------------------
-log "step 2 · bedrock inference profile in region"
-model_id=$(aws ecs describe-task-definition --task-definition officeapp-dev-api \
-  --query 'taskDefinition.containerDefinitions[0].environment[?name==`SOW_EXTRACT_MODEL_ID`].value | [0]' \
-  --output text 2>/dev/null || true)
-[ -n "$model_id" ] && [ "$model_id" != "None" ] || fail "task-def does not set SOW_EXTRACT_MODEL_ID"
-live=$(aws bedrock list-inference-profiles --region us-east-2 \
-  --query "inferenceProfileSummaries[?inferenceProfileId==\`$model_id\`].inferenceProfileId | [0]" \
-  --output text 2>/dev/null || true)
-[ "$live" = "$model_id" ] || fail "SOW_EXTRACT_MODEL_ID=$model_id is not a live Bedrock profile"
+log "step 2 · service-bound task, digest and Bedrock inference profile"
+MODEL_BINDING=$(python3 "$(cd "$(dirname "$0")" && pwd)/smoke_model_binding.py" \
+  --region "$AWS_REGION_" --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+  --container "$API_CONTAINER") || fail "service-bound extraction model observation failed"
+log "$MODEL_BINDING"
 
-# ---- Step 3: upload a fresh Peppermill fixture ---------------------------
+# ---- Step 3: issue an isolated fixture; Step 4: upload its SOW ------------
 # Append 64 random bytes so the file_hash is unique every run — otherwise
 # the dedupe short-circuit returns whichever stale job first uploaded
 # these bytes, and the smoke reads someone else's extract_status.
 [ -f "$FIXTURE_FILE" ] || fail "fixture file $FIXTURE_FILE missing"
+log "step 3 · issue isolated test fixture"
+FIXTURE_JSON=$(curl -sS -X POST "${AUTH_H[@]}" \
+  -H "Content-Type: application/json" \
+  -d "{\"label\":\"$RUN_TAG\",\"reviewer_ids\":[],\"hours\":1}" \
+  "$BASE_URL/api/dev/test-fixtures" || true)
+CLIENT_ID_TO_DELETE=$(printf '%s' "$FIXTURE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("client_id", ""))' 2>/dev/null || true)
+FIXTURE_OPP_ID=$(printf '%s' "$FIXTURE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("opportunity_id", ""))' 2>/dev/null || true)
+[ -n "$CLIENT_ID_TO_DELETE" ] && [ -n "$FIXTURE_OPP_ID" ] \
+  || fail "fixture issuance failed: $(printf '%s' "$FIXTURE_JSON" | head -c 300)"
+
 UNIQUE_FILE=$(mktemp -t smoke-fixture-XXXXXX.docx)
 cat "$FIXTURE_FILE" > "$UNIQUE_FILE"
 head -c 64 /dev/urandom >> "$UNIQUE_FILE"
-log "step 3 · POST /sows/upload"
+log "step 4 · POST /sows/upload (bound to issued fixture)"
 UPLOAD_JSON=$(curl -sS -X POST "${AUTH_H[@]}" \
+  -F "client_id=$CLIENT_ID_TO_DELETE" \
+  -F "opportunity_id=$FIXTURE_OPP_ID" \
   -F "file=@${UNIQUE_FILE};type=application/vnd.openxmlformats-officedocument.wordprocessingml.document;filename=smoke-${RUN_TAG// /_}.docx" \
   "$BASE_URL/api/sows/upload" || true)
 rm -f "$UNIQUE_FILE"
 JOB_ID=$(printf '%s' "$UPLOAD_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("job_id",""))')
 [ -n "$JOB_ID" ] || fail "upload failed: $(printf '%s' "$UPLOAD_JSON" | head -c 300)"
 
-log "step 4 · POST /sows/jobs/$JOB_ID/pick (create_new: $RUN_TAG)"
-PICK_JSON=$(curl -sS -X POST "${AUTH_H[@]}" \
-  -H "Content-Type: application/json" \
-  -d "{\"create_new\":{\"legal_name\":\"smoke ${RUN_TAG}\",\"domain\":null,\"address_lines\":[]}}" \
-  "$BASE_URL/api/sows/jobs/$JOB_ID/pick" || true)
-
-# Poll until done
+log "step 5 · poll bound upload job $JOB_ID"
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   sleep 2
   JOB_STATUS=$(curl -sS "${AUTH_H[@]}" "$BASE_URL/api/sows/jobs/$JOB_ID" || true)
@@ -144,15 +157,14 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
 done
 [ -n "${OPP_ID:-}" ] || fail "job never reached done"
 CONFIRM=$(curl -sS "${AUTH_H[@]}" "$BASE_URL/api/sow/$OPP_ID/confirmation" || true)
-CLIENT_ID_TO_DELETE=$(printf '%s' "$CONFIRM" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("source",{}) or {}).get("client",{}).get("id") or (d.get("opportunity") or {}).get("client_id") or "")')
 
-# ---- Step 5: verify the extract landed complete --------------------------
-log "step 5 · confirmation.extract_status"
+# ---- Step 6: verify the extract landed complete --------------------------
+log "step 6 · confirmation.extract_status"
 extract_status=$(printf '%s' "$CONFIRM" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sow_version"]["extract_status"])')
 [ "$extract_status" = "complete" ] || fail "extract_status=$extract_status (expected complete)"
 
-# ---- Step 6: draft SOW list responds -------------------------------------
-log "step 6 · GET /sows/drafts?mine=false"
+# ---- Step 7: draft SOW list responds -------------------------------------
+log "step 7 · GET /sows/drafts?mine=false"
 status=$(curl -sS -o /dev/null -w '%{http_code}' \
   "${AUTH_H[@]}" \
   "$BASE_URL/api/sows/drafts?mine=false" || true)

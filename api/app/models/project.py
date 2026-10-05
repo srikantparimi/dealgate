@@ -36,22 +36,24 @@ class Project(Base):
     __tablename__ = "project"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    opportunity_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("opportunity.id"), nullable=False
+    opportunity_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("opportunity.id", ondelete="SET NULL"), nullable=True
     )
-    sow_version_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("sow_version.id"), nullable=False
+    sow_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("sow_version.id", ondelete="SET NULL"), nullable=True
     )
-    gm_model_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("gm_model.id"), nullable=False
+    gm_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("gm_model.id", ondelete="SET NULL"), nullable=True
     )
-    package_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("approval_package.id"), nullable=False
+    package_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("approval_package.id", ondelete="SET NULL"), nullable=True
     )
     client_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid, ForeignKey("client.id"), nullable=True
+        Uuid, ForeignKey("client.id", ondelete="SET NULL"), nullable=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retained_source: Mapped[dict[str, Any] | None] = mapped_column(JsonB)
     # Frozen at release. Stores approved GM totals, resource lines,
     # scope summary, price, term dates, currency. Never mutates.
     baseline_snapshot_json: Mapped[dict[str, Any]] = mapped_column(JsonB, nullable=False)

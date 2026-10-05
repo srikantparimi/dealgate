@@ -1,0 +1,3263 @@
+{
+  "actor_email": "s21-filter-admin@example.test",
+  "actor_id": "6ef5173e-ed67-5601-8457-6a1ea5622027",
+  "boundary": "synthetic local mirror, not live HubSpot or staging",
+  "counts_seeded": {
+    "clients": 23,
+    "deals": 88,
+    "saved_views": 1,
+    "users": 3
+  },
+  "database": "s21_filter_850f3ce6dd7a4295b7dd296e2f1e8558",
+  "empty_client_id": "af49fa61-bf1a-5412-a37a-c2850d0ac651",
+  "expected": {
+    "all": {
+      "clients": [
+        {
+          "id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "c6137ffb-334d-5302-8277-8d16b719b084",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "57453649-8f76-503a-a718-ddcb2ee63eaf",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0b706d4a-7e7b-55f5-981e-4099d262d4c2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "72c4be95-92c2-542f-9665-814e33b2037e",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "92e55647-2006-5752-ab0a-434fda787102",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b2536162-d9c1-50f6-8e90-bc349598b8b6",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "CAD": "24000.00",
+        "USD": "112000.00"
+      },
+      "filters": {},
+      "ids": [
+        "8e61489e-e09e-5756-bf45-24caabe71b64",
+        "9da96c77-38ba-5ba2-8e5b-72704e051619",
+        "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+        "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+        "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+        "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+        "ab62954d-a1f3-5f29-8727-e22513891852",
+        "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+        "0571c037-7577-5fd1-9948-e26a04189941",
+        "13c14ac3-176d-520a-9480-5c56750962c3",
+        "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+        "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+        "1426e63e-166e-5943-aa6b-000422a0c105",
+        "4615f703-e9ad-5943-8c50-0daf7a148f77",
+        "a402b756-99c4-57b0-8de2-eca263fdfabd",
+        "b8de51ab-4a38-5706-9326-ee961f858c43",
+        "1a073644-1cba-5469-855b-ae60ffe6723e",
+        "1fbdb21c-9d08-548e-adbe-b3489781f141",
+        "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+        "67029762-0cbc-5001-8d85-8f454c8c0427",
+        "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+        "30689521-fb27-57c0-8300-5870220df2e4",
+        "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+        "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+        "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+        "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+        "6f478830-c9b9-5e34-a86c-570eff56538f",
+        "80789608-70cd-5a4a-825e-455981b5cc23",
+        "25354921-181a-5023-8824-ba7da0b4eca2",
+        "378f193a-4dd9-5158-91f7-4891f84d1044",
+        "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+        "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+        "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+        "5f21162e-de6d-5fd3-95c1-c162f907c705",
+        "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+        "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+        "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+        "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+        "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+        "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+        "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+        "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+        "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+        "b7e70134-d501-5586-aaba-b3c2764d108d",
+        "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+        "03c64a54-cc59-5035-82fd-0483291e4394",
+        "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+        "3e4831cc-3e04-5437-9621-85333a1fd207",
+        "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+        "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+        "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+        "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+        "694d099a-6a19-5644-88a6-d7aeee79fe32",
+        "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+        "a96aff26-7467-5d5b-8a36-6622060f2884",
+        "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+        "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+        "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+        "d9e23792-20af-5e45-b322-927c1de4c020",
+        "ee168c03-20d2-596f-92d6-332a5506d0c4",
+        "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+        "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+        "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+        "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+        "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+        "b6439aae-79dd-52c3-a891-f88185bbdc10",
+        "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+        "fc347759-ac18-503b-9922-817538938f86",
+        "26ab24a9-b939-5292-aef1-b9701a54c71a",
+        "3b2c8022-98de-5268-a1e2-5b92df917128",
+        "527948e5-80b9-55c8-a982-bba7f00e6501",
+        "d1e49c97-5449-515b-9150-648f0684c1c1",
+        "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+        "345cd647-a1da-59cf-803a-dd78dcacb88e",
+        "4cdf7693-900d-51ef-8796-e33681e16ae9",
+        "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+        "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+        "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+        "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+        "81f44228-0472-5d7d-a94e-180b30ddae7a",
+        "aed04017-7480-5f98-8df4-2493e1c5be3d",
+        "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+        "e98060fc-84c6-5293-a1bb-86092a15e95e",
+        "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+        "33c60d68-8d52-504c-8a77-70a30470d01e",
+        "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+        "9fa0eec4-40a6-5068-b877-9149d027cb19",
+        "ec2af0b5-d92a-536c-9692-1df957e4b488"
+      ],
+      "pages_25": [
+        [
+          "8e61489e-e09e-5756-bf45-24caabe71b64",
+          "9da96c77-38ba-5ba2-8e5b-72704e051619",
+          "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+          "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+          "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+          "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+          "ab62954d-a1f3-5f29-8727-e22513891852",
+          "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+          "0571c037-7577-5fd1-9948-e26a04189941",
+          "13c14ac3-176d-520a-9480-5c56750962c3",
+          "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+          "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+          "1426e63e-166e-5943-aa6b-000422a0c105",
+          "4615f703-e9ad-5943-8c50-0daf7a148f77",
+          "a402b756-99c4-57b0-8de2-eca263fdfabd",
+          "b8de51ab-4a38-5706-9326-ee961f858c43",
+          "1a073644-1cba-5469-855b-ae60ffe6723e",
+          "1fbdb21c-9d08-548e-adbe-b3489781f141",
+          "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+          "67029762-0cbc-5001-8d85-8f454c8c0427",
+          "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+          "30689521-fb27-57c0-8300-5870220df2e4",
+          "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+          "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+          "04912a52-0ac8-5f29-b693-084c3fe2d93d"
+        ],
+        [
+          "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+          "6f478830-c9b9-5e34-a86c-570eff56538f",
+          "80789608-70cd-5a4a-825e-455981b5cc23",
+          "25354921-181a-5023-8824-ba7da0b4eca2",
+          "378f193a-4dd9-5158-91f7-4891f84d1044",
+          "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+          "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+          "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+          "5f21162e-de6d-5fd3-95c1-c162f907c705",
+          "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+          "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+          "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+          "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+          "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+          "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+          "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+          "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+          "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+          "b7e70134-d501-5586-aaba-b3c2764d108d",
+          "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+          "03c64a54-cc59-5035-82fd-0483291e4394",
+          "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+          "3e4831cc-3e04-5437-9621-85333a1fd207",
+          "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+          "4169f307-e4d3-5644-8df3-2bcc75406f3b"
+        ],
+        [
+          "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+          "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+          "694d099a-6a19-5644-88a6-d7aeee79fe32",
+          "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+          "a96aff26-7467-5d5b-8a36-6622060f2884",
+          "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+          "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+          "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+          "d9e23792-20af-5e45-b322-927c1de4c020",
+          "ee168c03-20d2-596f-92d6-332a5506d0c4",
+          "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+          "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+          "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+          "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+          "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+          "b6439aae-79dd-52c3-a891-f88185bbdc10",
+          "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+          "fc347759-ac18-503b-9922-817538938f86",
+          "26ab24a9-b939-5292-aef1-b9701a54c71a",
+          "3b2c8022-98de-5268-a1e2-5b92df917128",
+          "527948e5-80b9-55c8-a982-bba7f00e6501",
+          "d1e49c97-5449-515b-9150-648f0684c1c1",
+          "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+          "345cd647-a1da-59cf-803a-dd78dcacb88e",
+          "4cdf7693-900d-51ef-8796-e33681e16ae9"
+        ],
+        [
+          "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+          "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+          "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+          "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+          "81f44228-0472-5d7d-a94e-180b30ddae7a",
+          "aed04017-7480-5f98-8df4-2493e1c5be3d",
+          "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+          "e98060fc-84c6-5293-a1bb-86092a15e95e",
+          "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+          "33c60d68-8d52-504c-8a77-70a30470d01e",
+          "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+          "9fa0eec4-40a6-5068-b877-9149d027cb19",
+          "ec2af0b5-d92a-536c-9692-1df957e4b488"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 88
+    },
+    "consulting": {
+      "clients": [
+        {
+          "id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "c6137ffb-334d-5302-8277-8d16b719b084",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "57453649-8f76-503a-a718-ddcb2ee63eaf",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0b706d4a-7e7b-55f5-981e-4099d262d4c2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "72c4be95-92c2-542f-9665-814e33b2037e",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "CAD": "24000.00",
+        "USD": "80000.00"
+      },
+      "filters": {
+        "business_unit": [
+          "consulting"
+        ]
+      },
+      "ids": [
+        "8e61489e-e09e-5756-bf45-24caabe71b64",
+        "9da96c77-38ba-5ba2-8e5b-72704e051619",
+        "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+        "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+        "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+        "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+        "ab62954d-a1f3-5f29-8727-e22513891852",
+        "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+        "0571c037-7577-5fd1-9948-e26a04189941",
+        "13c14ac3-176d-520a-9480-5c56750962c3",
+        "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+        "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+        "1426e63e-166e-5943-aa6b-000422a0c105",
+        "4615f703-e9ad-5943-8c50-0daf7a148f77",
+        "a402b756-99c4-57b0-8de2-eca263fdfabd",
+        "b8de51ab-4a38-5706-9326-ee961f858c43",
+        "1a073644-1cba-5469-855b-ae60ffe6723e",
+        "1fbdb21c-9d08-548e-adbe-b3489781f141",
+        "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+        "67029762-0cbc-5001-8d85-8f454c8c0427",
+        "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+        "30689521-fb27-57c0-8300-5870220df2e4",
+        "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+        "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+        "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+        "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+        "6f478830-c9b9-5e34-a86c-570eff56538f",
+        "80789608-70cd-5a4a-825e-455981b5cc23",
+        "25354921-181a-5023-8824-ba7da0b4eca2",
+        "378f193a-4dd9-5158-91f7-4891f84d1044",
+        "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+        "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+        "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+        "5f21162e-de6d-5fd3-95c1-c162f907c705",
+        "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+        "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+        "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+        "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+        "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+        "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+        "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+        "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+        "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+        "b7e70134-d501-5586-aaba-b3c2764d108d",
+        "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+        "03c64a54-cc59-5035-82fd-0483291e4394",
+        "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+        "3e4831cc-3e04-5437-9621-85333a1fd207",
+        "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+        "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+        "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+        "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+        "694d099a-6a19-5644-88a6-d7aeee79fe32",
+        "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+        "a96aff26-7467-5d5b-8a36-6622060f2884",
+        "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+        "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+        "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+        "d9e23792-20af-5e45-b322-927c1de4c020",
+        "ee168c03-20d2-596f-92d6-332a5506d0c4",
+        "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+        "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+        "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+        "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+        "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+        "b6439aae-79dd-52c3-a891-f88185bbdc10",
+        "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+        "fc347759-ac18-503b-9922-817538938f86",
+        "26ab24a9-b939-5292-aef1-b9701a54c71a",
+        "3b2c8022-98de-5268-a1e2-5b92df917128",
+        "527948e5-80b9-55c8-a982-bba7f00e6501",
+        "d1e49c97-5449-515b-9150-648f0684c1c1",
+        "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+        "345cd647-a1da-59cf-803a-dd78dcacb88e",
+        "4cdf7693-900d-51ef-8796-e33681e16ae9",
+        "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+        "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+        "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+        "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+        "81f44228-0472-5d7d-a94e-180b30ddae7a"
+      ],
+      "pages_25": [
+        [
+          "8e61489e-e09e-5756-bf45-24caabe71b64",
+          "9da96c77-38ba-5ba2-8e5b-72704e051619",
+          "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+          "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+          "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+          "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+          "ab62954d-a1f3-5f29-8727-e22513891852",
+          "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+          "0571c037-7577-5fd1-9948-e26a04189941",
+          "13c14ac3-176d-520a-9480-5c56750962c3",
+          "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+          "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+          "1426e63e-166e-5943-aa6b-000422a0c105",
+          "4615f703-e9ad-5943-8c50-0daf7a148f77",
+          "a402b756-99c4-57b0-8de2-eca263fdfabd",
+          "b8de51ab-4a38-5706-9326-ee961f858c43",
+          "1a073644-1cba-5469-855b-ae60ffe6723e",
+          "1fbdb21c-9d08-548e-adbe-b3489781f141",
+          "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+          "67029762-0cbc-5001-8d85-8f454c8c0427",
+          "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+          "30689521-fb27-57c0-8300-5870220df2e4",
+          "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+          "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+          "04912a52-0ac8-5f29-b693-084c3fe2d93d"
+        ],
+        [
+          "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+          "6f478830-c9b9-5e34-a86c-570eff56538f",
+          "80789608-70cd-5a4a-825e-455981b5cc23",
+          "25354921-181a-5023-8824-ba7da0b4eca2",
+          "378f193a-4dd9-5158-91f7-4891f84d1044",
+          "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+          "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+          "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+          "5f21162e-de6d-5fd3-95c1-c162f907c705",
+          "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+          "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+          "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+          "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+          "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+          "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+          "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+          "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+          "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+          "b7e70134-d501-5586-aaba-b3c2764d108d",
+          "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+          "03c64a54-cc59-5035-82fd-0483291e4394",
+          "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+          "3e4831cc-3e04-5437-9621-85333a1fd207",
+          "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+          "4169f307-e4d3-5644-8df3-2bcc75406f3b"
+        ],
+        [
+          "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+          "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+          "694d099a-6a19-5644-88a6-d7aeee79fe32",
+          "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+          "a96aff26-7467-5d5b-8a36-6622060f2884",
+          "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+          "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+          "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+          "d9e23792-20af-5e45-b322-927c1de4c020",
+          "ee168c03-20d2-596f-92d6-332a5506d0c4",
+          "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+          "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+          "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+          "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+          "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+          "b6439aae-79dd-52c3-a891-f88185bbdc10",
+          "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+          "fc347759-ac18-503b-9922-817538938f86",
+          "26ab24a9-b939-5292-aef1-b9701a54c71a",
+          "3b2c8022-98de-5268-a1e2-5b92df917128",
+          "527948e5-80b9-55c8-a982-bba7f00e6501",
+          "d1e49c97-5449-515b-9150-648f0684c1c1",
+          "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+          "345cd647-a1da-59cf-803a-dd78dcacb88e",
+          "4cdf7693-900d-51ef-8796-e33681e16ae9"
+        ],
+        [
+          "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+          "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+          "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+          "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+          "81f44228-0472-5d7d-a94e-180b30ddae7a"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 80
+    },
+    "discovery": {
+      "clients": [
+        {
+          "id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "c6137ffb-334d-5302-8277-8d16b719b084",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "57453649-8f76-503a-a718-ddcb2ee63eaf",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0b706d4a-7e7b-55f5-981e-4099d262d4c2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "92e55647-2006-5752-ab0a-434fda787102",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b2536162-d9c1-50f6-8e90-bc349598b8b6",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "USD": "112000.00"
+      },
+      "filters": {
+        "stage": [
+          "synthetic-discovery"
+        ]
+      },
+      "ids": [
+        "8e61489e-e09e-5756-bf45-24caabe71b64",
+        "9da96c77-38ba-5ba2-8e5b-72704e051619",
+        "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+        "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+        "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+        "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+        "ab62954d-a1f3-5f29-8727-e22513891852",
+        "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+        "0571c037-7577-5fd1-9948-e26a04189941",
+        "13c14ac3-176d-520a-9480-5c56750962c3",
+        "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+        "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+        "1426e63e-166e-5943-aa6b-000422a0c105",
+        "4615f703-e9ad-5943-8c50-0daf7a148f77",
+        "a402b756-99c4-57b0-8de2-eca263fdfabd",
+        "b8de51ab-4a38-5706-9326-ee961f858c43",
+        "1a073644-1cba-5469-855b-ae60ffe6723e",
+        "1fbdb21c-9d08-548e-adbe-b3489781f141",
+        "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+        "67029762-0cbc-5001-8d85-8f454c8c0427",
+        "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+        "30689521-fb27-57c0-8300-5870220df2e4",
+        "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+        "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+        "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+        "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+        "6f478830-c9b9-5e34-a86c-570eff56538f",
+        "80789608-70cd-5a4a-825e-455981b5cc23",
+        "25354921-181a-5023-8824-ba7da0b4eca2",
+        "378f193a-4dd9-5158-91f7-4891f84d1044",
+        "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+        "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+        "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+        "5f21162e-de6d-5fd3-95c1-c162f907c705",
+        "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+        "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+        "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+        "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+        "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+        "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+        "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+        "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+        "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+        "b7e70134-d501-5586-aaba-b3c2764d108d",
+        "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+        "03c64a54-cc59-5035-82fd-0483291e4394",
+        "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+        "3e4831cc-3e04-5437-9621-85333a1fd207",
+        "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+        "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+        "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+        "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+        "694d099a-6a19-5644-88a6-d7aeee79fe32",
+        "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+        "a96aff26-7467-5d5b-8a36-6622060f2884",
+        "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+        "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+        "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+        "d9e23792-20af-5e45-b322-927c1de4c020",
+        "ee168c03-20d2-596f-92d6-332a5506d0c4",
+        "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+        "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+        "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+        "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+        "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+        "b6439aae-79dd-52c3-a891-f88185bbdc10",
+        "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+        "fc347759-ac18-503b-9922-817538938f86",
+        "26ab24a9-b939-5292-aef1-b9701a54c71a",
+        "3b2c8022-98de-5268-a1e2-5b92df917128",
+        "527948e5-80b9-55c8-a982-bba7f00e6501",
+        "d1e49c97-5449-515b-9150-648f0684c1c1",
+        "aed04017-7480-5f98-8df4-2493e1c5be3d",
+        "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+        "e98060fc-84c6-5293-a1bb-86092a15e95e",
+        "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+        "33c60d68-8d52-504c-8a77-70a30470d01e",
+        "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+        "9fa0eec4-40a6-5068-b877-9149d027cb19",
+        "ec2af0b5-d92a-536c-9692-1df957e4b488"
+      ],
+      "pages_25": [
+        [
+          "8e61489e-e09e-5756-bf45-24caabe71b64",
+          "9da96c77-38ba-5ba2-8e5b-72704e051619",
+          "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+          "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+          "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+          "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+          "ab62954d-a1f3-5f29-8727-e22513891852",
+          "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+          "0571c037-7577-5fd1-9948-e26a04189941",
+          "13c14ac3-176d-520a-9480-5c56750962c3",
+          "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+          "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+          "1426e63e-166e-5943-aa6b-000422a0c105",
+          "4615f703-e9ad-5943-8c50-0daf7a148f77",
+          "a402b756-99c4-57b0-8de2-eca263fdfabd",
+          "b8de51ab-4a38-5706-9326-ee961f858c43",
+          "1a073644-1cba-5469-855b-ae60ffe6723e",
+          "1fbdb21c-9d08-548e-adbe-b3489781f141",
+          "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+          "67029762-0cbc-5001-8d85-8f454c8c0427",
+          "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+          "30689521-fb27-57c0-8300-5870220df2e4",
+          "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+          "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+          "04912a52-0ac8-5f29-b693-084c3fe2d93d"
+        ],
+        [
+          "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+          "6f478830-c9b9-5e34-a86c-570eff56538f",
+          "80789608-70cd-5a4a-825e-455981b5cc23",
+          "25354921-181a-5023-8824-ba7da0b4eca2",
+          "378f193a-4dd9-5158-91f7-4891f84d1044",
+          "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+          "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+          "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+          "5f21162e-de6d-5fd3-95c1-c162f907c705",
+          "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+          "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+          "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+          "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+          "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+          "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+          "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+          "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+          "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+          "b7e70134-d501-5586-aaba-b3c2764d108d",
+          "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+          "03c64a54-cc59-5035-82fd-0483291e4394",
+          "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+          "3e4831cc-3e04-5437-9621-85333a1fd207",
+          "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+          "4169f307-e4d3-5644-8df3-2bcc75406f3b"
+        ],
+        [
+          "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+          "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+          "694d099a-6a19-5644-88a6-d7aeee79fe32",
+          "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+          "a96aff26-7467-5d5b-8a36-6622060f2884",
+          "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+          "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+          "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+          "d9e23792-20af-5e45-b322-927c1de4c020",
+          "ee168c03-20d2-596f-92d6-332a5506d0c4",
+          "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+          "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+          "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+          "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+          "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+          "b6439aae-79dd-52c3-a891-f88185bbdc10",
+          "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+          "fc347759-ac18-503b-9922-817538938f86",
+          "26ab24a9-b939-5292-aef1-b9701a54c71a",
+          "3b2c8022-98de-5268-a1e2-5b92df917128",
+          "527948e5-80b9-55c8-a982-bba7f00e6501",
+          "d1e49c97-5449-515b-9150-648f0684c1c1",
+          "aed04017-7480-5f98-8df4-2493e1c5be3d",
+          "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+          "e98060fc-84c6-5293-a1bb-86092a15e95e"
+        ],
+        [
+          "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+          "33c60d68-8d52-504c-8a77-70a30470d01e",
+          "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+          "9fa0eec4-40a6-5068-b877-9149d027cb19",
+          "ec2af0b5-d92a-536c-9692-1df957e4b488"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 80
+    },
+    "owner_a": {
+      "clients": [
+        {
+          "id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "c6137ffb-334d-5302-8277-8d16b719b084",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "72c4be95-92c2-542f-9665-814e33b2037e",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "92e55647-2006-5752-ab0a-434fda787102",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b2536162-d9c1-50f6-8e90-bc349598b8b6",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "CAD": "24000.00",
+        "USD": "96000.00"
+      },
+      "filters": {
+        "owner": [
+          "4059d1e8-f0f1-5833-af99-faaa4f393eed"
+        ]
+      },
+      "ids": [
+        "8e61489e-e09e-5756-bf45-24caabe71b64",
+        "9da96c77-38ba-5ba2-8e5b-72704e051619",
+        "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+        "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+        "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+        "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+        "ab62954d-a1f3-5f29-8727-e22513891852",
+        "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+        "0571c037-7577-5fd1-9948-e26a04189941",
+        "13c14ac3-176d-520a-9480-5c56750962c3",
+        "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+        "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+        "1426e63e-166e-5943-aa6b-000422a0c105",
+        "4615f703-e9ad-5943-8c50-0daf7a148f77",
+        "a402b756-99c4-57b0-8de2-eca263fdfabd",
+        "b8de51ab-4a38-5706-9326-ee961f858c43",
+        "1a073644-1cba-5469-855b-ae60ffe6723e",
+        "1fbdb21c-9d08-548e-adbe-b3489781f141",
+        "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+        "67029762-0cbc-5001-8d85-8f454c8c0427",
+        "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+        "30689521-fb27-57c0-8300-5870220df2e4",
+        "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+        "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+        "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+        "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+        "6f478830-c9b9-5e34-a86c-570eff56538f",
+        "80789608-70cd-5a4a-825e-455981b5cc23",
+        "25354921-181a-5023-8824-ba7da0b4eca2",
+        "378f193a-4dd9-5158-91f7-4891f84d1044",
+        "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+        "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+        "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+        "5f21162e-de6d-5fd3-95c1-c162f907c705",
+        "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+        "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+        "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+        "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+        "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+        "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+        "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+        "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+        "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+        "b7e70134-d501-5586-aaba-b3c2764d108d",
+        "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+        "03c64a54-cc59-5035-82fd-0483291e4394",
+        "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+        "3e4831cc-3e04-5437-9621-85333a1fd207",
+        "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+        "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+        "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+        "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+        "694d099a-6a19-5644-88a6-d7aeee79fe32",
+        "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+        "a96aff26-7467-5d5b-8a36-6622060f2884",
+        "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+        "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+        "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+        "d9e23792-20af-5e45-b322-927c1de4c020",
+        "ee168c03-20d2-596f-92d6-332a5506d0c4",
+        "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+        "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+        "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+        "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+        "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+        "345cd647-a1da-59cf-803a-dd78dcacb88e",
+        "4cdf7693-900d-51ef-8796-e33681e16ae9",
+        "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+        "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+        "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+        "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+        "81f44228-0472-5d7d-a94e-180b30ddae7a",
+        "aed04017-7480-5f98-8df4-2493e1c5be3d",
+        "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+        "e98060fc-84c6-5293-a1bb-86092a15e95e",
+        "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+        "33c60d68-8d52-504c-8a77-70a30470d01e",
+        "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+        "9fa0eec4-40a6-5068-b877-9149d027cb19",
+        "ec2af0b5-d92a-536c-9692-1df957e4b488"
+      ],
+      "pages_25": [
+        [
+          "8e61489e-e09e-5756-bf45-24caabe71b64",
+          "9da96c77-38ba-5ba2-8e5b-72704e051619",
+          "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+          "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+          "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+          "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+          "ab62954d-a1f3-5f29-8727-e22513891852",
+          "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+          "0571c037-7577-5fd1-9948-e26a04189941",
+          "13c14ac3-176d-520a-9480-5c56750962c3",
+          "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+          "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+          "1426e63e-166e-5943-aa6b-000422a0c105",
+          "4615f703-e9ad-5943-8c50-0daf7a148f77",
+          "a402b756-99c4-57b0-8de2-eca263fdfabd",
+          "b8de51ab-4a38-5706-9326-ee961f858c43",
+          "1a073644-1cba-5469-855b-ae60ffe6723e",
+          "1fbdb21c-9d08-548e-adbe-b3489781f141",
+          "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+          "67029762-0cbc-5001-8d85-8f454c8c0427",
+          "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+          "30689521-fb27-57c0-8300-5870220df2e4",
+          "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+          "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+          "04912a52-0ac8-5f29-b693-084c3fe2d93d"
+        ],
+        [
+          "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+          "6f478830-c9b9-5e34-a86c-570eff56538f",
+          "80789608-70cd-5a4a-825e-455981b5cc23",
+          "25354921-181a-5023-8824-ba7da0b4eca2",
+          "378f193a-4dd9-5158-91f7-4891f84d1044",
+          "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+          "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+          "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+          "5f21162e-de6d-5fd3-95c1-c162f907c705",
+          "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+          "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+          "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+          "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+          "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+          "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+          "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+          "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+          "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+          "b7e70134-d501-5586-aaba-b3c2764d108d",
+          "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+          "03c64a54-cc59-5035-82fd-0483291e4394",
+          "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+          "3e4831cc-3e04-5437-9621-85333a1fd207",
+          "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+          "4169f307-e4d3-5644-8df3-2bcc75406f3b"
+        ],
+        [
+          "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+          "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+          "694d099a-6a19-5644-88a6-d7aeee79fe32",
+          "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+          "a96aff26-7467-5d5b-8a36-6622060f2884",
+          "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+          "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+          "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+          "d9e23792-20af-5e45-b322-927c1de4c020",
+          "ee168c03-20d2-596f-92d6-332a5506d0c4",
+          "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+          "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+          "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+          "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+          "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+          "345cd647-a1da-59cf-803a-dd78dcacb88e",
+          "4cdf7693-900d-51ef-8796-e33681e16ae9",
+          "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+          "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+          "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+          "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+          "81f44228-0472-5d7d-a94e-180b30ddae7a",
+          "aed04017-7480-5f98-8df4-2493e1c5be3d",
+          "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+          "e98060fc-84c6-5293-a1bb-86092a15e95e"
+        ],
+        [
+          "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+          "33c60d68-8d52-504c-8a77-70a30470d01e",
+          "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+          "9fa0eec4-40a6-5068-b877-9149d027cb19",
+          "ec2af0b5-d92a-536c-9692-1df957e4b488"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 80
+    },
+    "owner_bu": {
+      "clients": [
+        {
+          "id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "c6137ffb-334d-5302-8277-8d16b719b084",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "72c4be95-92c2-542f-9665-814e33b2037e",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "CAD": "24000.00",
+        "USD": "64000.00"
+      },
+      "filters": {
+        "business_unit": [
+          "consulting"
+        ],
+        "owner": [
+          "4059d1e8-f0f1-5833-af99-faaa4f393eed"
+        ]
+      },
+      "ids": [
+        "8e61489e-e09e-5756-bf45-24caabe71b64",
+        "9da96c77-38ba-5ba2-8e5b-72704e051619",
+        "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+        "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+        "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+        "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+        "ab62954d-a1f3-5f29-8727-e22513891852",
+        "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+        "0571c037-7577-5fd1-9948-e26a04189941",
+        "13c14ac3-176d-520a-9480-5c56750962c3",
+        "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+        "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+        "1426e63e-166e-5943-aa6b-000422a0c105",
+        "4615f703-e9ad-5943-8c50-0daf7a148f77",
+        "a402b756-99c4-57b0-8de2-eca263fdfabd",
+        "b8de51ab-4a38-5706-9326-ee961f858c43",
+        "1a073644-1cba-5469-855b-ae60ffe6723e",
+        "1fbdb21c-9d08-548e-adbe-b3489781f141",
+        "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+        "67029762-0cbc-5001-8d85-8f454c8c0427",
+        "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+        "30689521-fb27-57c0-8300-5870220df2e4",
+        "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+        "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+        "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+        "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+        "6f478830-c9b9-5e34-a86c-570eff56538f",
+        "80789608-70cd-5a4a-825e-455981b5cc23",
+        "25354921-181a-5023-8824-ba7da0b4eca2",
+        "378f193a-4dd9-5158-91f7-4891f84d1044",
+        "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+        "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+        "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+        "5f21162e-de6d-5fd3-95c1-c162f907c705",
+        "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+        "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+        "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+        "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+        "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+        "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+        "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+        "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+        "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+        "b7e70134-d501-5586-aaba-b3c2764d108d",
+        "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+        "03c64a54-cc59-5035-82fd-0483291e4394",
+        "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+        "3e4831cc-3e04-5437-9621-85333a1fd207",
+        "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+        "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+        "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+        "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+        "694d099a-6a19-5644-88a6-d7aeee79fe32",
+        "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+        "a96aff26-7467-5d5b-8a36-6622060f2884",
+        "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+        "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+        "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+        "d9e23792-20af-5e45-b322-927c1de4c020",
+        "ee168c03-20d2-596f-92d6-332a5506d0c4",
+        "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+        "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+        "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+        "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+        "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+        "345cd647-a1da-59cf-803a-dd78dcacb88e",
+        "4cdf7693-900d-51ef-8796-e33681e16ae9",
+        "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+        "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+        "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+        "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+        "81f44228-0472-5d7d-a94e-180b30ddae7a"
+      ],
+      "pages_25": [
+        [
+          "8e61489e-e09e-5756-bf45-24caabe71b64",
+          "9da96c77-38ba-5ba2-8e5b-72704e051619",
+          "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+          "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+          "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+          "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+          "ab62954d-a1f3-5f29-8727-e22513891852",
+          "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+          "0571c037-7577-5fd1-9948-e26a04189941",
+          "13c14ac3-176d-520a-9480-5c56750962c3",
+          "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+          "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+          "1426e63e-166e-5943-aa6b-000422a0c105",
+          "4615f703-e9ad-5943-8c50-0daf7a148f77",
+          "a402b756-99c4-57b0-8de2-eca263fdfabd",
+          "b8de51ab-4a38-5706-9326-ee961f858c43",
+          "1a073644-1cba-5469-855b-ae60ffe6723e",
+          "1fbdb21c-9d08-548e-adbe-b3489781f141",
+          "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+          "67029762-0cbc-5001-8d85-8f454c8c0427",
+          "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+          "30689521-fb27-57c0-8300-5870220df2e4",
+          "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+          "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+          "04912a52-0ac8-5f29-b693-084c3fe2d93d"
+        ],
+        [
+          "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+          "6f478830-c9b9-5e34-a86c-570eff56538f",
+          "80789608-70cd-5a4a-825e-455981b5cc23",
+          "25354921-181a-5023-8824-ba7da0b4eca2",
+          "378f193a-4dd9-5158-91f7-4891f84d1044",
+          "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+          "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+          "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+          "5f21162e-de6d-5fd3-95c1-c162f907c705",
+          "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+          "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+          "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+          "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+          "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+          "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+          "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+          "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+          "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+          "b7e70134-d501-5586-aaba-b3c2764d108d",
+          "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+          "03c64a54-cc59-5035-82fd-0483291e4394",
+          "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+          "3e4831cc-3e04-5437-9621-85333a1fd207",
+          "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+          "4169f307-e4d3-5644-8df3-2bcc75406f3b"
+        ],
+        [
+          "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+          "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+          "694d099a-6a19-5644-88a6-d7aeee79fe32",
+          "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+          "a96aff26-7467-5d5b-8a36-6622060f2884",
+          "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+          "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+          "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+          "d9e23792-20af-5e45-b322-927c1de4c020",
+          "ee168c03-20d2-596f-92d6-332a5506d0c4",
+          "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+          "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+          "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+          "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+          "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+          "345cd647-a1da-59cf-803a-dd78dcacb88e",
+          "4cdf7693-900d-51ef-8796-e33681e16ae9",
+          "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+          "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+          "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+          "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+          "81f44228-0472-5d7d-a94e-180b30ddae7a"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 72
+    },
+    "owner_stage": {
+      "clients": [
+        {
+          "id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "c6137ffb-334d-5302-8277-8d16b719b084",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "92e55647-2006-5752-ab0a-434fda787102",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b2536162-d9c1-50f6-8e90-bc349598b8b6",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "USD": "96000.00"
+      },
+      "filters": {
+        "owner": [
+          "4059d1e8-f0f1-5833-af99-faaa4f393eed"
+        ],
+        "stage": [
+          "synthetic-discovery"
+        ]
+      },
+      "ids": [
+        "8e61489e-e09e-5756-bf45-24caabe71b64",
+        "9da96c77-38ba-5ba2-8e5b-72704e051619",
+        "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+        "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+        "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+        "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+        "ab62954d-a1f3-5f29-8727-e22513891852",
+        "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+        "0571c037-7577-5fd1-9948-e26a04189941",
+        "13c14ac3-176d-520a-9480-5c56750962c3",
+        "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+        "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+        "1426e63e-166e-5943-aa6b-000422a0c105",
+        "4615f703-e9ad-5943-8c50-0daf7a148f77",
+        "a402b756-99c4-57b0-8de2-eca263fdfabd",
+        "b8de51ab-4a38-5706-9326-ee961f858c43",
+        "1a073644-1cba-5469-855b-ae60ffe6723e",
+        "1fbdb21c-9d08-548e-adbe-b3489781f141",
+        "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+        "67029762-0cbc-5001-8d85-8f454c8c0427",
+        "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+        "30689521-fb27-57c0-8300-5870220df2e4",
+        "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+        "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+        "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+        "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+        "6f478830-c9b9-5e34-a86c-570eff56538f",
+        "80789608-70cd-5a4a-825e-455981b5cc23",
+        "25354921-181a-5023-8824-ba7da0b4eca2",
+        "378f193a-4dd9-5158-91f7-4891f84d1044",
+        "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+        "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+        "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+        "5f21162e-de6d-5fd3-95c1-c162f907c705",
+        "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+        "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+        "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+        "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+        "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+        "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+        "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+        "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+        "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+        "b7e70134-d501-5586-aaba-b3c2764d108d",
+        "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+        "03c64a54-cc59-5035-82fd-0483291e4394",
+        "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+        "3e4831cc-3e04-5437-9621-85333a1fd207",
+        "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+        "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+        "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+        "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+        "694d099a-6a19-5644-88a6-d7aeee79fe32",
+        "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+        "a96aff26-7467-5d5b-8a36-6622060f2884",
+        "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+        "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+        "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+        "d9e23792-20af-5e45-b322-927c1de4c020",
+        "ee168c03-20d2-596f-92d6-332a5506d0c4",
+        "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+        "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+        "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+        "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+        "aed04017-7480-5f98-8df4-2493e1c5be3d",
+        "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+        "e98060fc-84c6-5293-a1bb-86092a15e95e",
+        "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+        "33c60d68-8d52-504c-8a77-70a30470d01e",
+        "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+        "9fa0eec4-40a6-5068-b877-9149d027cb19",
+        "ec2af0b5-d92a-536c-9692-1df957e4b488"
+      ],
+      "pages_25": [
+        [
+          "8e61489e-e09e-5756-bf45-24caabe71b64",
+          "9da96c77-38ba-5ba2-8e5b-72704e051619",
+          "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+          "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+          "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+          "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+          "ab62954d-a1f3-5f29-8727-e22513891852",
+          "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+          "0571c037-7577-5fd1-9948-e26a04189941",
+          "13c14ac3-176d-520a-9480-5c56750962c3",
+          "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+          "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+          "1426e63e-166e-5943-aa6b-000422a0c105",
+          "4615f703-e9ad-5943-8c50-0daf7a148f77",
+          "a402b756-99c4-57b0-8de2-eca263fdfabd",
+          "b8de51ab-4a38-5706-9326-ee961f858c43",
+          "1a073644-1cba-5469-855b-ae60ffe6723e",
+          "1fbdb21c-9d08-548e-adbe-b3489781f141",
+          "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+          "67029762-0cbc-5001-8d85-8f454c8c0427",
+          "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+          "30689521-fb27-57c0-8300-5870220df2e4",
+          "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+          "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+          "04912a52-0ac8-5f29-b693-084c3fe2d93d"
+        ],
+        [
+          "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+          "6f478830-c9b9-5e34-a86c-570eff56538f",
+          "80789608-70cd-5a4a-825e-455981b5cc23",
+          "25354921-181a-5023-8824-ba7da0b4eca2",
+          "378f193a-4dd9-5158-91f7-4891f84d1044",
+          "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+          "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+          "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+          "5f21162e-de6d-5fd3-95c1-c162f907c705",
+          "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+          "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+          "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+          "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+          "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+          "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+          "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+          "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+          "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+          "b7e70134-d501-5586-aaba-b3c2764d108d",
+          "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+          "03c64a54-cc59-5035-82fd-0483291e4394",
+          "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+          "3e4831cc-3e04-5437-9621-85333a1fd207",
+          "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+          "4169f307-e4d3-5644-8df3-2bcc75406f3b"
+        ],
+        [
+          "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+          "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+          "694d099a-6a19-5644-88a6-d7aeee79fe32",
+          "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+          "a96aff26-7467-5d5b-8a36-6622060f2884",
+          "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+          "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+          "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+          "d9e23792-20af-5e45-b322-927c1de4c020",
+          "ee168c03-20d2-596f-92d6-332a5506d0c4",
+          "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+          "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+          "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+          "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+          "aed04017-7480-5f98-8df4-2493e1c5be3d",
+          "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+          "e98060fc-84c6-5293-a1bb-86092a15e95e",
+          "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+          "33c60d68-8d52-504c-8a77-70a30470d01e",
+          "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+          "9fa0eec4-40a6-5068-b877-9149d027cb19",
+          "ec2af0b5-d92a-536c-9692-1df957e4b488"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 72
+    },
+    "selected": {
+      "clients": [
+        {
+          "id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "c6137ffb-334d-5302-8277-8d16b719b084",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "USD": "64000.00"
+      },
+      "filters": {
+        "business_unit": [
+          "consulting"
+        ],
+        "owner": [
+          "4059d1e8-f0f1-5833-af99-faaa4f393eed"
+        ],
+        "stage": [
+          "synthetic-discovery"
+        ]
+      },
+      "ids": [
+        "8e61489e-e09e-5756-bf45-24caabe71b64",
+        "9da96c77-38ba-5ba2-8e5b-72704e051619",
+        "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+        "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+        "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+        "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+        "ab62954d-a1f3-5f29-8727-e22513891852",
+        "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+        "0571c037-7577-5fd1-9948-e26a04189941",
+        "13c14ac3-176d-520a-9480-5c56750962c3",
+        "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+        "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+        "1426e63e-166e-5943-aa6b-000422a0c105",
+        "4615f703-e9ad-5943-8c50-0daf7a148f77",
+        "a402b756-99c4-57b0-8de2-eca263fdfabd",
+        "b8de51ab-4a38-5706-9326-ee961f858c43",
+        "1a073644-1cba-5469-855b-ae60ffe6723e",
+        "1fbdb21c-9d08-548e-adbe-b3489781f141",
+        "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+        "67029762-0cbc-5001-8d85-8f454c8c0427",
+        "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+        "30689521-fb27-57c0-8300-5870220df2e4",
+        "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+        "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+        "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+        "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+        "6f478830-c9b9-5e34-a86c-570eff56538f",
+        "80789608-70cd-5a4a-825e-455981b5cc23",
+        "25354921-181a-5023-8824-ba7da0b4eca2",
+        "378f193a-4dd9-5158-91f7-4891f84d1044",
+        "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+        "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+        "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+        "5f21162e-de6d-5fd3-95c1-c162f907c705",
+        "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+        "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+        "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+        "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+        "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+        "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+        "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+        "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+        "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+        "b7e70134-d501-5586-aaba-b3c2764d108d",
+        "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+        "03c64a54-cc59-5035-82fd-0483291e4394",
+        "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+        "3e4831cc-3e04-5437-9621-85333a1fd207",
+        "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+        "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+        "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+        "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+        "694d099a-6a19-5644-88a6-d7aeee79fe32",
+        "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+        "a96aff26-7467-5d5b-8a36-6622060f2884",
+        "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+        "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+        "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+        "d9e23792-20af-5e45-b322-927c1de4c020",
+        "ee168c03-20d2-596f-92d6-332a5506d0c4",
+        "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+        "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+        "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+        "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b"
+      ],
+      "pages_25": [
+        [
+          "8e61489e-e09e-5756-bf45-24caabe71b64",
+          "9da96c77-38ba-5ba2-8e5b-72704e051619",
+          "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+          "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+          "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+          "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+          "ab62954d-a1f3-5f29-8727-e22513891852",
+          "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+          "0571c037-7577-5fd1-9948-e26a04189941",
+          "13c14ac3-176d-520a-9480-5c56750962c3",
+          "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+          "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+          "1426e63e-166e-5943-aa6b-000422a0c105",
+          "4615f703-e9ad-5943-8c50-0daf7a148f77",
+          "a402b756-99c4-57b0-8de2-eca263fdfabd",
+          "b8de51ab-4a38-5706-9326-ee961f858c43",
+          "1a073644-1cba-5469-855b-ae60ffe6723e",
+          "1fbdb21c-9d08-548e-adbe-b3489781f141",
+          "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+          "67029762-0cbc-5001-8d85-8f454c8c0427",
+          "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+          "30689521-fb27-57c0-8300-5870220df2e4",
+          "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+          "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+          "04912a52-0ac8-5f29-b693-084c3fe2d93d"
+        ],
+        [
+          "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+          "6f478830-c9b9-5e34-a86c-570eff56538f",
+          "80789608-70cd-5a4a-825e-455981b5cc23",
+          "25354921-181a-5023-8824-ba7da0b4eca2",
+          "378f193a-4dd9-5158-91f7-4891f84d1044",
+          "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+          "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+          "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+          "5f21162e-de6d-5fd3-95c1-c162f907c705",
+          "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+          "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+          "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+          "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+          "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+          "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+          "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+          "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+          "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+          "b7e70134-d501-5586-aaba-b3c2764d108d",
+          "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+          "03c64a54-cc59-5035-82fd-0483291e4394",
+          "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+          "3e4831cc-3e04-5437-9621-85333a1fd207",
+          "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+          "4169f307-e4d3-5644-8df3-2bcc75406f3b"
+        ],
+        [
+          "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+          "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+          "694d099a-6a19-5644-88a6-d7aeee79fe32",
+          "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+          "a96aff26-7467-5d5b-8a36-6622060f2884",
+          "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+          "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+          "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+          "d9e23792-20af-5e45-b322-927c1de4c020",
+          "ee168c03-20d2-596f-92d6-332a5506d0c4",
+          "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+          "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+          "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+          "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 64
+    },
+    "stage_bu": {
+      "clients": [
+        {
+          "id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "c6137ffb-334d-5302-8277-8d16b719b084",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "57453649-8f76-503a-a718-ddcb2ee63eaf",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "0b706d4a-7e7b-55f5-981e-4099d262d4c2",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "USD": "80000.00"
+      },
+      "filters": {
+        "business_unit": [
+          "consulting"
+        ],
+        "stage": [
+          "synthetic-discovery"
+        ]
+      },
+      "ids": [
+        "8e61489e-e09e-5756-bf45-24caabe71b64",
+        "9da96c77-38ba-5ba2-8e5b-72704e051619",
+        "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+        "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+        "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+        "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+        "ab62954d-a1f3-5f29-8727-e22513891852",
+        "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+        "0571c037-7577-5fd1-9948-e26a04189941",
+        "13c14ac3-176d-520a-9480-5c56750962c3",
+        "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+        "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+        "1426e63e-166e-5943-aa6b-000422a0c105",
+        "4615f703-e9ad-5943-8c50-0daf7a148f77",
+        "a402b756-99c4-57b0-8de2-eca263fdfabd",
+        "b8de51ab-4a38-5706-9326-ee961f858c43",
+        "1a073644-1cba-5469-855b-ae60ffe6723e",
+        "1fbdb21c-9d08-548e-adbe-b3489781f141",
+        "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+        "67029762-0cbc-5001-8d85-8f454c8c0427",
+        "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+        "30689521-fb27-57c0-8300-5870220df2e4",
+        "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+        "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+        "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+        "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+        "6f478830-c9b9-5e34-a86c-570eff56538f",
+        "80789608-70cd-5a4a-825e-455981b5cc23",
+        "25354921-181a-5023-8824-ba7da0b4eca2",
+        "378f193a-4dd9-5158-91f7-4891f84d1044",
+        "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+        "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+        "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+        "5f21162e-de6d-5fd3-95c1-c162f907c705",
+        "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+        "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+        "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+        "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+        "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+        "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+        "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+        "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+        "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+        "b7e70134-d501-5586-aaba-b3c2764d108d",
+        "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+        "03c64a54-cc59-5035-82fd-0483291e4394",
+        "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+        "3e4831cc-3e04-5437-9621-85333a1fd207",
+        "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+        "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+        "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+        "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+        "694d099a-6a19-5644-88a6-d7aeee79fe32",
+        "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+        "a96aff26-7467-5d5b-8a36-6622060f2884",
+        "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+        "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+        "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+        "d9e23792-20af-5e45-b322-927c1de4c020",
+        "ee168c03-20d2-596f-92d6-332a5506d0c4",
+        "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+        "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+        "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+        "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+        "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+        "b6439aae-79dd-52c3-a891-f88185bbdc10",
+        "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+        "fc347759-ac18-503b-9922-817538938f86",
+        "26ab24a9-b939-5292-aef1-b9701a54c71a",
+        "3b2c8022-98de-5268-a1e2-5b92df917128",
+        "527948e5-80b9-55c8-a982-bba7f00e6501",
+        "d1e49c97-5449-515b-9150-648f0684c1c1"
+      ],
+      "pages_25": [
+        [
+          "8e61489e-e09e-5756-bf45-24caabe71b64",
+          "9da96c77-38ba-5ba2-8e5b-72704e051619",
+          "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+          "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+          "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+          "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+          "ab62954d-a1f3-5f29-8727-e22513891852",
+          "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+          "0571c037-7577-5fd1-9948-e26a04189941",
+          "13c14ac3-176d-520a-9480-5c56750962c3",
+          "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+          "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+          "1426e63e-166e-5943-aa6b-000422a0c105",
+          "4615f703-e9ad-5943-8c50-0daf7a148f77",
+          "a402b756-99c4-57b0-8de2-eca263fdfabd",
+          "b8de51ab-4a38-5706-9326-ee961f858c43",
+          "1a073644-1cba-5469-855b-ae60ffe6723e",
+          "1fbdb21c-9d08-548e-adbe-b3489781f141",
+          "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+          "67029762-0cbc-5001-8d85-8f454c8c0427",
+          "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+          "30689521-fb27-57c0-8300-5870220df2e4",
+          "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+          "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+          "04912a52-0ac8-5f29-b693-084c3fe2d93d"
+        ],
+        [
+          "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+          "6f478830-c9b9-5e34-a86c-570eff56538f",
+          "80789608-70cd-5a4a-825e-455981b5cc23",
+          "25354921-181a-5023-8824-ba7da0b4eca2",
+          "378f193a-4dd9-5158-91f7-4891f84d1044",
+          "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+          "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+          "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+          "5f21162e-de6d-5fd3-95c1-c162f907c705",
+          "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+          "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+          "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+          "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+          "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+          "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+          "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+          "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+          "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+          "b7e70134-d501-5586-aaba-b3c2764d108d",
+          "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+          "03c64a54-cc59-5035-82fd-0483291e4394",
+          "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+          "3e4831cc-3e04-5437-9621-85333a1fd207",
+          "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+          "4169f307-e4d3-5644-8df3-2bcc75406f3b"
+        ],
+        [
+          "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+          "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+          "694d099a-6a19-5644-88a6-d7aeee79fe32",
+          "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+          "a96aff26-7467-5d5b-8a36-6622060f2884",
+          "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+          "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+          "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+          "d9e23792-20af-5e45-b322-927c1de4c020",
+          "ee168c03-20d2-596f-92d6-332a5506d0c4",
+          "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+          "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+          "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+          "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+          "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+          "b6439aae-79dd-52c3-a891-f88185bbdc10",
+          "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+          "fc347759-ac18-503b-9922-817538938f86",
+          "26ab24a9-b939-5292-aef1-b9701a54c71a",
+          "3b2c8022-98de-5268-a1e2-5b92df917128",
+          "527948e5-80b9-55c8-a982-bba7f00e6501",
+          "d1e49c97-5449-515b-9150-648f0684c1c1"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 72
+    },
+    "stage_only_saved": {
+      "clients": [
+        {
+          "id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+          "matching_deal_count": 4
+        },
+        {
+          "id": "72c4be95-92c2-542f-9665-814e33b2037e",
+          "matching_deal_count": 4
+        }
+      ],
+      "currency_totals": {
+        "CAD": "24000.00"
+      },
+      "filters": {
+        "stage": [
+          "synthetic-negotiation"
+        ]
+      },
+      "ids": [
+        "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+        "345cd647-a1da-59cf-803a-dd78dcacb88e",
+        "4cdf7693-900d-51ef-8796-e33681e16ae9",
+        "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+        "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+        "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+        "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+        "81f44228-0472-5d7d-a94e-180b30ddae7a"
+      ],
+      "pages_25": [
+        [
+          "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+          "345cd647-a1da-59cf-803a-dd78dcacb88e",
+          "4cdf7693-900d-51ef-8796-e33681e16ae9",
+          "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+          "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+          "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+          "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+          "81f44228-0472-5d7d-a94e-180b30ddae7a"
+        ]
+      ],
+      "sort": "client_name",
+      "total": 8
+    },
+    "zero": {
+      "clients": [],
+      "currency_totals": {},
+      "filters": {
+        "owner": [
+          "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d"
+        ],
+        "stage": [
+          "synthetic-negotiation"
+        ]
+      },
+      "ids": [],
+      "pages_25": [],
+      "sort": "client_name",
+      "total": 0
+    }
+  },
+  "fixture_rows": [
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+      "client_name": "Synthetic T09 Client 00",
+      "currency": "USD",
+      "id": "a41a3ea3-e9d4-5b95-8409-0be9322fe4a1",
+      "index": 0,
+      "name": "Synthetic T09 Deal 000",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+      "client_name": "Synthetic T09 Client 00",
+      "currency": "USD",
+      "id": "ab20c358-d2ee-5f32-a7ae-9f25a1edb364",
+      "index": 1,
+      "name": "Synthetic T09 Deal 001",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+      "client_name": "Synthetic T09 Client 00",
+      "currency": "USD",
+      "id": "8e61489e-e09e-5756-bf45-24caabe71b64",
+      "index": 2,
+      "name": "Synthetic T09 Deal 002",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "ca012030-cb7b-559d-ad46-b401eb89338f",
+      "client_name": "Synthetic T09 Client 00",
+      "currency": "USD",
+      "id": "9da96c77-38ba-5ba2-8e5b-72704e051619",
+      "index": 3,
+      "name": "Synthetic T09 Deal 003",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+      "client_name": "Synthetic T09 Client 01",
+      "currency": "USD",
+      "id": "ab62954d-a1f3-5f29-8727-e22513891852",
+      "index": 4,
+      "name": "Synthetic T09 Deal 004",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+      "client_name": "Synthetic T09 Client 01",
+      "currency": "USD",
+      "id": "5dc6b231-df2a-5fe2-823d-820f868c0d41",
+      "index": 5,
+      "name": "Synthetic T09 Deal 005",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+      "client_name": "Synthetic T09 Client 01",
+      "currency": "USD",
+      "id": "7dd65b3d-cb23-5a8a-ae85-118542b8e410",
+      "index": 6,
+      "name": "Synthetic T09 Deal 006",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "8615c5a6-0fdf-544d-b998-dfeb09bb8a91",
+      "client_name": "Synthetic T09 Client 01",
+      "currency": "USD",
+      "id": "bf0607d1-7354-5f53-ac7c-c0c55444a9e9",
+      "index": 7,
+      "name": "Synthetic T09 Deal 007",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+      "client_name": "Synthetic T09 Client 02",
+      "currency": "USD",
+      "id": "aad55fec-9c42-5568-b6af-6333ee1dfb5b",
+      "index": 8,
+      "name": "Synthetic T09 Deal 008",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+      "client_name": "Synthetic T09 Client 02",
+      "currency": "USD",
+      "id": "0571c037-7577-5fd1-9948-e26a04189941",
+      "index": 9,
+      "name": "Synthetic T09 Deal 009",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+      "client_name": "Synthetic T09 Client 02",
+      "currency": "USD",
+      "id": "d715f6d1-b932-517b-b3e2-fb853b5d61f8",
+      "index": 10,
+      "name": "Synthetic T09 Deal 010",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "447551c1-dcac-580c-95a7-b3c11851ae72",
+      "client_name": "Synthetic T09 Client 02",
+      "currency": "USD",
+      "id": "13c14ac3-176d-520a-9480-5c56750962c3",
+      "index": 11,
+      "name": "Synthetic T09 Deal 011",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+      "client_name": "Synthetic T09 Client 03",
+      "currency": "USD",
+      "id": "1426e63e-166e-5943-aa6b-000422a0c105",
+      "index": 12,
+      "name": "Synthetic T09 Deal 012",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+      "client_name": "Synthetic T09 Client 03",
+      "currency": "USD",
+      "id": "b8de51ab-4a38-5706-9326-ee961f858c43",
+      "index": 13,
+      "name": "Synthetic T09 Deal 013",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+      "client_name": "Synthetic T09 Client 03",
+      "currency": "USD",
+      "id": "a402b756-99c4-57b0-8de2-eca263fdfabd",
+      "index": 14,
+      "name": "Synthetic T09 Deal 014",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "ce738fa8-bbc3-5548-884a-6149b95e3cf8",
+      "client_name": "Synthetic T09 Client 03",
+      "currency": "USD",
+      "id": "4615f703-e9ad-5943-8c50-0daf7a148f77",
+      "index": 15,
+      "name": "Synthetic T09 Deal 015",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "c6137ffb-334d-5302-8277-8d16b719b084",
+      "client_name": "Synthetic T09 Client 04",
+      "currency": "USD",
+      "id": "67029762-0cbc-5001-8d85-8f454c8c0427",
+      "index": 16,
+      "name": "Synthetic T09 Deal 016",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "c6137ffb-334d-5302-8277-8d16b719b084",
+      "client_name": "Synthetic T09 Client 04",
+      "currency": "USD",
+      "id": "3c45c9c0-c396-5927-a918-36595ba9cb9d",
+      "index": 17,
+      "name": "Synthetic T09 Deal 017",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "c6137ffb-334d-5302-8277-8d16b719b084",
+      "client_name": "Synthetic T09 Client 04",
+      "currency": "USD",
+      "id": "1a073644-1cba-5469-855b-ae60ffe6723e",
+      "index": 18,
+      "name": "Synthetic T09 Deal 018",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "c6137ffb-334d-5302-8277-8d16b719b084",
+      "client_name": "Synthetic T09 Client 04",
+      "currency": "USD",
+      "id": "1fbdb21c-9d08-548e-adbe-b3489781f141",
+      "index": 19,
+      "name": "Synthetic T09 Deal 019",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+      "client_name": "Synthetic T09 Client 05",
+      "currency": "USD",
+      "id": "30689521-fb27-57c0-8300-5870220df2e4",
+      "index": 20,
+      "name": "Synthetic T09 Deal 020",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+      "client_name": "Synthetic T09 Client 05",
+      "currency": "USD",
+      "id": "54b3d8b8-ee97-53fb-8ac8-e1b3d128f32b",
+      "index": 21,
+      "name": "Synthetic T09 Deal 021",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+      "client_name": "Synthetic T09 Client 05",
+      "currency": "USD",
+      "id": "747fd999-5eba-5a5c-ad18-83d8e6932dcf",
+      "index": 22,
+      "name": "Synthetic T09 Deal 022",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "7d0b74e4-9d7d-5d66-8020-351868a9b313",
+      "client_name": "Synthetic T09 Client 05",
+      "currency": "USD",
+      "id": "0e8ba264-6622-54b8-a35e-59241cd2cd57",
+      "index": 23,
+      "name": "Synthetic T09 Deal 023",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+      "client_name": "Synthetic T09 Client 06",
+      "currency": "USD",
+      "id": "04912a52-0ac8-5f29-b693-084c3fe2d93d",
+      "index": 24,
+      "name": "Synthetic T09 Deal 024",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+      "client_name": "Synthetic T09 Client 06",
+      "currency": "USD",
+      "id": "5ad5aa8c-127e-5ef6-831e-0590698fe838",
+      "index": 25,
+      "name": "Synthetic T09 Deal 025",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+      "client_name": "Synthetic T09 Client 06",
+      "currency": "USD",
+      "id": "6f478830-c9b9-5e34-a86c-570eff56538f",
+      "index": 26,
+      "name": "Synthetic T09 Deal 026",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "16eaf30e-605d-5623-88b5-db3ef7fb1078",
+      "client_name": "Synthetic T09 Client 06",
+      "currency": "USD",
+      "id": "80789608-70cd-5a4a-825e-455981b5cc23",
+      "index": 27,
+      "name": "Synthetic T09 Deal 027",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+      "client_name": "Synthetic T09 Client 07",
+      "currency": "USD",
+      "id": "3c484c8e-af42-5ff1-bd82-76de9b036a68",
+      "index": 28,
+      "name": "Synthetic T09 Deal 028",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+      "client_name": "Synthetic T09 Client 07",
+      "currency": "USD",
+      "id": "378f193a-4dd9-5158-91f7-4891f84d1044",
+      "index": 29,
+      "name": "Synthetic T09 Deal 029",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+      "client_name": "Synthetic T09 Client 07",
+      "currency": "USD",
+      "id": "d45d04b3-ce7a-5262-bd7f-d6198cfc200d",
+      "index": 30,
+      "name": "Synthetic T09 Deal 030",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "0220b902-41d6-528a-a299-21e8bd493a5f",
+      "client_name": "Synthetic T09 Client 07",
+      "currency": "USD",
+      "id": "25354921-181a-5023-8824-ba7da0b4eca2",
+      "index": 31,
+      "name": "Synthetic T09 Deal 031",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+      "client_name": "Synthetic T09 Client 08",
+      "currency": "USD",
+      "id": "3e27803b-7aa4-5a3d-99a7-fad60af8c3f2",
+      "index": 32,
+      "name": "Synthetic T09 Deal 032",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+      "client_name": "Synthetic T09 Client 08",
+      "currency": "USD",
+      "id": "da83bfce-6fe0-5e7b-a5db-c052211bb17a",
+      "index": 33,
+      "name": "Synthetic T09 Deal 033",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+      "client_name": "Synthetic T09 Client 08",
+      "currency": "USD",
+      "id": "5f21162e-de6d-5fd3-95c1-c162f907c705",
+      "index": 34,
+      "name": "Synthetic T09 Deal 034",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "a57ea8b1-21b3-598b-9409-090d4764c3fd",
+      "client_name": "Synthetic T09 Client 08",
+      "currency": "USD",
+      "id": "a578c7dd-c840-5bb6-b515-82f6a1fab87e",
+      "index": 35,
+      "name": "Synthetic T09 Deal 035",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+      "client_name": "Synthetic T09 Client 09",
+      "currency": "USD",
+      "id": "014870ea-b25a-5927-b7cd-ec97dc08ccfe",
+      "index": 36,
+      "name": "Synthetic T09 Deal 036",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+      "client_name": "Synthetic T09 Client 09",
+      "currency": "USD",
+      "id": "1b4120ab-aa8d-5d5f-a79b-9f121b085618",
+      "index": 37,
+      "name": "Synthetic T09 Deal 037",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+      "client_name": "Synthetic T09 Client 09",
+      "currency": "USD",
+      "id": "09c79cba-99db-5f0c-ad1f-1b4ee5feef81",
+      "index": 38,
+      "name": "Synthetic T09 Deal 038",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "e055141e-7ef9-56d9-b819-910953fb20e2",
+      "client_name": "Synthetic T09 Client 09",
+      "currency": "USD",
+      "id": "3aa1043b-a0a6-576b-8378-ae2bdcd3f982",
+      "index": 39,
+      "name": "Synthetic T09 Deal 039",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+      "client_name": "Synthetic T09 Client 10",
+      "currency": "USD",
+      "id": "29c971f5-c663-54ce-8d4d-ed11b23599e5",
+      "index": 40,
+      "name": "Synthetic T09 Deal 040",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+      "client_name": "Synthetic T09 Client 10",
+      "currency": "USD",
+      "id": "5beb5d8a-e222-53d5-bce0-08af5a484a19",
+      "index": 41,
+      "name": "Synthetic T09 Deal 041",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+      "client_name": "Synthetic T09 Client 10",
+      "currency": "USD",
+      "id": "4b4f26d7-167b-5bc4-bb8a-a15c31359054",
+      "index": 42,
+      "name": "Synthetic T09 Deal 042",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "eb876c1c-7656-535d-9ad5-b7f955e22fea",
+      "client_name": "Synthetic T09 Client 10",
+      "currency": "USD",
+      "id": "b7e70134-d501-5586-aaba-b3c2764d108d",
+      "index": 43,
+      "name": "Synthetic T09 Deal 043",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+      "client_name": "Synthetic T09 Client 11",
+      "currency": "USD",
+      "id": "2fb0b09a-5fcb-5568-aadc-937c59f76ebc",
+      "index": 44,
+      "name": "Synthetic T09 Deal 044",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+      "client_name": "Synthetic T09 Client 11",
+      "currency": "USD",
+      "id": "3e4831cc-3e04-5437-9621-85333a1fd207",
+      "index": 45,
+      "name": "Synthetic T09 Deal 045",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+      "client_name": "Synthetic T09 Client 11",
+      "currency": "USD",
+      "id": "02a57ab7-92bd-5c08-a058-7be5b2321d04",
+      "index": 46,
+      "name": "Synthetic T09 Deal 046",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "69ce3f25-50a1-50ff-939b-6ff739f3bdd4",
+      "client_name": "Synthetic T09 Client 11",
+      "currency": "USD",
+      "id": "03c64a54-cc59-5035-82fd-0483291e4394",
+      "index": 47,
+      "name": "Synthetic T09 Deal 047",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+      "client_name": "Synthetic T09 Client 12",
+      "currency": "USD",
+      "id": "e1a01f87-ee5a-5bf9-bd24-4ec19dd5dcf7",
+      "index": 48,
+      "name": "Synthetic T09 Deal 048",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+      "client_name": "Synthetic T09 Client 12",
+      "currency": "USD",
+      "id": "355c7f8e-07c1-5cef-8d0c-5320aa8b8bc8",
+      "index": 49,
+      "name": "Synthetic T09 Deal 049",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+      "client_name": "Synthetic T09 Client 12",
+      "currency": "USD",
+      "id": "4169f307-e4d3-5644-8df3-2bcc75406f3b",
+      "index": 50,
+      "name": "Synthetic T09 Deal 050",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "b1906e05-ee68-54b1-ae55-3eb78b40170c",
+      "client_name": "Synthetic T09 Client 12",
+      "currency": "USD",
+      "id": "ba22bb00-09d4-570d-8495-905d4e9b1b01",
+      "index": 51,
+      "name": "Synthetic T09 Deal 051",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+      "client_name": "Synthetic T09 Client 13",
+      "currency": "USD",
+      "id": "694d099a-6a19-5644-88a6-d7aeee79fe32",
+      "index": 52,
+      "name": "Synthetic T09 Deal 052",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+      "client_name": "Synthetic T09 Client 13",
+      "currency": "USD",
+      "id": "f72d5bcb-8355-54a6-80a6-05a1a8abb3a5",
+      "index": 53,
+      "name": "Synthetic T09 Deal 053",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+      "client_name": "Synthetic T09 Client 13",
+      "currency": "USD",
+      "id": "a96aff26-7467-5d5b-8a36-6622060f2884",
+      "index": 54,
+      "name": "Synthetic T09 Deal 054",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "8122989f-a976-59fa-91b0-1c1fd6c437a5",
+      "client_name": "Synthetic T09 Client 13",
+      "currency": "USD",
+      "id": "a6a15384-a0fa-515e-8c10-56641c98e0ca",
+      "index": 55,
+      "name": "Synthetic T09 Deal 055",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+      "client_name": "Synthetic T09 Client 14",
+      "currency": "USD",
+      "id": "39f2ef55-43b3-5682-a5db-1dcd44b9df76",
+      "index": 56,
+      "name": "Synthetic T09 Deal 056",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+      "client_name": "Synthetic T09 Client 14",
+      "currency": "USD",
+      "id": "ee168c03-20d2-596f-92d6-332a5506d0c4",
+      "index": 57,
+      "name": "Synthetic T09 Deal 057",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+      "client_name": "Synthetic T09 Client 14",
+      "currency": "USD",
+      "id": "d9e23792-20af-5e45-b322-927c1de4c020",
+      "index": 58,
+      "name": "Synthetic T09 Deal 058",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "b88157a0-d9a6-582b-98d1-e83ef535dbf4",
+      "client_name": "Synthetic T09 Client 14",
+      "currency": "USD",
+      "id": "2a5c4a3c-9bfb-5da2-b53e-4f97cfffe557",
+      "index": 59,
+      "name": "Synthetic T09 Deal 059",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+      "client_name": "Synthetic T09 Client 15",
+      "currency": "USD",
+      "id": "2f35bc66-1ac9-5b56-9e0c-4bf9f073fb1e",
+      "index": 60,
+      "name": "Synthetic T09 Deal 060",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+      "client_name": "Synthetic T09 Client 15",
+      "currency": "USD",
+      "id": "9e92dfe8-ef7d-5b98-a412-cd0b6c9de89b",
+      "index": 61,
+      "name": "Synthetic T09 Deal 061",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+      "client_name": "Synthetic T09 Client 15",
+      "currency": "USD",
+      "id": "30109b7f-bef4-5ce7-9153-54a70f26fe61",
+      "index": 62,
+      "name": "Synthetic T09 Deal 062",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "1000.00",
+      "business_unit": "consulting",
+      "client_id": "1aaa63d8-caae-52dd-890a-ea22ba740430",
+      "client_name": "Synthetic T09 Client 15",
+      "currency": "USD",
+      "id": "10a3869e-81a3-5d2c-835e-84e7537da1dd",
+      "index": 63,
+      "name": "Synthetic T09 Deal 063",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "2000.00",
+      "business_unit": "consulting",
+      "client_id": "57453649-8f76-503a-a718-ddcb2ee63eaf",
+      "client_name": "Synthetic T09 Client 16",
+      "currency": "USD",
+      "id": "b6439aae-79dd-52c3-a891-f88185bbdc10",
+      "index": 64,
+      "name": "Synthetic T09 Deal 064",
+      "owner_external": "synthetic-owner-b",
+      "owner_id": "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "2000.00",
+      "business_unit": "consulting",
+      "client_id": "57453649-8f76-503a-a718-ddcb2ee63eaf",
+      "client_name": "Synthetic T09 Client 16",
+      "currency": "USD",
+      "id": "b2f23fe6-5d89-5c83-8495-472dd1e61d21",
+      "index": 65,
+      "name": "Synthetic T09 Deal 065",
+      "owner_external": "synthetic-owner-b",
+      "owner_id": "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "2000.00",
+      "business_unit": "consulting",
+      "client_id": "57453649-8f76-503a-a718-ddcb2ee63eaf",
+      "client_name": "Synthetic T09 Client 16",
+      "currency": "USD",
+      "id": "fc347759-ac18-503b-9922-817538938f86",
+      "index": 66,
+      "name": "Synthetic T09 Deal 066",
+      "owner_external": "synthetic-owner-b",
+      "owner_id": "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "2000.00",
+      "business_unit": "consulting",
+      "client_id": "57453649-8f76-503a-a718-ddcb2ee63eaf",
+      "client_name": "Synthetic T09 Client 16",
+      "currency": "USD",
+      "id": "df5ceb5b-d7ee-5e05-986a-dc31493f8d3f",
+      "index": 67,
+      "name": "Synthetic T09 Deal 067",
+      "owner_external": "synthetic-owner-b",
+      "owner_id": "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "2000.00",
+      "business_unit": "consulting",
+      "client_id": "0b706d4a-7e7b-55f5-981e-4099d262d4c2",
+      "client_name": "Synthetic T09 Client 17",
+      "currency": "USD",
+      "id": "3b2c8022-98de-5268-a1e2-5b92df917128",
+      "index": 68,
+      "name": "Synthetic T09 Deal 068",
+      "owner_external": "synthetic-owner-b",
+      "owner_id": "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "2000.00",
+      "business_unit": "consulting",
+      "client_id": "0b706d4a-7e7b-55f5-981e-4099d262d4c2",
+      "client_name": "Synthetic T09 Client 17",
+      "currency": "USD",
+      "id": "d1e49c97-5449-515b-9150-648f0684c1c1",
+      "index": 69,
+      "name": "Synthetic T09 Deal 069",
+      "owner_external": "synthetic-owner-b",
+      "owner_id": "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "2000.00",
+      "business_unit": "consulting",
+      "client_id": "0b706d4a-7e7b-55f5-981e-4099d262d4c2",
+      "client_name": "Synthetic T09 Client 17",
+      "currency": "USD",
+      "id": "527948e5-80b9-55c8-a982-bba7f00e6501",
+      "index": 70,
+      "name": "Synthetic T09 Deal 070",
+      "owner_external": "synthetic-owner-b",
+      "owner_id": "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "2000.00",
+      "business_unit": "consulting",
+      "client_id": "0b706d4a-7e7b-55f5-981e-4099d262d4c2",
+      "client_name": "Synthetic T09 Client 17",
+      "currency": "USD",
+      "id": "26ab24a9-b939-5292-aef1-b9701a54c71a",
+      "index": 71,
+      "name": "Synthetic T09 Deal 071",
+      "owner_external": "synthetic-owner-b",
+      "owner_id": "3d6c7087-6fa6-5b22-b3ca-eb87cd8b973d",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "3000.00",
+      "business_unit": "consulting",
+      "client_id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+      "client_name": "Synthetic T09 Client 18",
+      "currency": "CAD",
+      "id": "345cd647-a1da-59cf-803a-dd78dcacb88e",
+      "index": 72,
+      "name": "Synthetic T09 Deal 072",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-negotiation"
+    },
+    {
+      "amount": "3000.00",
+      "business_unit": "consulting",
+      "client_id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+      "client_name": "Synthetic T09 Client 18",
+      "currency": "CAD",
+      "id": "824f3ea5-8ae2-5a80-81be-8917c129b9ad",
+      "index": 73,
+      "name": "Synthetic T09 Deal 073",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-negotiation"
+    },
+    {
+      "amount": "3000.00",
+      "business_unit": "consulting",
+      "client_id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+      "client_name": "Synthetic T09 Client 18",
+      "currency": "CAD",
+      "id": "0d458ecc-b441-5b9c-aad1-92f1952c6821",
+      "index": 74,
+      "name": "Synthetic T09 Deal 074",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-negotiation"
+    },
+    {
+      "amount": "3000.00",
+      "business_unit": "consulting",
+      "client_id": "e652df8e-11fa-5e83-ac8e-0b40d4be9222",
+      "client_name": "Synthetic T09 Client 18",
+      "currency": "CAD",
+      "id": "4cdf7693-900d-51ef-8796-e33681e16ae9",
+      "index": 75,
+      "name": "Synthetic T09 Deal 075",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-negotiation"
+    },
+    {
+      "amount": "3000.00",
+      "business_unit": "consulting",
+      "client_id": "72c4be95-92c2-542f-9665-814e33b2037e",
+      "client_name": "Synthetic T09 Client 19",
+      "currency": "CAD",
+      "id": "81f44228-0472-5d7d-a94e-180b30ddae7a",
+      "index": 76,
+      "name": "Synthetic T09 Deal 076",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-negotiation"
+    },
+    {
+      "amount": "3000.00",
+      "business_unit": "consulting",
+      "client_id": "72c4be95-92c2-542f-9665-814e33b2037e",
+      "client_name": "Synthetic T09 Client 19",
+      "currency": "CAD",
+      "id": "7d5612d6-0fc2-5d5c-b149-4a0f75cfd178",
+      "index": 77,
+      "name": "Synthetic T09 Deal 077",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-negotiation"
+    },
+    {
+      "amount": "3000.00",
+      "business_unit": "consulting",
+      "client_id": "72c4be95-92c2-542f-9665-814e33b2037e",
+      "client_name": "Synthetic T09 Client 19",
+      "currency": "CAD",
+      "id": "2794f9e8-fe61-5e53-a362-33baf169d5b3",
+      "index": 78,
+      "name": "Synthetic T09 Deal 078",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-negotiation"
+    },
+    {
+      "amount": "3000.00",
+      "business_unit": "consulting",
+      "client_id": "72c4be95-92c2-542f-9665-814e33b2037e",
+      "client_name": "Synthetic T09 Client 19",
+      "currency": "CAD",
+      "id": "08773a2c-032f-53f9-b0bb-ec135adf78b2",
+      "index": 79,
+      "name": "Synthetic T09 Deal 079",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-negotiation"
+    },
+    {
+      "amount": "4000.00",
+      "business_unit": "delivery",
+      "client_id": "92e55647-2006-5752-ab0a-434fda787102",
+      "client_name": "Synthetic T09 Client 20",
+      "currency": "USD",
+      "id": "aed04017-7480-5f98-8df4-2493e1c5be3d",
+      "index": 80,
+      "name": "Synthetic T09 Deal 080",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "4000.00",
+      "business_unit": "delivery",
+      "client_id": "92e55647-2006-5752-ab0a-434fda787102",
+      "client_name": "Synthetic T09 Client 20",
+      "currency": "USD",
+      "id": "ef264df0-d279-5444-ac41-f6ebcbc65ef5",
+      "index": 81,
+      "name": "Synthetic T09 Deal 081",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "4000.00",
+      "business_unit": "delivery",
+      "client_id": "92e55647-2006-5752-ab0a-434fda787102",
+      "client_name": "Synthetic T09 Client 20",
+      "currency": "USD",
+      "id": "e98060fc-84c6-5293-a1bb-86092a15e95e",
+      "index": 82,
+      "name": "Synthetic T09 Deal 082",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "4000.00",
+      "business_unit": "delivery",
+      "client_id": "92e55647-2006-5752-ab0a-434fda787102",
+      "client_name": "Synthetic T09 Client 20",
+      "currency": "USD",
+      "id": "d9ae7da8-0c4c-500f-8882-ce5007622d21",
+      "index": 83,
+      "name": "Synthetic T09 Deal 083",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "4000.00",
+      "business_unit": "delivery",
+      "client_id": "b2536162-d9c1-50f6-8e90-bc349598b8b6",
+      "client_name": "Synthetic T09 Client 21",
+      "currency": "USD",
+      "id": "33c60d68-8d52-504c-8a77-70a30470d01e",
+      "index": 84,
+      "name": "Synthetic T09 Deal 084",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "4000.00",
+      "business_unit": "delivery",
+      "client_id": "b2536162-d9c1-50f6-8e90-bc349598b8b6",
+      "client_name": "Synthetic T09 Client 21",
+      "currency": "USD",
+      "id": "9fa0eec4-40a6-5068-b877-9149d027cb19",
+      "index": 85,
+      "name": "Synthetic T09 Deal 085",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "4000.00",
+      "business_unit": "delivery",
+      "client_id": "b2536162-d9c1-50f6-8e90-bc349598b8b6",
+      "client_name": "Synthetic T09 Client 21",
+      "currency": "USD",
+      "id": "7852ff9c-ef2b-53d7-887f-80859f4943cc",
+      "index": 86,
+      "name": "Synthetic T09 Deal 086",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    },
+    {
+      "amount": "4000.00",
+      "business_unit": "delivery",
+      "client_id": "b2536162-d9c1-50f6-8e90-bc349598b8b6",
+      "client_name": "Synthetic T09 Client 21",
+      "currency": "USD",
+      "id": "ec2af0b5-d92a-536c-9692-1df957e4b488",
+      "index": 87,
+      "name": "Synthetic T09 Deal 087",
+      "owner_external": "synthetic-owner-a",
+      "owner_id": "4059d1e8-f0f1-5833-af99-faaa4f393eed",
+      "stage": "synthetic-discovery"
+    }
+  ],
+  "pipeline": "synthetic-t09",
+  "stage_only_saved_view_id": "8edc1fc2-2a86-52d5-81fe-3f9bdd7edb83",
+  "tenant": "s21_filter_850f3ce6dd7a4295b7dd296e2f1e8558"
+}

@@ -30,6 +30,7 @@ from app.models.user import User
 _FUNCTION_TO_GROUP: dict[str, str] = {
     "delivery": "Delivery",
     "hr": "HR",
+    "sales": "Sales",
     "finance": "Finance",
     "legal": "Legal",
 }
@@ -136,7 +137,7 @@ async def resolve_all(
     """Convenience: resolve every function for one business unit."""
 
     out: dict[str, ResolvedApprover] = {}
-    for fn in ("delivery", "hr", "finance", "legal"):
+    for fn in ("delivery", "hr", "sales", "finance", "legal"):
         out[fn] = await resolve(
             session, function=fn, business_unit=business_unit
         )

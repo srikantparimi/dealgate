@@ -20,18 +20,19 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.models.audit import AuditEvent
+from app.models.approval import ApprovalPackage
+from app.models.approval_routing import ApprovalAssignment
 from app.models.opportunity import Opportunity
 from app.models.task import Task
 from app.services.deals import (
     DealListFilters,
-    build_deal_count_query,
     build_deal_list_query,
     can_mutate_deal,
     get_client_name,
@@ -40,6 +41,8 @@ from app.services.deals import (
     latest_gm_model_summary,
 )
 from app.services.redact import redact_costs
+from app.services.test_fixtures import account_scope, allowed_for_package, user_allowed
+from app.services.user_provisioning import ensure_user
 
 router = APIRouter(prefix="/deals", tags=["deals"])
 
@@ -140,11 +143,27 @@ class DealPatch(BaseModel):
 # --- helpers ---------------------------------------------------------------
 
 
-async def _load_opportunity(session: AsyncSession, deal_id: uuid.UUID) -> Opportunity:
+async def _actor(session: AsyncSession, user: AuthUser) -> AuthUser:
+    actor = await ensure_user(session, user)
+    canonical = AuthUser(actor.id, actor.email, actor.name, tuple(actor.groups))
+    await session.commit()
+    return canonical
+
+
+async def _fixture_allowed(session: AsyncSession, user: AuthUser, opp: Opportunity) -> bool:
+    scope = await account_scope(session, opp.client_id, opportunity_id=opp.id) if opp.client_id else None
+    return user_allowed(user, scope)
+
+
+async def _load_opportunity(session: AsyncSession, deal_id: uuid.UUID, user: AuthUser,
+                            *, lock: bool = False) -> Opportunity:
+    query = select(Opportunity).where(Opportunity.id == deal_id)
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
     opp = (
-        await session.execute(select(Opportunity).where(Opportunity.id == deal_id))
+        await session.execute(query)
     ).scalar_one_or_none()
-    if opp is None:
+    if opp is None or not await _fixture_allowed(session, user, opp):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="deal not found")
     return opp
 
@@ -186,22 +205,31 @@ async def list_deals(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> DealListResponse:
+    user = await _actor(session, user)
     filters = DealListFilters(owner=owner, status=status_, stage=stage, page=page, size=size)
-    rows = (await session.execute(build_deal_list_query(user, filters))).scalars().all()
-    total = (await session.execute(build_deal_count_query(user, filters))).scalar_one()
-    items = [await _row_for(session, opp) for opp in rows]
-    return DealListResponse(items=items, page=page, size=size, total=int(total))
+    query = build_deal_list_query(user, filters).limit(None).offset(None)
+    candidates = (await session.scalars(query)).all()
+    visible = [opp for opp in candidates if await _fixture_allowed(session, user, opp)]
+    offset = (page - 1) * size
+    items = [await _row_for(session, opp) for opp in visible[offset:offset + size]]
+    return DealListResponse(items=items, page=page, size=size, total=len(visible))
 
 
-async def _build_detail(session: AsyncSession, opp: Opportunity) -> DealDetail:
+async def _build_detail(session: AsyncSession, opp: Opportunity, user: AuthUser) -> DealDetail:
     from app.models.user import User
     from app.services.approval_routing import person
     owner = await session.get(User, opp.owner_id) if opp.owner_id else None
-    tasks = (
-        await session.execute(
-            select(Task).where(Task.owner_id == opp.owner_id).order_by(Task.due_date.asc())
-        )
-    ).scalars().all() if opp.owner_id else []
+    # Owner equality cannot attribute a task to a deal. Ambiguous and unbound
+    # legacy tasks remain in My Work, not in an arbitrary deal's detail.
+    unambiguous = select(ApprovalAssignment.task_id).group_by(ApprovalAssignment.task_id).having(
+        func.count(func.distinct(ApprovalAssignment.package_id)) == 1)
+    task_rows = (await session.execute(select(Task, ApprovalPackage)
+        .join(ApprovalAssignment, ApprovalAssignment.task_id == Task.id)
+        .join(ApprovalPackage, ApprovalPackage.id == ApprovalAssignment.package_id)
+        .where(Task.owner_id == opp.owner_id, Task.id.in_(unambiguous),
+               ApprovalPackage.opportunity_id == opp.id)
+        .order_by(Task.due_date.asc(), Task.id.asc()))).unique().all() if opp.owner_id else []
+    tasks = [task for task, package in task_rows if await allowed_for_package(session, user.id, package)]
 
     audit_rows = (
         await session.execute(
@@ -251,14 +279,13 @@ async def get_deal(
     """Deal detail — cost fields inside ``gm_model`` / ``latest_package`` are
     stripped for users without a cost-authorized role (blueprint §3)."""
 
-    opp = await _load_opportunity(session, deal_id)
-    from app.models.approval import ApprovalPackage
-    from app.models.approval_routing import ApprovalAssignment
+    user = await _actor(session, user)
+    opp = await _load_opportunity(session, deal_id, user)
     assigned = await session.scalar(select(ApprovalAssignment.package_id).join(ApprovalPackage).where(
         ApprovalPackage.opportunity_id == deal_id, ApprovalAssignment.approver_id == user.id).limit(1))
     if not assigned:
         await _access_or_403(session, user, opp)
-    detail = await _build_detail(session, opp)
+    detail = await _build_detail(session, opp, user)
     payload = detail.model_dump(mode="json")
     return redact_costs(payload, set(user.groups))
 
@@ -291,7 +318,8 @@ async def patch_deal(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> DealDetail:
-    opp = await _load_opportunity(session, deal_id)
+    user = await _actor(session, user)
+    opp = await _load_opportunity(session, deal_id, user, lock=True)
     if not can_mutate_deal(user, opp):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="not authorised")
 
@@ -299,7 +327,7 @@ async def patch_deal(
     provided = patch.model_dump(exclude_unset=True)
     if not provided:
         # No-op patch. Return the deal as-is; do not emit audit events.
-        return await _build_detail(session, opp)
+        return await _build_detail(session, opp, user)
 
     # Compute diff per tracked field and audit each change independently
     # so the audit stream is easy to read and filter later.
@@ -328,4 +356,4 @@ async def patch_deal(
     await session.commit()
     await session.refresh(opp)
 
-    return await _build_detail(session, opp)
+    return await _build_detail(session, opp, user)

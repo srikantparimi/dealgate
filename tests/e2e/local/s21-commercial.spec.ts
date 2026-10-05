@@ -1,0 +1,38 @@
+import { expect, test } from "@playwright/test";
+
+test("commercial draft version saves and survives reload through the real API", async ({ page, request }) => {
+  const deal = process.env.S21_COMMERCIAL_DEAL;
+  expect(deal, "Supply the isolated commercial journey deal").toBeTruthy();
+  const api = "http://127.0.0.1:8210";
+  const headers = { "X-Test-User": "s21-browser@example.test" };
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(`/sows/${deal}/staffing`);
+  await expect(page.getByRole("heading", { name: "Commercial model" })).toBeVisible();
+  await expect(page.getByLabel("Loaded cost 1", { exact: true })).toHaveValue("10000");
+  const beforeResponse = await request.get(`${api}/delivery-model/${deal}`, { headers });
+  expect(beforeResponse.ok()).toBe(true);
+  const before = (await beforeResponse.json()).gm_model;
+  await page.getByLabel("Loaded cost 1", { exact: true }).fill("11000");
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect(page.getByText("Unsaved preview", { exact: true })).toBeVisible();
+  await page.getByLabel("Change reason", { exact: true }).fill("Isolated browser confirmation of revised draft cost");
+  await page.getByRole("button", { name: "Save version", exact: true }).click();
+  await expect(page.getByText("Commercial version saved.", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Loaded cost 1", { exact: true })).toHaveValue("11000");
+  const afterResponse = await request.get(`${api}/delivery-model/${deal}`, { headers });
+  const after = (await afterResponse.json()).gm_model;
+  expect(after.id).not.toBe(before.id);
+  expect(after.commercial_inputs.costs[0].amount).toBe("11000");
+  expect(after.computed.cost_us).toBe("11000");
+  const packagesResponse = await request.get(`${api}/approvals/packages?opportunity_id=${deal}`, { headers });
+  expect(packagesResponse.ok()).toBe(true);
+  expect((await packagesResponse.json()).items).toEqual([]);
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/commercial-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "Save version", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "../../docs/s21/evidence/baseline/commercial-mobile.png", fullPage: true });
+  expect(errors).toEqual([]);
+});

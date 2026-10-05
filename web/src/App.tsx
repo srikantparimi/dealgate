@@ -39,7 +39,11 @@ import { MyWorkPage } from "./pages/v2/MyWork";
 import { DiscoveryPage } from "./pages/v2/Discovery";
 import { RetiredPage } from "./pages/v2/RetiredPage";
 import { ProjectsActualsPage } from "./pages/v2/ProjectsActuals";
+import { DeletionJobPage } from "./pages/v2/DeletionJob";
 import { ReportsPage } from "./pages/v2/Reports";
+import { ForecastPage } from "./pages/v2/Forecast";
+import { PeoplePlanningPage, PeopleDemandPage } from "./pages/v2/PeoplePlanning";
+import { SourcingPlanningPage } from "./pages/v2/SourcingPlanning";
 import { SettingsShellPage } from "./pages/v2/SettingsShell";
 import { BulkSowImportPage } from "./pages/v2/BulkSowImport";
 import { NeedsReviewQueuePage } from "./pages/v2/NeedsReviewQueue";
@@ -163,7 +167,12 @@ export function App() {
                   <Route path="/discovery" element={<DiscoveryPage />} />
                   <Route path="/margin-lab" element={<RetiredPage />} />
                   <Route path="/projects" element={<ProjectsActualsPage />} />
+                  <Route path="/deletions/:id" element={<DeletionJobPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/forecast" element={<ForecastPage />} />
+                  <Route path="/people" element={<PeoplePlanningPage />} />
+                  <Route path="/people/demand" element={<PeopleDemandPage />} />
+                  <Route path="/people/sourcing" element={<SourcingPlanningPage />} />
                   <Route path="/settings" element={<SettingsShellPage />} />
                   <Route
                     path="/settings/data-imports/sows"

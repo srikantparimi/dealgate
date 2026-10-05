@@ -6,7 +6,9 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -35,6 +37,8 @@ class Opportunity(Base):
     # `sqlite_where`. Both are honoured by `Base.metadata.create_all` and
     # by the alembic migration.
     __table_args__ = (
+        CheckConstraint("business_unit_mapping_version IS NULL OR business_unit_mapping_version > 0",
+            name="ck_opportunity_bu_version"),
         Index(
             "ux_opportunity_hubspot_deal_id_not_null",
             "hubspot_deal_id",
@@ -59,6 +63,13 @@ class Opportunity(Base):
         String(32), nullable=False, default="hubspot", server_default="hubspot"
     )
     owner_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("user.id"))
+    local_assignee_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("user.id", ondelete="SET NULL"))
+    hubspot_owner_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    hubspot_owner_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    business_unit_value: Mapped[str | None] = mapped_column(String(255))
+    business_unit_mapping_version: Mapped[int | None] = mapped_column(Integer)
+    business_unit_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    hubspot_seen_generation: Mapped[int | None] = mapped_column(BigInteger)
     # S2 E3: opportunity -> client link. Nullable during backfill; the intake
     # worker sets it going forward. Sprint 3 will migrate this to NOT NULL
     # once historical rows are backfilled from HubSpot associations.

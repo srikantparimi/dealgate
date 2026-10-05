@@ -1,0 +1,25 @@
+{
+  "revision": "7f4202cccebc41c607ec4ac2e42fdc3a4e130a54",
+  "database": "s21_t17_61d71c0b4bf7436d957723c632fe1aba",
+  "boundary": "Local named identities, real PG/S3/Bedrock, explicit SES sink. No staging or inbox proof.",
+  "proof": [
+    {
+      "condition": "T17.01/.04 empty named deal",
+      "value": {
+        "sows": 0,
+        "versions": 0,
+        "packages": 0,
+        "projects": 0
+      },
+      "at": "2026-10-03T04:22:55.878Z"
+    },
+    {
+      "condition": "real extraction/source binding",
+      "value": {
+        "id": "d95a10b3-9811-418a-b6ef-958d148c00b7",
+        "hash": "7104c0fe8432aac30032689e0e8d89d6fe752bff0001b730826f08083561c0fc"
+      },
+      "at": "2026-10-03T04:23:14.687Z"
+    }
+  ]
+}

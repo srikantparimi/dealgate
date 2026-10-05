@@ -1,36 +1,17 @@
 /**
- * Delete + archive confirmation dialog (S13a-FE).
- *
- * Governance directive:
- * `docs/directives/s13a-delete-reset.md` — delete is not one behavior. The
- * server-side assessment returns:
- *
- *  - ``draft``           → hard delete allowed; render a red primary Delete
- *                          button that lists every cascaded row count.
- *  - ``approved``        → hard delete refused; render the reason and offer
- *                          Archive instead. Approval trails are append-only
- *                          (blueprint §5), so we never destroy them.
- *  - ``hubspot_linked``  → hard delete refused; a live HubSpot deal would
- *                          resurrect the record on the next sync, so archive
- *                          also writes the governance status back to HubSpot.
- *
- * The confirmation text tells the truth (CLAUDE.md rule 11): the counts the
- * server returned are the counts we render. No hidden buttons and no button
- * whose label doesn't match what happens on click.
+ * S21 parent deletion confirms owned removal separately from financial retention.
+ * Mirrored parents are refused; successful requests must return a cleanup job.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
-  archiveClient,
-  archiveOpportunity,
   assessClientDeletion,
   assessOpportunityDeletion,
   deleteBulkImportBatch,
   deleteClient,
   deleteOpportunity,
   type DeletionAssessmentResponse,
-  type DeletionState,
   type UUID,
 } from "../api/client";
 import { Button } from "./primitives/button";
@@ -83,6 +64,8 @@ const COUNT_LABELS: Record<string, { one: string; many: string }> = {
   client_rate_card_rows: { one: "rate card row", many: "rate card rows" },
   legal_entities: { one: "legal entity", many: "legal entities" },
   agreements: { one: "agreement", many: "agreements" },
+  retained_projects: { one: "project", many: "projects" },
+  retained_actuals: { one: "financial actual", many: "financial actuals" },
   import_files: { one: "import file", many: "import files" },
   import_file_rows: { one: "import file row", many: "import file rows" },
   import_batches: { one: "import batch", many: "import batches" },
@@ -109,10 +92,11 @@ interface CascadeLine {
   label: string;
 }
 
-function cascadeLines(counts: Record<string, number>): CascadeLine[] {
+function cascadeLines(counts: Record<string, number>, retained = false): CascadeLine[] {
   const out: CascadeLine[] = [];
   for (const [key, count] of Object.entries(counts)) {
     if (!count) continue;
+    if (key.startsWith("retained_") !== retained) continue;
     if (DUPLICATE_COUNT_KEYS.has(key)) continue;
     out.push({ key, count, label: labelFor(key, count) });
   }
@@ -129,14 +113,14 @@ function titleFor(kind: DeletionKind, name: string): string {
 function subtitleFor(kind: DeletionKind): string {
   if (kind === "client") {
     return (
-      "Removes the client and every draft opportunity, SOW, GM model and " +
-      "contact linked to it. Approved records archive instead of deleting."
+      "Removes the client, its opportunities, SOWs, versions, staffing, approvals, tasks, contacts and agreement files. " +
+      "Projects and financial actuals are retained with their source links detached."
     );
   }
   if (kind === "opportunity") {
     return (
-      "Removes the opportunity and every draft SOW, GM model and staffing " +
-      "line linked to it. Approved SOWs archive instead of deleting."
+      "Removes the opportunity and its SOWs, versions, staffing, approvals, tasks and files. " +
+      "Projects and financial actuals are retained; the client and its agreements remain."
     );
   }
   return (
@@ -171,23 +155,6 @@ async function callDelete(
   return deleteBulkImportBatch(id);
 }
 
-async function callArchive(
-  kind: DeletionKind,
-  id: UUID,
-  reason?: string,
-): Promise<DeletionAssessmentResponse> {
-  if (kind === "client") return archiveClient(id, reason);
-  if (kind === "opportunity") return archiveOpportunity(id, reason);
-  // Batches don't archive — the directive only defines a hard-delete
-  // path for bulk-import cleanup. Surface a truthful error so no button
-  // can lie about what it does (CLAUDE.md rule 11).
-  throw new ApiError(
-    400,
-    null,
-    "import batches cannot be archived; delete them or leave them in place",
-  );
-}
-
 type Mode =
   | { phase: "loading" }
   | { phase: "assessed"; assessment: DeletionAssessmentResponse }
@@ -203,7 +170,6 @@ export function DeletionConfirmationDialog({
   onConfirmed,
 }: DeletionConfirmationDialogProps) {
   const [mode, setMode] = useState<Mode>({ phase: "loading" });
-  const [reason, setReason] = useState<string>("");
   const [actionError, setActionError] = useState<string | null>(null);
   const requestId = useRef(0);
 
@@ -230,7 +196,6 @@ export function DeletionConfirmationDialog({
   // Assess every time the dialog opens for a fresh record.
   useEffect(() => {
     if (!open) return;
-    setReason("");
     setActionError(null);
     void runAssessment();
   }, [open, runAssessment]);
@@ -246,8 +211,7 @@ export function DeletionConfirmationDialog({
   );
 
   const canHardDelete: boolean = assessment?.state === "draft";
-  const mustArchive: boolean =
-    assessment?.state === "approved" || assessment?.state === "hubspot_linked";
+  const retained = assessment ? cascadeLines(assessment.counts, true) : [];
 
   const performDelete = useCallback(async () => {
     if (!assessment) return;
@@ -257,8 +221,9 @@ export function DeletionConfirmationDialog({
       const result = await callDelete(
         kind,
         id,
-        reason.trim() ? reason.trim() : undefined,
+        undefined,
       );
+      if (kind !== "batch" && !result.job_id) throw new Error("Deletion cleanup status was not returned");
       onConfirmed(result);
       onOpenChange(false);
     } catch (err) {
@@ -271,31 +236,7 @@ export function DeletionConfirmationDialog({
       setActionError(message);
       setMode({ phase: "assessed", assessment });
     }
-  }, [assessment, kind, id, reason, onConfirmed, onOpenChange]);
-
-  const performArchive = useCallback(async () => {
-    if (!assessment) return;
-    setActionError(null);
-    setMode({ phase: "working", assessment });
-    try {
-      const result = await callArchive(
-        kind,
-        id,
-        reason.trim() ? reason.trim() : undefined,
-      );
-      onConfirmed(result);
-      onOpenChange(false);
-    } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Archive failed";
-      setActionError(message);
-      setMode({ phase: "assessed", assessment });
-    }
-  }, [assessment, kind, id, reason, onConfirmed, onOpenChange]);
+  }, [assessment, kind, id, onConfirmed, onOpenChange]);
 
   const working = mode.phase === "working";
 
@@ -332,19 +273,15 @@ export function DeletionConfirmationDialog({
             <>
               {canHardDelete ? (
                 <CascadeSummary kind={kind} lines={lines} />
-              ) : mustArchive ? (
-                <ArchiveNotice
-                  state={assessment.state}
-                  serverReason={assessment.reason}
-                  reason={reason}
-                  onReasonChange={setReason}
-                />
               ) : (
-                <p role="status">
-                  Result: <strong>{assessment.state}</strong> —{" "}
-                  {assessment.reason}
-                </p>
+                <div role="alert" data-testid="deletion-cannot-delete">
+                  <p>Deletion unavailable.</p>
+                  <p data-testid="deletion-server-reason">{assessment.reason}</p>
+                </div>
               )}
+              {retained.length > 0 && <div><p>Retained:</p><ul data-testid="deletion-retained-list">
+                {retained.map(line => <li key={line.key}>{line.count} {line.label}</li>)}
+              </ul></div>}
 
               {actionError ? (
                 <div
@@ -385,16 +322,6 @@ export function DeletionConfirmationDialog({
               data-testid="deletion-confirm"
             >
               {working ? "Deleting…" : "Delete"}
-            </Button>
-          ) : null}
-          {mustArchive ? (
-            <Button
-              variant="destructive"
-              onClick={() => void performArchive()}
-              disabled={working}
-              data-testid="deletion-archive"
-            >
-              {working ? "Archiving…" : "Archive instead"}
             </Button>
           ) : null}
         </div>
@@ -439,55 +366,6 @@ function CascadeSummary({ kind, lines }: CascadeSummaryProps) {
         The audit trail records the deletion; the deleted rows themselves are
         gone.
       </p>
-    </div>
-  );
-}
-
-interface ArchiveNoticeProps {
-  state: DeletionState;
-  serverReason: string;
-  reason: string;
-  onReasonChange: (v: string) => void;
-}
-
-function ArchiveNotice({
-  state,
-  serverReason,
-  reason,
-  onReasonChange,
-}: ArchiveNoticeProps) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div
-        role="alert"
-        data-testid="deletion-cannot-delete"
-        className="rounded-panel border border-danger/40 bg-danger/10 p-3 text-danger"
-      >
-        <p className="font-medium">Cannot delete.</p>
-        <p className="mt-1 text-body">
-          {state === "hubspot_linked"
-            ? "Linked to a live HubSpot deal — hard-deleting would resurrect the record on the next sync. Archive instead; the governance status writes back to HubSpot."
-            : "This record has an approval package or a signed SOW. Approval trails are append-only, so it can only be archived."}
-        </p>
-        <p
-          className="mt-2 text-secondary"
-          data-testid="deletion-server-reason"
-        >
-          Reason: {serverReason}
-        </p>
-      </div>
-      <label className="flex flex-col gap-1 text-body">
-        <span className="text-secondary text-text-secondary">
-          Archive reason (optional)
-        </span>
-        <textarea
-          className="min-h-[72px] rounded-control border border-input-border bg-surface p-2 text-body text-text focus-visible:outline-focus"
-          value={reason}
-          onChange={(e) => onReasonChange(e.target.value)}
-          data-testid="deletion-archive-reason"
-          placeholder="Why is this record being archived?"
-        />
-      </label>
     </div>
   );
 }

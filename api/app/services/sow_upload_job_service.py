@@ -42,15 +42,19 @@ from app.integrations.bedrock_sow_extract import (
     validate_extract,
 )
 from app.integrations.s3_sow import FileTooLarge, SowS3, UnsupportedContentType
+from app.integrations.textract import TextractClient
 from app.models.client import Client, LegalEntity
 from app.models.client_alias import ClientAlias
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
 from app.models.sow_upload_job import SowUploadJob
-from app.services.document_text import UnreadableDocument
 from app.services.document_type import (
     ALLOWED_START_TYPES,
-    classify_document,
+    classify_text_document,
+)
+from app.services.sow_extract import (
+    PreparedExtractionDocument,
+    prepare_extraction_document,
 )
 from app.services.sow_upload_pipeline import (
     PipelineOutcome,
@@ -91,9 +95,7 @@ class RejectedDocumentType(UploadPipelineError):
 # --- job helpers ----------------------------------------------------------
 
 
-async def find_by_hash(
-    session: AsyncSession, file_hash: str
-) -> SowUploadJob | None:
+async def find_by_hash(session: AsyncSession, file_hash: str) -> SowUploadJob | None:
     """Return the existing job for this SHA-256, if any.
 
     S13a "fresh-start" rule: the hash only counts as a duplicate when the
@@ -139,12 +141,28 @@ async def find_by_hash(
     return job
 
 
-async def get_job(
-    session: AsyncSession, job_id: uuid.UUID
-) -> SowUploadJob | None:
+async def get_job(session: AsyncSession, job_id: uuid.UUID) -> SowUploadJob | None:
     return (
         await session.execute(select(SowUploadJob).where(SowUploadJob.id == job_id))
     ).scalar_one_or_none()
+
+
+async def _live_upload_job(session, job):
+    from app.services.deletion_fences import source_deleted
+
+    if await source_deleted(session, "sow_upload_job", job.id):
+        raise UploadPipelineError("Upload source was deleted")
+    current = await session.scalar(
+        select(SowUploadJob)
+        .where(
+            SowUploadJob.id == job.id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if current is None:
+        raise UploadPipelineError("Upload source was deleted")
+    return current
 
 
 async def _emit(
@@ -247,13 +265,9 @@ async def _load_opportunity(
     ).scalar_one()
 
 
-async def _load_version(
-    session: AsyncSession, sow_version_id: uuid.UUID
-) -> SowVersion:
+async def _load_version(session: AsyncSession, sow_version_id: uuid.UUID) -> SowVersion:
     return (
-        await session.execute(
-            select(SowVersion).where(SowVersion.id == sow_version_id)
-        )
+        await session.execute(select(SowVersion).where(SowVersion.id == sow_version_id))
     ).scalar_one()
 
 
@@ -285,14 +299,10 @@ async def _create_new_client(
     name = str(create_new.get("legal_name") or "").strip()
     if not name:
         raise UploadPipelineError("create_new requires legal_name")
-    client = Client(
-        id=uuid.uuid4(), name=name, hubspot_company_id=None, timezone=None
-    )
+    client = Client(id=uuid.uuid4(), name=name, hubspot_company_id=None, timezone=None)
     session.add(client)
     await session.flush()
-    session.add(
-        LegalEntity(id=uuid.uuid4(), client_id=client.id, name=name)
-    )
+    session.add(LegalEntity(id=uuid.uuid4(), client_id=client.id, name=name))
     domain = create_new.get("domain")
     if isinstance(domain, str) and domain.strip():
         session.add(
@@ -382,9 +392,7 @@ async def _persist_sow_version_from_cache(
     from app.services.sow_extract import _to_provenance_fields
 
     sow = (
-        await session.execute(
-            select(Sow).where(Sow.opportunity_id == opportunity.id)
-        )
+        await session.execute(select(Sow).where(Sow.opportunity_id == opportunity.id))
     ).scalar_one_or_none()
     if sow is None:
         sow = Sow(id=uuid.uuid4(), opportunity_id=opportunity.id)
@@ -392,14 +400,13 @@ async def _persist_sow_version_from_cache(
         await session.flush()
 
     extract_status = "manual_required"
-    fields_out: dict[str, Any] = {
-        "metadata": {"extract_source": "sow_upload_pipeline"}
-    }
+    payload = cached_extract or {}
+    extract_source = payload.get("extract_source") or "sow_upload_pipeline"
+    fields_out: dict[str, Any] = {"metadata": {"extract_source": extract_source}}
     model = None
     prompt_version = None
     suggested = None
 
-    payload = cached_extract or {}
     ex_fields = payload.get("fields")
     ex_model = payload.get("model")
     ex_prompt = payload.get("prompt_version")
@@ -409,21 +416,28 @@ async def _persist_sow_version_from_cache(
     if isinstance(ex_fields, dict) and ex_model and ex_prompt:
         validated = validate_extract(
             {
-                "fields": ex_fields,
+                "fields": {
+                    name: value
+                    for name, value in ex_fields.items()
+                    if name != "metadata"
+                },
                 "model": ex_model,
                 "prompt_version": ex_prompt,
             }
         )
         fields_out = _to_provenance_fields(
-            validated.fields, model=validated.model,
+            validated.fields,
+            model=validated.model,
             prompt_version=validated.prompt_version,
         )
-        fields_out["metadata"] = {"extract_source": "sow_upload_pipeline"}
+        cached_metadata = ex_fields.get("metadata")
+        fields_out["metadata"] = {
+            **(cached_metadata if isinstance(cached_metadata, dict) else {}),
+            "extract_source": extract_source,
+        }
         model = validated.model
         prompt_version = validated.prompt_version
-        suggested = validated.fields.get("engagement_type_suggested", {}).get(
-            "value"
-        )
+        suggested = validated.fields.get("engagement_type_suggested", {}).get("value")
         extract_status = "complete"
 
     version = SowVersion(
@@ -437,9 +451,7 @@ async def _persist_sow_version_from_cache(
         extracted_fields=fields_out,
         extract_model=model,
         extract_prompt_version=prompt_version,
-        engagement_type_suggested=(
-            str(suggested) if suggested is not None else None
-        ),
+        engagement_type_suggested=(str(suggested) if suggested is not None else None),
     )
     session.add(version)
     await session.flush()
@@ -462,9 +474,7 @@ async def _persist_sow_version_from_cache(
         session,
         actor_id=uploader_id,
         action=(
-            "sow.extracted"
-            if extract_status == "complete"
-            else "sow.extract_failed"
+            "sow.extracted" if extract_status == "complete" else "sow.extract_failed"
         ),
         entity="sow_version",
         entity_id=str(version.id),
@@ -501,9 +511,7 @@ async def _run_downstream_from_version(
     )
     return {
         "engagement_type": payload.engagement.primary.type,
-        "gm_model_id": (
-            str(payload.gm_model.id) if payload.gm_model else None
-        ),
+        "gm_model_id": (str(payload.gm_model.id) if payload.gm_model else None),
         "needs_you_count": len(payload.needs_you),
     }
 
@@ -522,6 +530,7 @@ async def _finish_bound_upload(
     bound_client_id: uuid.UUID,
     bound_opportunity_id: uuid.UUID,
     bedrock_caller: BedrockSowExtract,
+    prepared_document: PreparedExtractionDocument,
 ) -> SowUploadJob:
     """T11/T37 short-circuit — the caller pre-bound client + deal.
 
@@ -534,10 +543,12 @@ async def _finish_bound_upload(
     """
 
     from app.models.opportunity import Opportunity
-    from app.services.document_text import extract_document_text
     from app.services.sow_extract import _to_provenance_fields
     from app.services.sow_upload_pipeline import _run_extract
 
+    job = await _live_upload_job(session, job)
+    if job.status == "done":
+        return job
     # Load + validate the binding again — the router checked already,
     # but we don't trust anything between here and there.
     opp = (
@@ -551,41 +562,58 @@ async def _finish_bound_upload(
             job=job,
             status="failed",
             error=(
-                f"binding rejected: opportunity {bound_opportunity_id} not "
-                f"found or client mismatch"
+                f"binding rejected: opportunity {bound_opportunity_id} not found or client mismatch"
             ),
         )
         raise UploadPipelineError(
-            f"opportunity {bound_opportunity_id} not bound to client "
-            f"{bound_client_id}"
+            f"opportunity {bound_opportunity_id} not bound to client {bound_client_id}"
         )
 
     # Extract now — reuse the same helper `apply_pipeline` uses. This
     # path returns the extracted fields (or a failure reason) without
     # invoking the client-matcher.
+    extract_error: str | None
     try:
-        text_doc = extract_document_text(file_bytes, content_type=content_type)
-        extract_outcome = await _run_extract(text_doc, bedrock=bedrock_caller)
+        if prepared_document.error is not None or prepared_document.text is None:
+            extract_outcome = None
+            extract_error = prepared_document.error or "OCR unavailable"
+        else:
+            extract_outcome = await _run_extract(
+                prepared_document.text,
+                bedrock=bedrock_caller,
+            )
+            extract_error = extract_outcome.error
     except Exception as exc:  # noqa: BLE001 — always preserve the file
         extract_outcome = None
         extract_error = f"extract crashed: {exc}"
-    else:
-        extract_error = extract_outcome.error
 
-    fields_out: dict[str, Any] = {"metadata": {"extract_source": "sow_upload_pipeline"}}
+    source_metadata: dict[str, Any] = {
+        "extract_source": prepared_document.extract_source
+    }
+    if prepared_document.text is not None:
+        source_metadata.update(
+            ref_unit=prepared_document.text.ref_unit,
+            document_kind=prepared_document.text.kind,
+        )
+    fields_out: dict[str, Any] = {"metadata": source_metadata}
     extract_status = "manual_required"
     model: str | None = None
     prompt_version: str | None = None
     suggested = None
 
-    if extract_outcome is not None and extract_outcome.fields is not None:
+    if (
+        extract_outcome is not None
+        and extract_outcome.fields is not None
+        and extract_outcome.model is not None
+        and extract_outcome.prompt_version is not None
+    ):
         try:
             fields_out = _to_provenance_fields(
                 extract_outcome.fields,
                 model=extract_outcome.model,
                 prompt_version=extract_outcome.prompt_version,
             )
-            fields_out["metadata"] = {"extract_source": "sow_upload_pipeline"}
+            fields_out["metadata"] = source_metadata
             model = extract_outcome.model
             prompt_version = extract_outcome.prompt_version
             suggested = (
@@ -621,9 +649,7 @@ async def _finish_bound_upload(
         extracted_fields=fields_out,
         extract_model=model,
         extract_prompt_version=prompt_version,
-        engagement_type_suggested=(
-            str(suggested) if suggested is not None else None
-        ),
+        engagement_type_suggested=(str(suggested) if suggested is not None else None),
         version_no=await reserve_version_no(session, sow_row.id),
     )
     session.add(version)
@@ -652,9 +678,7 @@ async def _finish_bound_upload(
         session,
         actor_id=uploader_id,
         action=(
-            "sow.extracted"
-            if extract_status == "complete"
-            else "sow.extract_failed"
+            "sow.extracted" if extract_status == "complete" else "sow.extract_failed"
         ),
         entity="sow_version",
         entity_id=str(version.id),
@@ -728,6 +752,7 @@ async def start_upload(
     client_hint: str | None,
     s3: SowS3,
     bedrock_sow: BedrockSowExtract | None = None,
+    textract: TextractClient | None = None,
     bound_client_id: uuid.UUID | None = None,
     bound_opportunity_id: uuid.UUID | None = None,
 ) -> SowUploadJob:
@@ -759,23 +784,29 @@ async def start_upload(
             return existing
         retry_job = existing
 
-    # Doc-type gate — we probe before creating a job row so a résumé
-    # rejection leaves no trace beyond the 422 response body.
-    try:
-        doc = classify_document(file_bytes, content_type=content_type)
-    except UnreadableDocument as exc:
-        # Accepted MIME type, unreadable bytes. 422 with the real reason —
-        # never a 500, and never the misleading "not a SOW" message.
+    prepared = prepare_extraction_document(
+        file_bytes,
+        content_type=content_type,
+        textract=textract,
+    )
+    if prepared.error is not None and prepared.extract_source != "textract":
         raise RejectedDocumentType(
             "unreadable",
             0.0,
             message=(
-                f"We could not read this file. {exc.reason.capitalize()}. "
+                f"We could not read this file. {prepared.error.capitalize()}. "
                 "Please upload a PDF or a .docx Word document."
             ),
-        ) from exc
-    if doc.type not in ALLOWED_START_TYPES:
-        raise RejectedDocumentType(doc.type, doc.confidence)
+        )
+    if prepared.text is None:
+        detected_type = "scanned_document"
+        detected_confidence = 0.0
+    else:
+        doc = classify_text_document(prepared.text)
+        detected_type = doc.type
+        detected_confidence = doc.confidence
+        if doc.type not in ALLOWED_START_TYPES:
+            raise RejectedDocumentType(doc.type, doc.confidence)
 
     bedrock_caller = bedrock_sow if bedrock_sow is not None else StubBedrock()
 
@@ -809,8 +840,8 @@ async def start_upload(
         before=None,
         after={
             "file_hash": file_hash,
-            "detected_type": doc.type,
-            "detected_confidence": round(doc.confidence, 3),
+            "detected_type": detected_type,
+            "detected_confidence": round(detected_confidence, 3),
             "client_hint": client_hint,
         },
     )
@@ -827,9 +858,7 @@ async def start_upload(
             )
         )
     except UploadPipelineError as exc:
-        await _transition(
-            session, job=job, status="failed", error=str(exc)
-        )
+        await _transition(session, job=job, status="failed", error=str(exc))
         raise
 
     job.s3_key = s3_key
@@ -862,6 +891,7 @@ async def start_upload(
             bound_client_id=bound_client_id,
             bound_opportunity_id=bound_opportunity_id,
             bedrock_caller=bedrock_caller,
+            prepared_document=prepared,
         )
 
     result = await apply_pipeline(
@@ -871,6 +901,8 @@ async def start_upload(
         source="sow_upload",
         content_type=content_type,
         bedrock=bedrock_caller,
+        textract=textract,
+        prepared_document=prepared,
     )
 
     if result.outcome == PipelineOutcome.NEEDS_PICK:
@@ -895,6 +927,7 @@ async def start_upload(
                 "fields": result.extract_fields,
                 "model": result.extract_model,
                 "prompt_version": result.extract_prompt_version,
+                "extract_source": result.extract_source,
                 "error": extract_error,
             },
             "candidates": result.needs_pick_candidates,
@@ -979,6 +1012,7 @@ async def resume_after_pick(
     ``matched`` (existing client) or ``created`` (new client).
     """
 
+    job = await _live_upload_job(session, job)
     if job.status == "done":
         return job
     if job.status != "needs_pick":
@@ -995,29 +1029,21 @@ async def resume_after_pick(
         # picker only shipped legal_name.
         merged = dict(create_new)
         merged.setdefault("domain", signals.get("domain"))
-        merged.setdefault(
-            "address_lines", signals.get("address_lines") or []
-        )
+        merged.setdefault("address_lines", signals.get("address_lines") or [])
         client = await _create_new_client(
             session, uploader_id=job.uploader_id, create_new=merged
         )
         resolution = "created"
     elif client_id is not None:
         client = (
-            await session.execute(
-                select(Client).where(Client.id == client_id)
-            )
+            await session.execute(select(Client).where(Client.id == client_id))
         ).scalar_one_or_none()
         if client is None:
             raise UploadPipelineError(f"client {client_id} does not exist")
-        await _adopt_alias(
-            session, client=client, legal_name=signals.get("legal_name")
-        )
+        await _adopt_alias(session, client=client, legal_name=signals.get("legal_name"))
         resolution = "matched"
     else:
-        raise UploadPipelineError(
-            "pick requires either client_id or create_new"
-        )
+        raise UploadPipelineError("pick requires either client_id or create_new")
 
     opportunity = await _create_opportunity(
         session, uploader_id=job.uploader_id, client_id=client.id
@@ -1075,12 +1101,8 @@ def serialize_job(job: SowUploadJob) -> dict[str, Any]:
         "status": job.status,
         "resolution": job.resolution,
         "error": job.error,
-        "opportunity_id": (
-            str(job.opportunity_id) if job.opportunity_id else None
-        ),
-        "sow_version_id": (
-            str(job.sow_version_id) if job.sow_version_id else None
-        ),
+        "opportunity_id": (str(job.opportunity_id) if job.opportunity_id else None),
+        "sow_version_id": (str(job.sow_version_id) if job.sow_version_id else None),
         "file_hash": job.file_hash,
         "s3_key": job.s3_key,
         "needs_pick": job.needs_pick_payload,

@@ -29,12 +29,15 @@ prior row so its verification state is invalidated for the audit trail.
 from __future__ import annotations
 
 import difflib
+import hashlib
+import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+import anyio
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +58,7 @@ from app.models.task import Task
 from app.models.user import User
 from app.services.approvals import ApprovalError, load_package, mark_released
 from app.services.notifications import queue_notification
+from app.services.renewals import compute_alert_date
 
 
 # ---- errors --------------------------------------------------------------
@@ -86,10 +90,6 @@ _MATERIAL_FIELDS: tuple[str, ...] = (
 # blocked with the mismatch captured in ``diff_json``.
 _SCOPE_SIMILARITY_THRESHOLD = 0.9
 
-# The renewal is opened T-60d before the term_end date (build-guide §6.7).
-_RENEWAL_LEAD_DAYS = 60
-
-
 def _to_decimal(raw: Any) -> Decimal | None:
     """Best-effort ``Decimal`` cast for the price diff.
 
@@ -100,7 +100,8 @@ def _to_decimal(raw: Any) -> Decimal | None:
     if raw is None:
         return None
     try:
-        return Decimal(str(raw).strip())
+        value = Decimal(str(raw).strip())
+        return value if value.is_finite() else None
     except (InvalidOperation, ValueError, AttributeError):
         return None
 
@@ -143,14 +144,41 @@ def _scope_similarity(a: str | None, b: str | None) -> float:
     return difflib.SequenceMatcher(None, left, right).ratio()
 
 
-def _diff_price(approved: Any, extracted: Any) -> dict[str, Any]:
-    ap = _to_decimal(approved)
-    ex = _to_decimal(extracted)
-    match = ap is not None and ex is not None and ap == ex
+def _price_value(raw: Any, currency: Any) -> tuple[Decimal | None, str | None]:
+    context = str(currency).strip().upper() if currency is not None else None
+    if context is not None and not re.fullmatch(r"[A-Z]{3}", context):
+        return None, None
+    parsed = re.fullmatch(
+        r"(?:(?P<prefix>[A-Za-z]{3}|\$)\s*)?"
+        r"(?P<amount>[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?)"
+        r"\s*(?P<suffix>[A-Za-z]{3})?", str(raw).strip(),
+    )
+    if parsed is None:
+        return None, context
+    prefix, suffix = parsed["prefix"], parsed["suffix"]
+    if prefix == "$":
+        # A dollar sign alone does not establish which dollar currency it is.
+        dollar_currency = context or (suffix.upper() if suffix else None)
+        if dollar_currency not in {"USD", "CAD", "AUD", "NZD", "SGD", "HKD"}:
+            return None, context
+        prefix = dollar_currency
+    currencies = {value.upper() for value in (context, prefix, suffix) if value}
+    if len(currencies) > 1:
+        return None, context
+    return _to_decimal(parsed["amount"].replace(",", "")), next(iter(currencies), None)
+
+
+def _diff_price(approved: Any, extracted: Any, approved_currency: Any = None,
+                extracted_currency: Any = None) -> dict[str, Any]:
+    ap, ac = _price_value(approved, approved_currency)
+    ex, ec = _price_value(extracted, extracted_currency)
+    match = ap is not None and ex is not None and ap == ex and ac == ec
     return {
         "field": "price",
         "approved": str(approved) if approved is not None else None,
         "extracted": str(extracted) if extracted is not None else None,
+        "approved_currency": ac,
+        "extracted_currency": ec,
         "match": match,
     }
 
@@ -280,7 +308,8 @@ def compute_diff(
 
     fields: list[dict[str, Any]] = [
         _diff_price(
-            _field_value(approved, "price"), _field_value(extracted, "price")
+            _field_value(approved, "price"), _field_value(extracted, "price"),
+            _field_value(approved, "currency"), _field_value(extracted, "currency"),
         ),
         _diff_date(
             "term_start",
@@ -354,6 +383,70 @@ async def _load_sow_version(
     if row is None:
         raise SignedSowError(status_code=404, detail="pinned sow_version not found")
     return row
+
+
+async def _require_current_callback(
+    session: AsyncSession, upload: SignedSowUpload
+) -> tuple[ApprovalPackage, SowVersion]:
+    """Refuse a signature callback that no longer targets current economics.
+
+    `verify`, `mark_declined` and `mark_expired` can arrive late — an
+    external signer replying after the package was voided, released or
+    superseded, after the upload was replaced by a re-upload, or after an
+    amendment superseded the pinned SOW version. Accepting any of those
+    would record a signature outcome against stale economics (S21-16,
+    T14.07), so each one is a 409 and the upload row stays untouched.
+    """
+
+    package = await _load_package_or_error(session, upload.package_id)
+    if package.superseded_by is not None:
+        raise SignedSowError(
+            status_code=409,
+            detail=(
+                f"package has been superseded by {package.superseded_by}; "
+                "the signature outcome belongs to the newer package"
+            ),
+        )
+    if package.status != "ready_to_sign":
+        raise SignedSowError(
+            status_code=409,
+            detail=(
+                f"package is {package.status!r}; a signature callback is "
+                "only valid while it is 'ready_to_sign'"
+            ),
+        )
+    pinned = await _load_sow_version(session, package.sow_version_id)
+    if pinned.superseded_by is not None or pinned.discarded_at is not None:
+        raise SignedSowError(
+            status_code=409,
+            detail=(
+                "the pinned SOW version was superseded or discarded; "
+                "re-route approvals on the current version before signing"
+            ),
+        )
+    # Replaced = a strictly newer upload exists. A timestamp tie is not
+    # treated as replacement: the stored clock is second-granular on the
+    # test engine, and a real late callback arrives long after the
+    # re-upload, never inside the same instant.
+    import sqlalchemy as sa
+
+    newest = await session.scalar(
+        sa.select(sa.func.max(SignedSowUpload.uploaded_at)).where(
+            SignedSowUpload.package_id == upload.package_id
+        )
+    )
+    def _utc(value):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+    if newest is not None and _utc(upload.uploaded_at) < _utc(newest):
+        raise SignedSowError(
+            status_code=409,
+            detail=(
+                "this signed upload was replaced by a newer one; the "
+                "callback must target the current upload"
+            ),
+        )
+    return package, pinned
 
 
 # ---- create --------------------------------------------------------------
@@ -493,11 +586,16 @@ async def verify(
     """
 
     upload = await _load_upload(session, upload_id)
-    package = await _load_package_or_error(session, upload.package_id)
-    pinned = await _load_sow_version(session, package.sow_version_id)
+    package, pinned = await _require_current_callback(session, upload)
 
     try:
-        raw = bedrock.extract(file_bytes)
+        from app.services.document_text import extract_document_text
+
+        if not file_bytes or hashlib.sha256(file_bytes).hexdigest() != upload.file_hash.removeprefix("sha256:"):
+            raw = ManualRequired(reason="stored document hash mismatch or empty document")
+        else:
+            document = await anyio.to_thread.run_sync(extract_document_text, file_bytes)
+            raw = await anyio.to_thread.run_sync(bedrock.extract, document)
     except Exception as exc:  # noqa: BLE001 — LLM safety net
         raw = ManualRequired(reason=f"bedrock failed: {exc}")
 
@@ -588,6 +686,7 @@ async def mark_declined(
             detail="reason required when marking a signature request declined",
         )
     upload = await _load_upload(session, upload_id)
+    await _require_current_callback(session, upload)
     before = {
         "verify_status": upload.verify_status,
         "signer_state": upload.signer_state,
@@ -629,6 +728,7 @@ async def mark_expired(
     """
 
     upload = await _load_upload(session, upload_id)
+    await _require_current_callback(session, upload)
     before = {
         "verify_status": upload.verify_status,
         "signer_state": upload.signer_state,
@@ -806,7 +906,7 @@ async def release(
     Side effects (all in one transaction):
       1. SES email to owner + Delivery + Finance + Legal leaders.
       2. ``kickoff`` + ``billing_setup`` tasks filed on the owner.
-      3. ``renewal`` row opened with ``trigger_date = term_end - 60d``.
+      3. ``renewal`` row opened two calendar months before ``term_end``.
       4. ``project`` row created (or linked, idempotent).
       5. ``approval_package.status`` → ``released``.
     """
@@ -847,6 +947,14 @@ async def release(
         )
 
     pinned = await _load_sow_version(session, package.sow_version_id)
+    if pinned.superseded_by is not None or pinned.discarded_at is not None:
+        raise SignedSowError(
+            status_code=409,
+            detail=(
+                "the pinned SOW version was superseded or discarded; stale "
+                "economics cannot be activated — release the current version"
+            ),
+        )
 
     opp = (
         await session.execute(
@@ -899,7 +1007,7 @@ async def release(
             id=uuid.uuid4(),
             opportunity_id=opp.id,
             term_end=term_end,
-            trigger_date=term_end - timedelta(days=_RENEWAL_LEAD_DAYS),
+            trigger_date=compute_alert_date(term_end),
             status="open",
         )
         session.add(renewal_row)
@@ -927,6 +1035,80 @@ async def release(
     project, project_created = await project_create_or_link(
         session, actor_id=actor_id, package=package
     )
+
+    # 4b. Amendment activation (S21-16, T14.04/T14.07). If this opportunity
+    # already has a released, unsuperseded contract on a different SOW
+    # version, this release *is* the activation: the earlier package and
+    # its pinned version are superseded in this same transaction so every
+    # signed read (outlook, coverage, rollups) switches to the amendment's
+    # effective schedule, and the explicit overlap or gap between the two
+    # terms is recorded rather than silently absorbed.
+    prior_packages = (
+        await session.scalars(
+            select(ApprovalPackage).where(
+                ApprovalPackage.opportunity_id == opp.id,
+                ApprovalPackage.id != package.id,
+                ApprovalPackage.status == "released",
+                ApprovalPackage.superseded_by.is_(None),
+                ApprovalPackage.sow_version_id != package.sow_version_id,
+            )
+        )
+    ).all()
+    amendment_start = _to_date(_field_value(pinned.extracted_fields, "term_start"))
+    for prior in prior_packages:
+        prior.superseded_by = package.id
+        prior_version = (
+            await _load_sow_version(session, prior.sow_version_id)
+            if prior.sow_version_id
+            else None
+        )
+        if (
+            prior_version is not None
+            and prior_version.superseded_by is None
+            and prior_version.id != pinned.id
+        ):
+            prior_version.superseded_by = pinned.id
+        original_end = (
+            _term_end_from_pinned(prior_version) if prior_version is not None else None
+        )
+        overlap_days = gap_days = 0
+        if original_end is not None and amendment_start is not None:
+            delta = (original_end - amendment_start).days
+            if delta >= 0:
+                overlap_days = delta + 1  # inclusive calendar days double-covered
+            elif delta < -1:
+                gap_days = -delta - 1  # uncovered days between the terms
+        await append_audit(
+            session,
+            actor_id=actor_id,
+            action="amendment.activated",
+            entity="approval_package",
+            entity_id=str(package.id),
+            before={
+                "superseded_package_id": str(prior.id),
+                "superseded_version_id": str(prior_version.id)
+                if prior_version is not None
+                else None,
+            },
+            after={
+                "superseded_package_id": str(prior.id),
+                "superseded_version_id": str(prior_version.id)
+                if prior_version is not None
+                else None,
+                "overlap_days": overlap_days,
+                "gap_days": gap_days,
+                "original_term_end": original_end.isoformat()
+                if original_end is not None
+                else None,
+                "amendment_term_start": amendment_start.isoformat()
+                if amendment_start is not None
+                else None,
+                "amendment_term_end": term_end.isoformat()
+                if term_end is not None
+                else None,
+                "project_id": str(project.id),
+            },
+        )
 
     # 5. Move the package to ``released`` + record the upload's release
     # timestamp.  ``mark_released`` audits ``package.released`` for us.

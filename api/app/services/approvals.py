@@ -122,7 +122,7 @@ def _cost_line_snapshot(line: Any) -> dict[str, Any]:
 def _gm_model_snapshot(model: GmModel) -> dict[str, Any]:
     """Canonical JSON of a gm_model's frozen inputs — feeds the sha256 hash."""
 
-    return {
+    snapshot = {
         "id": str(model.id),
         "engagement_type": model.engagement_type,
         "delivery_pattern": model.delivery_pattern,
@@ -137,6 +137,10 @@ def _gm_model_snapshot(model: GmModel) -> dict[str, Any]:
         ],
         "cost_lines": [_cost_line_snapshot(c) for c in model.cost_lines],
     }
+    if model.commercial_inputs is not None:
+        snapshot.update(commercial_inputs=model.commercial_inputs,
+                        commercial_snapshot=model.commercial_snapshot)
+    return snapshot
 
 
 def package_hash(sow_version: SowVersion, gm_model: GmModel) -> str:
@@ -341,8 +345,12 @@ async def _create_approval_tasks(
     due = add_business_days(now.date(), _APPROVAL_SLA_BUSINESS_DAYS)
 
     created: list[Task] = []
+    from app.services.test_fixtures import reviewer_scope, user_allowed
+
+    version = await session.get(SowVersion, package.sow_version_id)
+    scope = await reviewer_scope(session, version)
     for group in groups:
-        approvers = await _users_in_group(session, group)
+        approvers = [u for u in await _users_in_group(session, group) if user_allowed(u, scope)]
         if approvers:
             targets: list[User | None] = list(approvers)
         else:
@@ -461,15 +469,19 @@ async def submit_package(
     ).scalar_one_or_none()
     if opportunity is None:
         raise ApprovalError(status_code=404, detail="opportunity not found")
-    if routing:
-        from app.services.approval_routing import submission_plan
-        routing = await submission_plan(
-            session, actor_id=actor_id, opportunity_id=opportunity_id,
-            expected_sow_version_id=uuid.UUID(routing['sow_version_id']),
-            expected_gm_model_id=uuid.UUID(routing['gm_model_id']),
-            choices={r['function']: r for r in routing['rows']},
-        )
-        sow_version = await session.get(SowVersion, uuid.UUID(routing['sow_version_id']))
+    from app.services.approval_routing import submission_plan
+    routing = await submission_plan(
+        session, actor_id=actor_id, opportunity_id=opportunity_id,
+        expected_sow_version_id=uuid.UUID(routing['sow_version_id']) if routing else sow_version.id,
+        expected_gm_model_id=uuid.UUID(routing['gm_model_id']) if routing else gm_model.id,
+        choices={r['function']: r for r in routing['rows']} if routing else None,
+    )
+    blockers = [row['blocker'] for row in routing['rows'] if row['blocker']]
+    if routing.get('executive') and not routing['executive'].get('approver_id'):
+        blockers.append('Executive has no eligible reviewer. Owner: SystemAdmin.')
+    if blockers:
+        raise ApprovalError(status_code=409, detail='; '.join(blockers))
+    sow_version = await session.get(SowVersion, uuid.UUID(routing['sow_version_id']))
 
     hash_value = package_hash(sow_version, gm_model)
     if await _duplicate_hash_exists(
@@ -488,9 +500,14 @@ async def submit_package(
         sow_version_id=sow_version.id,
         gm_model_id=gm_model.id,
         package_hash=hash_value,
+        routing_policy_version=2,
         status="pending_delivery_hr",
         submitted_by=actor_id,
-        policy_version_id=policy.id,
+        policy_version_id=(
+            uuid.UUID(gm_model.commercial_snapshot["policy"]["version"])
+            if gm_model.commercial_snapshot and gm_model.commercial_snapshot["policy"]["version"] != "blueprint-defaults-v1"
+            else (None if gm_model.commercial_snapshot else policy.id)
+        ),
     )
     session.add(package)
     await session.flush()
@@ -511,7 +528,7 @@ async def submit_package(
             if row['approver_id'] and row['function'] in ('finance', 'legal'):
                 from app.services.approval_workflow import review_url
                 await queue_notification(session, user_id=uuid.UUID(row['approver_id']), category='approval_pending',
-                    subject=f"{row['label']} review assigned", body_md=f"Review is queued after Delivery and HR. [Open review]({review_url(opportunity_id)}).",
+                    subject=f"{row['label']} review assigned", body_md=f"Review is queued after Delivery, HR and Sales. [Open review]({review_url(opportunity_id)}).",
                     related_entity='approval_package', related_entity_id=str(package.id))
 
     await append_audit(
@@ -578,6 +595,10 @@ async def _load_policy_snapshot(
     :func:`active_policy`.
     """
 
+    gm_model = await session.get(GmModel, package.gm_model_id)
+    if gm_model and gm_model.commercial_snapshot:
+        frozen = gm_model.commercial_snapshot["policy"]
+        return Decimal(frozen["us_floor"]), Decimal(frozen["india_floor"])
     if package.policy_version_id is not None:
         from app.models.policy import PolicyVersion
 
@@ -753,7 +774,8 @@ async def decide(
             detail="separation of duties: submitter cannot approve their own package",
         )
 
-    expected = _expected_functions(package.status)
+    from app.services.approval_workflow import active_functions
+    expected = frozenset(active_functions(package))
     if function not in expected:
         raise ApprovalError(
             status_code=409,
@@ -960,6 +982,24 @@ async def void_on_change(
     package = await active_package_for(session, opportunity_id)
     if package is None:
         return None
+    # A signed contract is not voided by a source change: a released
+    # package, or one whose signed upload has verified, stays active while
+    # an amendment draft routes its own fresh package (S21-16, T14.02).
+    # `manual_void` remains the explicit SystemAdmin path for those.
+    if package.status == "released":
+        return None
+    from app.models.signed_sow import SignedSowUpload
+
+    signed = await session.scalar(
+        select(SignedSowUpload.id)
+        .where(
+            SignedSowUpload.package_id == package.id,
+            SignedSowUpload.verify_status == "verified",
+        )
+        .limit(1)
+    )
+    if signed is not None:
+        return None
     old = package.status
     package.status = "voided"
     package.voided_at = datetime.now(UTC)
@@ -1057,12 +1097,95 @@ class ListFilters:
     page: int = 1
     size: int = 25
     reader_id: uuid.UUID | None = None
+    actor_id: uuid.UUID | None = None
+
+
+async def list_in_review_packages(
+    session: AsyncSession, filters: ListFilters, *,
+    expected_population_revision: str | None = None,
+) -> tuple[list[ApprovalPackage], int, str]:
+    from sqlalchemy import func, or_
+    from app.models.client import Client
+    from app.models.sow import Sow
+    from app.models.approval_routing import ApprovalAssignment
+    from app.services.test_fixtures import allowed_for_package
+
+    if filters.actor_id is None:
+        raise ApprovalError(403, "An authenticated reader is required")
+    # Rank all nonvoided states first: a newer approved package must not
+    # uncover an older pending package on the same SOW.
+    ranked = (
+        select(
+            ApprovalPackage.id.label("package_id"),
+            func.row_number().over(
+                partition_by=SowVersion.sow_id,
+                order_by=(ApprovalPackage.submitted_at.desc(), ApprovalPackage.id.desc()),
+            ).label("position"),
+        )
+        .join(SowVersion, SowVersion.id == ApprovalPackage.sow_version_id)
+        .where(ApprovalPackage.status != "voided")
+        .subquery()
+    )
+    stmt = (
+        select(ApprovalPackage)
+        .join(ranked, ranked.c.package_id == ApprovalPackage.id)
+        .join(SowVersion, SowVersion.id == ApprovalPackage.sow_version_id)
+        .join(Sow, Sow.id == SowVersion.sow_id)
+        .join(Opportunity, Opportunity.id == Sow.opportunity_id)
+        .outerjoin(Client, Client.id == Opportunity.client_id)
+        .where(
+            ranked.c.position == 1,
+            ApprovalPackage.status.in_(
+                ("pending_delivery_hr", "pending_finance_legal", "pending_ceo_exception")
+            ),
+            ApprovalPackage.superseded_by.is_(None),
+            ApprovalPackage.opportunity_id == Opportunity.id,
+            SowVersion.superseded_by.is_(None),
+            SowVersion.discarded_at.is_(None),
+            Sow.archived_at.is_(None),
+            Opportunity.archived_at.is_(None),
+            or_(Opportunity.client_id.is_(None),
+                (Client.id.is_not(None) & Client.archived_at.is_(None))),
+        )
+        .options(selectinload(ApprovalPackage.approvals))
+        .order_by(ApprovalPackage.submitted_at.desc(), ApprovalPackage.id.desc())
+    )
+    if filters.reader_id is not None:
+        assigned = select(ApprovalAssignment.package_id).where(
+            ApprovalAssignment.approver_id == filters.reader_id
+        )
+        stmt = stmt.where(or_(Opportunity.owner_id == filters.reader_id,
+                              ApprovalPackage.id.in_(assigned)))
+    if filters.opportunity_id is not None:
+        stmt = stmt.where(ApprovalPackage.opportunity_id == filters.opportunity_id)
+    # Reuse issuance, participant, environment, expiry and upload provenance.
+    # Both count and page derive from this same authorized population. Do not
+    # reuse the Pipeline CRM source predicate: local business SOWs are legitimate.
+    visible = []
+    for package in (await session.scalars(stmt)).all():
+        if await allowed_for_package(session, filters.actor_id, package):
+            visible.append(package)
+    revision = hashlib.sha256(_canonical_json({
+        "scope": "in_review:v1",
+        "actor_id": filters.actor_id,
+        "reader_id": filters.reader_id,
+        "opportunity_id": filters.opportunity_id,
+        "packages": [(row.id, row.status, row.sow_version_id) for row in visible],
+    }).encode("utf-8")).hexdigest()
+    if expected_population_revision is not None and expected_population_revision != revision:
+        raise ApprovalError(409, "Approval population changed; refresh the card and list before continuing.")
+    offset = max(0, (filters.page - 1) * filters.size)
+    return visible[offset:offset + filters.size], len(visible), revision
 
 
 async def list_packages(
     session: AsyncSession, filters: ListFilters
 ) -> tuple[list[ApprovalPackage], int]:
     from sqlalchemy import func as sa_func
+
+    if filters.status == "in_review":
+        rows, total, _ = await list_in_review_packages(session, filters)
+        return rows, total
 
     stmt = (
         select(ApprovalPackage)
@@ -1107,12 +1230,16 @@ def serialize_approval(row: Approval) -> dict[str, Any]:
 
 
 def serialize_package(row: ApprovalPackage) -> dict[str, Any]:
+    from app.services.approval_workflow import required_functions
+
     return {
         "id": str(row.id),
         "opportunity_id": str(row.opportunity_id),
         "sow_version_id": str(row.sow_version_id),
         "gm_model_id": str(row.gm_model_id),
         "package_hash": row.package_hash,
+        "routing_policy_version": row.routing_policy_version,
+        "required_functions": list(required_functions(row)),
         "status": row.status,
         "submitted_by": str(row.submitted_by),
         "submitted_at": row.submitted_at.isoformat() if row.submitted_at else None,
@@ -1192,6 +1319,7 @@ __all__ = [
     "decide",
     "latest_package_summary",
     "list_packages",
+    "list_in_review_packages",
     "load_package",
     "manual_void",
     "mark_released",

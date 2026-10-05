@@ -400,6 +400,10 @@ async def decide(
         )
 
     pkg = await _load_package(session, row.package_id)
+    from app.services.test_fixtures import allowed_for_package
+
+    if not await allowed_for_package(session, actor_id, pkg):
+        raise HTTPException(403, "Test identity or fixture is outside the trusted approval scope")
     if pkg.status != PKG_PENDING_CEO:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

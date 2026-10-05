@@ -14,7 +14,7 @@
  * charts, and no browser math.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   getApprovalsAging,
@@ -195,21 +195,15 @@ export function ReportsPage({ onExport = defaultExport }: ReportsPageProps = {})
     void load();
   }, [load]);
 
-  const revenueProps = useMemo(() => {
-    // Revenue tab shows contracted/forecast/recognized/backlog only if the
-    // server materialized them. `null` degrades to "Unavailable"; invoice
-    // and cash always render the "not sourced" caveat by default because
-    // no invoice/cash datasource exists yet (spec §17).
-    return {
-      contractedValue: null as string | null,
-      forecastRevenue:
-        data?.finance?.approved_vs_forecast_vs_actual.forecast_gp ?? null,
-      recognizedRevenue:
-        data?.finance?.approved_vs_forecast_vs_actual.actual_gp ?? null,
-      backlog: null as string | null,
-      sourcing: { invoiceSourced: false, cashSourced: false },
-    };
-  }, [data]);
+  // Finance dashboard values are gross profit, not revenue or recognition.
+  // Keep these unavailable until an authoritative revenue source is bound.
+  const revenueProps = {
+    contractedValue: null,
+    forecastRevenue: null,
+    recognizedRevenue: null,
+    backlog: null,
+    sourcing: { invoiceSourced: false, cashSourced: false },
+  };
 
   return (
     <div>
@@ -402,7 +396,7 @@ function PipelineRollupsTab({
             </table>
           </>
         ) : (
-          <p className="text-text-secondary">Unavailable — endpoint did not respond.</p>
+          <p className="text-text-secondary">Unavailable or restricted.</p>
         )}
       </section>
 
@@ -434,7 +428,7 @@ function PipelineRollupsTab({
             </table>
           </>
         ) : (
-          <p className="text-text-secondary">Unavailable — endpoint did not respond.</p>
+          <p className="text-text-secondary">Unavailable or restricted.</p>
         )}
       </section>
 
@@ -469,7 +463,7 @@ function PipelineRollupsTab({
             </table>
           </>
         ) : (
-          <p className="text-text-secondary">Unavailable — endpoint did not respond.</p>
+          <p className="text-text-secondary">Unavailable or restricted.</p>
         )}
       </section>
 
@@ -524,7 +518,7 @@ function PipelineRollupsTab({
             )}
           </>
         ) : (
-          <p className="text-text-secondary">Unavailable — endpoint did not respond.</p>
+          <p className="text-text-secondary">Unavailable or restricted.</p>
         )}
       </section>
 
@@ -561,7 +555,7 @@ function PipelineRollupsTab({
             </tbody>
           </table>
         ) : (
-          <p className="text-text-secondary">Unavailable — endpoint did not respond.</p>
+          <p className="text-text-secondary">Unavailable or restricted.</p>
         )}
       </section>
     </div>

@@ -1,0 +1,7 @@
+modules/schedulers/tests/s21_jobs.tftest.hcl... in progress
+  run "jobs_disabled_until_reviewed_cutover"... pass
+  run "both_jobs_use_exact_release_image"... pass
+modules/schedulers/tests/s21_jobs.tftest.hcl... tearing down
+modules/schedulers/tests/s21_jobs.tftest.hcl... pass
+
+Success! 2 passed, 0 failed.

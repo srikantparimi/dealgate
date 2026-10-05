@@ -537,30 +537,23 @@ async def run_tick(session: AsyncSession, now: datetime | None = None) -> TickRe
     return result
 
 
-async def _tick_forever() -> None:
-    log.info("scheduler_started", poll_interval=POLL_INTERVAL_SECONDS)
-    while True:
-        try:
-            async with session_factory() as session:
-                summary = await run_tick(session)
-            if summary.triggers_fired:
-                log.info(
-                    "scheduler_tick",
-                    tasks=summary.tasks_created,
-                    notifications=summary.notifications_queued,
-                    fired=len(summary.triggers_fired),
-                    skipped=summary.triggers_skipped,
-                )
-        except Exception:  # pragma: no cover - operational log
-            log.exception("scheduler_tick_failed")
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+async def run_once() -> TickResult:
+    """Run one EventBridge-owned tick and let the process terminate."""
+
+    async with session_factory() as session:
+        summary = await run_tick(session)
+    log.info(
+        "scheduler_tick",
+        tasks=summary.tasks_created,
+        notifications=summary.notifications_queued,
+        fired=len(summary.triggers_fired),
+        skipped=summary.triggers_skipped,
+    )
+    return summary
 
 
 def main() -> None:
-    try:
-        asyncio.run(_tick_forever())
-    except KeyboardInterrupt:
-        log.info("scheduler_stopped")
+    asyncio.run(run_once())
 
 
 if __name__ == "__main__":
@@ -574,5 +567,6 @@ __all__ = [
     "POLL_INTERVAL_SECONDS",
     "TickResult",
     "main",
+    "run_once",
     "run_tick",
 ]

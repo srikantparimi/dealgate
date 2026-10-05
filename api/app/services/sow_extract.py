@@ -20,6 +20,7 @@ Actions emitted:
 from __future__ import annotations
 
 import copy
+import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -75,6 +76,10 @@ class SowNotFound(SowError):
     """The opportunity / version does not exist."""
 
 
+class SowReplayConflict(SowError):
+    """A source change or immutable version cannot be re-extracted in place."""
+
+
 class SowSubmissionIncomplete(SowError):
     """Raised when submit is called before every field is confirmed."""
 
@@ -85,6 +90,15 @@ class SowSubmissionIncomplete(SowError):
 
 class SowInvalidField(SowError):
     """Raised when a confirm targets an unknown field name."""
+
+
+@dataclass(frozen=True)
+class PreparedExtractionDocument:
+    """Document evidence shared by classification and field extraction."""
+
+    text: DocumentText | None
+    extract_source: str
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,9 +129,7 @@ class SowVersionState:
 # --- helpers --------------------------------------------------------------
 
 
-async def _load_or_create_sow(
-    session: AsyncSession, opportunity_id: uuid.UUID
-) -> Sow:
+async def _load_or_create_sow(session: AsyncSession, opportunity_id: uuid.UUID) -> Sow:
     row = (
         await session.execute(select(Sow).where(Sow.opportunity_id == opportunity_id))
     ).scalar_one_or_none()
@@ -131,18 +143,14 @@ async def _load_or_create_sow(
 
 async def _load_version(session: AsyncSession, version_id: uuid.UUID) -> SowVersion:
     row = (
-        await session.execute(
-            select(SowVersion).where(SowVersion.id == version_id)
-        )
+        await session.execute(select(SowVersion).where(SowVersion.id == version_id))
     ).scalar_one_or_none()
     if row is None:
         raise SowNotFound(f"sow_version {version_id} not found")
     return row
 
 
-async def _opportunity_id_for(
-    session: AsyncSession, sow_id: uuid.UUID
-) -> uuid.UUID:
+async def _opportunity_id_for(session: AsyncSession, sow_id: uuid.UUID) -> uuid.UUID:
     row = (
         await session.execute(select(Sow.opportunity_id).where(Sow.id == sow_id))
     ).scalar_one()
@@ -183,9 +191,7 @@ def _blank_manual_fields() -> dict[str, dict[str, Any]]:
     """
 
     return {
-        name: wrap_provenance(
-            None, provenance="manual", page_ref=1, status="disputed"
-        )
+        name: wrap_provenance(None, provenance="manual", page_ref=1, status="disputed")
         for name in EXTRACTED_FIELDS
     }
 
@@ -206,7 +212,10 @@ def _to_provenance_fields(
 
     out: dict[str, dict[str, Any]] = {}
     source_id = f"{model}:{prompt_version}"
-    names = (*EXTRACTED_FIELDS, *(key for key in OPTIONAL_EXTRACTED_FIELDS if key in extracted))
+    names = (
+        *EXTRACTED_FIELDS,
+        *(key for key in OPTIONAL_EXTRACTED_FIELDS if key in extracted),
+    )
     for name in names:
         entry = extracted.get(name, {})
         value = entry.get("value")
@@ -231,11 +240,7 @@ def _to_provenance_fields(
             source_id=source_id,
             confidence=entry.get("confidence"),
             status=status,
-            warning=(
-                "not stated in the document — needs a value"
-                if missing
-                else None
-            ),
+            warning=("not stated in the document — needs a value" if missing else None),
         )
     return out
 
@@ -253,9 +258,7 @@ def to_provenance_fields(
     let the two drift apart.
     """
 
-    return _to_provenance_fields(
-        extracted, model=model, prompt_version=prompt_version
-    )
+    return _to_provenance_fields(extracted, model=model, prompt_version=prompt_version)
 
 
 # --- public API -----------------------------------------------------------
@@ -277,17 +280,24 @@ async def create_sow_version(
 
     opp = (
         await session.execute(
-            select(Opportunity).where(Opportunity.id == opportunity_id)
+            select(Opportunity)
+            .where(Opportunity.id == opportunity_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
     if opp is None:
         raise SowNotFound(f"opportunity {opportunity_id} not found")
 
     sow = await _load_or_create_sow(session, opportunity_id)
+    from app.services.sow_lifecycle import reserve_version_no
+
+    version_no = await reserve_version_no(session, sow.id)
 
     version = SowVersion(
         id=uuid.uuid4(),
         sow_id=sow.id,
+        version_no=version_no,
         uploaded_by=uploaded_by,
         file_s3_key=file_s3_key,
         file_hash=file_hash,
@@ -351,6 +361,114 @@ def _needs_textract(pdf_bytes: bytes) -> bool:
     return is_low_density(doc)
 
 
+def prepare_extraction_document(
+    file_bytes: bytes,
+    *,
+    content_type: str | None = None,
+    textract: TextractClient | None = None,
+) -> PreparedExtractionDocument:
+    """Parse native text or recover an image-only PDF through Textract.
+
+    The returned error is explicit and non-fabricating. Callers that already
+    have a client/deal binding can preserve the source file and open manual
+    review; callers without a binding can retain the upload job for a picker.
+    """
+
+    if not file_bytes:
+        return PreparedExtractionDocument(
+            text=text_document_from_string(""),
+            extract_source=_EXTRACT_SOURCE_PDF,
+        )
+
+    try:
+        parsed = extract_document_text(file_bytes, content_type)
+    except UnreadableDocument as exc:
+        if not file_bytes.startswith(b"%PDF-"):
+            return PreparedExtractionDocument(
+                text=None,
+                extract_source=_EXTRACT_SOURCE_PDF,
+                error=f"could not read document: {exc.reason}",
+            )
+        parsed = None
+
+    needs_ocr = parsed is None or (parsed.kind == "pdf" and is_low_density(parsed))
+    if not needs_ocr:
+        return PreparedExtractionDocument(
+            text=parsed,
+            extract_source=_EXTRACT_SOURCE_PDF,
+        )
+
+    client = textract if textract is not None else TextractClient()
+    try:
+        recovered = client.extract_text(file_bytes)
+    except TextractError as exc:
+        return PreparedExtractionDocument(
+            text=None,
+            extract_source=_EXTRACT_SOURCE_TEXTRACT,
+            error=f"OCR unavailable: {exc}",
+        )
+    if not recovered.strip():
+        return PreparedExtractionDocument(
+            text=None,
+            extract_source=_EXTRACT_SOURCE_TEXTRACT,
+            error="OCR unavailable: no text was recovered",
+        )
+    return PreparedExtractionDocument(
+        text=text_document_from_string(recovered),
+        extract_source=_EXTRACT_SOURCE_TEXTRACT,
+    )
+
+
+async def _locked_source(
+    session: AsyncSession, sow_version_id: uuid.UUID
+) -> tuple[SowVersion, uuid.UUID]:
+    version = await _load_version(session, sow_version_id)
+    opportunity_id = await _opportunity_id_for(session, version.sow_id)
+    # Match approval's parent-first lock order and refresh cached JSON before writing.
+    parent = (
+        await session.execute(
+            select(Opportunity)
+            .where(Opportunity.id == opportunity_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    locked_version = (
+        await session.execute(
+            select(SowVersion)
+            .where(SowVersion.id == sow_version_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if parent is None or locked_version is None:
+        raise SowNotFound("SOW source no longer exists")
+    return locked_version, opportunity_id
+
+
+async def _mutable_source(
+    session: AsyncSession, sow_version_id: uuid.UUID
+) -> tuple[SowVersion, uuid.UUID]:
+    version, opportunity_id = await _locked_source(session, sow_version_id)
+    from app.services.sow_lifecycle import was_ever_submitted
+
+    sow = await session.get(Sow, version.sow_id)
+    if (
+        version.confirmed_at is not None
+        or version.confirmed_by is not None
+        or version.execution_state not in (None, "draft")
+        or version.discarded_at is not None
+        or version.superseded_by is not None
+        or sow is None
+        or sow.archived_at is not None
+        or await was_ever_submitted(session, version.id)
+    ):
+        raise SowReplayConflict(
+            "Submitted or immutable SOW source requires a new reviewed version"
+        )
+    return version, opportunity_id
+
+
 async def run_extract(
     session: AsyncSession,
     *,
@@ -358,13 +476,14 @@ async def run_extract(
     bedrock: BedrockSowExtract,
     file_bytes: bytes = b"",
     textract: TextractClient | None = None,
+    replay: bool = False,
 ) -> SowVersionState:
     """Invoke Bedrock and persist the validated extract or fall through to
     manual-entry mode when the model is unavailable.
 
-    Idempotent-ish: if the version is already ``complete`` /
-    ``manual_required`` the call re-runs and overwrites the status +
-    fields (audit row still fires).
+    Same-document replay preserves explicit human confirmations. Conflicting
+    candidates remain separate and require review; failed attempts never erase
+    prior evidence or claim completion. Submitted versions are immutable.
 
     Textract fallback (build-guide §6.3): the service first parses the PDF
     locally with pypdf and counts text chars/page. When the density is
@@ -380,35 +499,25 @@ async def run_extract(
     fields apart from digital-text ones.
     """
 
-    version = await _load_version(session, sow_version_id)
-    opportunity_id = await _opportunity_id_for(session, version.sow_id)
+    version, opportunity_id = await _mutable_source(session, sow_version_id)
+    previous = copy.deepcopy(version.extracted_fields or {})
+    protected = {
+        name: entry
+        for name, entry in previous.items()
+        if name != "metadata"
+        and isinstance(entry, dict)
+        and entry.get("status") == "confirmed"
+    }
+    if replay or version.extract_status != "pending" or protected:
+        if hashlib.sha256(file_bytes).hexdigest() != version.file_hash:
+            raise SowReplayConflict(
+                "Document bytes differ from this version; source-change review is required"
+            )
 
-    extract_source = _EXTRACT_SOURCE_PDF
-    text_doc: DocumentText | None = None
-    ocr_error: str | None = None
-
-    if _needs_textract(file_bytes):
-        client = textract if textract is not None else TextractClient()
-        # Record the *intended* source now: if Textract raises, the version
-        # still carries ``extract_source="textract"`` so the audit reader
-        # can see the version was routed at OCR — the OCR just failed.
-        extract_source = _EXTRACT_SOURCE_TEXTRACT
-        try:
-            recovered = client.extract_text(file_bytes)
-            text_doc = text_document_from_string(recovered)
-        except TextractError as exc:
-            ocr_error = str(exc)
-    elif not file_bytes:
-        # Documented test-only shortcut (see `_needs_textract`): a zero-byte
-        # payload means "no real document, just exercise the extractor".
-        # Production is unaffected — the real caller returns ManualRequired
-        # for an empty document rather than inventing fields.
-        text_doc = text_document_from_string("")
-    else:
-        try:
-            text_doc = extract_document_text(file_bytes)
-        except UnreadableDocument as exc:
-            ocr_error = f"could not read document: {exc.reason}"
+    prepared = prepare_extraction_document(file_bytes, textract=textract)
+    extract_source = prepared.extract_source
+    text_doc = prepared.text
+    ocr_error = prepared.error
 
     result: ExtractedFields | ManualRequired
     error: str | None = None
@@ -445,12 +554,13 @@ async def run_extract(
         # page can render an honest banner. Was previously only in the
         # audit trail — the UI had no way to reach it.
         version.extract_error = result.reason
-        blank = _blank_manual_fields()
-        blank["metadata"] = {"extract_source": extract_source}
-        version.extracted_fields = blank
-        version.extract_model = None
-        version.extract_prompt_version = None
-        version.engagement_type_suggested = None
+        fields_out = previous or _blank_manual_fields()
+        metadata = fields_out.get("metadata")
+        fields_out["metadata"] = {
+            **(metadata if isinstance(metadata, dict) else {}),
+            "extract_source": extract_source,
+        }
+        version.extracted_fields = fields_out
         action = "sow.extract_failed"
         after: dict[str, Any] = {
             "extract_status": "manual_required",
@@ -465,11 +575,21 @@ async def run_extract(
             model=result.model,
             prompt_version=result.prompt_version,
         )
-        fields_out["metadata"] = {"extract_source": extract_source}
+        conflicts = {
+            name: copy.deepcopy(fields_out[name])
+            for name, entry in protected.items()
+            if name in fields_out
+            and fields_out[name].get("value") != entry.get("value")
+        }
+        fields_out.update(protected)
+        fields_out["metadata"] = {
+            "extract_source": extract_source,
+            "reextract_conflicts": conflicts,
+        }
         version.extracted_fields = fields_out
         version.extract_model = result.model
         version.extract_prompt_version = result.prompt_version
-        suggested = result.fields.get("engagement_type_suggested", {}).get("value")
+        suggested = fields_out.get("engagement_type_suggested", {}).get("value")
         version.engagement_type_suggested = (
             str(suggested) if suggested is not None else None
         )
@@ -481,6 +601,21 @@ async def run_extract(
             "engagement_type_suggested": version.engagement_type_suggested,
             "extract_source": extract_source,
         }
+        if conflicts:
+            version.extract_status = "manual_required"
+            version.extract_error = (
+                "Re-extraction conflicts with confirmed fields: "
+                + ", ".join(sorted(conflicts))
+            )
+            action = "sow.extract_failed"
+            after.update(
+                extract_status="manual_required",
+                reason=version.extract_error,
+                conflicting_fields=sorted(conflicts),
+            )
+
+    after["preserved_confirmed_fields"] = sorted(protected)
+    after["document_hash"] = version.file_hash
 
     await append_audit(
         session,
@@ -512,8 +647,7 @@ async def confirm_field(
     if field_name not in EXTRACTED_FIELDS:
         raise SowInvalidField(f"unknown field {field_name!r}")
 
-    version = await _load_version(session, sow_version_id)
-    opportunity_id = await _opportunity_id_for(session, version.sow_id)
+    version, opportunity_id = await _mutable_source(session, sow_version_id)
 
     fields = dict(version.extracted_fields or {})
     prev = read_provenance(fields.get(field_name))
@@ -604,10 +738,13 @@ async def submit_sow(
     - emits ``sow.confirmed``.
     """
 
-    version = await _load_version(session, sow_version_id)
-    opportunity_id = await _opportunity_id_for(session, version.sow_id)
+    version, opportunity_id = await _locked_source(session, sow_version_id)
 
     missing = _unconfirmed_fields(version.extracted_fields)
+    conflicts = ((version.extracted_fields or {}).get("metadata") or {}).get(
+        "reextract_conflicts"
+    ) or {}
+    missing.extend(f"extraction_conflict:{field}" for field in sorted(conflicts))
     if missing:
         raise SowSubmissionIncomplete(missing)
 
@@ -706,12 +843,14 @@ __all__ = [
     "SowError",
     "SowInvalidField",
     "SowNotFound",
+    "PreparedExtractionDocument",
     "SowSubmissionIncomplete",
     "SowVersionState",
     "confirm_field",
     "create_sow_version",
     "latest_version_for",
     "load_version_state",
+    "prepare_extraction_document",
     "run_extract",
     "submit_sow",
 ]

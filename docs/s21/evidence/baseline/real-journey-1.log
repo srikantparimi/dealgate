@@ -1,0 +1,22 @@
+{"run": "3cb784db89ae40e883874b0b462874e2", "fixture": {"run_id": "47068881-7697-4398-a413-bd8ee9ed89d2", "client_id": "f4c7335a-ca3b-4f77-883e-1e94c149a660", "opportunity_id": "d410cae9-480a-4561-86ba-985b90235219", "expires_at": "2026-10-02T05:50:52.155651+00:00"}}
+2026-10-01 18:50:52 [info     ] role_check                     granted=True required=['Sales', 'SalesLeader', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=3cb784db89ae40e883874b0b462874e2-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-01 18:51:06 [info     ] role_check                     granted=True required=['Marketing', 'Sales', 'SalesLeader', 'Presales', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=3cb784db89ae40e883874b0b462874e2-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"uploaded": "4b5decfc-5740-46e3-95ec-c062c4d2041f", "extract_status": "complete"}
+{"storage_deleted": "verification/s21/3cb784db89ae40e883874b0b462874e2/sow/0fd6f837-a899-47f3-b6df-5de8f9d983e7/20261002T015052Z-063de083-assessment-3cb784db89ae40e883874b0b462874e2.docx.docx"}
+Traceback (most recent call last):
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_real_journey.py", line 186, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_real_journey.py", line 137, in main
+    await request("PATCH", f"/sow/versions/{version}/fields/{name}", json={"value": entry["value"]})
+                                                                                    ~~~~~^^^^^^^^^
+KeyError: 'value'

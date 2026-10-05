@@ -41,6 +41,8 @@ Every audit line is asserted to keep W7's audit chain intact
 from __future__ import annotations
 
 import uuid
+import hashlib
+from pathlib import Path
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -55,6 +57,7 @@ from app.integrations.bedrock_sow_extract import (
     ManualRequired,
 )
 from app.integrations.ses import StubSES
+from app.services.document_text import DocumentText
 from app.models.approval import Approval, ApprovalPackage
 from app.models.audit import AuditEvent
 from app.models.client import Client, LegalEntity
@@ -89,6 +92,8 @@ APPROVED_PRICE = "500000.00"
 APPROVED_TERM_START = "2027-01-01"
 APPROVED_TERM_END = "2027-12-31"
 APPROVED_SCOPE = "Deliver a cloud migration for the origination platform."
+SIGNED_BYTES = (Path(__file__).parents[2] / "fixtures/sample_sows/08_assessment_fixed_fee.docx").read_bytes()
+SIGNED_HASH = hashlib.sha256(SIGNED_BYTES).hexdigest()
 
 
 def _uid(email: str) -> uuid.UUID:
@@ -109,7 +114,8 @@ def _approved_fields() -> dict:
 class _MatchBedrock(BedrockSowExtract):
     """Bedrock stub that always returns the approved terms verbatim."""
 
-    def extract(self, file_bytes: bytes) -> ExtractedFields | ManualRequired:
+    def extract(self, document: DocumentText) -> ExtractedFields | ManualRequired:
+        assert isinstance(document, DocumentText)
         fields: dict[str, dict] = {}
         for name in EXTRACTED_FIELDS:
             fields[name] = {"value": None, "page_ref": 1, "status": "unconfirmed"}
@@ -221,10 +227,10 @@ async def _seed_verified_upload(
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key=f"sow/signed/{uuid.uuid4()}.pdf",
-        file_hash=f"sha256:{uuid.uuid4().hex}",
+        file_hash=SIGNED_HASH,
     )
     return await verify(
-        session, actor_id=owner.id, upload_id=upload.id, bedrock=_MatchBedrock()
+        session, actor_id=owner.id, upload_id=upload.id, bedrock=_MatchBedrock(), file_bytes=SIGNED_BYTES
     )
 
 

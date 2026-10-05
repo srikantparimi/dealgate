@@ -1,0 +1,890 @@
+EEE                                                                      [100%]
+==================================== ERRORS ====================================
+______ ERROR at setup of test_every_model_table_is_created_by_a_migration ______
+
+self = <sqlalchemy.engine.base.Connection object at 0x108bfe120>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x108bfd010>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x108cebbd0>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x108f0c7d0>
+parameters = [{}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x108e253d0>
+query = "UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion'"
+params = {}, prepare = None, binary = None
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.StringDataRightTruncation: value too long for type character varying(32)
+
+api/.venv/lib/python3.14/site-packages/psycopg/cursor.py:117: StringDataRightTruncation
+
+The above exception was the direct cause of the following exception:
+
+fixturedef = <FixtureDef argname='_migrated_postgres' scope='session' baseid='tests'>
+request = <SubRequest '_migrated_postgres' for <Function test_every_model_table_is_created_by_a_migration>>
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_fixture_setup(fixturedef: FixtureDef, request) -> object | None:
+        if (
+            fixturedef.argname == "event_loop_policy"
+            and fixturedef.func.__module__ != __name__
+        ):
+            warnings.warn(
+                PytestDeprecationWarning(_EVENT_LOOP_POLICY_FIXTURE_DEPRECATION_WARNING),
+            )
+        asyncio_mode = _get_asyncio_mode(request.config)
+        if not _is_asyncio_fixture_function(fixturedef.func):
+            if asyncio_mode == Mode.STRICT:
+                # Ignore async fixtures without explicit asyncio mark in strict mode
+                # This applies to pytest_trio fixtures, for example
+                return (yield)
+            if not _is_coroutine_or_asyncgen(fixturedef.func):
+>               return (yield)
+                        ^^^^^
+
+api/.venv/lib/python3.14/site-packages/pytest_asyncio/plugin.py:926: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+api/tests/conftest.py:102: in _migrated_postgres
+    command.upgrade(cfg, "head")
+api/.venv/lib/python3.14/site-packages/alembic/command.py:487: in upgrade
+    script.run_env()
+api/.venv/lib/python3.14/site-packages/alembic/script/base.py:550: in run_env
+    util.load_python_file(self.dir, "env.py")
+api/.venv/lib/python3.14/site-packages/alembic/util/pyfiles.py:114: in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/.venv/lib/python3.14/site-packages/alembic/util/pyfiles.py:132: in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/alembic/env.py:84: in <module>
+    run_migrations_online()
+api/alembic/env.py:78: in run_migrations_online
+    context.run_migrations()
+api/.venv/lib/python3.14/site-packages/alembic/runtime/environment.py:970: in run_migrations
+    self.get_context().run_migrations(**kw)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:623: in run_migrations
+    head_maintainer.update_to_step(step)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:809: in update_to_step
+    self._update_version(from_, to_)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:744: in _update_version
+    ret = self.context.impl._exec(
+api/.venv/lib/python3.14/site-packages/alembic/ddl/impl.py:252: in _exec
+    return conn.execute(construct, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1448: in execute
+    return meth(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x108e253d0>
+query = "UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion'"
+params = {}, prepare = None, binary = None
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.DataError: (psycopg.errors.StringDataRightTruncation) value too long for type character varying(32)
+E           [SQL: UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion']
+E           (Background on this error at: https://sqlalche.me/e/21/9h9h)
+
+api/.venv/lib/python3.14/site-packages/psycopg/cursor.py:117: DataError
+---------------------------- Captured stderr setup -----------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 20260917_0001, initial schema — user, client/legal_entity/agreement, opportunity, task,
+integration_event, audit_event
+INFO  [alembic.runtime.migration] Running upgrade 20260917_0001 -> 20260918_0002a, S2-E3: opportunity->client link + client.hubspot_company_id unique.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0002a -> 20260918_0002b, rate_card_version, rate_card_row, policy_version — S2 E4.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0002b -> 20260918_0003, S2-E3: task lifecycle columns + notification outbox + settings.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0003 -> 20260918_0004, S2-E3: agreement state machine + evidence key columns.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0004 -> 20260918_0008, S3 E11 — adviser_estimate table.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0004 -> 20260918_0006, S3-E5: SOW upload + AI extraction + human confirm.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0006 -> 20260918_0009, S6 (user-added scope): legacy SOW bulk upload + resource-line Excel import.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0009 -> 20260918_0007, gm_model + resource_line + cost_line — S3 E6 Delivery Model Builder.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0004 -> 20260918_0005, S2-E3 Wave 2: ``scheduler_fired`` idempotency ledger.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0005, 20260918_0007, 20260918_0008 -> 20260918_0010, merge adviser + sow + scheduler + gm_model + legacy heads
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0010 -> 20260918_0013, S4 E2: HubSpot write-back outbox.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0010 -> 20260918_0012, S4 E7 — CEO exception + CEO delegate (Agent V, wave 3).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0010 -> 20260918_0011, S4 E7 — approval_package + approval.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0011, 20260918_0012, 20260918_0013 -> 20260918_0014, merge approvals + ceo_exception + hubspot_writeback heads.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0014 -> 20260918_0016, S5 E9 — renewal indexes (Agent Y2).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0014 -> 20260918_0015, S5 E8 — signed SOW upload + renewal (Agent X2, wave 5).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0015, 20260918_0016 -> 20260918_0017, Merge signed_sow (0015, Agent X2) + renewal_indexes (0016, Agent Y2).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0017 -> 20260918_0019, S6 E9 — Actuals CSV import (timesheets + cost).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0017 -> 20260918_0018, S6 E9 — forecast_period (weekly forecast update).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0018, 20260918_0019 -> 20260918_0020, Merge S6 forecast (0018, Agent AA) + actuals (0019, sibling).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0020 -> 20260919_0021, S7 — DB-level audit hardening (grants + trigger).
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0021 -> 20260919_0024, S7 wave 2 — WBS phases + reusable delivery-model templates.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0021 -> 20260919_0022, S7 — Adviser: public research status column.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0022 -> 20260919_0023, S7 wave 2 — pgvector + capability catalog + adviser retrieved.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0023, 20260919_0024 -> 20260919_0025, S7 wave 2 — merge pgvector + capability with WBS branches.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0025 -> 20260920_0026, client_rate_card + client_rate_card_row — S9 wave 1.
+INFO  [alembic.runtime.migration] Running upgrade 20260920_0026 -> 20260920_0027, S9 wave 1 — function_owner table for approver routing.
+INFO  [alembic.runtime.migration] Running upgrade 20260920_0027 -> 20260921_0028, S10-01 — SOW upload pipeline: opportunity source, client aliases, job.
+INFO  [alembic.runtime.migration] Running upgrade 20260921_0028 -> 20260921_0029, S10-02 — bulk SOW import tables + sow_version.execution_state.
+INFO  [alembic.runtime.migration] Running upgrade 20260921_0029 -> 20260922_0030, SOW version lifecycle: numbering, supersede, discard (S10-06).
+INFO  [alembic.runtime.migration] Running upgrade 20260922_0030 -> 20260923_0031, S11 — client_contact for the signatories picker.
+INFO  [alembic.runtime.migration] Running upgrade 20260923_0031 -> 20260923_0032, S11 slice 2 — backfill gm_model.sow_id from opportunity so the staffing
+query can key on sow_id.
+INFO  [alembic.runtime.migration] Running upgrade 20260923_0032 -> 20260924_0033, S13a-B2 — soft-archive columns for delete-with-governance.
+INFO  [alembic.runtime.migration] Running upgrade 20260924_0033 -> 20260924_0034_direct_costs, S13b: versioned direct-cost bases, pass-through and provenance.
+INFO  [alembic.runtime.migration] Running upgrade 20260924_0034_direct_costs -> 20260924_0035_dc_settings, Configurable direct-cost category choices.
+INFO  [alembic.runtime.migration] Running upgrade 20260924_0035_dc_settings -> 20260925_0036_approval_routing, S14b approval routing and condition evidence.
+INFO  [alembic.runtime.migration] Running upgrade 20260924_0035_dc_settings -> 20260925_0036_extract_error, S15: preserve the extract failure reason on sow_version.
+INFO  [alembic.runtime.migration] Running upgrade 20260925_0036_extract_error -> 20260926_0037, S16 agreement tracking, preserving all historical rows and states.
+INFO  [alembic.runtime.migration] Running upgrade 20260926_0037, 20260925_0036_approval_routing -> 20260926_0038_merge_s14b_s16a, merge s14b approval-routing and s16a agreement-tracking heads
+INFO  [alembic.runtime.migration] Running upgrade 20260926_0038_merge_s14b_s16a -> 20260928_0039_s17_simplify, S17 simplify: agreements become a flat doc store, drop tracking + gap tables.
+INFO  [alembic.runtime.migration] Running upgrade 20260928_0039_s17_simplify -> 20260928_0040_hs_cache, S18 §2: cache HubSpot deal metadata on opportunity for Pipeline reads.
+INFO  [alembic.runtime.migration] Running upgrade 20260928_0040_hs_cache -> 20260929_0041_s19_pipeline, S19 slice 1: pipeline mirror + opportunity cache + next-action + sync-status + user-preference.
+INFO  [alembic.runtime.migration] Running upgrade 20260929_0041_s19_pipeline -> 20260930_0042_s20_tracking, S20 · W6 · tracking features: structured next-action + comments + groups + saved views.
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0042_s20_tracking -> 20260930_0043_s20_w7, S20 W7 · release gate: signed_sow expand, delivery_acceptance, project.
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0043_s20_w7 -> 20260930_0044_s20_lead_d1_d4, S20 Lead · D1 many-SOWs-per-deal + D4 sync_status watermarks.
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0044_s20_lead_d1_d4 -> 20260930_0045_w1_own, S20 W1 · hubspot_owner + hubspot_property_mapping tables.
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0045_w1_own -> 20260930_0046_w2_name, S20 W2 · L04 · opportunity.name column (mirrors HubSpot dealname).
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0046_w2_name -> 20260930_0047_w6_watch, S20 W6 · watched_item table (per-user watchlist for deals + clients).
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0047_w6_watch -> 20261002_0048_s21_sales, Add Sales reviews without reinterpreting historical approval packages.
+INFO  [alembic.runtime.migration] Running upgrade 20261002_0048_s21_sales -> 20261002_0049_s21_commercial, Immutable typed commercial inputs and assessed snapshot on existing GM versions.
+INFO  [alembic.runtime.migration] Running upgrade 20261002_0049_s21_commercial -> 20261002_0050_forecast_plans, Versioned planning, schedules, conversion scope and transactional calculation jobs.
+INFO  [alembic.runtime.migration] Running upgrade 20261002_0050_forecast_plans -> 20261002_0051_financial_actuals, Immutable source-revision financial facts, independent of source-SOW deletion.
+INFO  [alembic.runtime.migration] Running upgrade 20261002_0051_financial_actuals -> 20261002_0052_deletion_retention, Durable deletion fences and retained project/actual source links.
+INFO  [alembic.runtime.migration] Running upgrade 20261002_0052_deletion_retention -> 20261002_0053_parent_deletion, Explicit scoped subjects for retained client/opportunity deletion jobs.
+INFO  [alembic.runtime.migration] Running upgrade 20261002_0053_parent_deletion -> 20261002_0054_source_observations, CRM owner and Business Unit observations without invented backfill.
+_____ ERROR at setup of test_every_model_column_is_created_by_a_migration ______
+
+self = <sqlalchemy.engine.base.Connection object at 0x108bfe120>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x108bfd010>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x108cebbd0>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x108f0c7d0>
+parameters = [{}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x108e253d0>
+query = "UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion'"
+params = {}, prepare = None, binary = None
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.StringDataRightTruncation: value too long for type character varying(32)
+
+api/.venv/lib/python3.14/site-packages/psycopg/cursor.py:117: StringDataRightTruncation
+
+The above exception was the direct cause of the following exception:
+
+    @pytest.fixture(scope="session", autouse=True)
+    def _migrated_postgres():
+        """Migrate the Postgres test database once, when one is configured.
+    
+        `test_audit_hardening` asserts that the append-only trigger rejects UPDATE
+        and DELETE — which requires the trigger to exist, which requires the
+        migrations to have run. It previously passed or failed depending on test
+        ordering and on what a previous run had left behind. A session fixture
+        makes the dependency real.
+    
+        No-op without DEALGATE_POSTGRES_URL, so the default SQLite path is
+        untouched.
+        """
+    
+        url = os.environ.get("DEALGATE_POSTGRES_URL")
+        if not url:
+            yield
+            return
+    
+        import pathlib as _pathlib
+    
+        from alembic import command
+        from alembic.config import Config
+    
+        import app.db as _db
+    
+        sync_url = url
+        if sync_url.startswith("postgresql://"):
+            sync_url = sync_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif sync_url.startswith("postgresql+asyncpg://"):
+            sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    
+        root = _pathlib.Path(__file__).resolve().parents[1]
+        cfg = Config(str(root / "alembic.ini"))
+        cfg.set_main_option("script_location", str(root / "alembic"))
+        cfg.set_main_option("sqlalchemy.url", sync_url)
+    
+        # alembic/env.py reads the URL off `app.db.DATABASE_URL`, so setting it on
+        # the Config alone is not enough.
+        original = _db.DATABASE_URL
+        _db.DATABASE_URL = sync_url
+        try:
+>           command.upgrade(cfg, "head")
+
+api/tests/conftest.py:102: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+api/.venv/lib/python3.14/site-packages/alembic/command.py:487: in upgrade
+    script.run_env()
+api/.venv/lib/python3.14/site-packages/alembic/script/base.py:550: in run_env
+    util.load_python_file(self.dir, "env.py")
+api/.venv/lib/python3.14/site-packages/alembic/util/pyfiles.py:114: in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/.venv/lib/python3.14/site-packages/alembic/util/pyfiles.py:132: in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/alembic/env.py:84: in <module>
+    run_migrations_online()
+api/alembic/env.py:78: in run_migrations_online
+    context.run_migrations()
+api/.venv/lib/python3.14/site-packages/alembic/runtime/environment.py:970: in run_migrations
+    self.get_context().run_migrations(**kw)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:623: in run_migrations
+    head_maintainer.update_to_step(step)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:809: in update_to_step
+    self._update_version(from_, to_)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:744: in _update_version
+    ret = self.context.impl._exec(
+api/.venv/lib/python3.14/site-packages/alembic/ddl/impl.py:252: in _exec
+    return conn.execute(construct, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1448: in execute
+    return meth(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x108e253d0>
+query = "UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion'"
+params = {}, prepare = None, binary = None
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.DataError: (psycopg.errors.StringDataRightTruncation) value too long for type character varying(32)
+E           [SQL: UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion']
+E           (Background on this error at: https://sqlalche.me/e/21/9h9h)
+
+api/.venv/lib/python3.14/site-packages/psycopg/cursor.py:117: DataError
+_______ ERROR at setup of test_the_sow_upload_tables_specifically_exist ________
+
+self = <sqlalchemy.engine.base.Connection object at 0x108bfe120>
+dialect = <sqlalchemy.dialects.postgresql.psycopg.PGDialect_psycopg object at 0x108bfd010>
+context = <sqlalchemy.dialects.postgresql.psycopg.PGExecutionContext_psycopg object at 0x108cebbd0>
+statement = <sqlalchemy.dialects.postgresql.psycopg.PGCompiler_psycopg object at 0x108f0c7d0>
+parameters = [{}]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Unpack[TupleAny]]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        evt_handled: bool = False
+        try:
+            if self._has_events or self.engine._has_events:
+                for fn in self.dispatch.before_cursor_execute:
+                    str_statement, effective_parameters = fn(
+                        self,
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                        context.executemany,
+                    )
+    
+            if self._echo:
+                self._log_info(str_statement)
+    
+                stats = context._get_cache_stats()
+    
+                if not self.engine.hide_parameters:
+                    self._log_info(
+                        "[%s] %r",
+                        stats,
+                        sql_util._repr_params(
+                            effective_parameters,
+                            batches=10,
+                            ismulti=context.executemany,
+                        ),
+                    )
+                else:
+                    self._log_info(
+                        "[%s] [SQL parameters hidden due to "
+                        "hide_parameters=True]",
+                        stats,
+                    )
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1943: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x108e253d0>
+query = "UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion'"
+params = {}, prepare = None, binary = None
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           psycopg.errors.StringDataRightTruncation: value too long for type character varying(32)
+
+api/.venv/lib/python3.14/site-packages/psycopg/cursor.py:117: StringDataRightTruncation
+
+The above exception was the direct cause of the following exception:
+
+    @pytest.fixture(scope="session", autouse=True)
+    def _migrated_postgres():
+        """Migrate the Postgres test database once, when one is configured.
+    
+        `test_audit_hardening` asserts that the append-only trigger rejects UPDATE
+        and DELETE — which requires the trigger to exist, which requires the
+        migrations to have run. It previously passed or failed depending on test
+        ordering and on what a previous run had left behind. A session fixture
+        makes the dependency real.
+    
+        No-op without DEALGATE_POSTGRES_URL, so the default SQLite path is
+        untouched.
+        """
+    
+        url = os.environ.get("DEALGATE_POSTGRES_URL")
+        if not url:
+            yield
+            return
+    
+        import pathlib as _pathlib
+    
+        from alembic import command
+        from alembic.config import Config
+    
+        import app.db as _db
+    
+        sync_url = url
+        if sync_url.startswith("postgresql://"):
+            sync_url = sync_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif sync_url.startswith("postgresql+asyncpg://"):
+            sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    
+        root = _pathlib.Path(__file__).resolve().parents[1]
+        cfg = Config(str(root / "alembic.ini"))
+        cfg.set_main_option("script_location", str(root / "alembic"))
+        cfg.set_main_option("sqlalchemy.url", sync_url)
+    
+        # alembic/env.py reads the URL off `app.db.DATABASE_URL`, so setting it on
+        # the Config alone is not enough.
+        original = _db.DATABASE_URL
+        _db.DATABASE_URL = sync_url
+        try:
+>           command.upgrade(cfg, "head")
+
+api/tests/conftest.py:102: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+api/.venv/lib/python3.14/site-packages/alembic/command.py:487: in upgrade
+    script.run_env()
+api/.venv/lib/python3.14/site-packages/alembic/script/base.py:550: in run_env
+    util.load_python_file(self.dir, "env.py")
+api/.venv/lib/python3.14/site-packages/alembic/util/pyfiles.py:114: in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/.venv/lib/python3.14/site-packages/alembic/util/pyfiles.py:132: in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/alembic/env.py:84: in <module>
+    run_migrations_online()
+api/alembic/env.py:78: in run_migrations_online
+    context.run_migrations()
+api/.venv/lib/python3.14/site-packages/alembic/runtime/environment.py:970: in run_migrations
+    self.get_context().run_migrations(**kw)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:623: in run_migrations
+    head_maintainer.update_to_step(step)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:809: in update_to_step
+    self._update_version(from_, to_)
+api/.venv/lib/python3.14/site-packages/alembic/runtime/migration.py:744: in _update_version
+    ret = self.context.impl._exec(
+api/.venv/lib/python3.14/site-packages/alembic/ddl/impl.py:252: in _exec
+    return conn.execute(construct, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1448: in execute
+    return meth(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py:533: in _execute_on_connection
+    return connection._execute_clauseelement(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1668: in _execute_clauseelement
+    ret = self._execute_context(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1822: in _execute_context
+    return self._exec_single_context(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1962: in _exec_single_context
+    self._handle_dbapi_exception(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:2332: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py:1943: in _exec_single_context
+    self.dialect.do_execute(
+api/.venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py:1180: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <psycopg.Cursor [closed] [BAD] at 0x108e253d0>
+query = "UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion'"
+params = {}, prepare = None, binary = None
+
+    def execute(
+        self,
+        query: Query,
+        params: Params | None = None,
+        *,
+        prepare: bool | None = None,
+        binary: bool | None = None,
+    ) -> Self:
+        """
+        Execute a query or command to the database.
+        """
+        try:
+            with self._conn.lock:
+                self._conn.wait(
+                    self._execute_gen(query, params, prepare=prepare, binary=binary)
+                )
+        except e._NO_TRACEBACK as ex:
+>           raise ex.with_traceback(None)
+E           sqlalchemy.exc.DataError: (psycopg.errors.StringDataRightTruncation) value too long for type character varying(32)
+E           [SQL: UPDATE alembic_version SET version_num='20261002_0054_source_observations' WHERE alembic_version.version_num = '20261002_0053_parent_deletion']
+E           (Background on this error at: https://sqlalche.me/e/21/9h9h)
+
+api/.venv/lib/python3.14/site-packages/psycopg/cursor.py:117: DataError
+=============================== warnings summary ===============================
+tests/test_migration_parity.py::test_every_model_table_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/alembic/config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR api/tests/test_migration_parity.py::test_every_model_table_is_created_by_a_migration
+ERROR api/tests/test_migration_parity.py::test_every_model_column_is_created_by_a_migration
+ERROR api/tests/test_migration_parity.py::test_the_sow_upload_tables_specifically_exist

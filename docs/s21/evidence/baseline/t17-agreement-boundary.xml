@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="7.011" timestamp="2026-10-02T22:05:23.963721-07:00" hostname="Srikanths-MacBook-Pro.local"><testcase classname="tests.test_s21_agreement_fixture_access" name="test_agreement_fixture_list_and_direct_access" time="0.853" /><testcase classname="tests.test_s21_agreement_versions" name="test_replacement_is_versioned_and_stale_writes_do_not_store" time="0.261"><failure message="KeyError: 'version_no'">app_with_session = &lt;fastapi.applications.FastAPI object at 0x1107bb620&gt;
+session = &lt;sqlalchemy.ext.asyncio.session.AsyncSession object at 0x110e44b90&gt;
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x1108b9350&gt;
+
+    @pytest.mark.asyncio
+    async def test_replacement_is_versioned_and_stale_writes_do_not_store(app_with_session, session, monkeypatch):
+        monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Legal")
+        legal = await _seed_user(session, "agreement-versions@example.test", ["Legal"])
+        account = Client(name="Synthetic versioned documents")
+        session.add(account)
+        await session.commit()
+        storage = StubS3()
+        monkeypatch.setitem(app_with_session.dependency_overrides, get_evidence_s3, lambda: storage)
+        headers = {"X-Test-User": legal.email}
+        first, second = b"%PDF synthetic NDA revision one", b"%PDF synthetic NDA revision two"
+        async with _client(app_with_session) as client:
+            response = await client.post("/agreements", headers=headers,
+                data={"client_id": str(account.id), "kind": "NDA"},
+                files={"file": ("nda-v1.pdf", first, "application/pdf")})
+            assert response.status_code == 201, response.text
+            original = response.json()
+&gt;           assert original["version_no"] == 1
+                   ^^^^^^^^^^^^^^^^^^^^^^
+E           KeyError: 'version_no'
+
+api/tests/test_s21_agreement_versions.py:30: KeyError</failure></testcase></testsuite></testsuites>

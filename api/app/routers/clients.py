@@ -19,6 +19,7 @@ and Sprint 3 adds client-level admin.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import date, datetime
 from typing import Any
 
@@ -30,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.models.audit import AuditEvent
-from app.models.client import LegalEntity
+from app.models.client import Agreement, Client, LegalEntity
 from app.models.opportunity import Opportunity
 from app.services.clients import (
     ClientListFilters,
@@ -39,7 +40,10 @@ from app.services.clients import (
     list_clients,
 )
 from app.services.deals import LEADER_ROLES, is_leader
+from app.services.hubspot_pipeline import list_client_opportunity_records
 from app.services.redact import redact_costs
+from app.services.test_fixtures import account_scope, user_allowed
+from app.services.user_provisioning import ensure_user
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -141,6 +145,8 @@ async def _access_or_forbid(
     opportunities. Missing client → 404; missing access → 403.
     """
 
+    if not user_allowed(user, await account_scope(session, client_id)):
+        raise HTTPException(status_code=404, detail="client not found")
     if is_leader(user) or "Presales" in user.groups:
         return
     accessible = await accessible_client_ids_for(session, owner_id=user.id)
@@ -168,6 +174,10 @@ async def list_clients_endpoint(
             status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"
         )
 
+    actor = await ensure_user(session, user)
+    user = AuthUser(actor.id, actor.email, actor.name, tuple(actor.groups))
+    await session.commit()
+
     # Non-leader Sales users only see clients on their own opportunities.
     accessible: set[uuid.UUID] | None
     if _can_read_clients(user):
@@ -181,12 +191,45 @@ async def list_clients_endpoint(
     if owner == "me":
         effective_owner = str(user.id)
 
+    # Resolve trusted account and exact fixture-deal membership before totals
+    # or pagination. A client grant does not authorize an unissued sibling deal.
+    visible: set[uuid.UUID] = set()
+    fixture_deals: dict[uuid.UUID, list[Opportunity]] = {}
+    for client_id in (await session.scalars(select(Client.id))).all():
+        if accessible is not None and client_id not in accessible:
+            continue
+        scope = await account_scope(session, client_id)
+        if not user_allowed(user, scope):
+            continue
+        if scope is not None:
+            candidates = await list_client_opportunity_records(session, client_id)
+            allowed = [
+                deal for deal in candidates
+                if user_allowed(user, await account_scope(
+                    session, client_id, opportunity_id=deal.id
+                ))
+            ]
+            if effective_owner is not None and not any(
+                str(deal.owner_id) == effective_owner for deal in allowed
+            ):
+                continue
+            fixture_deals[client_id] = allowed
+        visible.add(client_id)
+
     filters = ClientListFilters(
         owner=effective_owner, search=search, page=page, size=size
     )
     rows, total = await list_clients(
-        session, filters=filters, accessible_client_ids=accessible
+        session, filters=filters, accessible_client_ids=visible
     )
+    for index, row in enumerate(rows):
+        if row.id not in fixture_deals:
+            continue
+        deals = fixture_deals[row.id]
+        owner_ids = list(dict.fromkeys(deal.owner_id for deal in deals if deal.owner_id))
+        owners = {owner.id: owner for owner in row.owners if owner.id in owner_ids}
+        rows[index] = replace(row, opportunity_count=len(deals), owner_ids=owner_ids,
+                              owners=list(owners.values()), sources=sorted({deal.source for deal in deals if deal.source}))
     return ClientListResponse(
         items=[
             ClientListRow(
@@ -219,6 +262,12 @@ async def get_client_endpoint(
             status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"
         )
 
+    actor = await ensure_user(session, user)
+    user = AuthUser(actor.id, actor.email, actor.name, tuple(actor.groups))
+    await session.commit()
+    if not user_allowed(user, await account_scope(session, client_id)):
+        raise HTTPException(status_code=404, detail="client not found")
+
     detail = await get_client_detail(session, client_id)
     if detail is None:
         raise HTTPException(
@@ -228,6 +277,13 @@ async def get_client_endpoint(
     # Sales without ownership → 403. Do this after the 404 check so we do
     # not leak the existence of clients the caller isn't allowed to see.
     await _access_or_forbid(session, user, client_id)
+
+    detail = replace(detail, opportunities=[
+        opportunity for opportunity in detail.opportunities
+        if user_allowed(user, await account_scope(
+            session, client_id, opportunity_id=opportunity.id
+        ))
+    ])
 
     recent = await _load_recent_activity(session, detail)
 
@@ -264,6 +320,10 @@ async def _load_recent_activity(session: AsyncSession, detail: Any) -> list[Rece
     ids: list[str] = [str(detail.id)]
     ids.extend(str(e.id) for e in detail.legal_entities)
     ids.extend(str(o.id) for o in detail.opportunities)
+    agreement_ids = await session.scalars(
+        select(Agreement.id).where(Agreement.client_id == detail.id)
+    )
+    ids.extend(str(agreement_id) for agreement_id in agreement_ids)
 
     # Also include audits keyed on entities that touch this client but were
     # not returned in the payload (task follow-ups, integration events for

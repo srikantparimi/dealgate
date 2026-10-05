@@ -14,7 +14,11 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_EVEN, Decimal
 from enum import Enum
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
+
+if TYPE_CHECKING:
+    from app.gm.commercial import ComponentSchedule
+    from app.gm.engine import GmOutcome
 
 # --- Aliases ---------------------------------------------------------------
 
@@ -115,6 +119,12 @@ class TemplateResult:
     complete: bool = True
     missing: list[str] = field(default_factory=list)
     finance_summary: dict | None = None
+    # Commercial consumers must use this authority's status and child policy outcomes.
+    gm_outcome: GmOutcome | None = None
+    commercial_schedule: ComponentSchedule | None = None
+    policy_us_floor: Decimal | None = None
+    policy_india_floor: Decimal | None = None
+    policy_frozen: bool = False
 
     @property
     def revenue_total(self) -> Money:

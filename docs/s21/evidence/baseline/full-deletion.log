@@ -1,0 +1,327 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+...................................................................s.... [ 14%]
+........................................................................ [ 18%]
+........................................................................ [ 23%]
+........................................................................ [ 28%]
+........................................................................ [ 32%]
+........................................................................ [ 37%]
+........................................................................ [ 42%]
+........................................................................ [ 46%]
+........................................................................ [ 51%]
+.......................................xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [ 56%]
+xx......xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.....xxxxxxxxxxxxxxxx [ 60%]
+xxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxx.......xxxxxx.......F [ 65%]
+........................................................................ [ 70%]
+........................................................................ [ 74%]
+........................................................................ [ 79%]
+........................................................................ [ 84%]
+........................................................................ [ 88%]
+........................................................................ [ 93%]
+........................................................................ [ 98%]
+..............................                                           [100%]
+=================================== FAILURES ===================================
+____________ test_card_agreements_uploaded_matches_agreement_count _____________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x116ccbed0>
+
+    @pytest.mark.asyncio
+    async def test_card_agreements_uploaded_matches_agreement_count(session):
+        """`agreements_uploaded` on the summary === count of Agreement rows."""
+        c = Client(name="Agr Corp")
+        session.add(c)
+        await session.flush()
+        for i in range(3):
+            session.add(
+                Agreement(
+                    client_id=c.id,
+                    kind="NDA" if i % 2 == 0 else "MSA",
+                    file_key=f"s3://b/agr_{i}.pdf",
+                    filename=f"agr_{i}.pdf",
+                    file_size=100,
+                    uploaded_by=uuid.uuid4(),
+                )
+            )
+        await session.commit()
+        s = await summary(session, filters=PipelineFilters())
+>       assert s.agreements_uploaded == 3
+E       assert 0 == 3
+E        +  where 0 = PipelineSummary(open_count=0, open_value_by_currency={}, closing_this_month=0, overdue_actions=0, pending_approvals=0, agreement_gaps=0, sows_in_progress=0, agreements_uploaded=0, ceo_pending=0).agreements_uploaded
+
+api/tests/test_s20_w4_session6.py:198: AssertionError
+=============================== warnings summary ===============================
+api/app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+api/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/s21_acceptance/test_company_x_forecast_oracle.py::test_company_x_independent_monthly_scenario_matrix[committed-monthly0]
+tests/test_migration_parity.py::test_every_model_table_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/alembic/config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+tests/test_actuals_import.py: 1 warning
+tests/test_client_rate_cards.py: 1 warning
+tests/test_legacy_import.py: 1 warning
+tests/test_sow_extract.py: 3 warnings
+tests/test_sow_lifecycle.py: 1 warning
+tests/test_sow_upload_binding.py: 2 warnings
+tests/test_sow_upload_router.py: 5 warnings
+tests/test_staffing_sheet.py: 1 warning
+tests/test_tasks_lifecycle.py: 1 warning
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/test_admin_users.py::test_invite_unknown_group_returns_422_no_audit
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/admin_users.py:201: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    groups = _validate_groups(list(payload.groups))
+
+tests/test_admin_users.py::test_patch_unknown_group_returns_422_no_audit
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/admin_users.py:245: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    add = _validate_groups(list(payload.add))
+
+tests/test_ceo_exception.py::test_approve_requires_rationale
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/ceo_exception.py:183: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await decide(
+
+tests/test_channels_disabled.py::test_patch_notification_setting_rejects_disabled_channel[teams]
+tests/test_channels_disabled.py::test_patch_notification_setting_rejects_disabled_channel[slack]
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/notifications.py:164: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await upsert_setting(
+
+tests/test_client_rate_cards.py::test_publish_rejects_bad_location
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/client_rate_cards.py:133: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_row(row, idx)
+
+tests/test_gm_model_templates.py::test_save_template_rejects_duplicate_name
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/delivery_model.py:297: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _bad_request(exc) from exc
+
+tests/test_hubspot_writeback.py::test_queue_writeback_rejects_property_outside_map
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/hubspot_writeback.py:131: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_target_state(target_state)
+
+tests/test_hubspot_writeback.py::test_worker_second_line_guard_rejects_bad_target_state
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/hubspot_writeback.py:297: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_target_state(job.target_state or {})
+
+tests/test_migration_parity.py::test_every_model_column_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/tests/test_migration_parity.py:120: SAWarning: Did not recognize type 'vector' of column 'embedding'
+    migrated_cols = {c["name"] for c in migrated_inspector.get_columns(table_name)}
+
+tests/test_notifications.py::test_queue_rejects_unknown_category
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:220: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_category(category)
+
+tests/test_notifications.py::test_settings_patch_rejects_unknown_channel
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:150: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_channel(channel)
+
+tests/test_policy.py::test_publish_rejects_us_ge_india
+tests/test_policy.py::test_publish_rejects_out_of_range_floors
+tests/test_policy.py::test_publish_rejects_unknown_fx_convention
+tests/test_policy.py::test_publish_via_http_us_gt_india_returns_422
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/policy.py:99: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_publish(us_floor, india_floor, fx_convention)
+
+tests/test_rate_cards.py::test_publish_rejects_non_positive_cost
+tests/test_rate_cards.py::test_publish_rejects_ordering
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/admin_rate_cards.py:162: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_row(row, idx)
+
+tests/test_sow_extract.py::test_create_version_over_25mb_returns_413
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_413_REQUEST_ENTITY_TOO_LARGE' is deprecated. Use 'HTTP_413_CONTENT_TOO_LARGE' instead.
+    return await dependant.call(**values)
+
+tests/test_tasks_lifecycle.py: 15 warnings
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:141: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await transition_task(session, actor=user, task=task, to_status=target)
+
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[cancelled-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[done-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[reassigned-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[snoozed-snoozed]
+tests/test_tasks_lifecycle.py::test_snooze_requires_future_wake_at
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:139: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await snooze_task(session, actor=user, task=task, wake_at=wake_at)
+
+tests/test_tasks_lifecycle.py::test_reassign_completed_task_rejected
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:153: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await reassign_task(
+
+tests/test_wbs.py::test_reorder_rejects_bad_id_set
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/delivery_model.py:394: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _bad_request(exc) from exc
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] api/tests/test_bedrock_model_check.py:193: opt-in live check; set LIVE_BEDROCK_CHECK=1 with AWS creds to run
+XFAIL api/tests/test_s20_baseline_forecast_actuals.py::test_baseline_is_immutable - depends on W7 baseline snapshot on release
+XFAIL api/tests/test_s20_baseline_forecast_actuals.py::test_forecast_history_preserved - depends on W7 forecast versioning
+XFAIL api/tests/test_s20_baseline_forecast_actuals.py::test_actuals_new_row_never_updates_old - depends on W7 actuals import path
+XFAIL api/tests/test_s20_baseline_forecast_actuals.py::test_duplicate_import_rejected_by_source_event_id - depends on W1 + W7 dedupe key (D7)
+XFAIL api/tests/test_s20_baseline_forecast_actuals.py::test_deterioration_triggers_recovery_flag - depends on W7 recovery-flag emitter
+XFAIL api/tests/test_s20_ceo_conditional.py::test_compliant_package_reads_not_required - depends on W3 CEO surface + gm assessment
+XFAIL api/tests/test_s20_ceo_conditional.py::test_below_floor_package_requires_exception - depends on W3 CEO service + gm below-floor detection
+XFAIL api/tests/test_s20_ceo_conditional.py::test_conditions_are_enforced_at_release - depends on W3 CEO exception conditions engine
+XFAIL api/tests/test_s20_ceo_conditional.py::test_expired_exception_blocks_release - depends on W3 CEO exception expiry
+XFAIL api/tests/test_s20_ceo_conditional.py::test_material_change_invalidates_exception - depends on W3 material-change invalidation (T21)
+XFAIL api/tests/test_s20_client_rollups.py::test_mixed_open_closed_counts - skeleton; extend existing list_clients()
+XFAIL api/tests/test_s20_client_rollups.py::test_zero_deal_client_renders_row - skeleton
+XFAIL api/tests/test_s20_client_rollups.py::test_multiple_deal_owners_visible - skeleton
+XFAIL api/tests/test_s20_client_rollups.py::test_closed_lost_client_reads_open_0_with_label - skeleton; L07 regression for 74 Sky
+XFAIL api/tests/test_s20_client_rollups.py::test_multi_association_deal_counted_once_in_global - skeleton
+XFAIL api/tests/test_s20_extraction_recovery.py::test_extraction_failure_preserves_file - skeleton
+XFAIL api/tests/test_s20_extraction_recovery.py::test_ambiguous_fields_are_needs_confirmation - skeleton
+XFAIL api/tests/test_s20_extraction_recovery.py::test_duplicate_upload_offers_link - skeleton
+XFAIL api/tests/test_s20_extraction_recovery.py::test_saved_draft_restores_corrections - skeleton
+XFAIL api/tests/test_s20_extraction_recovery.py::test_ai_result_is_a_draft_needing_confirmation - skeleton; A7 lifecycle boundary
+XFAIL api/tests/test_s20_filter_combinations.py::test_or_within_owner_field - depends on W2 filter bar and W1 BU mirror
+XFAIL api/tests/test_s20_filter_combinations.py::test_and_across_fields - depends on W2 filter bar
+XFAIL api/tests/test_s20_filter_combinations.py::test_owner_and_bu_and_date_intersection - depends on W1 BU mirror (D10) + W2 filter bar
+XFAIL api/tests/test_s20_filter_combinations.py::test_missing_value_filter - depends on W2 missing-value filter
+XFAIL api/tests/test_s20_filter_dates.py::test_last_90_preset_includes_recent_only - skeleton
+XFAIL api/tests/test_s20_filter_dates.py::test_next_30_preset_covers_close_dates - skeleton
+XFAIL api/tests/test_s20_filter_dates.py::test_date_only_field_not_shifted_by_tz - skeleton
+XFAIL api/tests/test_s20_filter_dates.py::test_missing_date_filter - skeleton
+XFAIL api/tests/test_s20_filter_dates.py::test_boundary_inclusive_lower_exclusive_upper - skeleton
+XFAIL api/tests/test_s20_filter_dates.py::test_response_echoes_timezone - skeleton
+XFAIL api/tests/test_s20_freshness_injection.py::test_15_events_drain_within_two_minutes - depends on W1 continuous-consumer + watermarks (D4)
+XFAIL api/tests/test_s20_freshness_injection.py::test_event_after_tick_boundary_picks_up_within_15_seconds - depends on W1 continuous consumer (A2)
+XFAIL api/tests/test_s20_freshness_injection.py::test_backlog_over_5_min_flips_freshness_to_stale - depends on W1 stale-state banner via watermark
+XFAIL api/tests/test_s20_freshness_injection.py::test_dlq_message_flips_state_to_failed - depends on W1 DLQ surface
+XFAIL api/tests/test_s20_freshness_injection.py::test_worker_tick_without_events_does_not_advance_processed - depends on W1 watermark discipline (contract §5)
+XFAIL api/tests/test_s20_gm_incomplete_inputs.py::test_missing_input_yields_not_assessed[rate_missing-rate] - skeleton; wire to gm.assess()
+XFAIL api/tests/test_s20_gm_incomplete_inputs.py::test_missing_input_yields_not_assessed[cost_missing-cost] - skeleton; wire to gm.assess()
+XFAIL api/tests/test_s20_gm_incomplete_inputs.py::test_missing_input_yields_not_assessed[currency_missing-currency] - skeleton; wire to gm.assess()
+XFAIL api/tests/test_s20_gm_incomplete_inputs.py::test_missing_input_yields_not_assessed[allocation_missing-allocation] - skeleton; wire to gm.assess()
+XFAIL api/tests/test_s20_gm_incomplete_inputs.py::test_missing_input_yields_not_assessed[revenue_basis_missing-revenue_basis] - skeleton; wire to gm.assess()
+XFAIL api/tests/test_s20_gm_incomplete_inputs.py::test_finance_approval_rejects_not_assessed_package - skeleton; wire to /approvals/{package_id}/finance
+XFAIL api/tests/test_s20_gm_incomplete_inputs.py::test_command_center_reports_unavailable_not_zero - skeleton; asserts Command center attention render
+XFAIL api/tests/test_s20_gm_thresholds.py::test_us_35_percent_exact_passes - skeleton; wire to app.gm.check_thresholds()
+XFAIL api/tests/test_s20_gm_thresholds.py::test_india_50_percent_exact_passes - skeleton; wire to app.gm.check_thresholds()
+XFAIL api/tests/test_s20_gm_thresholds.py::test_india_49_point_999_percent_fails - skeleton; wire to app.gm.check_thresholds()
+XFAIL api/tests/test_s20_gm_thresholds.py::test_blended_margin_cannot_hide_failed_india_component - skeleton; wire to app.gm.check_thresholds()
+XFAIL api/tests/test_s20_gm_thresholds.py::test_no_float_in_gm_pipeline - skeleton; asserts float never enters the calc
+XFAIL api/tests/test_s20_integrations_truthfulness.py::test_hubspot_read_only_shown_when_write_scope_missing - depends on W4 integrations page derivation
+XFAIL api/tests/test_s20_integrations_truthfulness.py::test_cognito_verified_by_current_request - depends on W4
+XFAIL api/tests/test_s20_integrations_truthfulness.py::test_document_storage_verified_from_config - depends on W4
+XFAIL api/tests/test_s20_integrations_truthfulness.py::test_document_signature_is_separate_row - depends on W4
+XFAIL api/tests/test_s20_integrations_truthfulness.py::test_health_page_shows_watermarks_not_empty_queue - depends on W4 health surface (L20)
+XFAIL api/tests/test_s20_many_sows_per_deal.py::test_two_packages_persist_independently - depends on W3 request to relax sow.opportunity_id uniqueness (D1)
+XFAIL api/tests/test_s20_many_sows_per_deal.py::test_version_history_isolated_per_package - depends on W3 multi-SOW support
+XFAIL api/tests/test_s20_many_sows_per_deal.py::test_rollup_headline_picks_most_blocked_open_package - depends on W3 rollup headline computation
+XFAIL api/tests/test_s20_many_sows_per_deal.py::test_archived_package_excluded_from_headline_counted_separately - depends on W3 rollup + archive semantics (D1)
+XFAIL api/tests/test_s20_many_sows_per_deal.py::test_released_package_never_hides_pending_sibling - depends on W3 rollup rules (D1)
+XFAIL api/tests/test_s20_many_sows_per_deal.py::test_decisions_do_not_cross_package_boundaries - depends on W3 approvals engine
+XFAIL api/tests/test_s20_material_change_invalidates.py::test_material_change_bumps_version_and_invalidates[price_change-amount-150000] - depends on W3 material-change revision + invalidation (T21)
+XFAIL api/tests/test_s20_material_change_invalidates.py::test_material_change_bumps_version_and_invalidates[scope_change-scope_text-New: 12-month engagement, +2 developers] - depends on W3 material-change revision + invalidation (T21)
+XFAIL api/tests/test_s20_material_change_invalidates.py::test_material_change_bumps_version_and_invalidates[staffing_cost_change-role_rate-185.00] - depends on W3 material-change revision + invalidation (T21)
+XFAIL api/tests/test_s20_material_change_invalidates.py::test_signature_refused_while_invalidated_approvals_outstanding - depends on W3 signature gate
+XFAIL api/tests/test_s20_material_change_invalidates.py::test_release_refused_until_re_approval_complete - depends on W7 release gate
+XFAIL api/tests/test_s20_material_change_invalidates.py::test_history_preserves_old_approvals - depends on W3 audit trail
+XFAIL api/tests/test_s20_nda_msa_rules.py::test_upload_sets_on_file_true_verified_false - depends on W3 NDA/MSA fact split (D3)
+XFAIL api/tests/test_s20_nda_msa_rules.py::test_legal_decision_flips_verified_true - depends on W3 Legal approval → verification path
+XFAIL api/tests/test_s20_nda_msa_rules.py::test_signature_holds_do_not_list_nda_msa_by_default - depends on W7 signature hold-reasons list (D3)
+XFAIL api/tests/test_s20_nda_msa_rules.py::test_client_detail_shows_two_independent_facts - depends on W2 client detail page render
+XFAIL api/tests/test_s20_nda_msa_rules.py::test_neither_on_file_nor_verified_blocks_submission - depends on W3 approval submission gate
+XFAIL api/tests/test_s20_owner_resolution.py::test_active_owner_resolves_to_name - depends on W1 owner mirror table with archived support
+XFAIL api/tests/test_s20_owner_resolution.py::test_archived_owner_still_resolves - depends on W1 owner mirror with archived support (D2)
+XFAIL api/tests/test_s20_owner_resolution.py::test_unresolved_owner_reads_owner_details_unavailable - depends on W1 owner mirror table
+XFAIL api/tests/test_s20_owner_resolution.py::test_null_source_owner_reads_unassigned - depends on W1 mirror
+XFAIL api/tests/test_s20_owner_resolution.py::test_company_account_owner_not_derived_from_deals - depends on W1 mirror and Client.account_owner_id column
+XFAIL api/tests/test_s20_owner_resolution.py::test_hubspot_owner_without_local_login_still_valid - depends on W1 mirror
+XFAIL api/tests/test_s20_ownership_and_rollup.py::test_source_owner_and_local_assignee_are_separate_columns - depends on W1 opportunity schema (source_owner_id + assignee_id)
+XFAIL api/tests/test_s20_ownership_and_rollup.py::test_headline_picks_worst_open_by_d1_order - depends on W3 rollup engine
+XFAIL api/tests/test_s20_ownership_and_rollup.py::test_archived_count_is_separate - depends on W3 archive counting
+XFAIL api/tests/test_s20_permissions_uniform.py::test_wrong_role_gets_403[POST-/api/approvals/{id}/finance-Finance-Delivery] - skeleton; wire to a test client with role-partitioned tokens
+XFAIL api/tests/test_s20_permissions_uniform.py::test_wrong_role_gets_403[POST-/api/approvals/{id}/legal-Legal-Finance] - skeleton; wire to a test client with role-partitioned tokens
+XFAIL api/tests/test_s20_permissions_uniform.py::test_wrong_role_gets_403[POST-/api/ceo-exceptions-CEO-Delivery] - skeleton; wire to a test client with role-partitioned tokens
+XFAIL api/tests/test_s20_permissions_uniform.py::test_wrong_role_gets_403[POST-/api/release/{id}-Delivery-Sales] - skeleton; wire to a test client with role-partitioned tokens
+XFAIL api/tests/test_s20_permissions_uniform.py::test_wrong_role_gets_403[POST-/api/signature/send/{id}-SalesLeader-Sales] - skeleton; wire to a test client with role-partitioned tokens
+XFAIL api/tests/test_s20_permissions_uniform.py::test_wrong_role_gets_403[GET-/api/packages/{id}/staff-cost-detail-Finance-Sales] - skeleton; wire to a test client with role-partitioned tokens
+XFAIL api/tests/test_s20_permissions_uniform.py::test_wrong_role_gets_403[GET-/api/audit/export.csv-Finance-Sales] - skeleton; wire to a test client with role-partitioned tokens
+XFAIL api/tests/test_s20_permissions_uniform.py::test_forged_cognito_groups_are_rejected - skeleton; wire to Cognito token validator
+XFAIL api/tests/test_s20_permissions_uniform.py::test_search_permissions_match_list_permissions - skeleton; wire to search endpoint
+XFAIL api/tests/test_s20_permissions_uniform.py::test_export_obeys_same_permissions_as_list - skeleton; wire to export endpoints
+XFAIL api/tests/test_s20_release_authorization.py::test_crm_closed_won_alone_refuses_release - depends on W7 release gate
+XFAIL api/tests/test_s20_release_authorization.py::test_internal_signoff_alone_still_refuses - depends on W7 release gate
+XFAIL api/tests/test_s20_release_authorization.py::test_all_three_gates_pass_creates_project_once - depends on W7 release + project provisioning
+XFAIL api/tests/test_s20_release_authorization.py::test_executed_document_diverging_terms_refused - depends on W7 executed-terms diff check (T22)
+XFAIL api/tests/test_s20_release_authorization.py::test_release_retry_is_idempotent - depends on W7 idempotency guard
+XFAIL api/tests/test_s20_renewals_calendar_months.py::test_normal_march_15 - depends on W4 renewals calendar-month engine (D8)
+XFAIL api/tests/test_s20_renewals_calendar_months.py::test_march_1_uses_january_1_not_60_days_back - depends on W4 D8 engine
+XFAIL api/tests/test_s20_renewals_calendar_months.py::test_april_30_clamps_to_feb_28 - depends on W4 D8 engine + month-end clamp
+XFAIL api/tests/test_s20_renewals_calendar_months.py::test_april_30_leap_year_gives_feb_29 - depends on W4 D8 engine + leap year
+XFAIL api/tests/test_s20_renewals_calendar_months.py::test_tz_boundary_no_day_shift - depends on W4 TZ handling
+XFAIL api/tests/test_s20_renewals_calendar_months.py::test_short_assessment_alerts_at_start - depends on W4 short-assessment rule
+XFAIL api/tests/test_s20_renewals_calendar_months.py::test_weekly_repeat_until_acknowledged - depends on W4 weekly-repeat scheduler
+XFAIL api/tests/test_s20_renewals_calendar_months.py::test_unverified_extension_does_not_push_trigger - depends on W4 extension verification
+XFAIL api/tests/test_s20_report_dependency_failure.py::test_agreements_failure_does_not_zero_pipeline - depends on W4 command-center summary surface
+XFAIL api/tests/test_s20_report_dependency_failure.py::test_no_zero_substitution_for_failed_metric - depends on W4
+XFAIL api/tests/test_s20_report_dependency_failure.py::test_failure_surface_links_to_health - depends on W4 health surface
+XFAIL api/tests/test_s20_report_scale.py::test_report_covers_120_rows_incl_closed_and_unknown_stage - depends on W4 portfolio at scale
+XFAIL api/tests/test_s20_report_scale.py::test_approval_turnaround_median_and_p90 - depends on W4 approval-turnaround endpoint (L18)
+XFAIL api/tests/test_s20_report_scale.py::test_missing_aggregate_reads_state_missing_not_zero - depends on W4 honest-status handling
+XFAIL api/tests/test_s20_report_scale.py::test_export_covers_all_rows - depends on W4 export at scale
+XFAIL api/tests/test_s20_report_totals.py::test_bu_filter_totals_reconcile - depends on W4 report endpoints
+XFAIL api/tests/test_s20_report_totals.py::test_drill_down_lands_on_matching_pipeline_filter - depends on W4
+XFAIL api/tests/test_s20_report_totals.py::test_mixed_currency_declares_reporting_currency_and_fx - depends on W4 currency envelope
+XFAIL api/tests/test_s20_report_totals.py::test_unknown_bucket_visible_in_every_report - depends on W4 unknown-bucket surface
+XFAIL api/tests/test_s20_report_totals.py::test_export_row_count_matches_list - depends on W4 export endpoint
+XFAIL api/tests/test_s20_scan_resume.py::test_partial_scan_archives_nothing - depends on W1 scan generation semantics (A3)
+XFAIL api/tests/test_s20_scan_resume.py::test_mid_scan_record_is_not_archived - depends on W1 mid-scan-record protection
+XFAIL api/tests/test_s20_scan_resume.py::test_overlapping_generations_do_not_archive_each_others_records - depends on W1 generation lock
+XFAIL api/tests/test_s20_scan_resume.py::test_filtered_scan_does_not_archive_out_of_scope - depends on W1 filtered-scan metadata
+XFAIL api/tests/test_s20_scan_resume.py::test_rollback_restores_archived_at - depends on W1 rollback support
+XFAIL api/tests/test_s20_security_boundaries.py::test_api_responses_are_not_cacheable - skeleton; wire to CloudFront + FastAPI headers
+XFAIL api/tests/test_s20_security_boundaries.py::test_authorization_forwarded_end_to_end - skeleton
+XFAIL api/tests/test_s20_security_boundaries.py::test_webhook_signature_hmac_correct - skeleton
+XFAIL api/tests/test_s20_security_boundaries.py::test_webhook_replay_rejected - skeleton
+XFAIL api/tests/test_s20_security_boundaries.py::test_cognito_wrong_issuer_rejected - skeleton
+XFAIL api/tests/test_s20_security_boundaries.py::test_cognito_expired_rejected - skeleton
+XFAIL api/tests/test_s20_security_boundaries.py::test_cognito_wrong_token_use_rejected - skeleton
+XFAIL api/tests/test_s20_security_boundaries.py::test_cognito_wrong_audience_rejected - skeleton
+XFAIL api/tests/test_s20_signature_nda_msa_rule.py::test_signature_holds_omits_nda_msa_when_no_code_rule - depends on W3 + W7 alignment (L13 contradiction, D3)
+XFAIL api/tests/test_s20_signature_nda_msa_rule.py::test_if_rule_exists_it_is_documented_and_uniformly_applied - depends on decisions.md documenting the rule if it exists
+XFAIL api/tests/test_s20_signature_nda_msa_rule.py::test_four_surfaces_agree - depends on W2 client detail + W3 workspace surface
+XFAIL api/tests/test_s20_signature_verification.py::test_unsigned_upload_does_not_execute - depends on W7 signature service
+XFAIL api/tests/test_s20_signature_verification.py::test_executed_document_diverging_terms_rejected - depends on W7 executed-vs-approved diff
+XFAIL api/tests/test_s20_signature_verification.py::test_declined_signature_requires_rework - depends on W7 decline path
+XFAIL api/tests/test_s20_signature_verification.py::test_expired_signature_retry_no_duplicate_send - depends on W7 expire + retry path
+XFAIL api/tests/test_s20_signature_verification.py::test_nda_msa_rule_consistent_across_surfaces - depends on W3 + W7 NDA/MSA rule alignment (D3, T41)
+XFAIL api/tests/test_s20_source_dedup.py::test_same_event_delivered_twice_yields_one_effect - depends on W1 (source, source_event_id) unique constraint (D7)
+XFAIL api/tests/test_s20_source_dedup.py::test_retry_after_commit_before_ack_is_idempotent - depends on W1 crash-safety (A4)
+XFAIL api/tests/test_s20_source_dedup.py::test_two_different_events_on_same_row_both_apply - depends on W1 dedupe scope (per-event, not per-row)
+XFAIL api/tests/test_s20_source_dedup.py::test_partial_commit_is_never_visible - depends on W1 atomic mirror+audit+outbox commit
+XFAIL api/tests/test_s20_stage_reconciliation.py::test_stage_buckets_reconcile_to_total_open - depends on W1 aggregation by (pipeline_id, stage_id) — D9
+XFAIL api/tests/test_s20_stage_reconciliation.py::test_client_count_never_leaks_into_deal_count - depends on W1 aggregation by (pipeline_id, stage_id) — D9
+XFAIL api/tests/test_s20_stage_reconciliation.py::test_unknown_stage_bucket_is_explicit - depends on W1 aggregation by (pipeline_id, stage_id) — D9
+XFAIL api/tests/test_s20_stale_package_refused.py::test_stale_tab_decision_returns_409 - depends on W3 approvals with version guard
+XFAIL api/tests/test_s20_stale_package_refused.py::test_decision_against_pre_revision_version_refused - depends on W3 material-change revision path (T21)
+XFAIL api/tests/test_s20_stale_package_refused.py::test_rejection_payload_includes_current_version - depends on W3 approvals engine
+XFAIL api/tests/test_s20_sync_edge_cases.py::test_worker_crash_resumes_from_cursor - Session 4 (continuous consumer): mid-batch crash + cursor resume needs the running service
+XFAIL api/tests/test_s20_upload_interrupt_recovery.py::test_upload_resumes_at_last_completed_part - skeleton
+XFAIL api/tests/test_s20_upload_interrupt_recovery.py::test_extraction_job_is_idempotent - skeleton
+XFAIL api/tests/test_s20_upload_interrupt_recovery.py::test_duplicate_upload_offers_link_not_create - skeleton
+XFAIL api/tests/test_s20_upload_interrupt_recovery.py::test_approved_version_immutable_across_restart - skeleton
+XFAIL api/tests/test_s20_upload_interrupt_recovery.py::test_deal_binding_survives_every_step - skeleton
+FAILED api/tests/test_s20_w4_session6.py::test_card_agreements_uploaded_matches_agreement_count
+1 failed, 1390 passed, 1 skipped, 150 xfailed, 62 warnings in 1132.95s (0:18:52)

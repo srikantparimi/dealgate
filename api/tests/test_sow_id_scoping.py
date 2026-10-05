@@ -24,6 +24,7 @@ from app.models.approval import ApprovalPackage
 from app.models.gm_model import GmModel, ResourceLine
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
+from app.models.user import User
 from app.services.provenance import wrap
 from app.services.sow_confirmation import _existing_gm_for_sow
 from app.services.sow_extract import confirm_field, run_extract
@@ -35,6 +36,12 @@ def _uid(email: str) -> uuid.UUID:
 
 
 OWNER = _uid("s11-sow-id-scoping@smartek21.com")
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def owner_record(session):
+    session.add(User(id=OWNER, email="s11-sow-id-scoping@smartek21.com", name="Scope owner", groups=["Sales"]))
+    await session.flush()
 
 
 def _sme_line(hours: str, cost: str = "120") -> dict:

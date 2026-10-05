@@ -54,6 +54,16 @@ describe("PrimaryNavigation", () => {
     ).toHaveAttribute("href", "/settings");
   });
 
+  it("shows managed People planning to HR without requiring administrator access", () => {
+    renderNav(["HR"]);
+    expect(screen.getByRole("link", { name: "People planning" })).toHaveAttribute("href", "/people");
+  });
+
+  it("does not offer named workforce supply to Sales", () => {
+    renderNav(["Sales"]);
+    expect(screen.queryByRole("link", { name: "People planning" })).not.toBeInTheDocument();
+  });
+
   it("filterItems respects requireAny gating", () => {
     const admin = NAV_GROUPS.find((g) => g.id === "administration")!.items;
     expect(filterItems(admin, [])).toEqual([]);

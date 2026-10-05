@@ -1,0 +1,10 @@
+{"run": "83182f9eed04493ab0a508988be872fb", "fixture": {"run_id": "d6b9c832-8d05-4864-a2f7-1d60a4c1cbed", "client_id": "fb24f58b-2433-499c-b1a2-4b3ebd6c9dce", "opportunity_id": "dc2ffa64-30c8-46a8-9234-a0985d9e5253", "expires_at": "2026-10-02T05:55:15.883933+00:00"}}
+2026-10-01 18:55:16 [info     ] role_check                     granted=True required=['Sales', 'SalesLeader', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=83182f9eed04493ab0a508988be872fb-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-01 18:55:23 [info     ] role_check                     granted=True required=['Marketing', 'Sales', 'SalesLeader', 'Presales', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=83182f9eed04493ab0a508988be872fb-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"uploaded": "7c0d624b-fdd6-405d-88bc-92275db46c4f", "extract_status": "complete"}
+2026-10-01 18:55:24 [info     ] role_check                     granted=True required=['Delivery', 'SystemAdmin'] user=83182f9eed04493ab0a508988be872fb-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"approved": "b63b15bc-e6a2-45ce-978e-901e4ca65ea9", "functions": ["delivery", "hr", "finance", "legal"]}
+2026-10-01 18:55:35 [info     ] role_check                     granted=True required=['Sales', 'SalesLeader', 'Presales', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=83182f9eed04493ab0a508988be872fb-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"journey": "legacy-path-passed", "forecast": "14a8e4de-af66-4384-b915-5553931811f4", "worker_rows": 16, "mail_sink_messages": 12, "s21_sales_present": false, "staging_verified": false}
+{"storage_deleted": "sow/dc2ffa64-30c8-46a8-9234-a0985d9e5253/20261002T015528Z-0747ef96-executed.docx.docx"}
+{"storage_deleted": "verification/s21/83182f9eed04493ab0a508988be872fb/sow/78ca20f1-9f4f-4ef3-b589-a65c4f52b85d/20261002T015516Z-d73627f1-assessment-83182f9eed04493ab0a508988be872fb.docx.docx"}

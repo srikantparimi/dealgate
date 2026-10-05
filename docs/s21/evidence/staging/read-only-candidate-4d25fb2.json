@@ -1,0 +1,60 @@
+{
+  "captured_at": "2026-10-03T18:42:00Z",
+  "candidate_commit": "4d25fb228f30f7fdfe5a567dcc88fb2975347fb9",
+  "base_url": "https://app.dealgateapp.com",
+  "browser_available": false,
+  "forecast": {
+    "supported_scenarios": {
+      "committed": 200,
+      "expected": 200,
+      "upside": 200
+    },
+    "schema_version": "forecast-outlook-v1",
+    "scope_label": "Company total",
+    "row_count": 0,
+    "plan_count": 0
+  },
+  "people": {
+    "imports_status": 200,
+    "availability_status": 200,
+    "availability_basis": "gross_with_commitments",
+    "availability_people_count": 0,
+    "demand_status": 200,
+    "demand_schema_version": "people-demand-v1",
+    "demand_scope_label": "Company demand",
+    "demand_count": 0,
+    "allocation_status": 200,
+    "allocation_schema_version": "people-allocation-v1",
+    "allocation_source_count": 0,
+    "sourcing_rule_state": "unconfigured",
+    "automation_rule_state": "unconfigured",
+    "automation_job_count": 0
+  },
+  "spa_routes": {
+    "/forecast": 200,
+    "/people": 200,
+    "/people/demand": 200,
+    "/people/sourcing": 200,
+    "asset": "/assets/index-Hp8uM_ZG.js",
+    "expected_labels_found": [
+      "Company & accounts",
+      "Next opportunities",
+      "People supply",
+      "Resource demand",
+      "Revenue projection"
+    ]
+  },
+  "role_matrix": [
+    {"role": "system", "forecast": 200, "supply": 200, "demand": 200},
+    {"role": "delivery", "forecast": 200, "supply": 403, "demand": 200},
+    {"role": "finance", "forecast": 200, "supply": 403, "demand": 200},
+    {"role": "hr", "forecast": 403, "supply": 200, "demand": 200},
+    {"role": "legal", "forecast": 403, "supply": 403, "demand": 403},
+    {"role": "submitter_sales", "forecast": 200, "supply": 403, "demand": 200}
+  ],
+  "limits": [
+    "Read-only empty-state/API evidence; no populated staging totals were asserted.",
+    "No browser surface was available, so visual behavior and product-owner click-through remain unverified.",
+    "No requirement or acceptance scenario is closed by this receipt alone."
+  ]
+}

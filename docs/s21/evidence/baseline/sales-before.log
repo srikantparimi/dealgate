@@ -1,0 +1,83 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+________________ test_sales_and_hr_both_required_before_finance ________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1116e86e0>
+
+    @pytest.mark.asyncio
+    async def test_sales_and_hr_both_required_before_finance(session):
+        owner, opp, _, _, people = await fixture(session)
+        plan = await routing.submission_plan(session, opportunity_id=opp.id, actor_id=owner.id)
+>       assert [row["function"] for row in plan["rows"]] == ["delivery", "hr", "sales", "finance", "legal"]
+E       AssertionError: assert ['delivery', ...nce', 'legal'] == ['delivery', ...nce', 'legal']
+E         
+E         At index 2 diff: 'finance' != 'sales'
+E         Right contains one more item: 'legal'
+E         Use -v to get more diff
+
+tests/test_s21_sales_review.py:19: AssertionError
+________ test_missing_sales_blocks_submission_without_creating_package _________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1119e7390>
+
+    @pytest.mark.asyncio
+    async def test_missing_sales_blocks_submission_without_creating_package(session):
+        owner, opp, _, _, _ = await fixture(session)
+>       await routing.save_group(session, actor_id=owner.id, function="sales",
+                                 member_ids=[], backup_ids=[], default_approver_id=None)
+
+tests/test_s21_sales_review.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+app/services/approval_routing.py:117: in save_group
+    fail(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+message = 'Executive membership is controlled by CEO identity and recorded time-bound delegation'
+status = 422
+
+    def fail(message, status=422):
+        from app.services.approvals import ApprovalError
+    
+>       raise ApprovalError(status_code=status, detail=message)
+E       app.services.approvals.ApprovalError: 422: Executive membership is controlled by CEO identity and recorded time-bound delegation
+
+app/services/approval_routing.py:30: ApprovalError
+______________ test_omitting_plan_cannot_bypass_missing_reviewers ______________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1119e6850>
+
+    @pytest.mark.asyncio
+    async def test_omitting_plan_cannot_bypass_missing_reviewers(session):
+        owner, opp, _, _, _ = await fixture(session)
+        await routing.save_group(session, actor_id=owner.id, function="hr",
+                                 member_ids=[], backup_ids=[], default_approver_id=None)
+>       with pytest.raises(ApprovalError, match="HR"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ApprovalError
+
+tests/test_s21_sales_review.py:61: Failed
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_s21_sales_review.py::test_sales_and_hr_both_required_before_finance
+FAILED tests/test_s21_sales_review.py::test_missing_sales_blocks_submission_without_creating_package
+FAILED tests/test_s21_sales_review.py::test_omitting_plan_cannot_bypass_missing_reviewers
+3 failed, 2 warnings in 5.70s

@@ -1,0 +1,29 @@
+2026-10-02 11:34:53 [info     ] role_check                     granted=True required=['SystemAdmin'] user=da30dc4483414225ad978d90ceb27bae-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-02 11:34:53 [info     ] role_check                     granted=True required=['HR', 'SystemAdmin'] user=da30dc4483414225ad978d90ceb27bae-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-02 11:34:54 [info     ] role_check                     granted=True required=['CEO', 'Delivery', 'Finance', 'HR', 'Sales', 'SalesLeader', 'SystemAdmin'] user=da30dc4483414225ad978d90ceb27bae-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-02 11:34:54 [info     ] role_check                     granted=True required=['HR', 'SystemAdmin'] user=da30dc4483414225ad978d90ceb27bae-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-02 11:34:54 [info     ] role_check                     granted=True required=['SystemAdmin'] user=da30dc4483414225ad978d90ceb27bae-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"run": "da30dc4483414225ad978d90ceb27bae", "tenant": "s21-connected-1cad10c6475b4840bbbbf903ea6b645b", "fixture": {"run_id": "dd01582b-75a2-4c76-bf76-0c4c53d0aa60", "client_id": "ad1f3a93-95bb-49e2-a8a8-86ce51c25f26", "opportunity_id": "43abe7a6-9e86-4376-920e-c363d0d95fd2", "expires_at": "2026-10-02T22:34:54.532362+00:00"}, "rule_version": "ebddb9f7-5db5-480b-931b-c5fc5f2c8e88", "lead_time_version": "351f210b-e0d1-4939-bbaa-70c4ad68d30d"}
+{"blocked": "Pipeline excludes safely granted local fixture", "full_journey_passed": false}
+2026-10-02 11:34:55 [info     ] role_check                     granted=True required=['Sales', 'SalesLeader', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=da30dc4483414225ad978d90ceb27bae-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-02 11:35:04 [info     ] role_check                     granted=True required=['Marketing', 'Sales', 'SalesLeader', 'Presales', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=da30dc4483414225ad978d90ceb27bae-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"storage_deleted": "verification/s21/6cd1e1a99c314aaca518a47bb86f4bfd/sow/db53f58d-e9f8-490e-bddf-6faca65e82fc/20261002T183455Z-8b3729fb-connected-da30dc4483414225ad978d90ceb27bae.docx.docx"}
+Traceback (most recent call last):
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_connected_journey.py", line 335, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_connected_journey.py", line 198, in main
+    assert {(row["name"] if isinstance(row, dict) else row).strip().lower()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        for row in extracted_signers} == {"alex example", "casey example"}, extracted_signers
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ['Alex Example (Client)', 'Casey Example (SmarTek21)']

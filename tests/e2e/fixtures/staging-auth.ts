@@ -64,7 +64,14 @@ function loadCreds(): StagingCreds {
     "--output",
     "text",
   ]);
-  return JSON.parse(raw) as StagingCreds;
+  const creds = JSON.parse(raw) as StagingCreds;
+  // The secret's username field is stale (pre-S21 identity); until the
+  // reviewed Terraform secret correction lands, STAGING_E2E_USERNAME
+  // overrides it explicitly — same convention as deploy-smoke.sh.
+  if (process.env.STAGING_E2E_USERNAME) {
+    creds.username = process.env.STAGING_E2E_USERNAME;
+  }
+  return creds;
 }
 
 /**

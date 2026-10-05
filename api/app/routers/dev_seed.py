@@ -21,6 +21,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +48,31 @@ def is_dev_seed_enabled() -> bool:
 
 
 router = APIRouter(prefix="/dev", tags=["dev"])
+
+
+class FixtureCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: str = Field(min_length=1, max_length=100)
+    reviewer_ids: list[uuid.UUID] = Field(max_length=20)
+    hours: int = Field(default=4, ge=1, le=24)
+
+
+@router.post("/test-fixtures", status_code=201)
+async def create_test_fixture(
+    body: FixtureCreate,
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.services.test_fixtures import create_fixture
+    from app.services.user_provisioning import ensure_user
+
+    db_user = await ensure_user(session, user)
+    result = await create_fixture(
+        session, actor_id=db_user.id, label=body.label,
+        reviewer_ids=body.reviewer_ids, hours=body.hours,
+    )
+    await session.commit()
+    return result
 
 
 @router.post("/purge-client/{client_id}")

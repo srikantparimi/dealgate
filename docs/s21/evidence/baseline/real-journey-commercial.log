@@ -1,0 +1,12 @@
+{"run": "27fa1d14312341769caa7fb3811b9bf7", "fixture": {"run_id": "33e4f990-7a1c-48fe-96bf-f27a63cea0f0", "client_id": "4400452f-fe7b-41bb-98e4-a9cf4cc1ff9e", "opportunity_id": "86e7c9b5-e6a6-4352-b57b-310c6a997505", "expires_at": "2026-10-02T06:45:32.169761+00:00"}}
+2026-10-01 19:45:32 [info     ] role_check                     granted=True required=['Sales', 'SalesLeader', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=27fa1d14312341769caa7fb3811b9bf7-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-01 19:45:42 [info     ] role_check                     granted=True required=['Marketing', 'Sales', 'SalesLeader', 'Presales', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=27fa1d14312341769caa7fb3811b9bf7-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"uploaded": "f847c1e8-d087-4be1-8e2b-3c93dbcf026b", "extract_status": "complete"}
+2026-10-01 19:45:44 [info     ] role_check                     granted=True required=['Delivery', 'SystemAdmin'] user=27fa1d14312341769caa7fb3811b9bf7-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-01 19:45:45 [info     ] role_check                     granted=True required=['Delivery', 'Presales', 'Finance', 'SystemAdmin'] user=27fa1d14312341769caa7fb3811b9bf7-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+2026-10-01 19:45:45 [info     ] role_check                     granted=True required=['Delivery', 'SystemAdmin'] user=27fa1d14312341769caa7fb3811b9bf7-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"approved": "5942d88d-5713-4022-8c03-a7ddb355f930", "functions": ["delivery", "hr", "sales", "finance", "legal"]}
+2026-10-01 19:45:58 [info     ] role_check                     granted=True required=['Sales', 'SalesLeader', 'Presales', 'Delivery', 'HR', 'Finance', 'Legal', 'CEO', 'SystemAdmin'] user=27fa1d14312341769caa7fb3811b9bf7-owner@example.test user_groups=['Sales', 'SystemAdmin', 'officeapp-e2e']
+{"journey": "sales-path-passed", "forecast": "224829c5-fe11-43dc-8d19-f0536b9440fe", "worker_rows": 18, "mail_sink_messages": 13, "s21_sales_present": true, "staging_verified": false}
+{"storage_deleted": "sow/86e7c9b5-e6a6-4352-b57b-310c6a997505/20261002T024551Z-db17bf59-executed.docx.docx"}
+{"storage_deleted": "verification/s21/27fa1d14312341769caa7fb3811b9bf7/sow/ce92ce8e-58d5-4ac1-9189-0313061f6526/20261002T024533Z-6fa6a8dc-assessment-27fa1d14312341769caa7fb3811b9bf7.docx.docx"}

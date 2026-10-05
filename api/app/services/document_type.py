@@ -235,6 +235,21 @@ def classify_document(
         )
 
     doc = extract_document_text(file_bytes, content_type)
+    return classify_text_document(doc, bedrock=bedrock)
+
+
+def classify_text_document(
+    doc: DocumentText,
+    *,
+    bedrock: DocumentTypeBedrock | None = None,
+) -> DocumentTypeResult:
+    """Classify text that has already been parsed or recovered through OCR.
+
+    Upload workflows prepare a document once so the type gate and the field
+    extractor use the same evidence. This prevents image-only PDFs from being
+    rejected before their Textract result can be considered.
+    """
+
     lines, landing_page = _top_lines(pages_text(doc))
 
     density_low = _text_density_low(doc)
@@ -264,4 +279,5 @@ __all__ = [
     "UnreadableDocument",
     "classify_document",
     "classify_from_lines",
+    "classify_text_document",
 ]

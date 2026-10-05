@@ -116,6 +116,19 @@ These rules are policy for every PR. If a rule and a ticket conflict, the rule w
     deploy, the row never flips, and the product owner's
     click-through cannot pick up the fix.
 
+    **Scoped S21/Forecast override (user authorized 2 Oct 2026).** For the
+    v3 contract on `feat/s21-forecast`, replace the 60-minute session limit
+    with THREE-HOUR execution windows. Save durable checkpoints about every
+    30 minutes and before risky operations; acknowledgment is not required.
+    At each three-hour boundary save a complete handoff and continue into
+    the next window without asking when the runtime permits. If an account
+    or runtime limit forces a stop, disclose it and record the exact resume
+    command; never imply stopped work continues. The minute-55 deployment
+    deadline does not apply to this scoped work: deploy only a release-ready
+    build. All other approval, Terraform, isolation, testing and release
+    controls remain unchanged. No main merge before explicit staging
+    click-through approval. See D-S21F-02 in docs/decisions.md.
+
 17. **Parallel lanes.** When S20 splits into feature lanes
     (`feat/s20-<lane>`), each lane works on its own branch — only the
     Lead deploys to staging. A lane proves its work locally: pytest

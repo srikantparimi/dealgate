@@ -6,6 +6,7 @@
  * flow (spec §8) without opening the SOW workspace.
  */
 import type { ApprovalPackage, CeoException } from "../../../api/client";
+import { LEGACY_APPROVAL_FUNCTIONS } from "../../../api/client";
 import { GateSteps, type GateStep, type GateState } from "../../../ui-v2/GateSteps";
 
 export function PackageGates({
@@ -24,8 +25,8 @@ export function PackageGates({
   const functionsApproved = new Set(
     approvals.filter((a) => a.decision === "approve").map((a) => a.function),
   );
-  const functionsDone = ["delivery", "hr", "finance", "legal"].every((f) =>
-    functionsApproved.has(f as never),
+  const functionsDone = (pkg?.required_functions ?? LEGACY_APPROVAL_FUNCTIONS).every((f) =>
+    functionsApproved.has(f),
   );
 
   const decided = exception.decision != null;

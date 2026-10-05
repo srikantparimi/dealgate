@@ -24,9 +24,6 @@ import os
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.audit import append_audit
 from app.db import session_factory
 from app.integrations.ses import SESClient, SESError, get_ses_client
@@ -40,6 +37,8 @@ from app.services.notifications import (
     mark_sent,
     pending_notifications,
 )
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 log = structlog.get_logger("worker.notification_sender")
 
@@ -144,6 +143,26 @@ async def _handle_email(
 async def _handle_row(
     session: AsyncSession, ses: SESClient, notification: Notification
 ) -> None:
+    from app.services.deletion_fences import source_deleted
+    from app.services.test_fixtures import notification_block_reason
+
+    # Deletion may have removed a row already loaded by the batch query.
+    notification = await session.scalar(select(Notification).where(
+        Notification.id == notification.id,
+    ).with_for_update().execution_options(populate_existing=True))
+    if notification is None or notification.status != "pending":
+        return
+    if await source_deleted(session, notification.related_entity, notification.related_entity_id):
+        await session.delete(notification)
+        await session.flush()
+        return
+    blocked = await notification_block_reason(
+        session, user_id=notification.user_id, related_entity=notification.related_entity,
+        related_entity_id=notification.related_entity_id,
+    )
+    if blocked:
+        await _suppress(session, notification, blocked)
+        return
     channel = notification.channel
     if channel == "email":
         await _handle_email(session, ses, notification)
@@ -187,29 +206,21 @@ async def process_batch(
     return len(rows)
 
 
-async def _drain_forever() -> None:
-    log.info("sender_started", poll_interval=POLL_INTERVAL_SECONDS)
-    ses = get_ses_client()
-    while True:
-        try:
-            async with session_factory() as session:
-                count = await process_batch(session, ses)
-            if count:
-                log.info("sender_batch_processed", count=count)
-        except Exception:  # pragma: no cover - operational log
-            log.exception("sender_batch_failed")
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+async def run_once() -> int:
+    """Drain one EventBridge-owned batch and let the process terminate."""
+
+    async with session_factory() as session:
+        count = await process_batch(session)
+    log.info("sender_batch_processed", count=count)
+    return count
 
 
 def main() -> None:
-    try:
-        asyncio.run(_drain_forever())
-    except KeyboardInterrupt:
-        log.info("sender_stopped")
+    asyncio.run(run_once())
 
 
 if __name__ == "__main__":
     main()
 
 
-__all__ = ["POLL_INTERVAL_SECONDS", "main", "process_batch"]
+__all__ = ["POLL_INTERVAL_SECONDS", "main", "process_batch", "run_once"]

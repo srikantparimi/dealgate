@@ -1,0 +1,6 @@
+{"run": "99b035fe802c4cb0adea5fb48235b7ca", "fixture": {"run_id": "1039a606-90a2-42bc-bfe0-fdc4cbffb495", "client_id": "769689e7-644b-437a-a391-79804da76901", "opportunity_id": "35dea504-6911-420e-a85a-b18bfd0fd690", "expires_at": "2026-10-02T11:01:19.370328+00:00"}}
+{"worker": "forecast_plans", "handled": 1}
+{"worker": "forecast_plans", "handled": 0}
+{"worker": "forecast_plans", "handled": 1}
+{"financial_import": "passed", "bases": 4, "retained_revisions": 5, "forecast_unchanged": true, "account": "769689e7-644b-437a-a391-79804da76901"}
+{"journey": "persisted-planning-passed", "plan": "5c9dc4c2-b61a-43cc-a4c7-4da172e3bd0d", "latest_version": "537b2081-a58c-4800-93b3-bf4ee8aa3e2e", "independent_expected_future": "196000", "revised_expected_future": "140000", "versions": 2, "schedules": 2, "staging_verified": false}

@@ -15,8 +15,10 @@ so migration is backward-compatible (D5). See
 from __future__ import annotations
 
 from datetime import datetime
+import uuid
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Integer, JSON, String, Uuid
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -24,6 +26,11 @@ from app.db.base import Base
 
 class SyncStatus(Base):
     __tablename__ = "sync_status"
+    __table_args__ = (
+        CheckConstraint("scan_phase IN ('idle','scanning','finalizing','completed','failed')", name="ck_sync_scan_phase"),
+        CheckConstraint("scan_failure_count >= 0", name="ck_sync_scan_failures"),
+        CheckConstraint("scan_generation IS NULL OR scan_generation >= 0", name="ck_sync_scan_generation"),
+    )
 
     source: Mapped[str] = mapped_column(String(64), primary_key=True)
     last_success_at: Mapped[datetime | None] = mapped_column(
@@ -62,7 +69,12 @@ class SyncStatus(Base):
     # scan claims a new generation before it starts. Archive-not-seen is
     # only allowed AFTER ``scan_completed_at`` is set for that generation,
     # so a mid-scan failure cannot archive anything.
-    scan_generation: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scan_generation: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    scan_phase: Mapped[str] = mapped_column(String(16), default="idle", server_default="idle")
+    scan_failure_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    scan_context: Mapped[dict | None] = mapped_column(JSON().with_variant(JSONB(), "postgresql"))
+    scan_lease_token: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    scan_lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     scan_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -1,0 +1,289 @@
+{
+  "accounts": {
+    "Atlas Bank": {
+      "future": "230400",
+      "id": "d3cdbc87-4268-4e60-bd88-06c3541fd52e"
+    },
+    "Cedar Labs": {
+      "future": "25200",
+      "id": "60ee6e6c-2495-409a-b9f8-38596a52d9f6"
+    },
+    "Company X": {
+      "future": "196000",
+      "id": "1bc19298-450d-4576-9280-388e865904ca"
+    },
+    "Harbor Health": {
+      "future": "163200",
+      "id": "79269996-e39e-4dbd-be53-fae4bc2581fb"
+    },
+    "Meridian Group": {
+      "future": "0",
+      "id": "473e2c07-e420-4f4b-a2c4-6a4be7fb57c5"
+    },
+    "Northstar Retail": {
+      "future": "51600",
+      "id": "a78b927b-7832-4320-a848-9f76e3b9c7a7"
+    }
+  },
+  "api": "http://127.0.0.1:8210",
+  "boundary": "Read-only local authenticated API; synthetic signed prerequisites, not live CRM/signature/staging proof",
+  "database": "s21_preview_ab7182f1866844428bd8b5c134bae80f",
+  "finished_at": "2026-10-03T02:56:04.560495+00:00",
+  "requests": [
+    {
+      "params": {
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 4,
+        "scenario": "committed"
+      },
+      "response_sha256": "bbf4ce09d6d78a35bb392c94e3317a448543f000faa78bed77a4655a36f81d9e",
+      "watermark": "16a196ef76a702563417a5846958d655f83b116048cb2f1b99a74040c31289a1"
+    },
+    {
+      "params": {
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "committed"
+      },
+      "response_sha256": "bcfd30ede940c8e3a378fef56d7c2b85a3d87f706168ba54f3fdcb7eea816dd4",
+      "watermark": "16a196ef76a702563417a5846958d655f83b116048cb2f1b99a74040c31289a1"
+    },
+    {
+      "params": {
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 4,
+        "scenario": "expected"
+      },
+      "response_sha256": "4e6bb801fa1a62e1e8a5c25077564e90fd4a80367f6e08d5aa9487bdc1254e0c",
+      "watermark": "16a196ef76a702563417a5846958d655f83b116048cb2f1b99a74040c31289a1"
+    },
+    {
+      "params": {
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "expected"
+      },
+      "response_sha256": "1e17af8d7c0fdd1f082f61fd389363c61fd05c64a7dea98a2e8c1aeff2884dee",
+      "watermark": "16a196ef76a702563417a5846958d655f83b116048cb2f1b99a74040c31289a1"
+    },
+    {
+      "params": {
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 4,
+        "scenario": "upside"
+      },
+      "response_sha256": "21cff009620fb9ebbd73993a4e68b0f9ef1ef8b668889ed7e8ade2c89d4ec385",
+      "watermark": "16a196ef76a702563417a5846958d655f83b116048cb2f1b99a74040c31289a1"
+    },
+    {
+      "params": {
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "upside"
+      },
+      "response_sha256": "aa3eddfaacaac59c36ed6514c41d1c7e280f760fb256c75fe1839eee03bfa331",
+      "watermark": "16a196ef76a702563417a5846958d655f83b116048cb2f1b99a74040c31289a1"
+    },
+    {
+      "params": {
+        "account_id": "1bc19298-450d-4576-9280-388e865904ca",
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "expected"
+      },
+      "response_sha256": "e7869fa2ab834308d82c807239c67f187db8a0c0ac8455a38cba5d9ff4328656",
+      "watermark": "28a2489cd9d7e7b027f5077dc5724280815f74b8afdbb47209d59459222e1d89"
+    },
+    {
+      "params": {
+        "account_id": "79269996-e39e-4dbd-be53-fae4bc2581fb",
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "expected"
+      },
+      "response_sha256": "10d4f863132796588a879023e0a6783e11bb3f9d9694743f2db893d57c9b2abe",
+      "watermark": "57ef3df40739908f6980bef8a8bfd3ea46fb96088044a772770263668ca471e9"
+    },
+    {
+      "params": {
+        "account_id": "a78b927b-7832-4320-a848-9f76e3b9c7a7",
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "expected"
+      },
+      "response_sha256": "d40a347053ae57eb7e1d3adac01a536aa11815112b5bcbd7001f00ef023b6e4b",
+      "watermark": "e0e98afd0f815567fbca7989b9b2719a0a79c1b32e1ea9618ef65271b75d41fa"
+    },
+    {
+      "params": {
+        "account_id": "d3cdbc87-4268-4e60-bd88-06c3541fd52e",
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "expected"
+      },
+      "response_sha256": "9f6cfaa29537fe44a8738281523e6088121a4db485bcad79cb5faa4688b42429",
+      "watermark": "8cadbcfcf2419dfdd461573146b9e4dd0e390b8fe81a1cfa825f40418613f7c5"
+    },
+    {
+      "params": {
+        "account_id": "60ee6e6c-2495-409a-b9f8-38596a52d9f6",
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "expected"
+      },
+      "response_sha256": "7643d3b5ad0551c91248fde32f7446f28b79b4b05fc767b9ebcd474da66c97a5",
+      "watermark": "de0261576f4d89f305786955ad2f6c294c7203f539b758185d4b68fdf8250a06"
+    },
+    {
+      "params": {
+        "account_id": "473e2c07-e420-4f4b-a2c4-6a4be7fb57c5",
+        "as_of": "2026-10-15T12:00:00Z",
+        "future_quarters": 2,
+        "scenario": "expected"
+      },
+      "response_sha256": "2e61e5d525182331b4a3d9d7044b38b037314276dcdac2a88977d859a8bf1485",
+      "watermark": "2f1857dea980b00e1c1b89263f6b7f7c1fb6b8fe3dd0833af89c146831ff50df"
+    }
+  ],
+  "scenarios": {
+    "committed": {
+      "months": 15,
+      "next_four": "174000",
+      "next_two": "174000",
+      "quarters": 5,
+      "source_rows": 51
+    },
+    "expected": {
+      "months": 15,
+      "next_four": "916000",
+      "next_two": "666400",
+      "quarters": 5,
+      "source_rows": 51
+    },
+    "upside": {
+      "months": 15,
+      "next_four": "1230400",
+      "next_two": "894400",
+      "quarters": 5,
+      "source_rows": 51
+    }
+  },
+  "sources": {
+    "atlas-extend": {
+      "account_id": "d3cdbc87-4268-4e60-bd88-06c3541fd52e",
+      "lifecycle": "tentative",
+      "opportunity_id": "3ed862d8-cf94-4076-943e-2bbdce49c1b6",
+      "plan_id": "772ffc59-b1c7-47a6-a6bb-2bde4d01ab42",
+      "plan_version_id": "4f756def-fb91-4708-8bdb-c608ff36afcf",
+      "title": "Engineering team extension"
+    },
+    "atlas-staff": {
+      "account_id": "d3cdbc87-4268-4e60-bd88-06c3541fd52e",
+      "gm_model_id": "391fc66f-37af-4bf4-b72d-9a3db13da888",
+      "lifecycle": "signed",
+      "opportunity_id": "3ed862d8-cf94-4076-943e-2bbdce49c1b6",
+      "package_id": "3855ea68-8861-55e2-bef7-fbd10bce08f4",
+      "project_id": "f7cb19bb-03e2-462c-a71d-ebd685ce7df4",
+      "sow_id": "fea85826-28c5-50d1-a50a-fb185eebba74",
+      "sow_version_id": "c7df0a94-2e4e-558b-b0c8-b4f4f260ba43",
+      "title": "Application engineering team"
+    },
+    "cedar-points": {
+      "account_id": "60ee6e6c-2495-409a-b9f8-38596a52d9f6",
+      "gm_model_id": "1871635c-6932-4bfe-89e7-f1c24e6d32ed",
+      "lifecycle": "signed",
+      "opportunity_id": "80219b6a-259b-4ae8-8705-943db4892294",
+      "package_id": "918bcb9c-77f1-5689-9539-035d02d63590",
+      "project_id": "fce0f500-dc79-4725-b664-79e8c5f5cf81",
+      "sow_id": "88b20883-5136-5172-896c-1b92f8591db1",
+      "sow_version_id": "e76f430c-c50d-5b71-841d-97bff428a75a",
+      "title": "Product backlog delivery"
+    },
+    "cedar-up": {
+      "account_id": "60ee6e6c-2495-409a-b9f8-38596a52d9f6",
+      "lifecycle": "tentative",
+      "opportunity_id": "80219b6a-259b-4ae8-8705-943db4892294",
+      "plan_id": "18119513-c30d-447d-8e72-401a2671f674",
+      "plan_version_id": "41be78e6-df36-4719-a970-71c206da7d2d",
+      "title": "Product backlog expansion"
+    },
+    "cx-assess": {
+      "account_id": "1bc19298-450d-4576-9280-388e865904ca",
+      "gm_model_id": "3ce573e1-a921-4d6c-a850-9b6ad62d498d",
+      "lifecycle": "signed",
+      "opportunity_id": "f22f2b6a-49fa-44bc-837c-82e9597977f1",
+      "package_id": "ad238306-3eee-5947-8928-24646ff8971a",
+      "project_id": "5d815fc2-b7de-4258-b2be-32f81303fb11",
+      "sow_id": "58d859dc-9d52-5c8c-8606-ba2a14026a52",
+      "sow_version_id": "27c8d912-59c1-5446-ba96-dc7c05735f65",
+      "title": "Modern workplace assessment"
+    },
+    "cx-next": {
+      "account_id": "1bc19298-450d-4576-9280-388e865904ca",
+      "lifecycle": "needs_review",
+      "opportunity_id": "f22f2b6a-49fa-44bc-837c-82e9597977f1",
+      "plan_id": "ec412cb2-992e-402e-be95-d40114b4aa66",
+      "plan_version_id": "c2d077aa-46c5-4243-886f-cb601f847b73",
+      "title": "Workplace modernization"
+    },
+    "harbor-renew": {
+      "account_id": "79269996-e39e-4dbd-be53-fae4bc2581fb",
+      "lifecycle": "tentative",
+      "opportunity_id": "4b34fc6c-dd3a-4c2b-853c-71ce065cbcc3",
+      "plan_id": "1d46014b-84d0-4fe8-96b2-5d04a275f478",
+      "plan_version_id": "71b22caa-00a5-49b6-99ac-24391effc5b1",
+      "title": "Cloud operations renewal"
+    },
+    "harbor-service": {
+      "account_id": "79269996-e39e-4dbd-be53-fae4bc2581fb",
+      "gm_model_id": "0635f4d9-ea79-4a9c-818f-25069757e893",
+      "lifecycle": "signed",
+      "opportunity_id": "4b34fc6c-dd3a-4c2b-853c-71ce065cbcc3",
+      "package_id": "fa061b69-341d-5718-9e4c-4c0539592d99",
+      "project_id": "697ee8a5-2680-4676-adfe-9bec0ada499d",
+      "sow_id": "40412d30-cb5e-5ea3-b69a-8c8d0bac1d04",
+      "sow_version_id": "5fb9a664-6033-5c46-9471-c04c27f91be9",
+      "title": "Managed cloud operations"
+    },
+    "meridian-fixed": {
+      "account_id": "473e2c07-e420-4f4b-a2c4-6a4be7fb57c5",
+      "gm_model_id": "956481c3-984f-44eb-9531-c2501bdff1cb",
+      "lifecycle": "signed",
+      "opportunity_id": "d3ab25ba-7a8b-4e3c-a582-f3f0924590a0",
+      "package_id": "07786180-1130-505f-9f62-407b775653e7",
+      "project_id": "243c8a79-9e8f-49ba-a4e2-358d6359ab27",
+      "sow_id": "67ea7e23-d756-5335-9ed6-7596002c66fe",
+      "sow_version_id": "38d1aa15-452c-5e72-9784-9d0f8015a6dd",
+      "title": "Data readiness assignment"
+    },
+    "meridian-next": {
+      "account_id": "473e2c07-e420-4f4b-a2c4-6a4be7fb57c5",
+      "lifecycle": "needs_review",
+      "opportunity_id": "d3ab25ba-7a8b-4e3c-a582-f3f0924590a0",
+      "plan_id": "c3898cd7-696e-4d14-bf51-691396b504da",
+      "plan_version_id": "1014b75e-d2d8-485b-9555-898b9773051b",
+      "title": "Data quality improvement"
+    },
+    "north-cross": {
+      "account_id": "a78b927b-7832-4320-a848-9f76e3b9c7a7",
+      "lifecycle": "needs_review",
+      "opportunity_id": "32c48971-0081-4e79-8e70-86d553e0a9f9",
+      "plan_id": "43e374af-81fe-4531-bd18-30dd57ecdda3",
+      "plan_version_id": "fba1c311-305a-46dd-9c17-92e78f5ffcf7",
+      "title": "Managed security coverage"
+    },
+    "north-project": {
+      "account_id": "a78b927b-7832-4320-a848-9f76e3b9c7a7",
+      "gm_model_id": "0cff5f4c-364d-4b23-af79-d4e98cd7969a",
+      "lifecycle": "signed",
+      "opportunity_id": "32c48971-0081-4e79-8e70-86d553e0a9f9",
+      "package_id": "af241d87-6cf7-5c6f-ac17-df5d66dfdac4",
+      "project_id": "1b419318-6ad6-4c8e-924f-0f9bb84e557a",
+      "sow_id": "714367c6-954d-5cba-baf6-923c1bb7a815",
+      "sow_version_id": "49a079b8-c41f-58f1-8917-4530cddce997",
+      "title": "Customer platform delivery"
+    }
+  },
+  "started_at": "2026-10-03T02:55:54.840588+00:00",
+  "status": "passed"
+}

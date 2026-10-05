@@ -1,0 +1,292 @@
+.FF..FFF....F.............                                               [100%]
+=================================== FAILURES ===================================
+__________ test_request_uses_forced_tool_use_and_the_configured_model __________
+
+doc = DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x106318c30>
+
+    def test_request_uses_forced_tool_use_and_the_configured_model(doc, monkeypatch) -> None:
+        """Forced selection plus strict schema; local validation remains mandatory."""
+    
+        monkeypatch.setenv("SOW_EXTRACT_MODEL_ID", "us.anthropic.claude-sonnet-5")
+        runtime = _FakeRuntime(_tool_use_response(_good_fields()))
+        BedrockSowExtract(client=runtime).extract(doc)
+    
+        sent = runtime.calls[0]
+        assert sent["modelId"] == "us.anthropic.claude-sonnet-5"
+        body = sent["body"]
+        assert body["anthropic_version"] == "bedrock-2023-05-31"
+        assert body["tool_choice"] == {"type": "tool", "name": "emit_sow_extract"}
+        assert body["tools"][0]["name"] == "emit_sow_extract"
+        assert "output_config" not in body
+>       assert body["tools"][0]["strict"] is True
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'strict'
+
+tests/test_bedrock_extract_real.py:110: KeyError
+_______ test_strict_wire_schema_is_closed_and_uses_supported_constraints _______
+
+doc = DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None)
+
+    def test_strict_wire_schema_is_closed_and_uses_supported_constraints(doc):
+        runtime = _FakeRuntime(_tool_use_response(_good_fields()))
+        BedrockSowExtract(client=runtime).extract(doc)
+        schema = runtime.calls[0]["body"]["tools"][0]["input_schema"]
+    
+        def check(node):
+            if isinstance(node, dict):
+                assert not {"minimum", "maximum", "minLength", "maxLength"} & node.keys()
+                if node.get("type") == "object":
+                    assert node["additionalProperties"] is False
+                    assert set(node["required"]) == set(node["properties"])
+                for value in node.values():
+                    check(value)
+            elif isinstance(node, list):
+                for value in node:
+                    check(value)
+    
+>       check(schema)
+
+tests/test_bedrock_extract_real.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+node = {'type': 'object', 'properties': {'fields': {'type': 'object', 'properties': {'client_legal_name': {'type': 'object', ...me', 'client_domain', 'billing_basis_normalized', 'scope_summary', 'price', 'currency', ...]}}, 'required': ['fields']}
+
+    def check(node):
+        if isinstance(node, dict):
+            assert not {"minimum", "maximum", "minLength", "maxLength"} & node.keys()
+            if node.get("type") == "object":
+>               assert node["additionalProperties"] is False
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               KeyError: 'additionalProperties'
+
+tests/test_bedrock_extract_real.py:124: KeyError
+_____ test_malformed_provider_envelope_never_crashes_or_retries[payload2] ______
+
+doc = DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None)
+payload = {'content': None}
+
+    @pytest.mark.parametrize("payload", [[], None, {"content": None}, {"content": [None]},
+        {"content": [{"type": "tool_use", "name": "emit_sow_extract", "input": []}]}])
+    def test_malformed_provider_envelope_never_crashes_or_retries(doc, payload):
+        runtime = _FakeRuntime(payload)
+>       assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bedrock_extract_real.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.integrations.bedrock_sow_extract.BedrockSowExtract object at 0x1062afad0>
+doc = DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None)
+
+    def extract(self, doc: DocumentText) -> ExtractedFields | ManualRequired:
+        from botocore.exceptions import BotoCoreError, ClientError
+    
+        text = numbered_prompt_text(doc)
+        if not text.strip():
+            return ManualRequired(reason="document has no readable text")
+    
+        model_id = _model_id()
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": _max_tokens(),
+            "system": _SYSTEM_PROMPT,
+            "tools": [
+                {
+                    "name": "emit_sow_extract",
+                    "description": "Emit the extracted SOW fields.",
+                    "input_schema": _tool_schema(),
+                }
+            ],
+            "tool_choice": {"type": "tool", "name": "emit_sow_extract"},
+            "messages": [{"role": "user", "content": [{"type": "text", "text": text}]}],
+        }
+    
+        try:
+            resp = self._runtime().invoke_model(
+                modelId=model_id, body=json.dumps(body)
+            )
+            payload = json.loads(resp["body"].read())
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "Unknown")
+            if code in ("AccessDeniedException", "UnrecognizedClientException"):
+                return ManualRequired(reason="bedrock model access not enabled")
+            if code == "ValidationException":
+                # Almost always a bad model id — surface it, do not retry.
+                log.error("bedrock rejected extract request: %s", exc)
+                return ManualRequired(reason=f"bedrock rejected the request: {code}")
+            if code in (
+                "ThrottlingException",
+                "ModelTimeoutException",
+                "ServiceUnavailableException",
+                "ModelNotReadyException",
+            ):
+                return ManualRequired(reason="bedrock temporarily unavailable")
+            log.exception("bedrock extract failed")
+            return ManualRequired(reason=f"bedrock error: {code}")
+        except (BotoCoreError, TimeoutError) as exc:
+            log.warning("bedrock extract transport failure: %s", exc)
+            return ManualRequired(reason="bedrock unreachable")
+        except json.JSONDecodeError:
+            return ManualRequired(reason="bedrock returned a non-JSON body")
+    
+        tool_use = next(
+            (
+                b
+>               for b in payload.get("content", [])
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+                if b.get("type") == "tool_use" and b.get("name") == "emit_sow_extract"
+            ),
+            None,
+        )
+E       TypeError: 'NoneType' object is not iterable
+
+app/integrations/bedrock_sow_extract.py:472: TypeError
+_____ test_malformed_provider_envelope_never_crashes_or_retries[payload3] ______
+
+doc = DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None)
+payload = {'content': [None]}
+
+    @pytest.mark.parametrize("payload", [[], None, {"content": None}, {"content": [None]},
+        {"content": [{"type": "tool_use", "name": "emit_sow_extract", "input": []}]}])
+    def test_malformed_provider_envelope_never_crashes_or_retries(doc, payload):
+        runtime = _FakeRuntime(payload)
+>       assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bedrock_extract_real.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+app/integrations/bedrock_sow_extract.py:469: in extract
+    tool_use = next(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x102355990>
+
+        (
+            b
+            for b in payload.get("content", [])
+>           if b.get("type") == "tool_use" and b.get("name") == "emit_sow_extract"
+               ^^^^^
+        ),
+        None,
+    )
+E   AttributeError: 'NoneType' object has no attribute 'get'
+
+app/integrations/bedrock_sow_extract.py:473: AttributeError
+_____ test_malformed_provider_envelope_never_crashes_or_retries[payload4] ______
+
+doc = DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None)
+payload = {'content': [{'type': 'tool_use', 'name': 'emit_sow_extract', 'input': []}]}
+
+    @pytest.mark.parametrize("payload", [[], None, {"content": None}, {"content": [None]},
+        {"content": [{"type": "tool_use", "name": "emit_sow_extract", "input": []}]}])
+    def test_malformed_provider_envelope_never_crashes_or_retries(doc, payload):
+        runtime = _FakeRuntime(payload)
+>       assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bedrock_extract_real.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <app.integrations.bedrock_sow_extract.BedrockSowExtract object at 0x1062dd8c0>
+doc = DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None)
+
+    def extract(self, doc: DocumentText) -> ExtractedFields | ManualRequired:
+        from botocore.exceptions import BotoCoreError, ClientError
+    
+        text = numbered_prompt_text(doc)
+        if not text.strip():
+            return ManualRequired(reason="document has no readable text")
+    
+        model_id = _model_id()
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": _max_tokens(),
+            "system": _SYSTEM_PROMPT,
+            "tools": [
+                {
+                    "name": "emit_sow_extract",
+                    "description": "Emit the extracted SOW fields.",
+                    "input_schema": _tool_schema(),
+                }
+            ],
+            "tool_choice": {"type": "tool", "name": "emit_sow_extract"},
+            "messages": [{"role": "user", "content": [{"type": "text", "text": text}]}],
+        }
+    
+        try:
+            resp = self._runtime().invoke_model(
+                modelId=model_id, body=json.dumps(body)
+            )
+            payload = json.loads(resp["body"].read())
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "Unknown")
+            if code in ("AccessDeniedException", "UnrecognizedClientException"):
+                return ManualRequired(reason="bedrock model access not enabled")
+            if code == "ValidationException":
+                # Almost always a bad model id — surface it, do not retry.
+                log.error("bedrock rejected extract request: %s", exc)
+                return ManualRequired(reason=f"bedrock rejected the request: {code}")
+            if code in (
+                "ThrottlingException",
+                "ModelTimeoutException",
+                "ServiceUnavailableException",
+                "ModelNotReadyException",
+            ):
+                return ManualRequired(reason="bedrock temporarily unavailable")
+            log.exception("bedrock extract failed")
+            return ManualRequired(reason=f"bedrock error: {code}")
+        except (BotoCoreError, TimeoutError) as exc:
+            log.warning("bedrock extract transport failure: %s", exc)
+            return ManualRequired(reason="bedrock unreachable")
+        except json.JSONDecodeError:
+            return ManualRequired(reason="bedrock returned a non-JSON body")
+    
+        tool_use = next(
+            (
+                b
+                for b in payload.get("content", [])
+                if b.get("type") == "tool_use" and b.get("name") == "emit_sow_extract"
+            ),
+            None,
+        )
+        if tool_use is None:
+            stop = payload.get("stop_reason")
+            return ManualRequired(reason=f"model returned no extract (stop={stop})")
+    
+        try:
+            return validate_extract(
+                {
+>                   "fields": tool_use.get("input", {}).get("fields", {}),
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    "model": model_id,
+                    "prompt_version": EXTRACT_PROMPT_VERSION,
+                }
+            )
+E           AttributeError: 'list' object has no attribute 'get'
+
+app/integrations/bedrock_sow_extract.py:484: AttributeError
+____________ test_boolean_page_reference_is_not_an_integer_locator _____________
+
+doc = DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None)
+
+    def test_boolean_page_reference_is_not_an_integer_locator(doc):
+        fields = _good_fields()
+        fields["price"]["page_ref"] = True
+        runtime = _FakeRuntime(_tool_use_response(fields))
+>       assert isinstance(BedrockSowExtract(client=runtime).extract(doc), ManualRequired)
+E       AssertionError: assert False
+E        +  where False = isinstance(ExtractedFields(fields={'client_legal_name': {'value': 'v-client_legal_name', 'page_ref': 3, 'status': 'unconfirmed'},...'page_ref': 3, 'status': 'unconfirmed'}}, model='us.anthropic.claude-sonnet-4-6', prompt_version='sow-v3-direct-costs'), ManualRequired)
+E        +    where ExtractedFields(fields={'client_legal_name': {'value': 'v-client_legal_name', 'page_ref': 3, 'status': 'unconfirmed'},...'page_ref': 3, 'status': 'unconfirmed'}}, model='us.anthropic.claude-sonnet-4-6', prompt_version='sow-v3-direct-costs') = extract(DocumentText(blocks=(TextBlock(index=1, kind='paragraph', text='STATEMENT OF WORK', page=None), TextBlock(index=2, kin..., licence procurement and managed services are excluded.', page=None)), kind='docx', ref_unit='block', page_count=None))
+E        +      where extract = <app.integrations.bedrock_sow_extract.BedrockSowExtract object at 0x10634c130>.extract
+E        +        where <app.integrations.bedrock_sow_extract.BedrockSowExtract object at 0x10634c130> = BedrockSowExtract(client=<tests.test_bedrock_extract_real._FakeRuntime object at 0x10634cc90>)
+
+tests/test_bedrock_extract_real.py:155: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_bedrock_extract_real.py::test_request_uses_forced_tool_use_and_the_configured_model
+FAILED tests/test_bedrock_extract_real.py::test_strict_wire_schema_is_closed_and_uses_supported_constraints
+FAILED tests/test_bedrock_extract_real.py::test_malformed_provider_envelope_never_crashes_or_retries[payload2]
+FAILED tests/test_bedrock_extract_real.py::test_malformed_provider_envelope_never_crashes_or_retries[payload3]
+FAILED tests/test_bedrock_extract_real.py::test_malformed_provider_envelope_never_crashes_or_retries[payload4]
+FAILED tests/test_bedrock_extract_real.py::test_boolean_page_reference_is_not_an_integer_locator
+6 failed, 20 passed in 3.88s

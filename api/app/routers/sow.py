@@ -51,9 +51,13 @@ from app.integrations.s3_sow import (
     get_sow_s3,
 )
 from app.models.opportunity import Opportunity
+from app.models.sow import SowVersion
 from app.models.user import User as UserModel
 from app.services.deals import can_mutate_deal
 from app.services.user_identity import display_user_name
+from app.services.user_provisioning import ensure_user
+from app.services.test_fixtures import account_scope, reviewer_scope, user_allowed
+from app.services.extraction_conflicts import ConflictReview, conflict_items, resolve_conflict
 from app.services.sow_extract import (
     SowInvalidField,
     SowNotFound,
@@ -146,18 +150,27 @@ class FieldPatch(BaseModel):
 # --- helpers --------------------------------------------------------------
 
 
+async def _actor(session: AsyncSession, user: AuthUser) -> AuthUser:
+    actor = await ensure_user(session, user)
+    canonical = AuthUser(actor.id, actor.email, actor.name, tuple(actor.groups))
+    await session.commit()
+    return canonical
+
+
 async def _load_opportunity(
-    session: AsyncSession, opportunity_id: uuid.UUID
+    session: AsyncSession, opportunity_id: uuid.UUID, user: AuthUser, *, lock: bool = False
 ) -> Opportunity:
-    opp = (
-        await session.execute(
-            select(Opportunity).where(Opportunity.id == opportunity_id)
-        )
-    ).scalar_one_or_none()
+    query = select(Opportunity).where(Opportunity.id == opportunity_id)
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    opp = (await session.execute(query)).scalar_one_or_none()
     if opp is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="opportunity not found"
         )
+    scope = await account_scope(session, opp.client_id, opportunity_id=opp.id) if opp.client_id else None
+    if not user_allowed(user, scope):
+        raise HTTPException(status_code=404, detail="opportunity not found")
     return opp
 
 
@@ -222,8 +235,11 @@ async def _resolve_uploader_name(
 
 
 async def _load_version_or_404(
-    session: AsyncSession, sow_version_id: uuid.UUID
+    session: AsyncSession, sow_version_id: uuid.UUID, user: AuthUser
 ) -> SowVersionState:
+    version = await session.get(SowVersion, sow_version_id)
+    if not user_allowed(user, await reviewer_scope(session, version)):
+        raise HTTPException(status_code=404, detail="SOW version not found")
     try:
         return await load_version_state(session, sow_version_id)
     except SowNotFound as exc:
@@ -243,7 +259,8 @@ async def create_upload_url(
     session: AsyncSession = Depends(get_session),
     s3: SowS3 = Depends(get_sow_s3),
 ) -> UploadUrlResponse:
-    opp = await _load_opportunity(session, opportunity_id)
+    user = await _actor(session, user)
+    opp = await _load_opportunity(session, opportunity_id, user)
     _require_owner(user, opp)
     try:
         signed = s3.generate_upload_url(opp.id, body.filename, body.content_type)
@@ -274,7 +291,8 @@ async def create_version(
     s3: SowS3 = Depends(get_sow_s3),
     bedrock: BedrockSowExtract = Depends(get_bedrock_sow),
 ) -> VersionResponse:
-    opp = await _load_opportunity(session, opportunity_id)
+    user = await _actor(session, user)
+    opp = await _load_opportunity(session, opportunity_id, user, lock=True)
     _require_owner(user, opp)
 
     if body.file_size is not None and body.file_size > MAX_SOW_BYTES:
@@ -324,9 +342,12 @@ async def get_current_version(
     dropzone or the confirm screen inline.
     """
 
+    _user = await _actor(session, _user)
+    await _load_opportunity(session, opportunity_id, _user)
     state = await latest_version_for(session, opportunity_id)
     if state is None:
         return None
+    state = await _load_version_or_404(session, state.id, _user)
     download = s3.generate_download_url(state.file_s3_key)
     uploader_name = await _resolve_uploader_name(session, state.uploaded_by)
     return _to_response(state, download_url=download, user=_user, uploaded_by_name=uploader_name)
@@ -339,7 +360,8 @@ async def get_version(
     session: AsyncSession = Depends(get_session),
     s3: SowS3 = Depends(get_sow_s3),
 ) -> VersionResponse:
-    state = await _load_version_or_404(session, sow_version_id)
+    _user = await _actor(session, _user)
+    state = await _load_version_or_404(session, sow_version_id, _user)
     download = s3.generate_download_url(state.file_s3_key)
     uploader_name = await _resolve_uploader_name(session, state.uploaded_by)
     return _to_response(state, download_url=download, user=_user, uploaded_by_name=uploader_name)
@@ -357,8 +379,11 @@ async def patch_field(
     session: AsyncSession = Depends(get_session),
     s3: SowS3 = Depends(get_sow_s3),
 ) -> VersionResponse:
-    state = await _load_version_or_404(session, sow_version_id)
-    opp = await _load_opportunity(session, state.opportunity_id)
+    from app.services.sow_extract import SowReplayConflict
+
+    user = await _actor(session, user)
+    state = await _load_version_or_404(session, sow_version_id, user)
+    opp = await _load_opportunity(session, state.opportunity_id, user, lock=True)
     if not can_mutate_deal(user, opp) and "SystemAdmin" not in user.groups:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"
@@ -377,10 +402,45 @@ async def patch_field(
         ) from exc
     except SowNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SowReplayConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await session.commit()
     download = s3.generate_download_url(new_state.file_s3_key)
     uploader_name = await _resolve_uploader_name(session, new_state.uploaded_by)
     return _to_response(new_state, download_url=download, user=user, uploaded_by_name=uploader_name)
+
+
+async def _conflict_editor(session, version_id, user, *, lock=False):
+    state = await _load_version_or_404(session, version_id, user)
+    opportunity = await _load_opportunity(session, state.opportunity_id, user, lock=lock)
+    if not can_mutate_deal(user, opportunity) and "SystemAdmin" not in user.groups:
+        raise HTTPException(403, "not authorised")
+    return state
+
+
+@router.get("/versions/{sow_version_id}/extraction-conflicts")
+async def get_extraction_conflicts(sow_version_id: uuid.UUID,
+    user: AuthUser = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    user = await _actor(session, user)
+    return conflict_items(await _conflict_editor(session, sow_version_id, user))
+
+
+@router.post("/versions/{sow_version_id}/extraction-conflicts/{field_name}")
+async def review_extraction_conflict(sow_version_id: uuid.UUID, field_name: str, body: ConflictReview,
+    user: AuthUser = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    from app.services.sow_extract import SowReplayConflict
+
+    user = await _actor(session, user)
+    await _conflict_editor(session, sow_version_id, user, lock=True)
+    try:
+        result = await resolve_conflict(session, actor_id=user.id, version_id=sow_version_id,
+            field=field_name, body=body)
+    except SowReplayConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except SowNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    await session.commit()
+    return result
 
 
 @router.get("/{opportunity_id}/confirmation")
@@ -401,6 +461,11 @@ async def get_confirmation(
         serialize_confirmation,
     )
 
+    _user = await _actor(session, _user)
+    await _load_opportunity(session, opportunity_id, _user)
+    state = await latest_version_for(session, opportunity_id)
+    if state is not None:
+        await _load_version_or_404(session, state.id, _user)
     try:
         payload = await build_confirmation(
             session, opportunity_id=opportunity_id, actor_id=None
@@ -422,7 +487,11 @@ async def submit_confirmation_endpoint(
 ) -> dict[str, Any]:
     """Commit + transition. Idempotent by (sow_version_id, gm_model_id)."""
 
-    opp = await _load_opportunity(session, opportunity_id)
+    user = await _actor(session, user)
+    opp = await _load_opportunity(session, opportunity_id, user, lock=True)
+    state = await latest_version_for(session, opportunity_id)
+    if state is not None:
+        await _load_version_or_404(session, state.id, user)
     if not can_mutate_deal(user, opp) and "SystemAdmin" not in user.groups:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"
@@ -456,25 +525,31 @@ async def reextract_version(
     Called by the Confirm page's honest banner ("We couldn't read this
     document (reason). Retry extraction, or fill the fields below manually.").
     Fetches the file bytes from S3 and runs the full extract path
-    (Textract fallback included). Idempotent: re-running against a
-    version that is already ``complete`` re-extracts and overwrites the
-    fields, matching the semantics documented on ``run_extract``.
+    (Textract fallback included). Only the exact same mutable document version
+    may replay. Confirmed fields survive; conflicting candidates require review.
     """
 
-    state = await _load_version_or_404(session, sow_version_id)
-    opp = await _load_opportunity(session, state.opportunity_id)
+    user = await _actor(session, user)
+    state = await _load_version_or_404(session, sow_version_id, user)
+    opp = await _load_opportunity(session, state.opportunity_id, user, lock=True)
     if not can_mutate_deal(user, opp) and "SystemAdmin" not in user.groups:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"
         )
 
     file_bytes = s3.download_bytes(state.file_s3_key)
-    updated = await run_extract(
-        session,
-        sow_version_id=sow_version_id,
-        bedrock=bedrock,
-        file_bytes=file_bytes,
-    )
+    from app.services.sow_extract import SowReplayConflict
+
+    try:
+        updated = await run_extract(
+            session,
+            sow_version_id=sow_version_id,
+            bedrock=bedrock,
+            file_bytes=file_bytes,
+            replay=True,
+        )
+    except SowReplayConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await session.commit()
     download = s3.generate_download_url(updated.file_s3_key)
     uploader_name = await _resolve_uploader_name(session, updated.uploaded_by)
@@ -490,8 +565,9 @@ async def submit_version(
     session: AsyncSession = Depends(get_session),
     s3: SowS3 = Depends(get_sow_s3),
 ) -> VersionResponse:
-    state = await _load_version_or_404(session, sow_version_id)
-    opp = await _load_opportunity(session, state.opportunity_id)
+    user = await _actor(session, user)
+    state = await _load_version_or_404(session, sow_version_id, user)
+    opp = await _load_opportunity(session, state.opportunity_id, user, lock=True)
     if not can_mutate_deal(user, opp) and "SystemAdmin" not in user.groups:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="not authorised"

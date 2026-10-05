@@ -1,5 +1,6 @@
 provider "aws" {
-  region = var.region
+  region              = var.region
+  allowed_account_ids = var.allowed_account_ids
 
   # AWS CLI profile is set outside Terraform (AWS_PROFILE=lm-arbiter-poc)
   # so the same code works from GitHub Actions with OIDC.
@@ -18,8 +19,9 @@ provider "aws" {
 # where the distribution's origins live. This alias exists solely to hold the
 # SPA's custom-domain certificate; everything else stays in var.region.
 provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
+  alias               = "us_east_1"
+  region              = "us-east-1"
+  allowed_account_ids = var.allowed_account_ids
 
   default_tags {
     tags = {

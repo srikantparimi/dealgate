@@ -1,0 +1,40 @@
+{
+  "run_id": "8dc16cd6-e80f-48f5-8bde-9189518c867b",
+  "database": "s21_cov_37ebcb10ed7f4528b7f34c846fed747b",
+  "operations": [
+    {
+      "action": "assumptions",
+      "before": "93ef2441-6852-42f5-91ab-e69fe3bb81fb",
+      "after": "fb25fffb-bf7b-4ab4-ad3d-3b18e32291b0"
+    },
+    {
+      "worker": {
+        "worker": "forecast_plans",
+        "handled": 1
+      }
+    },
+    {
+      "action": "capability",
+      "publication_version_id": "43d22422-acc8-4c78-ba08-096edbac19d7"
+    },
+    {
+      "action": "publication-and-period",
+      "plans": [
+        "99924d26-7720-47a4-aec8-563a6a237232",
+        "119d4c31-e97c-442e-960a-62d0d9620357"
+      ],
+      "probability_weighted_heads": false
+    },
+    {
+      "worker": {
+        "worker": "forecast_plans",
+        "handled": 1
+      }
+    },
+    {
+      "action": "restored-by-revision",
+      "version_id": "56068314-d3e5-45ac-8e34-6468787bb223",
+      "status": "passed"
+    }
+  ]
+}

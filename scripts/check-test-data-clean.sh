@@ -26,7 +26,8 @@ CREDS_JSON=$(aws --region "$AWS_REGION_" secretsmanager get-secret-value \
 [ -n "$CREDS_JSON" ] || { echo "[gate] cannot read e2e Cognito creds" >&2; exit 2; }
 POOL=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["user_pool_id"])')
 CLIENT=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["client_id"])')
-USER=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["username"])')
+# Same stale-username caveat and override convention as deploy-smoke.sh.
+USER="${S15_E2E_USERNAME:-$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["username"])')}"
 PASS=$(printf '%s' "$CREDS_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])')
 AUTH_JSON=$(aws --region "$AWS_REGION_" cognito-idp admin-initiate-auth \
   --user-pool-id "$POOL" --client-id "$CLIENT" \

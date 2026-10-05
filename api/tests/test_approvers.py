@@ -61,9 +61,9 @@ async def test_resolve_business_unit_null_fallback(session):
 
 
 @pytest.mark.asyncio
-async def test_resolve_all_returns_four(session):
+async def test_resolve_all_returns_five_mandatory_functions(session):
     result = await resolve_all(session)
-    assert set(result.keys()) == {"delivery", "hr", "finance", "legal"}
+    assert set(result.keys()) == {"delivery", "hr", "sales", "finance", "legal"}
 
 
 @pytest.mark.asyncio

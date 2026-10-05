@@ -1,0 +1,28 @@
+{
+  "run_id": "eb393612-7f3d-4ea8-88a8-93566ca5b96f",
+  "database": "s21_cov_37ebcb10ed7f4528b7f34c846fed747b",
+  "actor_id": "f18d5882-5347-5daf-bb00-35fdc88bf1e2",
+  "second_token_groups": [
+    "Finance",
+    "officeapp-e2e"
+  ],
+  "observed_waiter": {
+    "pid": 8898,
+    "wait_event_type": "Lock",
+    "query": "SELECT client.id \nFROM client \nWHERE client.id = $1::UUID FOR UPDATE"
+  },
+  "http_status": 201,
+  "response": {
+    "id": "c3845a82-445a-4f31-8f6c-77d5f9faa5a4",
+    "source_system": "identity-race-eb393612-7f3d-4ea8-88a8-93566ca5b96f",
+    "status": "committed",
+    "row_count": 1,
+    "errors": null,
+    "uploaded_at": "2026-10-03T00:35:35.925268+00:00",
+    "uploaded_by": "f18d5882-5347-5daf-bb00-35fdc88bf1e2"
+  },
+  "passed": true,
+  "failure": null,
+  "preserved": true,
+  "boundary": "Real local HTTP import plus real ensure_user in independent PG session; local auth, no Cognito token verification"
+}

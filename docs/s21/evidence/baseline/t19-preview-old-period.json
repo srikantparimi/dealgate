@@ -1,0 +1,34 @@
+{
+  "revision": "3ad53e80503a4915882e5f9cefa173bd8ea26c81",
+  "application": "44fec5163c722e87eaeb69f0c486ce32a875d4c0",
+  "database": "s21_preview_ab7182f1866844428bd8b5c134bae80f",
+  "company_current_quarter": "690200",
+  "december": "228200",
+  "account_current_quarter": "45000",
+  "old_source_rows": 0,
+  "final_account_future": "18000",
+  "company_future_cost": "395840",
+  "financial": [
+    {
+      "scenario": "committed",
+      "revenue": "0",
+      "cost": "0",
+      "company_future": "174000",
+      "source_version": "eeeacfd9-8677-418a-91eb-d58fe5468cb3"
+    },
+    {
+      "scenario": "expected",
+      "revenue": "18000",
+      "cost": "9000",
+      "company_future": "684400",
+      "source_version": "eeeacfd9-8677-418a-91eb-d58fe5468cb3"
+    },
+    {
+      "scenario": "upside",
+      "revenue": "36000",
+      "cost": "18000",
+      "company_future": "930400",
+      "source_version": "eeeacfd9-8677-418a-91eb-d58fe5468cb3"
+    }
+  ]
+}

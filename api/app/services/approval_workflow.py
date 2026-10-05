@@ -24,6 +24,18 @@ ACTIVE = {
 }
 
 
+def required_functions(package):
+    legacy = ("delivery", "hr", "finance", "legal")
+    return ("delivery", "hr", "sales", "finance", "legal") if package.routing_policy_version == 2 else legacy
+
+
+def active_functions(package, state=None):
+    state = state or package.status
+    if state == "pending_delivery_hr" and package.routing_policy_version == 2:
+        return ("delivery", "hr", "sales")
+    return ACTIVE.get(state, ())
+
+
 def review_url(opportunity_id):
     default = (
         "http://localhost:5173"
@@ -44,17 +56,23 @@ async def assignments_for(session, package_id):
 
 
 async def create_tasks(session, *, actor_id, package, state):
+    from app.services.test_fixtures import allowed_for_package, reviewer_scope, user_allowed
+
     assignments = await assignments_for(session, package.id)
     if not assignments:
         return None  # Pre-S14b package: retain the legacy task path.
+    version = await session.get(SowVersion, package.sow_version_id)
+    scope = await reviewer_scope(session, version)
     admins = [
         u
         for u in (await session.scalars(select(User).order_by(User.email))).all()
-        if "SystemAdmin" in (u.groups or [])
+        if "SystemAdmin" in (u.groups or []) and user_allowed(u, scope)
     ]
     tasks = []
     for a in assignments:
-        if a.task_id or (a.approver_id and a.function not in ACTIVE.get(state, ())):
+        if a.approver_id and not await allowed_for_package(session, a.approver_id, package):
+            fail("Test identity or fixture is outside the trusted approval scope", 403)
+        if a.task_id or (a.approver_id and a.function not in active_functions(package, state)):
             continue
         if a.use_sla:
             from app.services.business_days import add_business_days
@@ -144,7 +162,8 @@ async def close_tasks(session, package_id, actor_id):
 
 
 async def authorize_decision(session, package, actor_id, function, reason):
-    roster = next(g for g in await groups(session) if g["function"] == function)
+    version = await session.get(SowVersion, package.sow_version_id)
+    roster = next(g for g in await groups(session, sow_version=version) if g["function"] == function)
     if str(actor_id) not in {m["id"] for m in roster["members"]}:
         fail(f"Only a {LABELS[function]} group member may decide", 403)
     assignment = await session.get(ApprovalAssignment, (package.id, function))
@@ -191,13 +210,13 @@ async def review_projection(session, package, actor_id=None):
         approval["approver_name"] = users.get(approval["approver_id"], {}).get(
             "name", "Unassigned"
         )
-    roster = {g["function"]: g for g in await groups(session)}
+    roster = {g["function"]: g for g in await groups(session, sow_version=sow)}
     decisions = {a.function for a in package.approvals}
     actor_used = any(a.approver_id == actor_id for a in package.approvals)
     data["assignments"] = []
     for a in await assignments_for(session, package.id):
         member = str(a.approver_id) in {m["id"] for m in roster[a.function]["members"]}
-        active = a.function in ACTIVE.get(package.status, ()) and a.function not in decisions
+        active = a.function in active_functions(package) and a.function not in decisions
         blocked = a.function not in decisions and (not a.approver_id or not member)
         data["assignments"].append(
             {

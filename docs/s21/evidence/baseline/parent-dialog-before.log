@@ -1,0 +1,353 @@
+
+ RUN  v2.1.9 /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/web
+
+ ❯ src/__tests__/ui-v2/DeletionConfirmationDialog.test.tsx (4 tests | 2 failed) 423ms
+   × DeletionConfirmationDialog > governed client: confirms deletion while explicitly retaining projects and actuals 47ms
+     → Unable to find an element with the text: /Projects and financial actuals are retained/. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body[39m
+  [33mdata-scroll-locked[39m=[32m"1"[39m
+  [33mstyle[39m=[32m"pointer-events: none;"[39m
+[36m>[39m
+  [36m<span[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mdata-aria-hidden[39m=[32m"true"[39m
+    [33mdata-radix-focus-guard[39m=[32m""[39m
+    [33mstyle[39m=[32m"outline: none; opacity: 0; position: fixed; pointer-events: none;"[39m
+    [33mtabindex[39m=[32m"0"[39m
+  [36m/>[39m
+  [36m<div[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mdata-aria-hidden[39m=[32m"true"[39m
+  [36m/>[39m
+  [36m<div[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mclass[39m=[32m"fixed inset-0 z-50 bg-executive/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out"[39m
+    [33mdata-aria-hidden[39m=[32m"true"[39m
+    [33mdata-state[39m=[32m"open"[39m
+    [33mstyle[39m=[32m"pointer-events: auto;"[39m
+  [36m/>[39m
+  [36m<div[39m
+    [33maria-describedby[39m=[32m"deletion-dialog-body"[39m
+    [33maria-labelledby[39m=[32m"radix-:r4:"[39m
+    [33mclass[39m=[32m"fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-dialog bg-surface p-6 shadow-dialog text-text focus:outline-none"[39m
+    [33mdata-state[39m=[32m"open"[39m
+    [33mdata-testid[39m=[32m"deletion-dialog"[39m
+    [33mid[39m=[32m"radix-:r3:"[39m
+    [33mrole[39m=[32m"dialog"[39m
+    [33mstyle[39m=[32m"pointer-events: auto;"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+  [36m>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex flex-col gap-1"[39m
+    [36m>[39m
+      [36m<h2[39m
+        [33mclass[39m=[32m"text-text"[39m
+        [33mdata-testid[39m=[32m"deletion-dialog-title"[39m
+        [33mid[39m=[32m"radix-:r4:"[39m
+      [36m>[39m
+        [0mDelete client "Peppermill Casino"?[0m
+      [36m</h2>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"text-text-secondary"[39m
+        [33mid[39m=[32m"radix-:r5:"[39m
+      [36m>[39m
+        [0mRemoves the client and every draft opportunity, SOW, GM model and contact linked to it. Approved records archive instead of deleting.[0m
+      [36m</p>[39m
+    [36m</div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex flex-col gap-3 text-body text-text"[39m
+      [33mid[39m=[32m"deletion-dialog-body"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex flex-col gap-2"[39m
+      [36m>[39m
+        [36m<p>[39m
+          [0mThis will delete:[0m
+        [36m</p>[39m
+        [36m<ul[39m
+          [33mclass[39m=[32m"list-disc space-y-1 pl-6"[39m
+          [33mdata-testid[39m=[32m"deletion-cascade-list"[39m
+        [36m>[39m
+          [36m<li[39m
+            [33mdata-testid[39m=[32m"deletion-cascade-opportunities"[39m
+          [36m>[39m
+            [36m<strong[39m
+              [33mclass[39m=[32m"tnum"[39m
+            [36m>[39m
+              [0m2[0m
+            [36m</strong>[39m
+            [0m [0m
+            [0mopportunities[0m
+          [36m</li>[39m
+          [36m<li[39m
+            [33mdata-testid[39m=[32m"deletion-cascade-retained_projects"[39m
+          [36m>[39m
+            [36m<strong[39m
+              [33mclass[39m=[32m"tnum"[39m
+            [36m>[39m
+              [0m1[0m
+            [36m</strong>[39m
+            [0m [0m
+            [0mretained projects[0m
+          [36m</li>[39m
+        [36m</ul>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"text-secondary text-text-secondary"[39m
+        [36m>[39m
+          [0mThe audit trail records the deletion; the deleted rows themselves are gone.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"mt-2 flex flex-wrap items-center justify-end gap-2"[39m
+    [36m>[39m
+      [36m<button[39m
+        [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap transition-motion disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-focus bg-surface text-text border border-input-border hover:bg-primary-subtle h-10 min-w-[44px] px-4"[39m
+        [33mdata-testid[39m=[32m"deletion-cancel"[39m
+        [33mtype[39m=[32m"button"[39m
+      [36m>[39m
+        [0mCancel[0m
+      [36m</button>[39m
+      [36m<button[39m
+        [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap transition-motion disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-focus bg-danger text-white hover:opacity-95 h-10 min-w-[44px] px-4"[39m
+        [33mdata-testid[39m=[32m"deletion-confirm"[39m
+        [33mtype[39m=[32m"button"[39m
+      [36m>[39m
+        [0mDelete[0m
+      [36m</button>[39m
+    [36m</div>[39m
+    [36m<button[39m
+      [33maria-label[39m=[32m"Close"[39m
+      [33mclass[39m=[32m"absolute right-4 top-4 rounded-control p-1 text-text-secondary hover:bg-primary-subtle focus-visible:outline-focus transition-motion"[39m
+      [33mtype[39m=[32m"button"[39m
+    [36m>[39m
+      [36m<svg[39m
+        [33mclass[39m=[32m"lucide lucide-x h-4 w-4"[39m
+        [33mfill[39m=[32m"none"[39m
+        [33mheight[39m=[32m"24"[39m
+        [33mstroke[39m=[32m"currentColor"[39m
+        [33mstroke-linecap[39m=[32m"round"[39m
+        [33mstroke-linejoin[39m=[32m"round"[39m
+        [33mstroke-width[39m=[32m"2"[39m
+        [33mviewBox[39m=[32m"0 0 24 24"[39m
+        [33mwidth[39m=[32m"24"[39m
+        [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+      [36m>[39m
+        [36m<path[39m
+          [33md[39m=[32m"M18 6 6 18"[39m
+        [36m/>[39m
+        [36m<path[39m
+          [33md[39m=[32m"m6 6 12 12"[39m
+        [36m/>[39m
+      [36m</svg>[39m
+    [36m</button>[39m
+  [36m</div>[39m
+  [36m<span[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mdata-aria-hidden[39m=[32m"true"[39m
+    [33mdata-radix-focus-guard[39m=[32m""[39m
+    [33mstyle[39m=[32m"outline: none; opacity: 0; position: fixed; pointer-events: none;"[39m
+    [33mtabindex[39m=[32m"0"[39m
+  [36m/>[39m
+[36m</body>[39m
+   × DeletionConfirmationDialog > hubspot_linked: refuses deletion without offering an archive bypass 55ms
+     → expected <button …(3)></button> to be null
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/ui-v2/DeletionConfirmationDialog.test.tsx > DeletionConfirmationDialog > governed client: confirms deletion while explicitly retaining projects and actuals
+TestingLibraryElementError: Unable to find an element with the text: /Projects and financial actuals are retained/. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body[39m
+  [33mdata-scroll-locked[39m=[32m"1"[39m
+  [33mstyle[39m=[32m"pointer-events: none;"[39m
+[36m>[39m
+  [36m<span[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mdata-aria-hidden[39m=[32m"true"[39m
+    [33mdata-radix-focus-guard[39m=[32m""[39m
+    [33mstyle[39m=[32m"outline: none; opacity: 0; position: fixed; pointer-events: none;"[39m
+    [33mtabindex[39m=[32m"0"[39m
+  [36m/>[39m
+  [36m<div[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mdata-aria-hidden[39m=[32m"true"[39m
+  [36m/>[39m
+  [36m<div[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mclass[39m=[32m"fixed inset-0 z-50 bg-executive/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out"[39m
+    [33mdata-aria-hidden[39m=[32m"true"[39m
+    [33mdata-state[39m=[32m"open"[39m
+    [33mstyle[39m=[32m"pointer-events: auto;"[39m
+  [36m/>[39m
+  [36m<div[39m
+    [33maria-describedby[39m=[32m"deletion-dialog-body"[39m
+    [33maria-labelledby[39m=[32m"radix-:r4:"[39m
+    [33mclass[39m=[32m"fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-dialog bg-surface p-6 shadow-dialog text-text focus:outline-none"[39m
+    [33mdata-state[39m=[32m"open"[39m
+    [33mdata-testid[39m=[32m"deletion-dialog"[39m
+    [33mid[39m=[32m"radix-:r3:"[39m
+    [33mrole[39m=[32m"dialog"[39m
+    [33mstyle[39m=[32m"pointer-events: auto;"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+  [36m>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex flex-col gap-1"[39m
+    [36m>[39m
+      [36m<h2[39m
+        [33mclass[39m=[32m"text-text"[39m
+        [33mdata-testid[39m=[32m"deletion-dialog-title"[39m
+        [33mid[39m=[32m"radix-:r4:"[39m
+      [36m>[39m
+        [0mDelete client "Peppermill Casino"?[0m
+      [36m</h2>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"text-text-secondary"[39m
+        [33mid[39m=[32m"radix-:r5:"[39m
+      [36m>[39m
+        [0mRemoves the client and every draft opportunity, SOW, GM model and contact linked to it. Approved records archive instead of deleting.[0m
+      [36m</p>[39m
+    [36m</div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex flex-col gap-3 text-body text-text"[39m
+      [33mid[39m=[32m"deletion-dialog-body"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex flex-col gap-2"[39m
+      [36m>[39m
+        [36m<p>[39m
+          [0mThis will delete:[0m
+        [36m</p>[39m
+        [36m<ul[39m
+          [33mclass[39m=[32m"list-disc space-y-1 pl-6"[39m
+          [33mdata-testid[39m=[32m"deletion-cascade-list"[39m
+        [36m>[39m
+          [36m<li[39m
+            [33mdata-testid[39m=[32m"deletion-cascade-opportunities"[39m
+          [36m>[39m
+            [36m<strong[39m
+              [33mclass[39m=[32m"tnum"[39m
+            [36m>[39m
+              [0m2[0m
+            [36m</strong>[39m
+            [0m [0m
+            [0mopportunities[0m
+          [36m</li>[39m
+          [36m<li[39m
+            [33mdata-testid[39m=[32m"deletion-cascade-retained_projects"[39m
+          [36m>[39m
+            [36m<strong[39m
+              [33mclass[39m=[32m"tnum"[39m
+            [36m>[39m
+              [0m1[0m
+            [36m</strong>[39m
+            [0m [0m
+            [0mretained projects[0m
+          [36m</li>[39m
+        [36m</ul>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"text-secondary text-text-secondary"[39m
+        [36m>[39m
+          [0mThe audit trail records the deletion; the deleted rows themselves are gone.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"mt-2 flex flex-wrap items-center justify-end gap-2"[39m
+    [36m>[39m
+      [36m<button[39m
+        [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap transition-motion disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-focus bg-surface text-text border border-input-border hover:bg-primary-subtle h-10 min-w-[44px] px-4"[39m
+        [33mdata-testid[39m=[32m"deletion-cancel"[39m
+        [33mtype[39m=[32m"button"[39m
+      [36m>[39m
+        [0mCancel[0m
+      [36m</button>[39m
+      [36m<button[39m
+        [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap transition-motion disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-focus bg-danger text-white hover:opacity-95 h-10 min-w-[44px] px-4"[39m
+        [33mdata-testid[39m=[32m"deletion-confirm"[39m
+        [33mtype[39m=[32m"button"[39m
+      [36m>[39m
+        [0mDelete[0m
+      [36m</button>[39m
+    [36m</div>[39m
+    [36m<button[39m
+      [33maria-label[39m=[32m"Close"[39m
+      [33mclass[39m=[32m"absolute right-4 top-4 rounded-control p-1 text-text-secondary hover:bg-primary-subtle focus-visible:outline-focus transition-motion"[39m
+      [33mtype[39m=[32m"button"[39m
+    [36m>[39m
+      [36m<svg[39m
+        [33mclass[39m=[32m"lucide lucide-x h-4 w-4"[39m
+        [33mfill[39m=[32m"none"[39m
+        [33mheight[39m=[32m"24"[39m
+        [33mstroke[39m=[32m"currentColor"[39m
+        [33mstroke-linecap[39m=[32m"round"[39m
+        [33mstroke-linejoin[39m=[32m"round"[39m
+        [33mstroke-width[39m=[32m"2"[39m
+        [33mviewBox[39m=[32m"0 0 24 24"[39m
+        [33mwidth[39m=[32m"24"[39m
+        [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+      [36m>[39m
+        [36m<path[39m
+          [33md[39m=[32m"M18 6 6 18"[39m
+        [36m/>[39m
+        [36m<path[39m
+          [33md[39m=[32m"m6 6 12 12"[39m
+        [36m/>[39m
+      [36m</svg>[39m
+    [36m</button>[39m
+  [36m</div>[39m
+  [36m<span[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mdata-aria-hidden[39m=[32m"true"[39m
+    [33mdata-radix-focus-guard[39m=[32m""[39m
+    [33mstyle[39m=[32m"outline: none; opacity: 0; position: fixed; pointer-events: none;"[39m
+    [33mtabindex[39m=[32m"0"[39m
+  [36m/>[39m
+[36m</body>[39m
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/__tests__/ui-v2/DeletionConfirmationDialog.test.tsx:110:19
+    108|     expect(await screen.findByTestId("deletion-confirm")).toBeEnabled(…
+    109|     expect(screen.queryByTestId("deletion-archive")).toBeNull();
+    110|     expect(screen.getByText(/Projects and financial actuals are retain…
+       |                   ^
+    111|     expect(screen.getByTestId("deletion-retained-list")).toHaveTextCon…
+    112|     expect(screen.getByTestId("deletion-cascade-list")).not.toHaveText…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/__tests__/ui-v2/DeletionConfirmationDialog.test.tsx > DeletionConfirmationDialog > hubspot_linked: refuses deletion without offering an archive bypass
+AssertionError: expected <button …(3)></button> to be null
+
+- Expected: 
+null
+
++ Received: 
+<button
+  class="inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap transition-motion disabled:pointer-events-none disabled:opacity-60 focus-visible:outline-focus bg-danger text-white hover:opacity-95 h-10 min-w-[44px] px-4"
+  data-testid="deletion-archive"
+  type="button"
+>
+  Archive instead
+</button>
+
+ ❯ src/__tests__/ui-v2/DeletionConfirmationDialog.test.tsx:132:54
+    130|       /HubSpot/,
+    131|     );
+    132|     expect(screen.queryByTestId("deletion-archive")).toBeNull();
+       |                                                      ^
+    133|     expect(screen.queryByTestId("deletion-confirm")).toBeNull();
+    134|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+   Start at  23:03:47
+   Duration  36.51s (transform 655ms, setup 1.87s, collect 3.21s, tests 423ms, environment 17.20s, prepare 893ms)
+

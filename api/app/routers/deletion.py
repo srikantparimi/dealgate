@@ -21,6 +21,7 @@ Endpoints (all admin-gated):
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -41,8 +42,10 @@ from app.services.deletion import (
     delete_client,
     delete_import_batch,
     delete_opportunity,
-    delete_sow,
+    request_sow_deletion,
 )
+from app.services.deletion_access import authorize_parent, authorize_sow, load_job
+from app.services.parent_deletion import request_client_deletion, request_opportunity_deletion
 from app.services.user_provisioning import ensure_user
 
 
@@ -74,6 +77,30 @@ class ArchiveBody(BaseModel):
     reason: str | None = Field(default=None, max_length=1024)
 
 
+class DeletionJobResponse(AssessmentResponse):
+    job_id: uuid.UUID
+    subject_type: str
+    status: str
+    source_deleted: bool
+    sow_title: str
+    attempts: int
+    last_error: str | None
+    next_attempt_at: datetime | None
+    completed_at: datetime | None
+
+
+def _job_response(job):
+    title = job.summary.get("sow_title", "Untitled SOW")
+    if title == f"SOW {str(job.sow_id)[:8]}":
+        title = "Untitled SOW"
+    return DeletionJobResponse(job_id=job.id, subject_type=job.subject_type, state="deleted", status=job.status,
+        source_deleted=bool(job.summary.get("source_deleted")),
+        sow_title=title,
+        reason="Cleanup complete" if job.status == "done" else "Source removed; cleanup incomplete",
+        counts=job.summary.get("counts", {}), attempts=job.attempts, last_error=job.last_error,
+        next_attempt_at=job.next_attempt_at, completed_at=job.completed_at)
+
+
 def _to_response(a: DeletionAssessment) -> AssessmentResponse:
     return AssessmentResponse(state=a.state, reason=a.reason, counts=a.counts)
 
@@ -91,48 +118,48 @@ def _raise(exc: DeletionError) -> Any:
 )
 async def get_client_deletion_assessment(
     client_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
+    user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> AssessmentResponse:
+    db_user = await ensure_user(session, user)
+    previous = await authorize_parent(session, db_user, "client", client_id)
+    if previous:
+        return _job_response(previous)
     try:
         return _to_response(await assess_client(session, client_id))
     except DeletionError as exc:
         _raise(exc)
 
 
-@router.delete("/clients/{client_id}", response_model=AssessmentResponse)
+@router.delete("/clients/{client_id}", response_model=DeletionJobResponse, status_code=202)
 async def delete_client_endpoint(
     client_id: uuid.UUID,
     reason: str | None = Query(default=None),
     user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
-) -> AssessmentResponse:
+) -> DeletionJobResponse:
     _ = reason
     db_user = await ensure_user(session, user)
+    # Agreement replacement holds Client before appending its business audit.
+    # Do not hold the identity audit lock while waiting for that Client lock.
+    await session.commit()
+    previous = await authorize_parent(session, db_user, "client", client_id)
     try:
-        result = await delete_client(session, client_id=client_id, actor_id=db_user.id)
+        result = previous or await request_client_deletion(session, client_id=client_id, actor_id=db_user.id)
     except DeletionError as exc:
         _raise(exc)
     await session.commit()
-    return _to_response(result)
+    return _job_response(result)
 
 
-@router.post("/clients/{client_id}/archive", response_model=AssessmentResponse)
+@router.post("/clients/{client_id}/archive", response_model=DeletionJobResponse, status_code=202)
 async def archive_client_endpoint(
     client_id: uuid.UUID,
     body: ArchiveBody,
     user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
-) -> AssessmentResponse:
-    db_user = await ensure_user(session, user)
-    try:
-        result = await archive_client(
-            session, client_id=client_id, actor_id=db_user.id, reason=body.reason or ""
-        )
-    except DeletionError as exc:
-        _raise(exc)
-    await session.commit()
-    return _to_response(result)
+) -> DeletionJobResponse:
+    return await delete_client_endpoint(client_id, reason=body.reason, user=user, session=session)
 
 
 # --- opportunity --------------------------------------------------------
@@ -144,55 +171,49 @@ async def archive_client_endpoint(
 )
 async def get_opportunity_deletion_assessment(
     opportunity_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
+    user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> AssessmentResponse:
+    db_user = await ensure_user(session, user)
+    previous = await authorize_parent(session, db_user, "opportunity", opportunity_id)
+    if previous:
+        return _job_response(previous)
     try:
         return _to_response(await assess_opportunity(session, opportunity_id))
     except DeletionError as exc:
         _raise(exc)
 
 
-@router.delete("/opportunities/{opportunity_id}", response_model=AssessmentResponse)
+@router.delete("/opportunities/{opportunity_id}", response_model=DeletionJobResponse, status_code=202)
 async def delete_opportunity_endpoint(
     opportunity_id: uuid.UUID,
     reason: str | None = Query(default=None),
     user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
-) -> AssessmentResponse:
+) -> DeletionJobResponse:
     _ = reason
     db_user = await ensure_user(session, user)
+    previous = await authorize_parent(session, db_user, "opportunity", opportunity_id)
     try:
-        result = await delete_opportunity(
+        result = previous or await request_opportunity_deletion(
             session, opportunity_id=opportunity_id, actor_id=db_user.id
         )
     except DeletionError as exc:
         _raise(exc)
     await session.commit()
-    return _to_response(result)
+    return _job_response(result)
 
 
 @router.post(
-    "/opportunities/{opportunity_id}/archive", response_model=AssessmentResponse
+    "/opportunities/{opportunity_id}/archive", response_model=DeletionJobResponse, status_code=202
 )
 async def archive_opportunity_endpoint(
     opportunity_id: uuid.UUID,
     body: ArchiveBody,
     user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
-) -> AssessmentResponse:
-    db_user = await ensure_user(session, user)
-    try:
-        result = await archive_opportunity(
-            session,
-            opportunity_id=opportunity_id,
-            actor_id=db_user.id,
-            reason=body.reason or "",
-        )
-    except DeletionError as exc:
-        _raise(exc)
-    await session.commit()
-    return _to_response(result)
+) -> DeletionJobResponse:
+    return await delete_opportunity_endpoint(opportunity_id, reason=body.reason, user=user, session=session)
 
 
 # --- SOW (S17) ----------------------------------------------------------
@@ -204,34 +225,69 @@ async def archive_opportunity_endpoint(
 )
 async def get_sow_deletion_assessment(
     sow_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
+    user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> AssessmentResponse:
+    db_user = await ensure_user(session, user)
+    previous = await authorize_sow(session, db_user, sow_id)
+    if previous:
+        return _job_response(previous)
     try:
         return _to_response(await assess_sow(session, sow_id))
     except DeletionError as exc:
         _raise(exc)
 
 
-@router.delete("/sows/{sow_id}", response_model=AssessmentResponse)
+@router.delete("/sows/{sow_id}", response_model=DeletionJobResponse, status_code=202)
 async def delete_sow_endpoint(
     sow_id: uuid.UUID,
     reason: str | None = Query(default=None),
     user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
     session: AsyncSession = Depends(get_session),
-) -> AssessmentResponse:
+) -> DeletionJobResponse:
     _ = reason
     db_user = await ensure_user(session, user)
+    previous = await authorize_sow(session, db_user, sow_id)
+    if previous:
+        return _job_response(previous)
     try:
-        summary = await delete_sow(session, sow_id=sow_id, actor_id=db_user.id)
+        job = await request_sow_deletion(session, sow_id=sow_id, actor_id=db_user.id)
     except DeletionError as exc:
         _raise(exc)
     await session.commit()
-    return AssessmentResponse(
-        state="draft",
-        reason=f"SOW '{summary.sow_title}' deleted from {summary.stage}",
-        counts=summary.counts,
-    )
+    return _job_response(job)
+
+
+@router.get("/deletion-jobs/{job_id}", response_model=DeletionJobResponse)
+async def get_deletion_job(job_id: uuid.UUID,
+    user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
+    session: AsyncSession = Depends(get_session)):
+    db_user = await ensure_user(session, user)
+    return _job_response(await load_job(session, db_user, job_id=job_id))
+
+
+@router.post("/deletion-jobs/{job_id}/retry", response_model=DeletionJobResponse)
+async def retry_deletion_job(job_id: uuid.UUID,
+    user: AuthUser = Depends(require_role(*_DELETE_ROLES)),
+    session: AsyncSession = Depends(get_session)):
+    from app.audit import append_audit
+    db_user = await ensure_user(session, user)
+    job = await load_job(session, db_user, job_id=job_id, lock=True)
+    queue, seen = [job], set()
+    while queue:
+        current = queue.pop(0)
+        if current.id in seen:
+            continue
+        seen.add(current.id)
+        for identity in current.summary.get("child_job_ids", []):
+            queue.append(await load_job(session, db_user, job_id=uuid.UUID(identity), lock=True))
+        if current.status != "done":
+            previous_status = current.status
+            current.status, current.attempts, current.next_attempt_at, current.last_error = "pending", 0, None, None
+            await append_audit(session, actor_id=db_user.id, action=f"{current.subject_type}.cleanup_retry_requested",
+                entity="deletion_job", entity_id=str(current.id), before={"status": previous_status}, after={"status": "pending"})
+    await session.commit()
+    return _job_response(job)
 
 
 @router.post("/sows/{sow_id}/archive", response_model=AssessmentResponse)

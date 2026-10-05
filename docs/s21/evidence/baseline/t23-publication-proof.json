@@ -1,0 +1,1397 @@
+{
+  "publication_id": "175dfd51-4e08-4e04-bf60-53af8ab47380",
+  "allocation": {
+    "schema_version": "people-allocation-v1",
+    "calculation_version": "people-interval-allocation-v2",
+    "policy_version": "committed-start-stable-identity-proposal-v1",
+    "policy_status": "proposal",
+    "is_reservation": false,
+    "scope_label": "Selected account demand",
+    "intervals": [
+      {
+        "start": "2026-12-01",
+        "end_exclusive": "2027-01-01",
+        "demands": [
+          {
+            "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 5,
+            "retained_quantity": 0,
+            "incremental_quantity": 5,
+            "required_fte": "2.5",
+            "matched_fte": "2.0",
+            "gap_fte": "0.5",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "64a1c30a-43f3-4bc6-8099-1232d0ada99a",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "a57515dc-9d41-48cc-acef-7b963389b7ff",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "bfc94066-9e38-4ccb-9014-b4e011cfe261",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "dc42c974-64e3-4896-83da-e09ff7c17d66",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "India",
+            "timezone": "Asia/Kolkata"
+          },
+          {
+            "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 3,
+            "retained_quantity": 0,
+            "incremental_quantity": 3,
+            "required_fte": "1.5",
+            "matched_fte": "0.5",
+            "gap_fte": "1.0",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "c53a0153-6993-456d-85f3-baff3f0871ba",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "US",
+            "timezone": "America/New_York"
+          }
+        ],
+        "overcommitted_person_ids": []
+      },
+      {
+        "start": "2027-01-01",
+        "end_exclusive": "2027-02-01",
+        "demands": [
+          {
+            "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 5,
+            "retained_quantity": 0,
+            "incremental_quantity": 5,
+            "required_fte": "2.5",
+            "matched_fte": "2.0",
+            "gap_fte": "0.5",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "64a1c30a-43f3-4bc6-8099-1232d0ada99a",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "a57515dc-9d41-48cc-acef-7b963389b7ff",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "bfc94066-9e38-4ccb-9014-b4e011cfe261",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "dc42c974-64e3-4896-83da-e09ff7c17d66",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "India",
+            "timezone": "Asia/Kolkata"
+          },
+          {
+            "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 3,
+            "retained_quantity": 0,
+            "incremental_quantity": 3,
+            "required_fte": "1.5",
+            "matched_fte": "0.5",
+            "gap_fte": "1.0",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "c53a0153-6993-456d-85f3-baff3f0871ba",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "US",
+            "timezone": "America/New_York"
+          }
+        ],
+        "overcommitted_person_ids": []
+      },
+      {
+        "start": "2027-02-01",
+        "end_exclusive": "2027-03-01",
+        "demands": [
+          {
+            "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 5,
+            "retained_quantity": 0,
+            "incremental_quantity": 5,
+            "required_fte": "2.5",
+            "matched_fte": "2.0",
+            "gap_fte": "0.5",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "64a1c30a-43f3-4bc6-8099-1232d0ada99a",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "a57515dc-9d41-48cc-acef-7b963389b7ff",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "bfc94066-9e38-4ccb-9014-b4e011cfe261",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "dc42c974-64e3-4896-83da-e09ff7c17d66",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "India",
+            "timezone": "Asia/Kolkata"
+          },
+          {
+            "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 3,
+            "retained_quantity": 0,
+            "incremental_quantity": 3,
+            "required_fte": "1.5",
+            "matched_fte": "0.5",
+            "gap_fte": "1.0",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "c53a0153-6993-456d-85f3-baff3f0871ba",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "US",
+            "timezone": "America/New_York"
+          }
+        ],
+        "overcommitted_person_ids": []
+      },
+      {
+        "start": "2027-03-01",
+        "end_exclusive": "2027-04-01",
+        "demands": [
+          {
+            "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 5,
+            "retained_quantity": 0,
+            "incremental_quantity": 5,
+            "required_fte": "2.5",
+            "matched_fte": "2.0",
+            "gap_fte": "0.5",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "64a1c30a-43f3-4bc6-8099-1232d0ada99a",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "a57515dc-9d41-48cc-acef-7b963389b7ff",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "bfc94066-9e38-4ccb-9014-b4e011cfe261",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "dc42c974-64e3-4896-83da-e09ff7c17d66",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "India",
+            "timezone": "Asia/Kolkata"
+          },
+          {
+            "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 3,
+            "retained_quantity": 0,
+            "incremental_quantity": 3,
+            "required_fte": "1.5",
+            "matched_fte": "0.5",
+            "gap_fte": "1.0",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "c53a0153-6993-456d-85f3-baff3f0871ba",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "US",
+            "timezone": "America/New_York"
+          }
+        ],
+        "overcommitted_person_ids": []
+      },
+      {
+        "start": "2027-04-01",
+        "end_exclusive": "2027-05-01",
+        "demands": [
+          {
+            "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 5,
+            "retained_quantity": 0,
+            "incremental_quantity": 5,
+            "required_fte": "2.5",
+            "matched_fte": "2.0",
+            "gap_fte": "0.5",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "64a1c30a-43f3-4bc6-8099-1232d0ada99a",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "a57515dc-9d41-48cc-acef-7b963389b7ff",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "bfc94066-9e38-4ccb-9014-b4e011cfe261",
+                "allocation": "0.5",
+                "continuity": false
+              },
+              {
+                "person_id": "dc42c974-64e3-4896-83da-e09ff7c17d66",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "India",
+            "timezone": "Asia/Kolkata"
+          },
+          {
+            "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+            "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+            "quantity": 3,
+            "retained_quantity": 0,
+            "incremental_quantity": 3,
+            "required_fte": "1.5",
+            "matched_fte": "0.5",
+            "gap_fte": "1.0",
+            "lifecycle": "tentative",
+            "probability": "0.70",
+            "matches": [
+              {
+                "person_id": "c53a0153-6993-456d-85f3-baff3f0871ba",
+                "allocation": "0.5",
+                "continuity": false
+              }
+            ],
+            "missing": [],
+            "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "source_kind": "plan",
+            "project_id": null,
+            "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+            "title": "T23 Synthetic Company X Half-Time Team",
+            "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+            "source_url": "/forecast?view=opportunities&account_id=571cabae-7c26-48e5-ad22-14311c4443a1",
+            "role": "Engineer",
+            "skills": [
+              "python"
+            ],
+            "level": "Senior",
+            "location": "US",
+            "timezone": "America/New_York"
+          }
+        ],
+        "overcommitted_person_ids": []
+      }
+    ],
+    "months": [
+      {
+        "month": "2026-12-01",
+        "peak_headcount": 8,
+        "peak_fte": "4.0",
+        "gap_fte": "1.5"
+      },
+      {
+        "month": "2027-01-01",
+        "peak_headcount": 8,
+        "peak_fte": "4.0",
+        "gap_fte": "1.5"
+      },
+      {
+        "month": "2027-02-01",
+        "peak_headcount": 8,
+        "peak_fte": "4.0",
+        "gap_fte": "1.5"
+      },
+      {
+        "month": "2027-03-01",
+        "peak_headcount": 8,
+        "peak_fte": "4.0",
+        "gap_fte": "1.5"
+      },
+      {
+        "month": "2027-04-01",
+        "peak_headcount": 8,
+        "peak_fte": "4.0",
+        "gap_fte": "1.5"
+      }
+    ],
+    "pending_sources": [],
+    "missing": [],
+    "complete": true,
+    "sources": [
+      {
+        "id": "d38122ff-5343-4d25-ae4b-54f72c396a92",
+        "revision": 1,
+        "person_count": 6,
+        "source_as_of": "2026-10-02T00:00:00+00:00",
+        "status": "committed",
+        "source_system": "t23-private-half-time",
+        "age_seconds": 84969
+      }
+    ],
+    "availability_basis": "managed_import",
+    "freshness_status": "measured_not_live",
+    "as_of": "2026-10-02T23:36:09.774059+00:00",
+    "source_watermark": "ba1d26ba7fea8b807317e340f8b7f2fbd6564cc2f4f5f1e41e430c07fe6c082a",
+    "excluded": []
+  },
+  "history": {
+    "items": [
+      {
+        "id": "633fa2af-22ed-408d-b457-b61e4e0b8905",
+        "draft_id": "4c290d4f-b037-45af-977b-f0b6e27093dc",
+        "revision": 2,
+        "demand_version_id": "56bd353f-16e3-4e90-a574-d8179ef61db0",
+        "rule_version_id": "83372bc6-63d9-46f6-a515-b5cfa2af418a",
+        "source_watermark": "ba1d26ba7fea8b807317e340f8b7f2fbd6564cc2f4f5f1e41e430c07fe6c082a",
+        "snapshot": {
+          "rows": [
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2026-12-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-11-01",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-01-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2026-12-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "1.0",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 3,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 2,
+              "end_exclusive": "2027-01-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 3,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 2
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-01-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-11-01",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-02-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-01-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "1.0",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 3,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 2,
+              "end_exclusive": "2027-02-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 3,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 2
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-02-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-11-01",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-03-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-02-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "1.0",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 3,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 2,
+              "end_exclusive": "2027-03-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 3,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 2
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-03-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-11-01",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-04-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-03-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "1.0",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 3,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 2,
+              "end_exclusive": "2027-04-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 3,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 2
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-04-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-11-01",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-05-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-04-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "1.0",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 3,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 2,
+              "end_exclusive": "2027-05-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 3,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 2
+            }
+          ],
+          "title": "T23 Synthetic Company X Half-Time Team",
+          "missing": [],
+          "complete": true,
+          "lifecycle": "tentative",
+          "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+          "probability": "0.70",
+          "is_reservation": false,
+          "source_version_id": "4dd08920-05a2-495e-9dbf-5e03fe71a030",
+          "calculation_version": "sourcing-draft-v1"
+        },
+        "reason": "Changed dates and headcount source revision",
+        "created_by": "68bd785d-9b39-5a36-8ce0-ccc0ad125e45",
+        "created_at": "2026-10-02T23:36:13.621387+00:00",
+        "is_reservation": false
+      },
+      {
+        "id": "a230d293-df0b-4902-94c6-a8fc0d5eb3c7",
+        "draft_id": "4c290d4f-b037-45af-977b-f0b6e27093dc",
+        "revision": 1,
+        "demand_version_id": "a6aef6de-62a7-4225-bf23-024618f53c1c",
+        "rule_version_id": "83372bc6-63d9-46f6-a515-b5cfa2af418a",
+        "source_watermark": "14de25f246aba5d478975729e384cbcaf19479501dc92ae2e8e087bc6b3b997d",
+        "snapshot": {
+          "rows": [
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2026-11-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-02",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2026-12-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2026-11-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 2,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-09-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2026-12-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 2,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2026-12-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-02",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-01-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2026-12-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 2,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-09-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-01-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 2,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-01-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-02",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-02-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-01-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 2,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-09-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-02-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 2,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-02-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-02",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-03-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-02-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 2,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-09-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-03-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 2,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-03-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-02",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-04-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-03-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 2,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-09-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-04-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 2,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "803c2650-2318-50bc-938e-531cf1d1c77c",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-04-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "India",
+              "quantity": 5,
+              "timezone": "Asia/Kolkata",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-10-02",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-05-01",
+              "matched_quantity": 4,
+              "retained_quantity": 0,
+              "incremental_quantity": 5,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            },
+            {
+              "id": "e1121a65-e63b-5380-bb84-846ea46d04b6",
+              "role": "Engineer",
+              "level": "Senior",
+              "start": "2027-04-01",
+              "title": "T23 Synthetic Company X Half-Time Team",
+              "skills": [
+                "python"
+              ],
+              "gap_fte": "0.5",
+              "missing": [],
+              "plan_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "location": "US",
+              "quantity": 2,
+              "timezone": "America/New_York",
+              "source_id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "account_id": "571cabae-7c26-48e5-ad22-14311c4443a1",
+              "project_id": null,
+              "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+              "source_kind": "plan",
+              "sourcing_by": "2026-09-17",
+              "account_name": "S21 e2e fe2845e4-c763-41d9-93d7-48f7545dbc34 T23 Half-Time Company X",
+              "gap_quantity": 1,
+              "end_exclusive": "2027-05-01",
+              "matched_quantity": 1,
+              "retained_quantity": 0,
+              "incremental_quantity": 2,
+              "continuity_gap_quantity": 0,
+              "incremental_gap_quantity": 1
+            }
+          ],
+          "title": "T23 Synthetic Company X Half-Time Team",
+          "missing": [],
+          "complete": true,
+          "lifecycle": "tentative",
+          "source_url": "/people/demand#demand-e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+          "probability": "0.70",
+          "is_reservation": false,
+          "source_version_id": "c9e2d9b4-0041-4eb1-9ce3-2ac0dce55585",
+          "calculation_version": "sourcing-draft-v1"
+        },
+        "reason": "Original source before revision",
+        "created_by": "68bd785d-9b39-5a36-8ce0-ccc0ad125e45",
+        "created_at": "2026-10-02T23:35:56.767844+00:00",
+        "is_reservation": false
+      }
+    ],
+    "current_version_id": "633fa2af-22ed-408d-b457-b61e4e0b8905",
+    "state": "current"
+  },
+  "beforeWorkforce": {
+    "intervals": [
+      {
+        "id": "13e0e7ba-9ea5-4e17-af91-25d1864c221d",
+        "version_id": "099a2a07-ea02-49f2-9652-63a93fa3af8e",
+        "kind": "gross",
+        "assignment_key": null,
+        "start_date": "2026-11-01",
+        "end_date": "2027-04-30",
+        "allocation": 0.25
+      },
+      {
+        "id": "18b12c5e-aebe-4722-a2ea-a3fa4db646c6",
+        "version_id": "c45dc7dd-6a57-4d0b-b6ed-57e8b574ae75",
+        "kind": "gross",
+        "assignment_key": null,
+        "start_date": "2026-11-01",
+        "end_date": "2027-04-30",
+        "allocation": 1
+      },
+      {
+        "id": "27b26592-aa94-4a03-898c-e13f1b05160e",
+        "version_id": "2f143f42-0e6d-44aa-b394-94c15e602c17",
+        "kind": "gross",
+        "assignment_key": null,
+        "start_date": "2026-11-01",
+        "end_date": "2027-04-30",
+        "allocation": 0.5
+      },
+      {
+        "id": "40d4fbd6-6865-44b8-b9ca-3db836c1a1e6",
+        "version_id": "1cf3d842-b5e1-4f67-b765-84a788949343",
+        "kind": "gross",
+        "assignment_key": null,
+        "start_date": "2026-11-01",
+        "end_date": "2027-04-30",
+        "allocation": 0.5
+      },
+      {
+        "id": "609305c6-2840-4161-9194-c3c34ae8f6b5",
+        "version_id": "f7acd666-0722-4886-b939-acb1be1ff1ca",
+        "kind": "gross",
+        "assignment_key": null,
+        "start_date": "2026-11-01",
+        "end_date": "2027-04-30",
+        "allocation": 0.5
+      },
+      {
+        "id": "875be9f5-30b6-45f5-acc2-74c81bd60807",
+        "version_id": "2ff9d579-5639-48c8-bc10-3d926ddc1037",
+        "kind": "gross",
+        "assignment_key": null,
+        "start_date": "2026-11-01",
+        "end_date": "2027-04-30",
+        "allocation": 0.5
+      }
+    ],
+    "versions": [
+      {
+        "id": "099a2a07-ea02-49f2-9652-63a93fa3af8e",
+        "source_id": "d8b6d6c3-0daa-40a2-a56d-09b648a0e5fc",
+        "person_id": "26eb498e-b511-41ed-a3ce-80172f4a6750",
+        "batch_id": "d38122ff-5343-4d25-ae4b-54f72c396a92",
+        "display_name": "Synthetic india-quarter",
+        "role": "Engineer",
+        "skills": [
+          "python"
+        ],
+        "level": "Senior",
+        "location": "India",
+        "timezone": "Asia/Kolkata",
+        "evidence": [
+          "Declared synthetic managed roster india-quarter"
+        ]
+      },
+      {
+        "id": "1cf3d842-b5e1-4f67-b765-84a788949343",
+        "source_id": "d8b6d6c3-0daa-40a2-a56d-09b648a0e5fc",
+        "person_id": "64a1c30a-43f3-4bc6-8099-1232d0ada99a",
+        "batch_id": "d38122ff-5343-4d25-ae4b-54f72c396a92",
+        "display_name": "Synthetic india-half-3",
+        "role": "Engineer",
+        "skills": [
+          "python"
+        ],
+        "level": "Senior",
+        "location": "India",
+        "timezone": "Asia/Kolkata",
+        "evidence": [
+          "Declared synthetic managed roster india-half-3"
+        ]
+      },
+      {
+        "id": "2f143f42-0e6d-44aa-b394-94c15e602c17",
+        "source_id": "d8b6d6c3-0daa-40a2-a56d-09b648a0e5fc",
+        "person_id": "dc42c974-64e3-4896-83da-e09ff7c17d66",
+        "batch_id": "d38122ff-5343-4d25-ae4b-54f72c396a92",
+        "display_name": "Synthetic india-half-4",
+        "role": "Engineer",
+        "skills": [
+          "python"
+        ],
+        "level": "Senior",
+        "location": "India",
+        "timezone": "Asia/Kolkata",
+        "evidence": [
+          "Declared synthetic managed roster india-half-4"
+        ]
+      },
+      {
+        "id": "2ff9d579-5639-48c8-bc10-3d926ddc1037",
+        "source_id": "d8b6d6c3-0daa-40a2-a56d-09b648a0e5fc",
+        "person_id": "bfc94066-9e38-4ccb-9014-b4e011cfe261",
+        "batch_id": "d38122ff-5343-4d25-ae4b-54f72c396a92",
+        "display_name": "Synthetic india-half-2",
+        "role": "Engineer",
+        "skills": [
+          "python"
+        ],
+        "level": "Senior",
+        "location": "India",
+        "timezone": "Asia/Kolkata",
+        "evidence": [
+          "Declared synthetic managed roster india-half-2"
+        ]
+      },
+      {
+        "id": "c45dc7dd-6a57-4d0b-b6ed-57e8b574ae75",
+        "source_id": "d8b6d6c3-0daa-40a2-a56d-09b648a0e5fc",
+        "person_id": "c53a0153-6993-456d-85f3-baff3f0871ba",
+        "batch_id": "d38122ff-5343-4d25-ae4b-54f72c396a92",
+        "display_name": "Synthetic us-full",
+        "role": "Engineer",
+        "skills": [
+          "python"
+        ],
+        "level": "Senior",
+        "location": "US",
+        "timezone": "America/New_York",
+        "evidence": [
+          "Declared synthetic managed roster us-full"
+        ]
+      },
+      {
+        "id": "f7acd666-0722-4886-b939-acb1be1ff1ca",
+        "source_id": "d8b6d6c3-0daa-40a2-a56d-09b648a0e5fc",
+        "person_id": "a57515dc-9d41-48cc-acef-7b963389b7ff",
+        "batch_id": "d38122ff-5343-4d25-ae4b-54f72c396a92",
+        "display_name": "Synthetic india-half-1",
+        "role": "Engineer",
+        "skills": [
+          "python"
+        ],
+        "level": "Senior",
+        "location": "India",
+        "timezone": "Asia/Kolkata",
+        "evidence": [
+          "Declared synthetic managed roster india-half-1"
+        ]
+      }
+    ]
+  },
+  "sourceRevision": {
+    "id": "e70c84bf-06c6-4b56-aff1-97f4e3ad28fa",
+    "version_id": "4dd08920-05a2-495e-9dbf-5e03fe71a030",
+    "version": 2
+  }
+}

@@ -7,14 +7,12 @@ Every Given/When/Then in ``docs/backlog/s7-nda-msa-hard-block.md``
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import select
 
-from app.models.audit import AuditEvent
 from app.models.client import Client, LegalEntity
 from app.models.notification import Notification
 from app.models.opportunity import Opportunity
@@ -143,6 +141,8 @@ def _passing_payload(sow_version_id: uuid.UUID) -> GmModelPayload:
 async def _seed_full_deal(
     session, owner: User, client: Client
 ) -> Opportunity:
+    for prefix, group in (("sales", "Sales"), ("finance", "Finance"), ("legal", "Legal")):
+        await _seed_user(session, f"reviewer-{prefix}@smartek21.com", [group])
     opp = Opportunity(
         id=uuid.uuid4(),
         hubspot_deal_id=f"H-SLA-{uuid.uuid4().hex[:6]}",
@@ -194,6 +194,7 @@ async def test_submit_on_monday_creates_tasks_due_wednesday(
         "app.services.approvals.datetime",
         _FrozenDateTime(monday),
     )
+    monkeypatch.setattr("app.services.approval_workflow.datetime", _FrozenDateTime(monday))
 
     owner = await _seed_user(session, "owner@smartek21.com", ["Sales"])
     delivery = await _seed_user(session, "d@smartek21.com", ["Delivery"])
@@ -213,7 +214,7 @@ async def test_submit_on_monday_creates_tasks_due_wednesday(
         .scalars()
         .all()
     )
-    assert len(tasks) == 2  # one Delivery, one HR
+    assert len(tasks) == 3  # Delivery, HR and mandatory Sales
     for t in tasks:
         assert t.due_date == wednesday
     owners = {t.owner_id for t in tasks}
@@ -232,6 +233,7 @@ async def test_submit_on_friday_creates_tasks_due_tuesday(
         "app.services.approvals.datetime",
         _FrozenDateTime(friday),
     )
+    monkeypatch.setattr("app.services.approval_workflow.datetime", _FrozenDateTime(friday))
 
     owner = await _seed_user(session, "owner2@smartek21.com", ["Sales"])
     await _seed_user(session, "d2@smartek21.com", ["Delivery"])
@@ -250,7 +252,7 @@ async def test_submit_on_friday_creates_tasks_due_tuesday(
         .scalars()
         .all()
     )
-    assert len(tasks) == 2
+    assert len(tasks) == 3
     for t in tasks:
         assert t.due_date == tuesday, f"got {t.due_date}, expected {tuesday}"
 
@@ -270,6 +272,7 @@ async def test_nudge_queued_one_business_day_before_due(
         "app.services.approvals.datetime",
         _FrozenDateTime(monday),
     )
+    monkeypatch.setattr("app.services.approval_workflow.datetime", _FrozenDateTime(monday))
     owner = await _seed_user(session, "owner3@smartek21.com", ["Sales"])
     delivery = await _seed_user(session, "d3@smartek21.com", ["Delivery"])
     await _seed_user(session, "h3@smartek21.com", ["HR"])
@@ -278,6 +281,7 @@ async def test_nudge_queued_one_business_day_before_due(
     await submit_package(session, actor_id=owner.id, opportunity_id=opp.id)
 
     # Time-travel to Tuesday for the scheduler tick.
+    assignment_notifications = list((await session.scalars(select(Notification.id))).all())
     monkeypatch.setenv("DEALGATE_NOW", tuesday.isoformat())
     result = await run_tick(session)
 
@@ -290,6 +294,7 @@ async def test_nudge_queued_one_business_day_before_due(
                 select(Notification).where(
                     Notification.category == "approval_pending",
                     Notification.user_id == delivery.id,
+                    Notification.id.not_in(assignment_notifications),
                 )
             )
         )
@@ -313,6 +318,7 @@ async def test_escalation_bumps_level_on_day_past_due(
         "app.services.approvals.datetime",
         _FrozenDateTime(monday),
     )
+    monkeypatch.setattr("app.services.approval_workflow.datetime", _FrozenDateTime(monday))
     owner = await _seed_user(session, "owner4@smartek21.com", ["Sales"])
     delivery = await _seed_user(session, "d4@smartek21.com", ["Delivery"])
     await _seed_user(session, "h4@smartek21.com", ["HR"])

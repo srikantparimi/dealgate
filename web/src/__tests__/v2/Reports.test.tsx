@@ -2,15 +2,14 @@
  * Reports — Sprint 8 Wave 3 acceptance tests (spec §17).
  *
  * Rules exercised:
- *   - All five report tabs render (Portfolio / Margin / Revenue /
- *     Renewals / Approval turnaround).
+ *   - Pipeline rollups are the default; the five detailed reports remain.
  *   - The export buttons invoke the injected handler with the correct
  *     kind + format.
  *   - The Revenue tab surfaces the "invoice/cash not sourced" caveat
  *     by default (spec §17: never combine them as "Revenue").
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -79,6 +78,63 @@ function stubEverything() {
   vi.spyOn(apiClient, "getFinanceDashboard").mockResolvedValue(emptyFinance());
   vi.spyOn(apiClient, "getDeals").mockResolvedValue(emptyDeals());
   vi.spyOn(apiClient, "listRenewals").mockResolvedValue(emptyRenewals());
+  const asOf = "2026-10-01T12:00:00Z";
+  vi.spyOn(apiClient, "listPipelineOpportunities").mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 100,
+  });
+  vi.spyOn(apiClient, "getPortfolioBasis").mockResolvedValue({
+    population: {
+      included: 0,
+      excluded_archived: 0,
+      excluded_non_hubspot: 0,
+      reasons: {},
+    },
+    basis: { as_of: asOf, watermarks: {} },
+  });
+  vi.spyOn(apiClient, "getApprovalTurnaround").mockResolvedValue({
+    window: "30d",
+    window_from: "2026-09-01T12:00:00Z",
+    window_to: asOf,
+    total_transitions: 0,
+    per_stage: [],
+    overall_median_hours: null,
+    generated_at: asOf,
+    meta: {},
+  });
+  vi.spyOn(apiClient, "getReportsByStage").mockResolvedValue({
+    total_count: 0,
+    total_open_value_usd: "0",
+    rows: [],
+    generated_at: asOf,
+  });
+  vi.spyOn(apiClient, "getReportsByOwner").mockResolvedValue({
+    total_count: 0,
+    total_open_value_usd: "0",
+    rows: [],
+    generated_at: asOf,
+  });
+  vi.spyOn(apiClient, "getReportsByBu").mockResolvedValue({
+    bu_mirrored: false,
+    note: "BU not mirrored",
+    total_count: 0,
+    total_open_value_usd: "0",
+    rows: [],
+    generated_at: asOf,
+  });
+  vi.spyOn(apiClient, "getSowGmReport").mockResolvedValue({
+    us_floor_pct: "0.35",
+    india_floor_pct: "0.50",
+    rows: [],
+    generated_at: asOf,
+    note: "No models in the open set",
+  });
+  vi.spyOn(apiClient, "getApprovalsAging").mockResolvedValue({
+    as_of: asOf,
+    lanes: [],
+  });
 }
 
 function renderReports(exportHandler = vi.fn()) {
@@ -100,7 +156,7 @@ describe("ReportsPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders all five report tabs", async () => {
+  it("renders all six report tabs with Pipeline rollups selected by default", async () => {
     stubEverything();
     renderReports();
     await waitFor(() => {
@@ -110,6 +166,13 @@ describe("ReportsPage", () => {
     expect(screen.getByTestId("tab-revenue")).toBeInTheDocument();
     expect(screen.getByTestId("tab-renewals")).toBeInTheDocument();
     expect(screen.getByTestId("tab-turnaround")).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(6);
+    expect(screen.getByTestId("tab-pipeline")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByTestId("pipeline-rollups")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("shows the Revenue tab's invoice/cash caveat by default", async () => {
@@ -124,7 +187,9 @@ describe("ReportsPage", () => {
     expect(caveat.textContent).toMatch(/only when sourced/i);
     expect(caveat.textContent).toMatch(/never combined/i);
     // Both metric tiles surface the "Not sourced" state by default.
-    expect(screen.getAllByText(/Not sourced/i).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/Not sourced/i).length).toBeGreaterThanOrEqual(
+      2,
+    );
   });
 
   it("Portfolio tab export CSV calls the handler with the right args", async () => {
@@ -133,13 +198,16 @@ describe("ReportsPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("tab-portfolio")).toBeInTheDocument();
     });
+    await userEvent.click(screen.getByTestId("tab-portfolio"));
     const btn = await screen.findByTestId("export-portfolio-csv");
     await userEvent.click(btn);
     expect(onExport).toHaveBeenCalledTimes(1);
     const args = onExport.mock.calls[0][0];
     expect(args.kind).toBe("portfolio");
     expect(args.format).toBe("csv");
-    expect(args.filename).toMatch(/^dealgate-portfolio-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(args.filename).toMatch(
+      /^dealgate-portfolio-\d{4}-\d{2}-\d{2}\.csv$/,
+    );
   });
 
   it("Portfolio tab export PDF calls the handler with kind=portfolio and format=pdf", async () => {
@@ -148,6 +216,7 @@ describe("ReportsPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("tab-portfolio")).toBeInTheDocument();
     });
+    await userEvent.click(screen.getByTestId("tab-portfolio"));
     const btn = await screen.findByTestId("export-portfolio-pdf");
     await userEvent.click(btn);
     expect(onExport).toHaveBeenCalledTimes(1);
@@ -177,5 +246,52 @@ describe("ReportsPage", () => {
     });
     await userEvent.click(screen.getByTestId("tab-turnaround"));
     expect(await screen.findByText(/No verified source/i)).toBeInTheDocument();
+  });
+  it("does not relabel forecast or actual gross profit as revenue", async () => {
+    stubEverything();
+    const finance = emptyFinance();
+    finance.approved_vs_forecast_vs_actual = {
+      approved_gp: "125000",
+      forecast_gp: "98765.43",
+      actual_gp: "54321.98",
+    };
+    vi.mocked(apiClient.getFinanceDashboard).mockResolvedValue(finance);
+    renderReports();
+    await userEvent.click(screen.getByTestId("tab-revenue"));
+    const report = await screen.findByRole("region", {
+      name: "Revenue report",
+    });
+    expect(within(report).queryByText("98765.43")).not.toBeInTheDocument();
+    expect(within(report).queryByText("54321.98")).not.toBeInTheDocument();
+    expect(within(report).getAllByText("Unavailable")).toHaveLength(4);
+    expect(within(report).getAllByText("Not sourced")).toHaveLength(2);
+  });
+  it("preserves non-permission source failures instead of reporting empty success", async () => {
+    stubEverything();
+    vi.mocked(apiClient.getReportsByStage).mockRejectedValue(
+      new apiClient.ApiError(
+        503,
+        "Source unavailable",
+        "Pipeline report source unavailable",
+      ),
+    );
+    renderReports();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Pipeline report source unavailable",
+    );
+    expect(screen.queryByTestId("pipeline-rollups")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+  it("keeps permission-denied aggregates unavailable rather than inventing zeros", async () => {
+    stubEverything();
+    vi.mocked(apiClient.getReportsByStage).mockRejectedValue(
+      new apiClient.ApiError(403, "Forbidden"),
+    );
+    renderReports();
+    const region = await screen.findByRole("region", { name: "By stage" });
+    expect(region).toHaveTextContent("Unavailable");
+    expect(region).toHaveTextContent(/restricted/i);
+    expect(within(region).queryByText(/0 open/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

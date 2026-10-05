@@ -1,0 +1,588 @@
+........................................................................ [  5%]
+.........F................................F............................. [ 11%]
+.................................................s...................... [ 16%]
+........................................................................ [ 22%]
+........................................................................ [ 28%]
+........................................................................ [ 33%]
+........................................................................ [ 39%]
+........................................................................ [ 45%]
+........................................................................ [ 50%]
+........................................................................ [ 56%]
+........................................F.F.FF.......................... [ 61%]
+.................xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx......xxxxxxxxxxxxxx [ 67%]
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxx.....xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [ 73%]
+xx.xxxxxxxxxxxxxxxxxxxxxxxxxx.......xxxxxx.............................. [ 78%]
+........................................................................ [ 84%]
+...................................................F.................... [ 90%]
+...........................................................FFF.......... [ 95%]
+........................................................                 [100%]
+=================================== FAILURES ===================================
+______________________ test_parallel_reviews_advance_once ______________________
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not os.environ.get("DEALGATE_POSTGRES_URL"), reason="requires disposable migrated Postgres"
+    )
+    async def test_parallel_reviews_advance_once():
+        url = os.environ["DEALGATE_POSTGRES_URL"].replace("postgresql://", "postgresql+psycopg://")
+        engine = create_async_engine(url)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with factory() as session:
+                owner, opp, _, _, people = await fixture(session)
+                plan = await submission_plan(session, opportunity_id=opp.id, actor_id=owner.id)
+                pkg = await submit_package(
+                    session, actor_id=owner.id, opportunity_id=opp.id, routing=plan
+                )
+                package_id = pkg.id
+    
+            async def approve(fn):
+                async with factory() as session:
+                    await decide(
+                        session,
+                        actor_id=people[fn].id,
+                        package_id=package_id,
+                        function=fn,
+                        decision="approve",
+                        reason="Concurrent review verified",
+                    )
+    
+            await asyncio.gather(approve("delivery"), approve("hr"))
+            async with factory() as session:
+                pkg = await load_package(session, package_id)
+>               assert pkg.status == "pending_finance_legal"
+E               AssertionError: assert 'pending_delivery_hr' == 'pending_finance_legal'
+E                 
+E                 - pending_finance_legal
+E                 + pending_delivery_hr
+
+tests/test_approval_concurrency.py:47: AssertionError
+________________________ test_resolve_all_returns_four _________________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x11a200bd0>
+
+    @pytest.mark.asyncio
+    async def test_resolve_all_returns_four(session):
+        result = await resolve_all(session)
+>       assert set(result.keys()) == {"delivery", "hr", "finance", "legal"}
+E       AssertionError: assert {'delivery', ...gal', 'sales'} == {'delivery', ...'hr', 'legal'}
+E         
+E         Extra items in the left set:
+E         'sales'
+E         Use -v to get more diff
+
+tests/test_approvers.py:66: AssertionError
+_______________________ test_release_ignores_closed_won ________________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x120192a50>
+
+    async def test_release_ignores_closed_won(session):
+        """The single non-negotiable check: Closed Won alone cannot release.
+    
+        Given a Closed Won opportunity with a verified executed pdf, but
+        NO internal signoff and NO delivery acceptance — the release must
+        still refuse with 409. This test would fail if any code path in
+        `services.release` (or its dependencies) reads
+        `Opportunity.is_closed_won` as a release authority.
+        """
+    
+        owner = await _seed_user(session, "cw-owner@smartek21.com", ["Sales"])
+        package, opp = await _seed_package(session, owner)
+    
+        # Flip the CRM flag — the gate must not care.
+        opp.is_closed_won = True
+        await session.commit()
+    
+        # Verified upload lands.
+        upload = await _seed_verified_upload(session, package, owner)
+>       assert upload.verify_status == "verified"
+E       AssertionError: assert 'blocked' == 'verified'
+E         
+E         - verified
+E         + blocked
+
+tests/test_release_gate.py:276: AssertionError
+_____________________ test_gate_requires_internal_signoff ______________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1212d50d0>
+
+    async def test_gate_requires_internal_signoff(session):
+        owner = await _seed_user(session, "sig-only@smartek21.com", ["Sales"])
+        delivery = await _seed_user(session, "delivery-a@smartek21.com", ["Delivery"])
+        package, _ = await _seed_package(session, owner)
+    
+        # Verified upload + delivery acceptance, but no signoff.
+        await _seed_verified_upload(session, package, owner)
+        await _seed_delivery_acceptance(session, package, delivery)
+        gate = await check_release_gate(session, package)
+        assert gate.internal_signoff_ok is False
+>       assert gate.client_execution_ok is True
+E       assert False is True
+E        +  where False = ReleaseGate(ok=False, internal_signoff_ok=False, client_execution_ok=False, delivery_acceptance_ok=True, approvals_cur... latest upload verify_status is 'blocked' (bedrock_manual_required: stored document hash mismatch or empty document)"]).client_execution_ok
+
+tests/test_release_gate.py:325: AssertionError
+____________________ test_gate_requires_delivery_acceptance ____________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1215bd4d0>
+
+    async def test_gate_requires_delivery_acceptance(session):
+        owner = await _seed_user(session, "accept-only@smartek21.com", ["Sales"])
+        delivery = await _seed_user(session, "delivery-c@smartek21.com", ["Delivery"])
+        package, _ = await _seed_package(session, owner)
+    
+        await _seed_internal_signoff(session, package, delivery)
+        await _seed_verified_upload(session, package, owner)
+        gate = await check_release_gate(session, package)
+        assert gate.internal_signoff_ok is True
+>       assert gate.client_execution_ok is True
+E       assert False is True
+E        +  where False = ReleaseGate(ok=False, internal_signoff_ok=True, client_execution_ok=False, delivery_acceptance_ok=False, approvals_cur...r empty document)", 'delivery_acceptance missing — Delivery ops has not filed the acceptance record for this package']).client_execution_ok
+
+tests/test_release_gate.py:354: AssertionError
+_____________________ test_gate_passes_when_all_three_land _____________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x1216680d0>
+
+    async def test_gate_passes_when_all_three_land(session):
+        owner = await _seed_user(session, "happy-owner@smartek21.com", ["Sales"])
+        delivery = await _seed_user(session, "delivery-h@smartek21.com", ["Delivery"])
+        package, _ = await _seed_package(session, owner)
+    
+        await _seed_internal_signoff(session, package, delivery)
+        upload = await _seed_verified_upload(session, package, owner)
+        await _seed_delivery_acceptance(session, package, delivery)
+    
+        gate = await check_release_gate(session, package)
+>       assert gate.ok is True
+E       assert False is True
+E        +  where False = ReleaseGate(ok=False, internal_signoff_ok=True, client_execution_ok=False, delivery_acceptance_ok=True, approvals_curr... latest upload verify_status is 'blocked' (bedrock_manual_required: stored document hash mismatch or empty document)"]).ok
+
+tests/test_release_gate.py:369: AssertionError
+__________________ test_build_confirmation_serialises_cleanly __________________
+
+seeded_sow = {'opp': <app.models.opportunity.Opportunity object at 0x121a04f50>, 'sow_version_id': UUID('6feb6145-cd0d-4d05-97c1-c2bd0b6afe30')}
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x122916350>
+
+    @pytest.mark.asyncio
+    async def test_build_confirmation_serialises_cleanly(seeded_sow, session):
+        payload = await build_confirmation(
+            session, opportunity_id=seeded_sow["opp"].id, actor_id=OWNER
+        )
+        dumped = serialize_confirmation(payload)
+        assert dumped["engagement"]["primary"]["type"] == payload.engagement.primary.type
+        assert "approvers" in dumped
+>       assert set(dumped["approvers"].keys()) == {"delivery", "hr", "finance", "legal"}
+E       AssertionError: assert {'delivery', ...gal', 'sales'} == {'delivery', ...'hr', 'legal'}
+E         
+E         Extra items in the left set:
+E         'sales'
+E         Use -v to get more diff
+
+tests/test_sow_confirmation.py:124: AssertionError
+_____________________ test_stale_hash_is_refused_with_409 ______________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x123ca24d0>
+
+    @pytest.mark.asyncio
+    async def test_stale_hash_is_refused_with_409(session):
+        """T19: a decision with a stale ``expected_package_hash`` raises
+        ApprovalError with status 409."""
+    
+        opp, _v, owner, reviewers = await _seed_full_deal(session)
+        plan = await submission_plan(session, actor_id=owner.id, opportunity_id=opp.id)
+>       pkg = await submit_package(
+            session, actor_id=owner.id, opportunity_id=opp.id, routing=plan
+        )
+
+tests/test_stale_package_hash.py:157: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x123ca24d0>
+actor_id = UUID('ac29a623-0803-5586-8449-afa06b178fd7')
+opportunity_id = UUID('f3a221c9-dbe1-4c3f-97ec-49727a356bae')
+routing = {'sow_version_id': '01abd559-24fe-45d6-8e28-429a6091903b', 'sow_version': 1, 'gm_model_id': 'fe89e4cf-3e68-4b94-b710-84f98f8742d6', 'gm_version': 1, ...}
+
+    async def submit_package(
+        session: AsyncSession,
+        *,
+        actor_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+        routing: dict[str, Any] | None = None,
+    ) -> ApprovalPackage:
+        """Freeze the latest confirmed SOW + latest GM model into an
+        :class:`ApprovalPackage` in status ``pending_delivery_hr``.
+    
+        Fails with:
+          - 404 if the opportunity has no confirmed sow_version yet.
+          - 404 if the opportunity has no gm_model yet.
+          - 403 if the confirmed sow_version is a legacy row (§13 rollout).
+          - 409 if an active package with the same package_hash exists.
+        """
+    
+        # S5 E9: block new commitments on a churned SOW. Import lazily to
+        # avoid an app.services.renewals ↔ app.services.approvals import cycle.
+        from app.services.renewals import has_churn as _renewal_has_churn
+    
+        await session.execute(select(Opportunity.id).where(Opportunity.id == opportunity_id).with_for_update())
+    
+        if await _renewal_has_churn(session, opportunity_id):
+            raise ApprovalError(
+                status_code=409,
+                detail="SOW churned — new commitments blocked",
+            )
+    
+        sow_version = await _latest_confirmed_sow_version(session, opportunity_id)
+        if sow_version is None:
+            raise ApprovalError(
+                status_code=404,
+                detail="no confirmed sow_version for opportunity",
+            )
+        # 403 for legacy — deliberate rollout rule (blueprint §13).
+        assert_not_legacy_for_approval(sow_version)
+    
+        gm_model = await _latest_gm_model(session, opportunity_id)
+        if gm_model is None:
+            raise ApprovalError(
+                status_code=404,
+                detail="no gm_model for opportunity — build one before submitting",
+            )
+    
+        # Coverage gates signature, not functional review (blueprint section 2).
+        opportunity = (
+            await session.execute(
+                select(Opportunity).where(Opportunity.id == opportunity_id)
+            )
+        ).scalar_one_or_none()
+        if opportunity is None:
+            raise ApprovalError(status_code=404, detail="opportunity not found")
+        from app.services.approval_routing import submission_plan
+        routing = await submission_plan(
+            session, actor_id=actor_id, opportunity_id=opportunity_id,
+            expected_sow_version_id=uuid.UUID(routing['sow_version_id']) if routing else sow_version.id,
+            expected_gm_model_id=uuid.UUID(routing['gm_model_id']) if routing else gm_model.id,
+            choices={r['function']: r for r in routing['rows']} if routing else None,
+        )
+        blockers = [row['blocker'] for row in routing['rows'] if row['blocker']]
+        if routing.get('executive') and not routing['executive'].get('approver_id'):
+            blockers.append('Executive has no eligible reviewer. Owner: SystemAdmin.')
+        if blockers:
+>           raise ApprovalError(status_code=409, detail='; '.join(blockers))
+E           app.services.approvals.ApprovalError: 409: Sales has no eligible reviewer. Owner: SystemAdmin.
+
+app/services/approvals.py:479: ApprovalError
+________________________ test_matching_hash_is_accepted ________________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x123c0cfd0>
+
+    @pytest.mark.asyncio
+    async def test_matching_hash_is_accepted(session):
+        """The same decision with the correct hash goes through."""
+    
+        opp, _v, owner, reviewers = await _seed_full_deal(session)
+        plan = await submission_plan(session, actor_id=owner.id, opportunity_id=opp.id)
+>       pkg = await submit_package(
+            session, actor_id=owner.id, opportunity_id=opp.id, routing=plan
+        )
+
+tests/test_stale_package_hash.py:181: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x123c0cfd0>
+actor_id = UUID('ac29a623-0803-5586-8449-afa06b178fd7')
+opportunity_id = UUID('d76bda91-fb00-41c1-aa9d-b7355d44df1c')
+routing = {'sow_version_id': '9d3ffe00-49f2-4fcf-8303-a0df824a2800', 'sow_version': 1, 'gm_model_id': 'd8b86643-d412-4ccb-aa1f-93cd1014f22e', 'gm_version': 1, ...}
+
+    async def submit_package(
+        session: AsyncSession,
+        *,
+        actor_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+        routing: dict[str, Any] | None = None,
+    ) -> ApprovalPackage:
+        """Freeze the latest confirmed SOW + latest GM model into an
+        :class:`ApprovalPackage` in status ``pending_delivery_hr``.
+    
+        Fails with:
+          - 404 if the opportunity has no confirmed sow_version yet.
+          - 404 if the opportunity has no gm_model yet.
+          - 403 if the confirmed sow_version is a legacy row (§13 rollout).
+          - 409 if an active package with the same package_hash exists.
+        """
+    
+        # S5 E9: block new commitments on a churned SOW. Import lazily to
+        # avoid an app.services.renewals ↔ app.services.approvals import cycle.
+        from app.services.renewals import has_churn as _renewal_has_churn
+    
+        await session.execute(select(Opportunity.id).where(Opportunity.id == opportunity_id).with_for_update())
+    
+        if await _renewal_has_churn(session, opportunity_id):
+            raise ApprovalError(
+                status_code=409,
+                detail="SOW churned — new commitments blocked",
+            )
+    
+        sow_version = await _latest_confirmed_sow_version(session, opportunity_id)
+        if sow_version is None:
+            raise ApprovalError(
+                status_code=404,
+                detail="no confirmed sow_version for opportunity",
+            )
+        # 403 for legacy — deliberate rollout rule (blueprint §13).
+        assert_not_legacy_for_approval(sow_version)
+    
+        gm_model = await _latest_gm_model(session, opportunity_id)
+        if gm_model is None:
+            raise ApprovalError(
+                status_code=404,
+                detail="no gm_model for opportunity — build one before submitting",
+            )
+    
+        # Coverage gates signature, not functional review (blueprint section 2).
+        opportunity = (
+            await session.execute(
+                select(Opportunity).where(Opportunity.id == opportunity_id)
+            )
+        ).scalar_one_or_none()
+        if opportunity is None:
+            raise ApprovalError(status_code=404, detail="opportunity not found")
+        from app.services.approval_routing import submission_plan
+        routing = await submission_plan(
+            session, actor_id=actor_id, opportunity_id=opportunity_id,
+            expected_sow_version_id=uuid.UUID(routing['sow_version_id']) if routing else sow_version.id,
+            expected_gm_model_id=uuid.UUID(routing['gm_model_id']) if routing else gm_model.id,
+            choices={r['function']: r for r in routing['rows']} if routing else None,
+        )
+        blockers = [row['blocker'] for row in routing['rows'] if row['blocker']]
+        if routing.get('executive') and not routing['executive'].get('approver_id'):
+            blockers.append('Executive has no eligible reviewer. Owner: SystemAdmin.')
+        if blockers:
+>           raise ApprovalError(status_code=409, detail='; '.join(blockers))
+E           app.services.approvals.ApprovalError: 409: Sales has no eligible reviewer. Owner: SystemAdmin.
+
+app/services/approvals.py:479: ApprovalError
+________________________ test_omitted_hash_still_works _________________________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x123bad6d0>
+
+    @pytest.mark.asyncio
+    async def test_omitted_hash_still_works(session):
+        """Omitting the hash preserves the pre-S20 behaviour — the check
+        is opt-in for compatibility. Clients that don't send the hash are
+        still valid; only the stale-check is skipped."""
+    
+        opp, _v, owner, reviewers = await _seed_full_deal(session)
+        plan = await submission_plan(session, actor_id=owner.id, opportunity_id=opp.id)
+>       pkg = await submit_package(
+            session, actor_id=owner.id, opportunity_id=opp.id, routing=plan
+        )
+
+tests/test_stale_package_hash.py:206: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x123bad6d0>
+actor_id = UUID('ac29a623-0803-5586-8449-afa06b178fd7')
+opportunity_id = UUID('796fc506-7afb-469e-b123-3986549f6d87')
+routing = {'sow_version_id': 'c23939aa-71ba-4603-8943-aeae42ac56fa', 'sow_version': 1, 'gm_model_id': 'ef262c26-41ab-428e-a1a7-25299a8f6f2e', 'gm_version': 1, ...}
+
+    async def submit_package(
+        session: AsyncSession,
+        *,
+        actor_id: uuid.UUID,
+        opportunity_id: uuid.UUID,
+        routing: dict[str, Any] | None = None,
+    ) -> ApprovalPackage:
+        """Freeze the latest confirmed SOW + latest GM model into an
+        :class:`ApprovalPackage` in status ``pending_delivery_hr``.
+    
+        Fails with:
+          - 404 if the opportunity has no confirmed sow_version yet.
+          - 404 if the opportunity has no gm_model yet.
+          - 403 if the confirmed sow_version is a legacy row (§13 rollout).
+          - 409 if an active package with the same package_hash exists.
+        """
+    
+        # S5 E9: block new commitments on a churned SOW. Import lazily to
+        # avoid an app.services.renewals ↔ app.services.approvals import cycle.
+        from app.services.renewals import has_churn as _renewal_has_churn
+    
+        await session.execute(select(Opportunity.id).where(Opportunity.id == opportunity_id).with_for_update())
+    
+        if await _renewal_has_churn(session, opportunity_id):
+            raise ApprovalError(
+                status_code=409,
+                detail="SOW churned — new commitments blocked",
+            )
+    
+        sow_version = await _latest_confirmed_sow_version(session, opportunity_id)
+        if sow_version is None:
+            raise ApprovalError(
+                status_code=404,
+                detail="no confirmed sow_version for opportunity",
+            )
+        # 403 for legacy — deliberate rollout rule (blueprint §13).
+        assert_not_legacy_for_approval(sow_version)
+    
+        gm_model = await _latest_gm_model(session, opportunity_id)
+        if gm_model is None:
+            raise ApprovalError(
+                status_code=404,
+                detail="no gm_model for opportunity — build one before submitting",
+            )
+    
+        # Coverage gates signature, not functional review (blueprint section 2).
+        opportunity = (
+            await session.execute(
+                select(Opportunity).where(Opportunity.id == opportunity_id)
+            )
+        ).scalar_one_or_none()
+        if opportunity is None:
+            raise ApprovalError(status_code=404, detail="opportunity not found")
+        from app.services.approval_routing import submission_plan
+        routing = await submission_plan(
+            session, actor_id=actor_id, opportunity_id=opportunity_id,
+            expected_sow_version_id=uuid.UUID(routing['sow_version_id']) if routing else sow_version.id,
+            expected_gm_model_id=uuid.UUID(routing['gm_model_id']) if routing else gm_model.id,
+            choices={r['function']: r for r in routing['rows']} if routing else None,
+        )
+        blockers = [row['blocker'] for row in routing['rows'] if row['blocker']]
+        if routing.get('executive') and not routing['executive'].get('approver_id'):
+            blockers.append('Executive has no eligible reviewer. Owner: SystemAdmin.')
+        if blockers:
+>           raise ApprovalError(status_code=409, detail='; '.join(blockers))
+E           app.services.approvals.ApprovalError: 409: Sales has no eligible reviewer. Owner: SystemAdmin.
+
+app/services/approvals.py:479: ApprovalError
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/s21_acceptance/test_independent_oracles.py::test_independent_calendar_b_monthly_money_hours_and_margin
+tests/test_migration_parity.py::test_every_model_table_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/alembic/config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+tests/test_actuals_import.py: 1 warning
+tests/test_client_rate_cards.py: 1 warning
+tests/test_legacy_import.py: 1 warning
+tests/test_sow_extract.py: 3 warnings
+tests/test_sow_lifecycle.py: 1 warning
+tests/test_sow_upload_binding.py: 2 warnings
+tests/test_sow_upload_router.py: 5 warnings
+tests/test_staffing_sheet.py: 1 warning
+tests/test_tasks_lifecycle.py: 1 warning
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/test_admin_users.py::test_invite_unknown_group_returns_422_no_audit
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/admin_users.py:201: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    groups = _validate_groups(list(payload.groups))
+
+tests/test_admin_users.py::test_patch_unknown_group_returns_422_no_audit
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/admin_users.py:245: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    add = _validate_groups(list(payload.add))
+
+tests/test_ceo_exception.py::test_approve_requires_rationale
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/ceo_exception.py:183: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await decide(
+
+tests/test_channels_disabled.py::test_patch_notification_setting_rejects_disabled_channel[teams]
+tests/test_channels_disabled.py::test_patch_notification_setting_rejects_disabled_channel[slack]
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/notifications.py:164: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await upsert_setting(
+
+tests/test_client_rate_cards.py::test_publish_rejects_bad_location
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/client_rate_cards.py:133: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_row(row, idx)
+
+tests/test_gm_model_templates.py::test_save_template_rejects_duplicate_name
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/delivery_model.py:233: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _bad_request(exc) from exc
+
+tests/test_hubspot_writeback.py::test_queue_writeback_rejects_property_outside_map
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/hubspot_writeback.py:131: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_target_state(target_state)
+
+tests/test_hubspot_writeback.py::test_worker_second_line_guard_rejects_bad_target_state
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/hubspot_writeback.py:297: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_target_state(job.target_state or {})
+
+tests/test_migration_parity.py::test_every_model_column_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/tests/test_migration_parity.py:120: SAWarning: Did not recognize type 'vector' of column 'embedding'
+    migrated_cols = {c["name"] for c in migrated_inspector.get_columns(table_name)}
+
+tests/test_notifications.py::test_queue_rejects_unknown_category
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:220: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_category(category)
+
+tests/test_notifications.py::test_settings_patch_rejects_unknown_channel
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:150: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_channel(channel)
+
+tests/test_policy.py::test_publish_rejects_us_ge_india
+tests/test_policy.py::test_publish_rejects_out_of_range_floors
+tests/test_policy.py::test_publish_rejects_unknown_fx_convention
+tests/test_policy.py::test_publish_via_http_us_gt_india_returns_422
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/policy.py:99: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_publish(us_floor, india_floor, fx_convention)
+
+tests/test_rate_cards.py::test_publish_rejects_non_positive_cost
+tests/test_rate_cards.py::test_publish_rejects_ordering
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/admin_rate_cards.py:162: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_row(row, idx)
+
+tests/test_sow_extract.py::test_create_version_over_25mb_returns_413
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_413_REQUEST_ENTITY_TOO_LARGE' is deprecated. Use 'HTTP_413_CONTENT_TOO_LARGE' instead.
+    return await dependant.call(**values)
+
+tests/test_tasks_lifecycle.py: 15 warnings
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:141: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await transition_task(session, actor=user, task=task, to_status=target)
+
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[cancelled-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[done-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[reassigned-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[snoozed-snoozed]
+tests/test_tasks_lifecycle.py::test_snooze_requires_future_wake_at
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:139: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await snooze_task(session, actor=user, task=task, wake_at=wake_at)
+
+tests/test_tasks_lifecycle.py::test_reassign_completed_task_rejected
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:153: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await reassign_task(
+
+tests/test_wbs.py::test_reorder_rejects_bad_id_set
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/delivery_model.py:330: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _bad_request(exc) from exc
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_approval_concurrency.py::test_parallel_reviews_advance_once
+FAILED tests/test_approvers.py::test_resolve_all_returns_four - AssertionErro...
+FAILED tests/test_release_gate.py::test_release_ignores_closed_won - Assertio...
+FAILED tests/test_release_gate.py::test_gate_requires_internal_signoff - asse...
+FAILED tests/test_release_gate.py::test_gate_requires_delivery_acceptance - a...
+FAILED tests/test_release_gate.py::test_gate_passes_when_all_three_land - ass...
+FAILED tests/test_sow_confirmation.py::test_build_confirmation_serialises_cleanly
+FAILED tests/test_stale_package_hash.py::test_stale_hash_is_refused_with_409
+FAILED tests/test_stale_package_hash.py::test_matching_hash_is_accepted - app...
+FAILED tests/test_stale_package_hash.py::test_omitted_hash_still_works - app....
+10 failed, 1119 passed, 1 skipped, 150 xfailed, 62 warnings in 356.11s (0:05:56)

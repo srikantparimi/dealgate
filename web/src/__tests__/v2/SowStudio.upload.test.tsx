@@ -51,6 +51,15 @@ describe("SowStudio — upload path", () => {
     vi.restoreAllMocks();
   });
 
+  it("preserves the bound client and deal in the upload request", async () => {
+    const upload = vi.spyOn(apiClient, "uploadSow").mockRejectedValue(new Error("stop at request boundary"));
+    renderStudio(`/sows/new?bindOppId=${OPP}&bindClientId=${CLIENT_A}`);
+    const file = makeFile();
+    await userEvent.upload(screen.getByTestId("upload-file-input"), file);
+    await userEvent.click(screen.getByTestId("upload-submit"));
+    await waitFor(() => expect(upload).toHaveBeenCalledWith({ file, clientId: CLIENT_A, opportunityId: OPP }));
+  });
+
   it("enables the submit button the moment the file is attached", async () => {
     renderStudio();
     const submit = screen.getByTestId("upload-submit") as HTMLButtonElement;

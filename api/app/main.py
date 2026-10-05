@@ -14,6 +14,7 @@ from app.routers import (
     admin_function_owners,
     admin_policy,
     admin_rate_cards,
+    admin_remediation,
     admin_replay,
     admin_users,
     adviser,
@@ -31,6 +32,7 @@ from app.routers import (
     delivery_model,
     dev_seed,
     forecast,
+    people,
     gm,
     handoff,
     health,
@@ -199,7 +201,9 @@ app.include_router(renewals.router)
 app.include_router(reports.router)
 app.include_router(dashboards.router)
 app.include_router(forecast.router)
+app.include_router(people.router)
 app.include_router(actuals.router)
+app.include_router(admin_remediation.router)
 app.include_router(admin_replay.router)
 app.include_router(admin_function_owners.router)
 app.include_router(admin_bulk_imports.router)

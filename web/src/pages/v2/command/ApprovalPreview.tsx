@@ -23,6 +23,7 @@ export type FunctionalReviewMarker = "approved" | "pending" | "rejected";
 export interface FunctionalReviewMarkers {
   delivery: FunctionalReviewMarker;
   hr: FunctionalReviewMarker;
+  sales?: FunctionalReviewMarker;
   finance: FunctionalReviewMarker;
   legal: FunctionalReviewMarker;
 }
@@ -74,9 +75,10 @@ function marginTone(outcome?: "pass" | "fail" | "unavailable"): StatusTone {
 }
 
 function SowMiniCard({ card }: { card: ApprovalCard }) {
-  const states: Record<"D" | "H" | "F" | "L", FunctionState> = {
+  const states: Partial<Record<"D" | "H" | "S" | "F" | "L", FunctionState>> = {
     D: MARKER_STATE[card.markers.delivery],
     H: MARKER_STATE[card.markers.hr],
+    S: card.markers.sales ? MARKER_STATE[card.markers.sales] : undefined,
     F: MARKER_STATE[card.markers.finance],
     L: MARKER_STATE[card.markers.legal],
   };
@@ -119,7 +121,7 @@ function SowMiniCard({ card }: { card: ApprovalCard }) {
         <span className="text-[11px] text-text-muted ml-1">MSA</span>
         <StatusBadge tone={card.msaTone} label={card.msaLabel} />
       </div>
-      <FunctionMarkRow states={states} />
+      <FunctionMarkRow states={states} letters={card.markers.sales ? ["D", "H", "S", "F", "L"] : ["D", "H", "F", "L"]} />
       <div className="mt-1 flex items-start justify-between gap-2 text-[12px] text-text-muted">
         <span className="min-w-0 break-words">
           {card.owner ? `${card.owner} · ` : ""}

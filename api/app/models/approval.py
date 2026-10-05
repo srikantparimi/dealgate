@@ -19,6 +19,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
     func,
@@ -45,7 +46,7 @@ PACKAGE_STATUSES: tuple[str, ...] = (
     "rejected",
 )
 
-APPROVAL_FUNCTIONS: tuple[str, ...] = ("delivery", "hr", "finance", "legal")
+APPROVAL_FUNCTIONS: tuple[str, ...] = ("delivery", "hr", "sales", "finance", "legal")
 APPROVAL_DECISIONS: tuple[str, ...] = ("approve", "reject", "request_changes")
 
 
@@ -63,6 +64,7 @@ class ApprovalPackage(Base):
         Uuid, ForeignKey("gm_model.id"), nullable=False
     )
     package_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    routing_policy_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     submitted_by: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("user.id"), nullable=False
@@ -97,6 +99,7 @@ class ApprovalPackage(Base):
     )
 
     __table_args__ = (
+        CheckConstraint("routing_policy_version IN (1, 2)", name="ck_approval_routing_policy_version"),
         CheckConstraint(
             "status IN ("
             "'pending_delivery_hr', 'pending_finance_legal', "
@@ -131,7 +134,7 @@ class Approval(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "function IN ('delivery', 'hr', 'finance', 'legal')",
+            "function IN ('delivery', 'hr', 'sales', 'finance', 'legal')",
             name="ck_approval_function",
         ),
         CheckConstraint(

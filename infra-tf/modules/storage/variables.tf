@@ -23,6 +23,12 @@ variable "sow_object_lock_years" {
   default     = 3
 }
 
+variable "sow_object_lock_enabled" {
+  description = "Enable SOW retention only where explicitly required; staging v3 hard deletion keeps its existing unlocked bucket. Audit retention is independent."
+  type        = bool
+  default     = true
+}
+
 # S7: audit-exports Object Lock retention. COMPLIANCE mode + 7-year default
 # per blueprint §12. COMPLIANCE means no principal — including root — can
 # delete or edit a locked object before retention expires.

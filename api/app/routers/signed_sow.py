@@ -19,10 +19,12 @@ server-side and audits every transition (CLAUDE.md rule 5).
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+import anyio
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +44,11 @@ from app.integrations.s3_sow import (
 from app.integrations.ses import SESClient, get_ses_client
 from app.models.approval import ApprovalPackage
 from app.models.opportunity import Opportunity
+from app.models.sow import Sow, SowVersion
+from app.services.test_fixtures import allowed_for_package
+from app.services.user_provisioning import ensure_user
 from app.services.signed_sow import (
+    _require_signature_eligibility,
     SignedSowError,
     create_upload,
     latest_upload_for,
@@ -153,6 +159,85 @@ class MarkExpiredRequest(BaseModel):
 
 
 # ---- endpoints ----------------------------------------------------------
+
+
+@router.post("/{package_id}/file", status_code=201)
+async def upload_signed_file(
+    package_id: uuid.UUID,
+    file: UploadFile = File(...),
+    has_signature_evidence: bool = Form(...),
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+    s3: SowS3 = Depends(get_sow_s3),
+) -> dict[str, Any]:
+    actor = await ensure_user(session, user)
+    actor_id = actor.id
+    await session.commit()
+    package, opp = await _load_package_and_opp(session, package_id)
+    if "SystemAdmin" not in user.groups and opp.owner_id != actor_id:
+        raise HTTPException(status_code=403, detail="not authorised")
+    if not await allowed_for_package(session, actor_id, package):
+        raise HTTPException(status_code=404, detail="approval_package not found")
+    if package.superseded_by is not None or package.status != "ready_to_sign":
+        raise HTTPException(status_code=409, detail="package is not ready for signature")
+    opportunity_id, version_id = opp.id, package.sow_version_id
+    if not has_signature_evidence:
+        raise HTTPException(status_code=400, detail="unsigned upload rejected")
+    content = await file.read(MAX_SOW_BYTES + 1)
+    if not content:
+        raise HTTPException(status_code=422, detail="signed file is empty")
+    if len(content) > MAX_SOW_BYTES:
+        raise HTTPException(status_code=413, detail="signed file exceeds size limit")
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in {"application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}:
+        raise HTTPException(status_code=422, detail="signed file must be PDF or DOCX")
+    try:
+        key = s3.build_key(file.filename or "signed.pdf", content_type, opportunity_id)
+    except UnsupportedContentType as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Refresh authority after receiving bytes and waiting for business locks.
+    session.expire_all()
+    opp = (await session.execute(
+        select(Opportunity).where(Opportunity.id == opportunity_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if opp is None:
+        raise HTTPException(status_code=404, detail="opportunity not found")
+    sow = (await session.execute(
+        select(Sow).join(SowVersion, SowVersion.sow_id == Sow.id)
+        .where(SowVersion.id == version_id).with_for_update(of=Sow)
+    )).scalar_one_or_none()
+    if sow is None or sow.archived_at is not None:
+        raise HTTPException(status_code=404, detail="SOW not found")
+    package = (await session.execute(
+        select(ApprovalPackage).where(ApprovalPackage.id == package_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if package is None:
+        raise HTTPException(status_code=404, detail="approval_package not found")
+    if "SystemAdmin" not in user.groups and opp.owner_id != actor_id:
+        raise HTTPException(status_code=403, detail="not authorised")
+    if not await allowed_for_package(session, actor_id, package):
+        raise HTTPException(status_code=404, detail="approval_package not found")
+    if package.superseded_by is not None or package.status != "ready_to_sign":
+        raise HTTPException(status_code=409, detail="package is not ready for signature")
+    try:
+        await _require_signature_eligibility(session, package)
+    except SignedSowError as exc:
+        raise _wrap(exc) from exc
+    try:
+        await anyio.to_thread.run_sync(s3.put_object, key, content, content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="could not store signed file") from exc
+    try:
+        upload = await create_upload(
+            session, actor_id=actor_id, package_id=package_id,
+            file_s3_key=key, file_hash=hashlib.sha256(content).hexdigest(),
+            has_signature_evidence=True,
+        )
+    except SignedSowError as exc:
+        raise _wrap(exc) from exc
+    return serialize_upload(upload)
 
 
 @router.post(
@@ -279,6 +364,7 @@ async def verify_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
     bedrock: BedrockSowExtract = Depends(get_bedrock_sow),
+    s3: SowS3 = Depends(get_sow_s3),
 ) -> dict[str, Any]:
     _, opp = await _load_package_and_opp(session, package_id)
     _require_owner(user, opp)
@@ -288,8 +374,10 @@ async def verify_endpoint(
             status_code=404, detail="no signed_sow_upload for this package"
         )
     try:
+        file_bytes = await anyio.to_thread.run_sync(s3.download_bytes, row.file_s3_key)
         row = await verify(
-            session, actor_id=user.id, upload_id=row.id, bedrock=bedrock
+            session, actor_id=user.id, upload_id=row.id, bedrock=bedrock,
+            file_bytes=file_bytes,
         )
     except SignedSowError as exc:
         raise _wrap(exc) from exc

@@ -45,7 +45,7 @@ async def _seed_reviewers(session) -> dict[str, User]:
         return uuid.uuid5(uuid.NAMESPACE_URL, f"dealgate:local:{email}")
 
     reviewers: dict[str, User] = {}
-    for role in ("Delivery", "HR", "Finance", "Legal"):
+    for role in ("Delivery", "HR", "Sales", "Finance", "Legal"):
         email = f"{role.lower()}@example.com"
         u = User(id=uid(email), email=email, name=role, groups=[role])
         session.add(u)

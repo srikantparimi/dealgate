@@ -13,7 +13,10 @@ transaction. Rule 2: price comparisons use :class:`Decimal`.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+import hashlib
+from functools import partial
+from pathlib import Path
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import httpx
@@ -31,6 +34,8 @@ from app.integrations.bedrock_sow_extract import (
     get_bedrock_sow,
 )
 from app.integrations.ses import StubSES, get_ses_client
+from app.integrations.s3_sow import get_sow_s3
+from app.services.document_text import DocumentText
 from app.main import app as main_app
 from app.models.approval import ApprovalPackage
 from app.models.audit import AuditEvent
@@ -45,8 +50,17 @@ from app.services.signed_sow import (
     SignedSowError,
     create_upload,
     release,
-    verify,
+    verify as verify_document,
 )
+
+SIGNED_BYTES = (Path(__file__).parents[2] / "fixtures/sample_sows/08_assessment_fixed_fee.docx").read_bytes()
+SIGNED_HASH = hashlib.sha256(SIGNED_BYTES).hexdigest()
+verify = partial(verify_document, file_bytes=SIGNED_BYTES)
+
+
+class _StoredSignedFile:
+    def download_bytes(self, key):
+        return SIGNED_BYTES
 
 
 # ---- fixtures ------------------------------------------------------------
@@ -129,8 +143,9 @@ class _CannedBedrock(BedrockSowExtract):
         self.overrides = overrides or {}
         self.calls: list[int] = []
 
-    def extract(self, file_bytes: bytes) -> ExtractedFields | ManualRequired:
-        self.calls.append(len(file_bytes))
+    def extract(self, document: DocumentText) -> ExtractedFields | ManualRequired:
+        assert isinstance(document, DocumentText)
+        self.calls.append(len(document.blocks))
         fields: dict[str, dict[str, object]] = {}
         for name in EXTRACTED_FIELDS:
             fields[name] = {
@@ -306,7 +321,7 @@ async def test_verify_passes_on_exact_terms(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/exact.pdf",
-        file_hash="sha256:exact",
+        file_hash=SIGNED_HASH,
     )
 
     bedrock = _CannedBedrock()
@@ -340,7 +355,7 @@ async def test_verify_blocks_on_price_mismatch(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/bad-price.pdf",
-        file_hash="sha256:badprice",
+        file_hash=SIGNED_HASH,
     )
 
     bedrock = _CannedBedrock(overrides={"price": "999999.00"})
@@ -369,7 +384,7 @@ async def test_verify_blocks_on_scope_similarity_below_threshold(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/bad-scope.pdf",
-        file_hash="sha256:badscope",
+        file_hash=SIGNED_HASH,
     )
 
     bedrock = _CannedBedrock(
@@ -404,7 +419,7 @@ async def test_verify_blocks_when_signatory_names_differ(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/bad-sig.pdf",
-        file_hash="sha256:badsig",
+        file_hash=SIGNED_HASH,
     )
     bedrock = _CannedBedrock(
         overrides={
@@ -446,7 +461,7 @@ async def test_verify_matches_signatories_despite_cosmetic_variance(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/ok-sig.pdf",
-        file_hash="sha256:oksig",
+        file_hash=SIGNED_HASH,
     )
     bedrock = _CannedBedrock(
         overrides={
@@ -484,7 +499,7 @@ async def test_verify_blocks_when_signatory_missing_on_executed(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/missing-sig.pdf",
-        file_hash="sha256:missingsig",
+        file_hash=SIGNED_HASH,
     )
     bedrock = _CannedBedrock(
         overrides={
@@ -520,7 +535,7 @@ async def test_release_requires_verified(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/pending.pdf",
-        file_hash="sha256:pending",
+        file_hash=SIGNED_HASH,
     )
     # Not verified yet.
     ses = StubSES()
@@ -544,7 +559,7 @@ async def test_release_distributes_and_opens_renewal(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/ok.pdf",
-        file_hash="sha256:ok",
+        file_hash=SIGNED_HASH,
     )
     await verify(
         session,
@@ -581,7 +596,7 @@ async def test_release_distributes_and_opens_renewal(session):
     assert "kickoff" in categories
     assert "billing_setup" in categories
 
-    # Renewal row opened with trigger_date = term_end - 60d.
+    # Renewal review starts two calendar months before the approved term end.
     renewals = list(
         (
             await session.execute(
@@ -595,7 +610,7 @@ async def test_release_distributes_and_opens_renewal(session):
     r = renewals[0]
     assert r.status == "open"
     assert r.term_end == date.fromisoformat(APPROVED_TERM_END)
-    assert r.trigger_date == r.term_end - timedelta(days=60)
+    assert r.trigger_date == date(2027, 1, 31)
 
     # Package moved to released; audit + chain intact.
     fresh_package = (
@@ -607,6 +622,54 @@ async def test_release_distributes_and_opens_renewal(session):
     assert await _count_audits(session, "package.released") == 1
     assert await _count_audits(session, "signed_sow.released") == 1
     assert await _count_audits(session, "renewal.opened") == 1
+    assert await verify_chain(session) is True
+
+
+@pytest.mark.parametrize(
+    ("term_end", "expected_trigger"),
+    [
+        ("2027-03-31", date(2027, 1, 31)),
+        ("2027-04-30", date(2027, 2, 28)),
+        ("2028-04-30", date(2028, 2, 29)),
+        ("2027-01-31", date(2026, 11, 30)),
+    ],
+)
+async def test_release_renewal_uses_calendar_month_boundaries(
+    session, monkeypatch, term_end, expected_trigger
+):
+    # Vary the approved fixture before creation, not the persisted signed terms.
+    monkeypatch.setitem(globals(), "APPROVED_TERM_START", "2026-01-01")
+    monkeypatch.setitem(globals(), "APPROVED_TERM_END", term_end)
+    owner = await _seed_user(session, "calendar-owner@smartek21.com", ["Sales"])
+    package, opp, _, _ = await _prepare_release_ready(session, owner=owner)
+    upload = await create_upload(
+        session,
+        actor_id=owner.id,
+        package_id=package.id,
+        file_s3_key="sow/signed/calendar.pdf",
+        file_hash=SIGNED_HASH,
+    )
+    await verify(
+        session, actor_id=owner.id, upload_id=upload.id, bedrock=_CannedBedrock()
+    )
+    released = await release(
+        session, actor_id=owner.id, upload_id=upload.id, ses=StubSES()
+    )
+    assert released.verify_status == "verified"
+    assert released.released_at is not None
+    renewal = (
+        await session.execute(
+            select(Renewal).where(Renewal.opportunity_id == opp.id)
+        )
+    ).scalar_one()
+    assert renewal.term_end == date.fromisoformat(term_end)
+    assert renewal.trigger_date == expected_trigger
+    event = (
+        await session.execute(
+            select(AuditEvent).where(AuditEvent.action == "renewal.opened")
+        )
+    ).scalar_one()
+    assert event.after["trigger_date"] == expected_trigger.isoformat()
     assert await verify_chain(session) is True
 
 
@@ -626,7 +689,7 @@ async def test_release_guards_when_configured_recipients_missing(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/solo.pdf",
-        file_hash="sha256:solo",
+        file_hash=SIGNED_HASH,
     )
     await verify(
         session, actor_id=owner.id, upload_id=upload.id, bedrock=_CannedBedrock()
@@ -655,7 +718,7 @@ async def test_reupload_creates_new_row_and_audits_replaced(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/first.pdf",
-        file_hash="sha256:first",
+        file_hash=SIGNED_HASH,
     )
     await verify(
         session, actor_id=owner.id, upload_id=first.id, bedrock=_CannedBedrock()
@@ -667,7 +730,7 @@ async def test_reupload_creates_new_row_and_audits_replaced(session):
         actor_id=owner.id,
         package_id=package.id,
         file_s3_key="sow/signed/second.pdf",
-        file_hash="sha256:second",
+        file_hash=SIGNED_HASH,
     )
     assert second.id != first.id
     assert second.verify_status == "pending"
@@ -702,7 +765,7 @@ async def test_http_upload_requires_owner_or_admin(app_with_session, session):
         r = await c.post(
             f"/signed-sow/{package.id}",
             headers={"X-Test-User": "someone-else@smartek21.com"},
-            json={"file_s3_key": "sow/x.pdf", "file_hash": "sha256:x"},
+            json={"file_s3_key": "sow/x.pdf", "file_hash": SIGNED_HASH},
         )
         assert r.status_code == 403
 
@@ -711,7 +774,7 @@ async def test_http_upload_requires_owner_or_admin(app_with_session, session):
         r = await c.post(
             f"/signed-sow/{package.id}",
             headers={"X-Test-User": "http-owner@smartek21.com"},
-            json={"file_s3_key": "sow/y.pdf", "file_hash": "sha256:y"},
+            json={"file_s3_key": "sow/y.pdf", "file_hash": SIGNED_HASH},
         )
         assert r.status_code == 201, r.text
         body = r.json()
@@ -730,12 +793,13 @@ async def test_http_verify_and_release_end_to_end(app_with_session, session):
     bedrock_stub = _CannedBedrock()
     main_app.dependency_overrides[get_ses_client] = lambda: ses_stub
     main_app.dependency_overrides[get_bedrock_sow] = lambda: bedrock_stub
+    main_app.dependency_overrides[get_sow_s3] = _StoredSignedFile
     try:
         async with _client(app_with_session) as c:
             r = await c.post(
                 f"/signed-sow/{package.id}",
                 headers={"X-Test-User": "http-owner2@smartek21.com"},
-                json={"file_s3_key": "sow/http.pdf", "file_hash": "sha256:http"},
+                json={"file_s3_key": "sow/http.pdf", "file_hash": SIGNED_HASH},
             )
             assert r.status_code == 201, r.text
 
@@ -755,6 +819,7 @@ async def test_http_verify_and_release_end_to_end(app_with_session, session):
     finally:
         main_app.dependency_overrides.pop(get_ses_client, None)
         main_app.dependency_overrides.pop(get_bedrock_sow, None)
+        main_app.dependency_overrides.pop(get_sow_s3, None)
 
     assert len(ses_stub.sent) >= 4
     # Verify notifications for task_assigned were queued.

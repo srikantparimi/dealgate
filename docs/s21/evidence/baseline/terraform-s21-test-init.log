@@ -1,0 +1,36 @@
+rule 15 · no local state files present; forwarding to terraform init -backend=false -input=false -lockfile=readonly -test-directory=modules/schedulers/tests -no-color
+Initializing modules...
+- test.modules.schedulers.tests.s21_jobs.jobs_disabled_until_reviewed_cutover in modules/schedulers
+- test.modules.schedulers.tests.s21_jobs.both_jobs_use_exact_release_image in modules/schedulers
+Initializing provider plugins found in the configuration...
+- Reusing previous version of hashicorp/aws from the dependency lock file
+- Reusing previous version of hashicorp/null from the dependency lock file
+- Reusing previous version of hashicorp/random from the dependency lock file
+- Using previously-installed hashicorp/aws v5.100.0
+- Using previously-installed hashicorp/null v3.3.2
+- Using previously-installed hashicorp/random v3.9.1
+
+
+Initializing provider plugins found in the state...
+- Reusing previous version of hashicorp/aws
+- Reusing previous version of hashicorp/null
+- Reusing previous version of hashicorp/random
+- Using previously-installed hashicorp/aws v5.100.0
+- Using previously-installed hashicorp/null v3.3.2
+- Using previously-installed hashicorp/random v3.9.1
+
+
+
+Warning: Deprecated Parameter
+
+The parameter "dynamodb_table" is deprecated. Use parameter "use_lockfile"
+instead.
+Terraform has been successfully initialized!
+
+You may now begin working with Terraform. Try running "terraform plan" to see
+any changes that are required for your infrastructure. All Terraform commands
+should now work.
+
+If you ever set or change modules or backend configuration for Terraform,
+rerun this command to reinitialize your working directory. If you forget, other
+commands will detect it and remind you to do so if necessary.

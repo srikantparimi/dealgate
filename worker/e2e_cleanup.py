@@ -1,38 +1,24 @@
-"""Nightly e2e/smoke data cleanup for dev + staging.
-
-S17 addendum: e2e and smoke runs must never leave data in Kanna's lists.
-Playwright specs and scripts/deploy-smoke.sh delete their own tags in
-teardown, but if a run crashes the residue survives. This worker sweeps
-any client whose ``legal_name`` matches the run-tag prefix set below AND
-is older than 24 hours, and hard-deletes it through
-:func:`app.services.deletion.delete_client` so every dependent SOW,
-package, task and file goes with it.
-
-Run pattern (mirrors worker/alert_scheduler.py + worker/notification_sender.py):
-
-    python -m worker.e2e_cleanup
-
-Triggered hourly by an EventBridge rule (see
-`infra-tf/modules/schedulers/main.tf`). No-op outside dev/staging.
-"""
+"""Reviewable trusted-fixture cleanup; dry-run unless explicitly applied."""
 
 from __future__ import annotations
 
 import asyncio
+import argparse
+import json
 import logging
 import os
 import re
-from datetime import UTC, datetime, timedelta
-
-from sqlalchemy import or_, select
+import uuid
+from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from app.db import session_factory
-from app.models.client import Client
 from app.services.deletion import delete_client
+from app.services.fixture_cleanup import cleanup_manifest
 
 log = logging.getLogger("dealgate.worker.e2e_cleanup")
 
-# Names that scream "test data, delete me".
+# Legacy diagnostic compatibility only. Names NEVER select cleanup targets.
 _PREFIX_RE = re.compile(
     r"^(?:s1[2-9]-|s17-|S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
     r"S20 e2e |S21 e2e |"
@@ -40,68 +26,52 @@ _PREFIX_RE = re.compile(
     r"S17 e2e |Peppermill Casino's, LLC)",
     re.IGNORECASE,
 )
-# Everything created before this cutoff is eligible; hourly ticks keep
-# the tail short without racing an in-flight test run.
-#
-# S21-1d: minimum age is overridable via `E2E_MIN_AGE_HOURS` so a
-# one-off run can sweep rows younger than 24h (0 = sweep everything
-# that matches the prefix, regardless of age). The default stays at
-# 24h for the scheduled nightly tick.
-def _min_age() -> timedelta:
-    raw = os.environ.get("E2E_MIN_AGE_HOURS")
-    if raw is None:
-        return timedelta(hours=24)
+def _min_age(*, run_id=None, owner_id=None) -> timedelta:
+    raw = os.environ.get("E2E_MIN_AGE_HOURS", "24")
     try:
-        hours = float(raw)
-    except ValueError:
-        log.warning("e2e_cleanup_invalid_min_age_hours", extra={"value": raw})
-        return timedelta(hours=24)
-    return timedelta(hours=max(hours, 0))
+        hours = Decimal(raw)
+        if not hours.is_finite() or hours < 0:
+            raise ValueError("Cleanup minimum age must be finite and nonnegative")
+        if hours == 0 and not (run_id and owner_id):
+            raise ValueError("Zero-age cleanup requires an exact run and owner")
+        return timedelta(microseconds=int(hours * 3600000000))
+    except (InvalidOperation, OverflowError) as exc:
+        raise ValueError("Invalid cleanup minimum age") from exc
 
 
-async def run_tick() -> dict[str, int]:
-    """Delete every stale test client. Returns counts by kind."""
-
+async def run_tick(*, apply=False, run_id=None, owner_id=None) -> dict:
+    """Produce a manifest, then revalidate each explicit apply target under locks."""
+    age = _min_age(run_id=run_id, owner_id=owner_id)
     counts: dict[str, int] = {"clients": 0, "sows": 0, "opportunities": 0, "agreements": 0}
-    if os.environ.get("DEALGATE_ENV", "local") not in {"dev", "staging"}:
-        log.info("e2e_cleanup_skipped_env")
-        return counts
-
     async with session_factory() as session:
-        cutoff = datetime.now(UTC) - _min_age()
-        candidates = list(
-            (
-                await session.execute(
-                    select(Client).where(
-                        or_(
-                            Client.created_at < cutoff,
-                            Client.created_at.is_(None),
-                        )
-                    )
-                )
-            ).scalars()
-        )
-        for client in candidates:
-            if not _PREFIX_RE.match(client.name or ""):
+        targets = await cleanup_manifest(session, min_age=age, run_id=run_id, owner_id=owner_id)
+        if not apply:
+            return {"dry_run": True, "targets": targets, "deleted": counts}
+        for target in targets:
+            checked = await cleanup_manifest(session, min_age=age, run_id=target["run_id"],
+                owner_id=target["owner_id"], lock=True)
+            if not any(row["client_id"] == target["client_id"] for row in checked):
                 continue
-            log.info(
-                "e2e_cleanup_delete",
-                extra={"client_id": str(client.id), "client_name": client.name},
-            )
-            summary = await delete_client(session, actor_id=None, client_id=client.id)
+            summary = await delete_client(session, actor_id=uuid.UUID(target["owner_id"]),
+                client_id=uuid.UUID(target["client_id"]))
             counts["clients"] += 1
             counts["sows"] += summary.counts.get("sows", 0)
             counts["opportunities"] += summary.counts.get("opportunities", 0)
             counts["agreements"] += summary.counts.get("agreements", 0)
         await session.commit()
     log.info("e2e_cleanup_done", extra=counts)
-    return counts
+    return {"dry_run": False, "targets": targets, "deleted": counts}
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    counts = asyncio.run(run_tick())
-    print(f"e2e_cleanup: {counts}")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--run-id", type=uuid.UUID)
+    parser.add_argument("--owner-id", type=uuid.UUID)
+    args = parser.parse_args()
+    result = asyncio.run(run_tick(apply=args.apply, run_id=args.run_id, owner_id=args.owner_id))
+    print(json.dumps(result, sort_keys=True))
 
 
 if __name__ == "__main__":

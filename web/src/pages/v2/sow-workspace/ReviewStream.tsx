@@ -4,10 +4,10 @@ import { Check, RotateCcw, X, RefreshCw } from "lucide-react";
 import { decideApprovalPackage, routeMissingApprovals, recordConditionEvidence, type ApprovalAssignment, type ApprovalDecision, type ApprovalPackage } from "../../../api/client";
 import { Button } from "../../../ui-v2/primitives/button";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
-import { reviewError } from "./SubmitApprovalDialog";
+import { reviewError, SubmissionPlanEditor } from "./SubmitApprovalDialog";
 import type { WorkspaceSnapshot } from "./readiness";
 
-const labels = { delivery: "Delivery", hr: "HR", finance: "Finance", legal: "Legal" };
+const labels = { delivery: "Delivery", hr: "HR", sales: "Sales", finance: "Finance", legal: "Legal" };
 const versions = (pkg: ApprovalPackage) => `SOW v${pkg.sow_version ?? "?"} · GM v${pkg.gm_version ?? "?"} · ${pkg.package_hash.slice(0, 12)}`;
 const when = (time: string | null) => time ? new Date(time).toLocaleString() : "";
 
@@ -17,7 +17,12 @@ export function ApprovalsTab({ snap, refresh, updatedAt = Date.now(), canSubmit 
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   const packages = snap.approvalHistory ?? (snap.approvalPackage ? [snap.approvalPackage] : []);
+  const currentSubmitted = packages.some(pkg => pkg.sow_version_id === snap.sow?.id
+    && pkg.gm_model_id === snap.gmModel?.id && !["voided", "rejected"].includes(pkg.status));
   return <div className="space-y-5">
+    {canSubmit && snap.deal && snap.sow && snap.gmModel && !currentSubmitted &&
+      <SubmissionPlanEditor key={`${snap.deal.id}:${snap.sow.id}:${snap.gmModel.id}`}
+        id={snap.deal.id} onSubmitted={async () => { await refresh?.(); }} />}
     <div className="flex items-center justify-between gap-2"><h2 className="text-section">Review stream</h2><span className="text-secondary text-text-secondary">Updated {Math.max(0, Math.floor((now - updatedAt) / 1000))}s ago</span></div>
     {!packages.length && <p className="text-body text-text-secondary">No reviews submitted.</p>}
     {packages.map(pkg => <PackageStream key={pkg.id} pkg={pkg} refresh={refresh} canSubmit={canSubmit} />)}

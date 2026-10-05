@@ -1,0 +1,12 @@
+...                                                                      [100%]
+=============================== warnings summary ===============================
+tests/test_migration_parity.py::test_every_model_table_is_created_by_a_migration
+tests/test_migration_parity.py::test_every_model_table_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/alembic/config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+tests/test_migration_parity.py::test_every_model_column_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/tests/test_migration_parity.py:120: SAWarning: Did not recognize type 'vector' of column 'embedding'
+    migrated_cols = {c["name"] for c in migrated_inspector.get_columns(table_name)}
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

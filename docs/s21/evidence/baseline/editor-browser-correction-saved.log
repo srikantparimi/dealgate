@@ -1,0 +1,23 @@
+
+Running 4 tests using 1 worker
+
+[1A[2K(node:86952) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:86952) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/4] s21-editor-defects.spec.ts:49:7 › fixed_assignment: real editor defect regression with immutable saved economics
+[1A[2K[2/4] s21-editor-defects.spec.ts:49:7 › recurring_msp: real editor defect regression with immutable saved economics
+[1A[2K[3/4] s21-editor-defects.spec.ts:49:7 › hybrid: real editor defect regression with immutable saved economics
+[1A[2K[4/4] s21-editor-defects.spec.ts:49:7 › custom_formula: real editor defect regression with immutable saved economics
+[1A[2K  Slow test file: s21-editor-defects.spec.ts (1.0m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.1m)
+{"profile": "fixed_assignment", "immutable_versions": 2, "latest_model": "20e65ded-e58a-4757-83fd-a642d2401292", "snapshot_status": "ok"}
+{"profile": "recurring_msp", "immutable_versions": 2, "latest_model": "61aab90a-6151-483f-870c-cdcbab8497d5", "snapshot_status": "ok"}
+{"profile": "hybrid", "immutable_versions": 2, "latest_model": "b26aa248-4e4c-495d-9aad-46ce0c614270", "snapshot_status": "ok"}
+{"profile": "custom_formula", "immutable_versions": 2, "latest_model": "c9ed9354-e997-4f71-a057-3f6a671da92d", "snapshot_status": "ok"}
+{"run": "cf51a3ea7a8a407abd69befd42983dd2", "editor_browser_api_postgres": "passed", "staging_verified": false}

@@ -6,11 +6,13 @@ import {
   Handshake,
   LayoutDashboard,
   LineChart,
+  ChartNoAxesCombined,
   RefreshCcw,
   Settings,
   ShieldCheck,
   Sparkles,
   Truck,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -70,6 +72,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/renewals", label: "Renewals", icon: RefreshCcw },
       { to: "/handoffs", label: "Signed handoff", icon: Handshake },
       { to: "/reports", label: "Reporting", icon: LineChart },
+      { to: "/forecast", label: "Forecast", icon: ChartNoAxesCombined,
+        requireAny: ["Delivery", "Finance", "CEO", "SystemAdmin", "Sales", "SalesLeader"] },
+      { to: "/people", label: "People planning", icon: Users,
+        requireAny: ["HR", "SystemAdmin"] },
     ],
   },
   {

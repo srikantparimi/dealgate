@@ -8,6 +8,11 @@ variable "env" {
   type        = string
 }
 
+variable "hubspot_portal_id" {
+  description = "HubSpot portal ID written into HUBSPOT_PORTAL_ID for tenant-scoped scans."
+  type        = string
+}
+
 variable "region" {
   description = "AWS region; forwarded into task env + EventBridge target."
   type        = string
@@ -80,6 +85,18 @@ variable "ses_from_address" {
     condition     = can(regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", var.ses_from_address)) && var.ses_from_address != "PLACEHOLDER-set-per-env"
     error_message = "ses_from_address must be set to a valid email in every env root. The scheduler module refuses to create an SES identity for the placeholder."
   }
+}
+
+variable "ses_identity_domain" {
+  description = "Verified sender domain, if sending is authorized through a domain identity."
+  type        = string
+  default     = ""
+}
+
+variable "retained_sender_identity" {
+  description = "Existing mailbox identity to preserve when runtime sending moves to a verified domain."
+  type        = string
+  default     = ""
 }
 
 variable "sales_leader_email" {

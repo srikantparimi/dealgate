@@ -51,6 +51,7 @@ import {
   engagementLabel,
 } from "./sow-studio/confirmation/helpers";
 import { ParallelSowPrompt } from "./sow-studio/upload/ParallelSowPrompt";
+import { ExtractionConflicts } from "../../components/ExtractionConflicts";
 
 const TAGLINE = "Confirmation, not entry — the SOW is the input.";
 
@@ -652,6 +653,8 @@ function ConfirmationFlow({
         }}
       />
 
+      {payload.needs_you.some((item) => item.field.startsWith("extraction_conflict:")) &&
+        <ExtractionConflicts versionId={payload.sow_version.id} onResolved={() => { void load(); }} />}
       <SourceSection
         payload={payload}
         onOverrideField={handleOverride}

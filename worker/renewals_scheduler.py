@@ -666,32 +666,25 @@ async def run_tick(
     return result
 
 
-async def _tick_forever() -> None:
-    log.info("renewals_scheduler_started", poll_interval=POLL_INTERVAL_SECONDS)
-    while True:
-        try:
-            async with session_factory() as session:
-                summary = await run_tick(session)
-            if summary.triggers_fired:
-                log.info(
-                    "renewals_tick",
-                    tasks=summary.tasks_created,
-                    notifications=summary.notifications_queued,
-                    opened=summary.renewals_opened,
-                    churned=summary.renewals_churned,
-                    fired=len(summary.triggers_fired),
-                    skipped=summary.triggers_skipped,
-                )
-        except Exception:  # pragma: no cover - operational log
-            log.exception("renewals_tick_failed")
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)
+async def run_once() -> TickResult:
+    """Run one EventBridge-owned tick and let the process terminate."""
+
+    async with session_factory() as session:
+        summary = await run_tick(session)
+    log.info(
+        "renewals_tick",
+        tasks=summary.tasks_created,
+        notifications=summary.notifications_queued,
+        opened=summary.renewals_opened,
+        churned=summary.renewals_churned,
+        fired=len(summary.triggers_fired),
+        skipped=summary.triggers_skipped,
+    )
+    return summary
 
 
 def main() -> None:
-    try:
-        asyncio.run(_tick_forever())
-    except KeyboardInterrupt:
-        log.info("renewals_scheduler_stopped")
+    asyncio.run(run_once())
 
 
 if __name__ == "__main__":
@@ -708,5 +701,6 @@ __all__ = [
     "SHORT_ASSESSMENT_MAX_DAYS",
     "TickResult",
     "main",
+    "run_once",
     "run_tick",
 ]

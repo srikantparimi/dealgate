@@ -1,0 +1,53 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 20260917_0001, initial schema — user, client/legal_entity/agreement, opportunity, task,
+integration_event, audit_event
+INFO  [alembic.runtime.migration] Running upgrade 20260917_0001 -> 20260918_0002a, S2-E3: opportunity->client link + client.hubspot_company_id unique.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0002a -> 20260918_0002b, rate_card_version, rate_card_row, policy_version — S2 E4.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0002b -> 20260918_0003, S2-E3: task lifecycle columns + notification outbox + settings.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0003 -> 20260918_0004, S2-E3: agreement state machine + evidence key columns.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0004 -> 20260918_0008, S3 E11 — adviser_estimate table.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0004 -> 20260918_0006, S3-E5: SOW upload + AI extraction + human confirm.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0006 -> 20260918_0009, S6 (user-added scope): legacy SOW bulk upload + resource-line Excel import.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0009 -> 20260918_0007, gm_model + resource_line + cost_line — S3 E6 Delivery Model Builder.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0004 -> 20260918_0005, S2-E3 Wave 2: ``scheduler_fired`` idempotency ledger.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0005, 20260918_0007, 20260918_0008 -> 20260918_0010, merge adviser + sow + scheduler + gm_model + legacy heads
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0010 -> 20260918_0013, S4 E2: HubSpot write-back outbox.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0010 -> 20260918_0012, S4 E7 — CEO exception + CEO delegate (Agent V, wave 3).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0010 -> 20260918_0011, S4 E7 — approval_package + approval.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0011, 20260918_0012, 20260918_0013 -> 20260918_0014, merge approvals + ceo_exception + hubspot_writeback heads.
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0014 -> 20260918_0016, S5 E9 — renewal indexes (Agent Y2).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0014 -> 20260918_0015, S5 E8 — signed SOW upload + renewal (Agent X2, wave 5).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0015, 20260918_0016 -> 20260918_0017, Merge signed_sow (0015, Agent X2) + renewal_indexes (0016, Agent Y2).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0017 -> 20260918_0019, S6 E9 — Actuals CSV import (timesheets + cost).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0017 -> 20260918_0018, S6 E9 — forecast_period (weekly forecast update).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0018, 20260918_0019 -> 20260918_0020, Merge S6 forecast (0018, Agent AA) + actuals (0019, sibling).
+INFO  [alembic.runtime.migration] Running upgrade 20260918_0020 -> 20260919_0021, S7 — DB-level audit hardening (grants + trigger).
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0021 -> 20260919_0024, S7 wave 2 — WBS phases + reusable delivery-model templates.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0021 -> 20260919_0022, S7 — Adviser: public research status column.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0022 -> 20260919_0023, S7 wave 2 — pgvector + capability catalog + adviser retrieved.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0023, 20260919_0024 -> 20260919_0025, S7 wave 2 — merge pgvector + capability with WBS branches.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0025 -> 20260920_0026, client_rate_card + client_rate_card_row — S9 wave 1.
+INFO  [alembic.runtime.migration] Running upgrade 20260920_0026 -> 20260920_0027, S9 wave 1 — function_owner table for approver routing.
+INFO  [alembic.runtime.migration] Running upgrade 20260920_0027 -> 20260921_0028, S10-01 — SOW upload pipeline: opportunity source, client aliases, job.
+INFO  [alembic.runtime.migration] Running upgrade 20260921_0028 -> 20260921_0029, S10-02 — bulk SOW import tables + sow_version.execution_state.
+INFO  [alembic.runtime.migration] Running upgrade 20260921_0029 -> 20260922_0030, SOW version lifecycle: numbering, supersede, discard (S10-06).
+INFO  [alembic.runtime.migration] Running upgrade 20260922_0030 -> 20260923_0031, S11 — client_contact for the signatories picker.
+INFO  [alembic.runtime.migration] Running upgrade 20260923_0031 -> 20260923_0032, S11 slice 2 — backfill gm_model.sow_id from opportunity so the staffing
+query can key on sow_id.
+INFO  [alembic.runtime.migration] Running upgrade 20260923_0032 -> 20260924_0033, S13a-B2 — soft-archive columns for delete-with-governance.
+INFO  [alembic.runtime.migration] Running upgrade 20260924_0033 -> 20260924_0034_direct_costs, S13b: versioned direct-cost bases, pass-through and provenance.
+INFO  [alembic.runtime.migration] Running upgrade 20260924_0034_direct_costs -> 20260924_0035_dc_settings, Configurable direct-cost category choices.
+INFO  [alembic.runtime.migration] Running upgrade 20260924_0035_dc_settings -> 20260925_0036_approval_routing, S14b approval routing and condition evidence.
+INFO  [alembic.runtime.migration] Running upgrade 20260924_0035_dc_settings -> 20260925_0036_extract_error, S15: preserve the extract failure reason on sow_version.
+INFO  [alembic.runtime.migration] Running upgrade 20260925_0036_extract_error -> 20260926_0037, S16 agreement tracking, preserving all historical rows and states.
+INFO  [alembic.runtime.migration] Running upgrade 20260926_0037, 20260925_0036_approval_routing -> 20260926_0038_merge_s14b_s16a, merge s14b approval-routing and s16a agreement-tracking heads
+INFO  [alembic.runtime.migration] Running upgrade 20260926_0038_merge_s14b_s16a -> 20260928_0039_s17_simplify, S17 simplify: agreements become a flat doc store, drop tracking + gap tables.
+INFO  [alembic.runtime.migration] Running upgrade 20260928_0039_s17_simplify -> 20260928_0040_hs_cache, S18 §2: cache HubSpot deal metadata on opportunity for Pipeline reads.
+INFO  [alembic.runtime.migration] Running upgrade 20260928_0040_hs_cache -> 20260929_0041_s19_pipeline, S19 slice 1: pipeline mirror + opportunity cache + next-action + sync-status + user-preference.
+INFO  [alembic.runtime.migration] Running upgrade 20260929_0041_s19_pipeline -> 20260930_0042_s20_tracking, S20 · W6 · tracking features: structured next-action + comments + groups + saved views.
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0042_s20_tracking -> 20260930_0043_s20_w7, S20 W7 · release gate: signed_sow expand, delivery_acceptance, project.
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0043_s20_w7 -> 20260930_0044_s20_lead_d1_d4, S20 Lead · D1 many-SOWs-per-deal + D4 sync_status watermarks.
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0044_s20_lead_d1_d4 -> 20260930_0045_w1_own, S20 W1 · hubspot_owner + hubspot_property_mapping tables.
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0045_w1_own -> 20260930_0046_w2_name, S20 W2 · L04 · opportunity.name column (mirrors HubSpot dealname).
+INFO  [alembic.runtime.migration] Running upgrade 20260930_0046_w2_name -> 20260930_0047_w6_watch, S20 W6 · watched_item table (per-user watchlist for deals + clients).

@@ -13,7 +13,7 @@
 #      never sit unattended.
 #
 #   3. Processing lag — alarms when the continuous consumer hasn't logged
-#      a "hubspot_worker_run_complete" line in more than
+#      a "hubspot_worker_heartbeat" line in more than
 #      `lag_alarm_seconds` (default 300s). Uses a metric filter on the
 #      schedulers log group so we don't need a custom metric emitted from
 #      the worker.
@@ -37,7 +37,7 @@ variable "backlog_age_threshold_seconds" {
 }
 
 variable "lag_alarm_seconds" {
-  description = "Alarm if the continuous consumer has not logged a completed loop within this window. 300 s = the 5-minute end-to-end SLO plus a safety buffer."
+  description = "Alarm if no healthy poll and durable heartbeat is logged within this window."
   type        = number
   default     = 300
 }
@@ -59,6 +59,7 @@ locals {
 
 # ---- 1. Backlog age -----------------------------------------------------
 resource "aws_cloudwatch_metric_alarm" "hubspot_backlog_age" {
+  count               = var.hubspot_continuous_enabled ? 1 : 0
   alarm_name          = "${var.name_prefix}-hubspot-events-backlog-age"
   alarm_description   = "HubSpot events queue backlog age (oldest visible message) exceeds ${var.backlog_age_threshold_seconds}s. Directive S20 §4 D4 threshold."
   namespace           = "AWS/SQS"
@@ -80,6 +81,7 @@ resource "aws_cloudwatch_metric_alarm" "hubspot_backlog_age" {
 
 # ---- 2. DLQ non-empty ---------------------------------------------------
 resource "aws_cloudwatch_metric_alarm" "hubspot_dlq_nonzero" {
+  count               = var.hubspot_continuous_enabled ? 1 : 0
   alarm_name          = "${var.name_prefix}-hubspot-events-dlq-nonzero"
   alarm_description   = "HubSpot DLQ has messages. A poison event should not sit here unattended; the on-call runbook is in docs/runbooks/hubspot-dlq.md."
   namespace           = "AWS/SQS"
@@ -99,14 +101,15 @@ resource "aws_cloudwatch_metric_alarm" "hubspot_dlq_nonzero" {
   ok_actions    = local.ok_actions
 }
 
-# ---- 3. Processing lag (log-metric filter on run-complete lines) --------
+# ---- 3. Processing lag (log-metric filter on healthy poll heartbeats) ---
 resource "aws_cloudwatch_log_metric_filter" "hubspot_worker_complete" {
+  count          = var.hubspot_continuous_enabled ? 1 : 0
   name           = "${var.name_prefix}-hubspot-worker-complete"
   log_group_name = aws_cloudwatch_log_group.schedulers.name
-  pattern        = "\"hubspot_worker_run_complete\""
+  pattern        = "\"hubspot_worker_heartbeat\""
 
   metric_transformation {
-    name          = "HubSpotWorkerRunComplete"
+    name          = "HubSpotWorkerHealthyPoll"
     namespace     = "DealGate/HubSpot"
     value         = "1"
     default_value = "0"
@@ -114,10 +117,12 @@ resource "aws_cloudwatch_log_metric_filter" "hubspot_worker_complete" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "hubspot_processing_lag" {
+  count               = var.hubspot_continuous_enabled ? 1 : 0
   alarm_name          = "${var.name_prefix}-hubspot-processing-lag"
-  alarm_description   = "HubSpot continuous consumer hasn't logged a completed loop within ${var.lag_alarm_seconds}s. Either the service is unhealthy or the queue has been silent for a long time; check the continuous ECS service."
+  alarm_description   = "No successful queue poll and durable database heartbeat within ${var.lag_alarm_seconds}s. Quiet queues emit healthy polls; missing telemetry indicates stopped or failing processing."
   namespace           = "DealGate/HubSpot"
-  metric_name         = "HubSpotWorkerRunComplete"
+  metric_name         = "HubSpotWorkerHealthyPoll"
+  actions_enabled     = true
   statistic           = "Sum"
   period              = var.lag_alarm_seconds
   evaluation_periods  = 1

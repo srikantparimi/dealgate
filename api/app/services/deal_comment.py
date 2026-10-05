@@ -15,13 +15,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
 from app.auth import AuthUser
 from app.models.deal_comment import DealComment
 from app.models.opportunity import Opportunity
+from app.services.tracking_access import check_revision, locked_row, require_deal_access, revision
 
 
 LEADER_ROLES: frozenset[str] = frozenset(
@@ -40,6 +41,16 @@ class CommentCreate:
 class CommentPatch:
     body: str | None = None
     pinned: bool | None = None
+    expected_revision: str | None = None
+
+
+async def comment_revision(session, comment):
+    values = _row_to_dict(comment)
+    # Audit cardinality prevents ABA; timestamp timezone representation differs
+    # between SQLite and PostgreSQL and is not an independent version counter.
+    values.pop("edited_at")
+    values["deleted_at"] = comment.deleted_at is not None
+    return await revision(session, "deal_comment", comment.id, values)
 
 
 def _is_leader(user: AuthUser) -> bool:
@@ -129,7 +140,7 @@ async def latest_visible_comment(
         select(DealComment)
         .where(DealComment.opportunity_id == opportunity_id)
         .where(DealComment.deleted_at.is_(None))
-        .order_by(DealComment.created_at.desc())
+        .order_by(func.coalesce(DealComment.edited_at, DealComment.created_at).desc(), DealComment.id.desc())
         .limit(1)
     )
     result = await session.execute(stmt)
@@ -147,7 +158,7 @@ async def create_comment(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="body is required",
         )
-    await _assert_opportunity_exists(session, payload.opportunity_id)
+    await require_deal_access(session, actor, payload.opportunity_id)
 
     c = DealComment(
         id=uuid.uuid4(),
@@ -156,6 +167,7 @@ async def create_comment(
         body=payload.body.strip(),
         pinned=payload.pinned,
         source="internal",
+        created_at=datetime.now(UTC),
     )
     session.add(c)
     await session.flush()
@@ -190,13 +202,16 @@ async def patch_comment(
     comment: DealComment,
     patch: CommentPatch,
 ) -> DealComment:
+    comment = await locked_row(session, DealComment, comment.id)
+    await require_deal_access(session, actor, comment.opportunity_id)
     _assert_internal(comment)
+    await _authorize_edit(comment, actor)
     if comment.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="comment has been deleted",
         )
-    await _authorize_edit(comment, actor)
+    check_revision(patch.expected_revision, await comment_revision(session, comment))
 
     before = _row_to_dict(comment)
     changed = False
@@ -221,6 +236,7 @@ async def patch_comment(
     if not changed:
         return comment
 
+    comment.edited_at = datetime.now(UTC)
     after = _row_to_dict(comment)
     await append_audit(
         session,
@@ -239,11 +255,15 @@ async def delete_comment(
     *,
     actor: AuthUser,
     comment: DealComment,
+    expected_revision: str | None = None,
 ) -> DealComment:
+    comment = await locked_row(session, DealComment, comment.id)
+    await require_deal_access(session, actor, comment.opportunity_id)
     _assert_internal(comment)
+    await _authorize_edit(comment, actor)
+    check_revision(expected_revision, await comment_revision(session, comment))
     if comment.deleted_at is not None:
         return comment
-    await _authorize_edit(comment, actor)
 
     before = _row_to_dict(comment)
     comment.deleted_at = datetime.now(UTC)

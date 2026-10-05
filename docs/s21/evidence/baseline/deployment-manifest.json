@@ -1,0 +1,76 @@
+{
+  "as_of": "2026-10-02T02:13:23.085651+00:00",
+  "cluster": "officeapp-dev-cluster",
+  "services": [
+    {
+      "name": "officeapp-dev-api",
+      "task_definition": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-api:70",
+      "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s20-27e2edec",
+      "desired": 1,
+      "running": 1,
+      "pending": 0,
+      "tasks": [
+        {
+          "task_definition": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-api:70",
+          "digest": "sha256:d1d19897a16f7400d2f92153b9d0f27b3ee627e11838fa159d4f110fa13ad10b",
+          "status": "RUNNING"
+        }
+      ]
+    }
+  ],
+  "schedules": [
+    {
+      "name": "officeapp-dev-alert-scheduler",
+      "state": "ENABLED",
+      "target": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-alert-scheduler:5",
+      "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s14a.3b-workers-creds-fix",
+      "cluster": "arn:aws:ecs:us-east-2:669810405473:cluster/officeapp-dev-cluster"
+    },
+    {
+      "name": "officeapp-dev-audit-export",
+      "state": "ENABLED",
+      "target": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-audit-export:5",
+      "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s14a.3b-workers-creds-fix",
+      "cluster": "arn:aws:ecs:us-east-2:669810405473:cluster/officeapp-dev-cluster"
+    },
+    {
+      "name": "officeapp-dev-hubspot-intake",
+      "state": "ENABLED",
+      "target": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-hubspot-intake:3",
+      "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s19-1-fbee5b8",
+      "cluster": "arn:aws:ecs:us-east-2:669810405473:cluster/officeapp-dev-cluster"
+    },
+    {
+      "name": "officeapp-dev-hubspot-reconcile",
+      "state": "ENABLED",
+      "target": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-hubspot-reconcile:3",
+      "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s19-1-fbee5b8",
+      "cluster": "arn:aws:ecs:us-east-2:669810405473:cluster/officeapp-dev-cluster"
+    },
+    {
+      "name": "officeapp-dev-notification-sender",
+      "state": "ENABLED",
+      "target": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-notification-sender:5",
+      "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s14a.3b-workers-creds-fix",
+      "cluster": "arn:aws:ecs:us-east-2:669810405473:cluster/officeapp-dev-cluster"
+    },
+    {
+      "name": "officeapp-dev-renewals-scheduler",
+      "state": "ENABLED",
+      "target": "arn:aws:ecs:us-east-2:669810405473:task-definition/officeapp-dev-renewals-scheduler:5",
+      "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s14a.3b-workers-creds-fix",
+      "cluster": "arn:aws:ecs:us-east-2:669810405473:cluster/officeapp-dev-cluster"
+    }
+  ],
+  "errors": [],
+  "failures": [
+    "Missing service: officeapp-dev-hubspot-intake-continuous",
+    "officeapp-dev-alert-scheduler: bound task image is 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s14a.3b-workers-creds-fix, expected 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s20-27e2edec",
+    "officeapp-dev-audit-export: bound task image is 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s14a.3b-workers-creds-fix, expected 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s20-27e2edec",
+    "officeapp-dev-hubspot-intake: bound task image is 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s19-1-fbee5b8, expected 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s20-27e2edec",
+    "officeapp-dev-hubspot-reconcile: bound task image is 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s19-1-fbee5b8, expected 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s20-27e2edec",
+    "officeapp-dev-notification-sender: bound task image is 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s14a.3b-workers-creds-fix, expected 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s20-27e2edec",
+    "officeapp-dev-renewals-scheduler: bound task image is 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s14a.3b-workers-creds-fix, expected 669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s20-27e2edec"
+  ],
+  "verified": false
+}

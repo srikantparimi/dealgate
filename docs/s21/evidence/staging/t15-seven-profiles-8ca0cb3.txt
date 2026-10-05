@@ -1,0 +1,12 @@
+  ✓  1 [chromium] › s21/t15-seven-profile-uploads.spec.ts:69:9 › T15.01 · seven pricing profiles through the UI › uploads 01_staff_aug_us.pdf and extracts the staff_aug profile (1.6m)
+  ✓  2 [chromium] › s21/t15-seven-profile-uploads.spec.ts:69:9 › T15.01 · seven pricing profiles through the UI › uploads 02_managed_service_india.pdf and extracts the managed_service profile (2.0m)
+  ✓  3 [chromium] › s21/t15-seven-profile-uploads.spec.ts:69:9 › T15.01 · seven pricing profiles through the UI › uploads 03_fixed_price_mixed.pdf and extracts the fixed_price profile (2.0m)
+  ✓  4 [chromium] › s21/t15-seven-profile-uploads.spec.ts:69:9 › T15.01 · seven pricing profiles through the UI › uploads 04_assessment_4week.pdf and extracts the assessment profile (58.6s)
+  ✘  5 [chromium] › s21/t15-seven-profile-uploads.spec.ts:69:9 › T15.01 · seven pricing profiles through the UI › uploads 05_tm_capped.pdf and extracts the tm profile (57.6s)
+  ✓  6 [chromium] › s21/t15-seven-profile-uploads.spec.ts:69:9 › T15.01 · seven pricing profiles through the UI › uploads 06_below_floor.pdf and extracts the fixed_price profile (55.9s)
+  ✓  7 [chromium] › s21/t15-seven-profile-uploads.spec.ts:69:9 › T15.01 · seven pricing profiles through the UI › uploads 08_assessment_fixed_fee.docx and extracts the assessment|fixed_price profile (1.2m)
+    test-results/s21-t15-seven-profile-uplo-7d0ad-and-extracts-the-tm-profile-chromium/test-failed-1.png
+  1 failed
+  6 passed (9.8m)
+  ✓  1 [chromium] › s21/t15-seven-profile-uploads.spec.ts:69:9 › T15.01 · seven pricing profiles through the UI › uploads 05_tm_capped.pdf and extracts the tm|time_and_materials profile (58.0s)
+  1 passed (1.0m)

@@ -1,0 +1,15 @@
+
+Running 1 test using 1 worker
+
+[1A[2K(node:85989) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:85989) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/1] s21-forecast.spec.ts:3:5 › persisted account forecast preserves fifteen months and authoritative source detail
+[1A[2K  Slow test file: s21-forecast.spec.ts (19.2s)
+  Consider splitting slow test files to speed up parallel execution
+  1 passed (24.3s)

@@ -21,7 +21,7 @@ export interface LaneDef {
   title: string;
   subtitle: string;
   /** Function the "My decisions" chip narrows to. */
-  reviewerFn: "delivery" | "hr" | "finance" | "legal" | "ceo" | null;
+  reviewerFn: "delivery" | "hr" | "sales" | "finance" | "legal" | "ceo" | null;
 }
 
 export const LANES: LaneDef[] = [
@@ -34,13 +34,13 @@ export const LANES: LaneDef[] = [
   {
     id: "scope_gm",
     title: "Scope & GM",
-    subtitle: "Delivery baseline in progress",
+    subtitle: "Delivery, HR and Sales review",
     reviewerFn: "delivery",
   },
   {
     id: "functional_review",
     title: "Functional review",
-    subtitle: "HR · Finance · Legal in parallel",
+    subtitle: "Finance and Legal review",
     reviewerFn: "finance",
   },
   {

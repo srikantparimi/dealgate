@@ -14,10 +14,9 @@ sentence per entry.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
-from typing import Any
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +29,9 @@ from app.models.next_action import NextAction, NextActionEvent
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
 from app.models.user import User
+from app.models.audit import AuditEvent
+from app.routers.deal_comments import _can_read_comments
+from app.services.tracking_access import require_deal_access, visible_deal_ids
 
 
 router = APIRouter(tags=["timeline"])
@@ -42,6 +44,7 @@ class TimelineEntry(BaseModel):
     actor_name: str | None
     body: str  # prose sentence
     entity_id: uuid.UUID | None = None
+    comment_source: str | None = None
 
 
 class TimelineResponse(BaseModel):
@@ -54,6 +57,26 @@ def _actor(user_row: User | None, fallback: str | None = None) -> str | None:
     return fallback
 
 
+async def _comment_entry(session, comment, author):
+    actor_name = _actor(author, comment.author_name_fallback)
+    if comment.edited_at:
+        event = await session.scalar(select(AuditEvent).where(
+            AuditEvent.entity == "deal_comment", AuditEvent.entity_id == str(comment.id),
+            AuditEvent.action.in_(("deal_comment.edited", "deal_comment.hubspot_note_updated")),
+        ).order_by(AuditEvent.ts.desc(), AuditEvent.id.desc()).limit(1))
+        if event and event.actor_id:
+            actor_name = _actor(await session.get(User, event.actor_id))
+    verb = "edited comment" if comment.edited_at else "commented"
+    pinned = " (pinned)" if comment.pinned else ""
+    return TimelineEntry(ts=comment.edited_at or comment.created_at, source="comment",
+        kind="edited" if comment.edited_at else comment.source, comment_source=comment.source,
+        actor_name=actor_name, body=f"{verb}{pinned}: {comment.body}", entity_id=comment.id)
+
+
+def _time_key(entry):
+    return entry.ts.replace(tzinfo=UTC) if entry.ts.tzinfo is None else entry.ts
+
+
 @router.get(
     "/deals/{opportunity_id}/timeline", response_model=TimelineResponse
 )
@@ -63,15 +86,7 @@ async def deal_timeline(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> TimelineResponse:
-    opp = (
-        await session.execute(
-            select(Opportunity).where(Opportunity.id == opportunity_id)
-        )
-    ).scalar_one_or_none()
-    if opp is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="opportunity not found"
-        )
+    await require_deal_access(session, user, opportunity_id)
 
     entries: list[TimelineEntry] = []
 
@@ -87,17 +102,8 @@ async def deal_timeline(
         )
     ).all()
     for c, author in comment_rows:
-        pinned = " (pinned)" if c.pinned else ""
-        entries.append(
-            TimelineEntry(
-                ts=c.created_at,
-                source="comment",
-                kind=c.source,
-                actor_name=_actor(author, c.author_name_fallback),
-                body=f"commented{pinned}: {c.body}",
-                entity_id=c.id,
-            )
-        )
+        if _can_read_comments(user):
+            entries.append(await _comment_entry(session, c, author))
 
     # Next-action events.
     na_events = (
@@ -147,14 +153,14 @@ async def deal_timeline(
         )
     ).scalars().all()
     for p in packages:
-        if p.status_at is not None:
+        if p.submitted_at is not None:
             entries.append(
                 TimelineEntry(
-                    ts=p.status_at,
+                    ts=p.submitted_at,
                     source="approval",
-                    kind=p.status,
+                    kind="submitted",
                     actor_name=None,
-                    body=f"approval package moved to {p.status}",
+                    body=f"approval package submitted; current status {p.status}",
                     entity_id=p.id,
                 )
             )
@@ -170,16 +176,16 @@ async def deal_timeline(
     for v, s in sow_versions:
         entries.append(
             TimelineEntry(
-                ts=v.created_at,
+                ts=v.uploaded_at,
                 source="sow",
                 kind="version_created",
                 actor_name=None,
-                body=f"SOW version {v.version_number} uploaded",
+                body=f"SOW version {v.version_no} uploaded",
                 entity_id=v.id,
             )
         )
 
-    entries.sort(key=lambda e: e.ts, reverse=True)
+    entries.sort(key=_time_key, reverse=True)
     return TimelineResponse(items=entries[:limit])
 
 
@@ -194,22 +200,7 @@ async def client_timeline(
 ) -> TimelineResponse:
     """Union of the timelines of every non-archived opportunity under the client."""
 
-    # Route through the shared hubspot_pipeline query service so the
-    # single-truth C8 gate stays green (no direct opportunity list
-    # query in this router). include_closed=True since a client's
-    # timeline should cover history even after closed-won/lost.
-    from app.services.hubspot_pipeline import (
-        PipelineFilters,
-        list_opportunities as _list_opps,
-    )
-
-    page = await _list_opps(
-        session,
-        filters=PipelineFilters(client=(client_id,), include_closed=True),
-        page=1,
-        page_size=200,
-    )
-    opps = [r.opportunity_id for r in page.items]
+    opps = await visible_deal_ids(session, user, client_id=client_id)
     if not opps:
         return TimelineResponse(items=[])
 
@@ -228,17 +219,8 @@ async def client_timeline(
         )
     ).all()
     for c, author, deal_hs in comment_rows:
-        pinned = " (pinned)" if c.pinned else ""
-        entries.append(
-            TimelineEntry(
-                ts=c.created_at,
-                source="comment",
-                kind=c.source,
-                actor_name=_actor(author, c.author_name_fallback),
-                body=f"commented on deal {deal_hs or c.opportunity_id}{pinned}: {c.body}",
-                entity_id=c.id,
-            )
-        )
+        if _can_read_comments(user):
+            entries.append(await _comment_entry(session, c, author))
 
     na_events = (
         await session.execute(
@@ -263,5 +245,5 @@ async def client_timeline(
             )
         )
 
-    entries.sort(key=lambda e: e.ts, reverse=True)
+    entries.sort(key=_time_key, reverse=True)
     return TimelineResponse(items=entries[:limit])

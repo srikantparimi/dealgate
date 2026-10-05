@@ -15,6 +15,12 @@ variable "region" {
   default     = "us-east-2"
 }
 
+variable "hubspot_portal_id" {
+  description = "HubSpot portal ID used to scope resumable deal scans to staging."
+  type        = string
+  default     = "48656168"
+}
+
 variable "image_tag" {
   description = "ECR image tag the ECS task should run. Bootstrap uses 'bootstrap'; CI updates this per deploy."
   type        = string

@@ -62,9 +62,9 @@ async def test_below_floor_generates_brief_after_all_functions_and_closes_tasks(
     assert (await session.scalar(select(CeoException))).package_id == pkg.id
     projection = await review_projection(session, pkg, owner.id)
     assert projection["pending_with"] == [ceo.name]
-    assert len(projection["assignments"]) == 4
+    assert len(projection["assignments"]) == 5
     tasks = list((await session.scalars(select(Task))).all())
-    assert sum(t.status == "done" for t in tasks) == 4
+    assert sum(t.status == "done" for t in tasks) == 5
     assert next(t for t in tasks if t.owner_id == ceo.id).status == "assigned"
 
 
@@ -121,10 +121,10 @@ async def test_review_without_coverage_routes_to_selected_members(session):
     plan = await routing.submission_plan(session, opportunity_id=opp.id, actor_id=owner.id)
     pkg = await submit_package(session, actor_id=owner.id, opportunity_id=opp.id, routing=plan)
     rows = list((await session.scalars(select(ApprovalAssignment))).all())
-    assert len(rows) == 4
+    assert len(rows) == 5
     assert {r.approver_id for r in rows} == {u.id for u in people.values()}
     tasks = list((await session.scalars(select(Task))).all())
-    assert {t.owner_id for t in tasks} == {people["delivery"].id, people["hr"].id}
+    assert {t.owner_id for t in tasks} == {people["delivery"].id, people["hr"].id, people["sales"].id}
     with pytest.raises(ApprovalError, match="reason"):
         await decide(
             session,
@@ -161,7 +161,7 @@ async def test_nonmember_assignment_and_stale_versions_rejected(session):
 
 
 @pytest.mark.asyncio
-async def test_explicit_empty_group_stays_empty_and_admin_owns_gap(session):
+async def test_explicit_empty_group_blocks_until_admin_restores_reviewer(session):
     owner, opp, sow, gm, people = await fixture(session)
     admin = await _seed_user(session, email="admin@routing.test", groups=("SystemAdmin",))
     await routing.save_group(
@@ -174,18 +174,11 @@ async def test_explicit_empty_group_stays_empty_and_admin_owns_gap(session):
     )
     plan = await routing.submission_plan(session, opportunity_id=opp.id, actor_id=owner.id)
     assert plan["rows"][0]["approver_id"] is None
-    pkg = await submit_package(session, actor_id=owner.id, opportunity_id=opp.id, routing=plan)
-    task = await session.scalar(select(Task).where(Task.category == "approval.routing"))
-    assert task.owner_id == admin.id
-    with pytest.raises(ApprovalError, match="member"):
-        await decide(
-            session,
-            actor_id=people["delivery"].id,
-            package_id=pkg.id,
-            function="delivery",
-            decision="approve",
-            reason="Reviewed",
-        )
+    with pytest.raises(ApprovalError, match="Delivery has no eligible reviewer"):
+        await submit_package(session, actor_id=owner.id, opportunity_id=opp.id, routing=plan)
+    from app.models.approval import ApprovalPackage
+    assert await session.scalar(select(ApprovalPackage)) is None
+    assert await session.scalar(select(Task)) is None
     await routing.save_group(
         session,
         actor_id=admin.id,
@@ -194,7 +187,8 @@ async def test_explicit_empty_group_stays_empty_and_admin_owns_gap(session):
         backup_ids=[],
         default_approver_id=people["delivery"].id,
     )
-    await routing.route_missing(session, actor_id=owner.id, package_id=pkg.id)
+    plan = await routing.submission_plan(session, opportunity_id=opp.id, actor_id=owner.id)
+    pkg = await submit_package(session, actor_id=owner.id, opportunity_id=opp.id, routing=plan)
     assignment = await session.get(ApprovalAssignment, (pkg.id, "delivery"))
     assert assignment.approver_id == people["delivery"].id
 
@@ -238,12 +232,8 @@ async def test_s21_e2e_user_is_ineligible_on_real_sow(session):
 
 
 @pytest.mark.asyncio
-async def test_s21_e2e_user_is_eligible_on_e2e_tagged_sow(session):
-    """Companion to the leak-gate test: when the SOW's client name
-    matches the e2e prefix regex (`S14b e2e …`, `smoke …`, etc.), e2e
-    users are permitted — otherwise the e2e harness itself cannot
-    exercise the approval path.
-    """
+async def test_s21_forged_client_name_never_authorizes_test_reviewers(session):
+    """S21F:T07/T32: an editable name is not trusted fixture provenance."""
     from app.models.client import Client
 
     owner, opp, _, _, _ = await fixture(session)
@@ -267,6 +257,6 @@ async def test_s21_e2e_user_is_eligible_on_e2e_tagged_sow(session):
         session, opportunity_id=opp.id, actor_id=owner.id
     )
     finance_row = next(r for r in plan["rows"] if r["function"] == "finance")
-    assert finance_row["approver_id"] == str(bot.id), (
-        "e2e user must be routable when the SOW itself is e2e-tagged"
-    )
+    assert finance_row["approver_id"] is None
+    assert finance_row["blocker"]
+    assert str(bot.id) not in {m["id"] for m in finance_row["members"]}

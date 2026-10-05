@@ -1,3 +1,21 @@
+variable "tenant_id" {
+  description = "Explicit application tenant shared with workers; defaults to the single-tenant stack name."
+  type        = string
+  default     = ""
+}
+
+variable "reporting_timezone" {
+  description = "Approved organization reporting timezone; blank remains an explicit Forecast readiness error."
+  type        = string
+  default     = ""
+}
+
+variable "reporting_currency" {
+  description = "Approved organization reporting currency; blank remains an explicit Forecast readiness error."
+  type        = string
+  default     = ""
+}
+
 variable "name_prefix" {
   description = "Name prefix (e.g. officeapp-dev)."
   type        = string
@@ -5,6 +23,11 @@ variable "name_prefix" {
 
 variable "env" {
   description = "Environment slug written into DEALGATE_ENV env var."
+  type        = string
+}
+
+variable "hubspot_portal_id" {
+  description = "HubSpot portal ID written into HUBSPOT_PORTAL_ID for tenant-scoped scans."
   type        = string
 }
 

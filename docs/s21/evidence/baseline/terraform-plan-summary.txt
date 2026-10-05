@@ -1,0 +1,76 @@
+  # module.api.aws_ecs_task_definition.api must be replaced
+  # module.api.aws_iam_role_policy.sow_and_bedrock will be updated in-place
+  # module.api.aws_iam_role_policy.task_cognito_read will be created
+  # module.api.aws_iam_role_policy.task_execution_kms will be created
+  # module.api.aws_iam_role_policy.task_kms will be created
+  # module.data.aws_db_parameter_group.pg16 will be updated in-place
+  # module.kms.aws_kms_alias.data will be created
+  # module.observability.data.aws_iam_policy_document.cloudtrail_bucket will be read during apply
+  # (config refers to values not yet known)
+  # module.observability.aws_cloudtrail.audit will be created
+  # module.observability.aws_cloudwatch_metric_alarm.api_task_failures will be created
+  # module.observability.aws_cloudwatch_metric_alarm.rds_cpu will be created
+  # module.observability.aws_cloudwatch_metric_alarm.rds_free_storage will be created
+  # module.observability.aws_guardduty_detector.this will be created
+  # module.observability.aws_s3_bucket.cloudtrail will be created
+  # module.observability.aws_s3_bucket_object_lock_configuration.cloudtrail will be created
+  # module.observability.aws_s3_bucket_policy.cloudtrail will be created
+  # module.observability.aws_s3_bucket_public_access_block.cloudtrail will be created
+  # module.observability.aws_s3_bucket_server_side_encryption_configuration.cloudtrail will be created
+  # module.observability.aws_s3_bucket_versioning.cloudtrail will be created
+  # module.observability.aws_sns_topic.alerts will be created
+  # module.observability.aws_sns_topic_subscription.alerts_email will be created
+  # module.prod_approvers.aws_ses_email_identity.prod_approver["ceo_exception"] will be created
+  # module.prod_approvers.aws_ses_email_identity.prod_approver["delivery"] will be created
+  # module.prod_approvers.aws_ses_email_identity.prod_approver["delivery_fallback"] will be created
+  # module.prod_approvers.aws_ses_email_identity.prod_approver["finance"] will be created
+  # module.prod_approvers.aws_ses_email_identity.prod_approver["legal"] will be created
+  # module.prod_approvers.aws_ses_email_identity.prod_approver["sales"] will be created
+  # module.schedulers.data.aws_iam_policy_document.events_runtask will be read during apply
+  # (config refers to values not yet known)
+  # module.schedulers.data.aws_iam_policy_document.events_runtask_audit_export will be read during apply
+  # (config refers to values not yet known)
+  # module.schedulers.data.aws_iam_policy_document.events_runtask_e2e_cleanup will be read during apply
+  # (config refers to values not yet known)
+  # module.schedulers.data.aws_iam_policy_document.events_runtask_hubspot will be read during apply
+  # (config refers to values not yet known)
+  # module.schedulers.aws_cloudwatch_event_rule.e2e_cleanup will be created
+  # module.schedulers.aws_cloudwatch_event_target.alert_scheduler will be updated in-place
+  # module.schedulers.aws_cloudwatch_event_target.audit_export will be updated in-place
+  # module.schedulers.aws_cloudwatch_event_target.e2e_cleanup will be created
+  # module.schedulers.aws_cloudwatch_event_target.hubspot_intake will be updated in-place
+  # module.schedulers.aws_cloudwatch_event_target.hubspot_reconcile will be updated in-place
+  # module.schedulers.aws_cloudwatch_event_target.notification_sender will be updated in-place
+  # module.schedulers.aws_cloudwatch_event_target.renewals_scheduler will be updated in-place
+  # module.schedulers.aws_cloudwatch_log_metric_filter.hubspot_worker_complete will be created
+  # module.schedulers.aws_cloudwatch_metric_alarm.hubspot_backlog_age will be created
+  # module.schedulers.aws_cloudwatch_metric_alarm.hubspot_dlq_nonzero will be created
+  # module.schedulers.aws_cloudwatch_metric_alarm.hubspot_processing_lag will be created
+  # module.schedulers.aws_ecs_service.hubspot_intake_continuous will be created
+  # module.schedulers.aws_ecs_task_definition.alert_scheduler must be replaced
+  # module.schedulers.aws_ecs_task_definition.audit_export must be replaced
+  # module.schedulers.aws_ecs_task_definition.e2e_cleanup will be created
+  # module.schedulers.aws_ecs_task_definition.hubspot_intake must be replaced
+  # module.schedulers.aws_ecs_task_definition.hubspot_intake_continuous will be created
+  # module.schedulers.aws_ecs_task_definition.hubspot_reconcile must be replaced
+  # module.schedulers.aws_ecs_task_definition.notification_sender must be replaced
+  # module.schedulers.aws_ecs_task_definition.renewals_scheduler must be replaced
+  # module.schedulers.aws_iam_role_policy.events_runtask will be updated in-place
+  # module.schedulers.aws_iam_role_policy.events_runtask_audit_export will be updated in-place
+  # module.schedulers.aws_iam_role_policy.events_runtask_e2e_cleanup will be created
+  # module.schedulers.aws_iam_role_policy.events_runtask_hubspot will be updated in-place
+  # module.schedulers.aws_iam_role_policy.ses_send will be updated in-place
+  # module.schedulers.aws_ses_email_identity.sender must be replaced
+  # module.storage.aws_s3_bucket.agreements will be created
+  # module.storage.aws_s3_bucket.sows will be created
+  # module.storage.aws_s3_bucket_lifecycle_configuration.agreements will be created
+  # module.storage.aws_s3_bucket_lifecycle_configuration.sows will be created
+  # module.storage.aws_s3_bucket_object_lock_configuration.sows will be created
+  # module.storage.aws_s3_bucket_public_access_block.agreements will be created
+  # module.storage.aws_s3_bucket_public_access_block.sows will be created
+  # module.storage.aws_s3_bucket_server_side_encryption_configuration.agreements will be created
+  # module.storage.aws_s3_bucket_server_side_encryption_configuration.sows will be created
+  # module.storage.aws_s3_bucket_versioning.agreements will be created
+  # module.storage.aws_s3_bucket_versioning.sows will be created
+  # module.web.aws_s3_bucket_server_side_encryption_configuration.web will be updated in-place
+Plan: 52 to add, 13 to change, 8 to destroy.

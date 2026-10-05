@@ -1,0 +1,168 @@
+F....................................................................... [  5%]
+........................................................................ [ 11%]
+.....................................s.................................. [ 17%]
+........................................................................ [ 23%]
+........................................................................ [ 29%]
+........................................................................ [ 35%]
+........................................................................ [ 41%]
+........................................................................ [ 47%]
+........................................................................ [ 53%]
+........................................................................ [ 59%]
+........................................................................ [ 65%]
+.....xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx......xxxxxxxxxxxxxxxxxxxxxxxxxx [ 71%]
+xxxxxxxxxxxxxxxxx.....xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxx [ 77%]
+xxxxxxxxxxxxxxxxx.......xxxxxx.......................................... [ 83%]
+........................................................................ [ 89%]
+........................................................................ [ 95%]
+.........................................................                [100%]
+=================================== FAILURES ===================================
+__________ test_independent_calendar_b_monthly_money_hours_and_margin __________
+
+    def test_independent_calendar_b_monthly_money_hours_and_margin():
+        start, end = date(2026, 10, 1), date(2027, 7, 31)
+        expected = independent_days(start, end)
+        assert [v[0] for v in expected.values()] == [21, 19, 22, 19, 19, 23, 22, 20, 21, 21]
+        assert [v[1] for v in expected.values()] == [22, 21, 23, 21, 20, 23, 22, 21, 22, 22]
+        rows = monthly_staffing_schedule(staffing(start, end), term_start=start, term_end=end)
+        for row, (month, (billable, paid)) in zip(rows, expected.items(), strict=True):
+            assert row.month == month
+            assert row.complete
+            assert row.scheduled_hours == row.billable_hours == D(billable) * D("80")
+            assert row.paid_hours == D(paid) * D("80")
+            assert row.revenue == D(billable) * D("8000")
+            assert row.cost == D(paid) * D("4800")
+            result = compute_gm(SowSpec("staff_aug", (row.as_resource_input(),)))
+            expected_revenue, expected_cost = D(billable) * D("8000"), D(paid) * D("4800")
+>           assert result.gm_blended == (expected_revenue - expected_cost) / expected_revenue
+E           AssertionError: assert Decimal('0.3714285714285714285714285714') == ((Decimal('168000') - Decimal('105600')) / Decimal('168000'))
+E            +  where Decimal('0.3714285714285714285714285714') = GmOutcome(status='ok', revenue_by_location={'US': Decimal('168000')}, cost_by_location={'US': Decimal('105600')}, gm_b...S': True, 'India': None}, missing=(), notes=(), reason=None, extra={'pass_through_total': Decimal('0')}, components=()).gm_blended
+
+tests/s21_acceptance/test_independent_oracles.py:69: AssertionError
+---------------------------- Captured stderr setup -----------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+=============================== warnings summary ===============================
+app/main.py:65
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/main.py:65: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv/lib/python3.14/site-packages/fastapi/applications.py:4744
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/applications.py:4744: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/s21_acceptance/test_independent_oracles.py::test_independent_calendar_b_monthly_money_hours_and_margin
+tests/test_migration_parity.py::test_every_model_table_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/alembic/config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+tests/test_actuals_import.py: 1 warning
+tests/test_client_rate_cards.py: 1 warning
+tests/test_legacy_import.py: 1 warning
+tests/test_sow_extract.py: 3 warnings
+tests/test_sow_lifecycle.py: 1 warning
+tests/test_sow_upload_binding.py: 2 warnings
+tests/test_sow_upload_router.py: 5 warnings
+tests/test_staffing_sheet.py: 1 warning
+tests/test_tasks_lifecycle.py: 1 warning
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    return await dependant.call(**values)
+
+tests/test_admin_users.py::test_invite_unknown_group_returns_422_no_audit
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/admin_users.py:201: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    groups = _validate_groups(list(payload.groups))
+
+tests/test_admin_users.py::test_patch_unknown_group_returns_422_no_audit
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/admin_users.py:245: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    add = _validate_groups(list(payload.add))
+
+tests/test_ceo_exception.py::test_approve_requires_rationale
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/ceo_exception.py:183: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await decide(
+
+tests/test_channels_disabled.py::test_patch_notification_setting_rejects_disabled_channel[teams]
+tests/test_channels_disabled.py::test_patch_notification_setting_rejects_disabled_channel[slack]
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/notifications.py:164: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    row = await upsert_setting(
+
+tests/test_client_rate_cards.py::test_publish_rejects_bad_location
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/client_rate_cards.py:133: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_row(row, idx)
+
+tests/test_gm_model_templates.py::test_save_template_rejects_duplicate_name
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/delivery_model.py:233: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _bad_request(exc) from exc
+
+tests/test_hubspot_writeback.py::test_queue_writeback_rejects_property_outside_map
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/hubspot_writeback.py:131: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_target_state(target_state)
+
+tests/test_hubspot_writeback.py::test_worker_second_line_guard_rejects_bad_target_state
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/hubspot_writeback.py:297: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_target_state(job.target_state or {})
+
+tests/test_migration_parity.py::test_every_model_column_is_created_by_a_migration
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/tests/test_migration_parity.py:120: SAWarning: Did not recognize type 'vector' of column 'embedding'
+    migrated_cols = {c["name"] for c in migrated_inspector.get_columns(table_name)}
+
+tests/test_notifications.py::test_queue_rejects_unknown_category
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:220: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_category(category)
+
+tests/test_notifications.py::test_settings_patch_rejects_unknown_channel
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/notifications.py:150: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_channel(channel)
+
+tests/test_policy.py::test_publish_rejects_us_ge_india
+tests/test_policy.py::test_publish_rejects_out_of_range_floors
+tests/test_policy.py::test_publish_rejects_unknown_fx_convention
+tests/test_policy.py::test_publish_via_http_us_gt_india_returns_422
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/services/policy.py:99: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_publish(us_floor, india_floor, fx_convention)
+
+tests/test_rate_cards.py::test_publish_rejects_non_positive_cost
+tests/test_rate_cards.py::test_publish_rejects_ordering
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/admin_rate_cards.py:162: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    _validate_row(row, idx)
+
+tests/test_sow_extract.py::test_create_version_over_25mb_returns_413
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/.venv/lib/python3.14/site-packages/fastapi/routing.py:360: StarletteDeprecationWarning: 'HTTP_413_REQUEST_ENTITY_TOO_LARGE' is deprecated. Use 'HTTP_413_CONTENT_TOO_LARGE' instead.
+    return await dependant.call(**values)
+
+tests/test_tasks_lifecycle.py: 15 warnings
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:141: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await transition_task(session, actor=user, task=task, to_status=target)
+
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[cancelled-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[done-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[reassigned-snoozed]
+tests/test_tasks_lifecycle.py::test_forbidden_transitions_return_422[snoozed-snoozed]
+tests/test_tasks_lifecycle.py::test_snooze_requires_future_wake_at
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:139: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await snooze_task(session, actor=user, task=task, wake_at=wake_at)
+
+tests/test_tasks_lifecycle.py::test_reassign_completed_task_rejected
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/tasks.py:153: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    task = await reassign_task(
+
+tests/test_wbs.py::test_reorder_rejects_bad_id_set
+  /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/app/routers/delivery_model.py:330: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    raise _bad_request(exc) from exc
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/s21_acceptance/test_independent_oracles.py::test_independent_calendar_b_monthly_money_hours_and_margin
+1 failed, 1057 passed, 1 skipped, 150 xfailed, 62 warnings in 280.92s (0:04:40)

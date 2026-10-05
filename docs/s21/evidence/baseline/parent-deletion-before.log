@@ -1,0 +1,77 @@
+FFFF                                                                     [100%]
+=================================== FAILURES ===================================
+______ test_legacy_client_entry_retains_project_and_exact_account_actuals ______
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10946fa10>
+
+    @pytest.mark.asyncio
+    async def test_legacy_client_entry_retains_project_and_exact_account_actuals(session):
+        owner, deal, sow = await _seed(session, with_package=True)
+        account_id = deal.client_id
+        package = await session.scalar(select(ApprovalPackage).where(ApprovalPackage.opportunity_id == deal.id))
+        baseline = {"revenue_us": "24680.12", "cost_us": "12340.06"}
+        project = Project(id=uuid.uuid4(), opportunity_id=deal.id, client_id=account_id,
+            sow_version_id=package.sow_version_id, gm_model_id=package.gm_model_id, package_id=package.id,
+            title="Retained parent delivery", baseline_snapshot_json=baseline, created_by=owner.id)
+        batch = FinancialImportBatch(id=uuid.uuid4(), tenant_id="parent-delete", environment="test",
+            source_system="parent-proof", request_key="parent-import", request_hash="a" * 64,
+            uploaded_by=owner.id, status="committed", row_count=1)
+        session.add_all([project, batch])
+        await session.flush()
+        fact = FinancialActual(id=uuid.uuid4(), tenant_id="parent-delete", environment="test",
+            source_system="parent-proof", source_id="retained-fact", revision=1, batch_id=batch.id,
+            account_id=account_id, original_account_id=account_id, gm_model_id=package.gm_model_id,
+            original_gm_model_id=package.gm_model_id, period_month=date(2026, 9, 1),
+            measure="recognized_revenue", amount=Decimal("24680.125"), currency="USD",
+            source_date=date(2026, 9, 30), reason="Independent known recognized amount")
+        session.add(fact)
+        await session.commit()
+        await delete_client(session, actor_id=owner.id, client_id=account_id)
+        await session.commit()
+        await session.refresh(project)
+        await session.refresh(fact)
+>       assert project.client_id is None and project.opportunity_id is None
+E       AssertionError: assert (UUID('d5faa0d0-8dcf-4a6e-bdcc-ecb94a9df3f0') is None)
+E        +  where UUID('d5faa0d0-8dcf-4a6e-bdcc-ecb94a9df3f0') = <app.models.project.Project object at 0x109665400>.client_id
+
+api/tests/test_s21_parent_deletion.py:55: AssertionError
+____________ test_empty_mirrored_client_refused_before_any_mutation ____________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10cb76d50>
+
+    @pytest.mark.asyncio
+    async def test_empty_mirrored_client_refused_before_any_mutation(session):
+        client = Client(name="Mirrored no SOW", hubspot_company_id="mirror-owned")
+        session.add(client)
+        await session.commit()
+>       with pytest.raises(DeletionError, match="mirrored"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE DeletionError
+
+api/tests/test_s21_parent_deletion.py:69: Failed
+__________ test_parent_job_waits_for_child_storage_and_is_repeat_safe __________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10960efd0>
+
+    @pytest.mark.asyncio
+    async def test_parent_job_waits_for_child_storage_and_is_repeat_safe(session):
+>       from app.services.parent_deletion import request_client_deletion
+E       ModuleNotFoundError: No module named 'app.services.parent_deletion'
+
+api/tests/test_s21_parent_deletion.py:76: ModuleNotFoundError
+___________ test_agreement_only_client_has_durable_exact_key_cleanup ___________
+
+session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x10cd30b00>
+
+    @pytest.mark.asyncio
+    async def test_agreement_only_client_has_durable_exact_key_cleanup(session):
+>       from app.services.parent_deletion import request_client_deletion
+E       ModuleNotFoundError: No module named 'app.services.parent_deletion'
+
+api/tests/test_s21_parent_deletion.py:101: ModuleNotFoundError
+=========================== short test summary info ============================
+FAILED api/tests/test_s21_parent_deletion.py::test_legacy_client_entry_retains_project_and_exact_account_actuals
+FAILED api/tests/test_s21_parent_deletion.py::test_empty_mirrored_client_refused_before_any_mutation
+FAILED api/tests/test_s21_parent_deletion.py::test_parent_job_waits_for_child_storage_and_is_repeat_safe
+FAILED api/tests/test_s21_parent_deletion.py::test_agreement_only_client_has_durable_exact_key_cleanup
+4 failed in 6.69s

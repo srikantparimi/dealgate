@@ -1,0 +1,237 @@
+Branch/head inventory for status report. Historical ownership/commit mappings: ownership.md.
+Dirty integration files: progress report and claude-handoff describe pending tests/artifacts.
+Do not infer clean historical trees from this branch inventory.
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate
+HEAD 321b365393171837ccfe364def2b13ae5a72c06d
+branch refs/heads/main
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s20-W1
+HEAD d56265fed9bf5737b30ed0585bdc17430cc9070f
+branch refs/heads/s20/W1
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s20-W2
+HEAD 8d94ef406ea8d7a3b1617ac601d45022974e6660
+branch refs/heads/s20/W2
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s20-W3
+HEAD 9dd3f358515cf1998cb1eb6db55a5aedb044bc24
+branch refs/heads/s20/W3
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s20-W4
+HEAD 1f05090df3476511955cb313364fe3f59b83ded6
+branch refs/heads/feat/s20-w4
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s20-W5
+HEAD 423eeb045633f222a236daec9f8fd02bebe2b1fd
+branch refs/heads/s20/W5
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s20-W6
+HEAD 4f0363fad2f0000eb1a278c9995d112c16ac750f
+branch refs/heads/s20/W6
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s20-W7
+HEAD 8b42c81a4f398eb445485d00c4ea7e5929104bf1
+branch refs/heads/feat/s20-w7
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-commercial
+HEAD fad62b34015f4432f846b1cbc83aa5da75197e2b
+branch refs/heads/s21/commercial
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-commercial-ui
+HEAD 08bceb292e1ec439ea71f6b51287a5a7aaec5214
+branch refs/heads/s21/commercial-ui
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-coverage-editor
+HEAD 48c5cf4b2e357fba51e28024221a9fdafe0e0503
+branch refs/heads/s21/coverage-editor
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-crm-bu-readers
+HEAD 7d6745ae621181a60536731416f0be671643f8c4
+branch refs/heads/s21/crm-bu-readers
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-crm-facet-wiring
+HEAD 7b7d0193d9d900dd180c24ac6838b0015052f9e9
+branch refs/heads/s21/crm-facet-wiring
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-crm-filters
+HEAD 339e22188e108eed2b414d07315c7d7b0b87c916
+branch refs/heads/s21/crm-filters
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-crm-metadata
+HEAD 6447305de1fe33c193efcb502ceb89308c9c0a90
+branch refs/heads/s21/crm-metadata
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-crm-source-review
+HEAD e555140fa2f927f94043c35964d91aade0e65cab
+branch refs/heads/s21/crm-source-review
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-demand-coverage
+HEAD e69d813fc517a50d2f7553ac53399c9108f84968
+branch refs/heads/s21/demand-coverage
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-demand-projection-fix
+HEAD 22a163a04699febdc87d150b876f077b1d437e57
+branch refs/heads/s21/demand-projection-fix
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-demand-source
+HEAD a5bacf944e3ec965f6cd5daaf925ed5677200df9
+branch refs/heads/s21/demand-source-projection
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-demand-ui
+HEAD 2127701066688346900df56e731a1fb098d05e82
+branch refs/heads/s21/demand-ui
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-extraction-corpus-audit
+HEAD dfaf23c5b4c0672c5c77dc04aac6619d9483295a
+branch refs/heads/s21/extraction-corpus-audit
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-extraction-diagnosis
+HEAD 19ed715d08223e063002d5a1a1217bc5acd32364
+branch refs/heads/s21/extraction-diagnosis
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-extraction-overrides
+HEAD 788a3cdadf2a5b3001a2836048ddaa3dab6b523c
+branch refs/heads/s21/extraction-overrides
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast
+HEAD cad16d0f5ab69d34599512b501e3a9f0923e8808
+branch refs/heads/feat/s21-forecast
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast-lane
+HEAD f2a88ed9e1f41aa6f6058971098700bf2256ae57
+branch refs/heads/s21/forecast
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast-overview
+HEAD 67c9814dc966efe6fa9e9eb8e2225faab0bf21cd
+branch refs/heads/s21/forecast-overview
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast-ui
+HEAD ead499e307681d0496330ec78471c616a34714e5
+branch refs/heads/s21/forecast-ui
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-governance
+HEAD 3db1b93eba7ee9b115ac0a59744c91367edc9c5f
+branch refs/heads/s21/governance
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-next-opportunities
+HEAD 3bd7c08236c544694b52d3f640904c9b81b2ab88
+branch refs/heads/s21/next-opportunities
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-people-ui
+HEAD 6d46390f8dd5093ed7b80fdc60621d05db11cebb
+branch refs/heads/s21/people-supply-ui
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-plan-binding
+HEAD 8e36c8922da1d66ba4b30333949acd1f3205ba45
+branch refs/heads/s21/plan-staffing-binding
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-plan-source
+HEAD 8bbd3e23add55d28ed83f89c1e68641bf886aba7
+branch refs/heads/s21/plan-source-provenance
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-project-source-scope
+HEAD 0a54345c876cd118c1cfb1cf8979b5085dae3ebb
+branch refs/heads/s21/project-source-scope
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa
+HEAD a7dab1e603b47f7b433035bf17e28a1cbe8b91bb
+branch refs/heads/s21/qa
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-actuals
+HEAD b86a72520059bb480168bffd162ee253940a74df
+branch refs/heads/s21/qa-actuals
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-commercial-ui
+HEAD a127e71b568c20d46d35b4a216876ffef0d93838
+branch refs/heads/s21/qa-commercial-ui
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-company-demand
+HEAD fb6586270d97acc01ef5d7b27b87794ca3f66f65
+branch refs/heads/s21/qa-company-demand
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-coverage
+HEAD 99df2a7d21db2101c7e843b9c2d4e9c2a337fc0e
+branch refs/heads/s21/qa-coverage
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-coverage-locks
+HEAD a3b4070f8a355965691a718ae4e61b1c0397cd99
+branch refs/heads/s21/qa-coverage-locks
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-deletion
+HEAD 5565273d2b1e4f6b206f427de590df7d4b809537
+branch refs/heads/s21/qa-deletion
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-demand
+HEAD 15129dd951250631c19e2b5741ebda5576e5e61e
+branch refs/heads/s21/qa-demand-publication
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-overview
+HEAD e3858b9e914177031079ea1aefec66ec501c44c2
+branch refs/heads/s21/qa-overview
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-parent-cleanup
+HEAD 0b0f90300e7b535971aecb1649192922deff242c
+branch refs/heads/s21/qa-parent-cleanup
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-people
+HEAD 367d11a91e53eb4c3e4b1cf8dedffde868b456e4
+branch refs/heads/s21/qa-people-allocation
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-pipeline
+HEAD 287bb8f3ed946a03ce60a5f8c24fff88568d83fe
+branch refs/heads/s21/qa-pipeline
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-plans
+HEAD bdb5f6c2bbfdbac81fb1fcf2d87908d67e91e028
+branch refs/heads/s21/qa-plans
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-project-scope
+HEAD 1e0bceb097ec7a12465be73c3ef49f2ab9bf792e
+branch refs/heads/s21/qa-project-scope
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-publication
+HEAD f6d4c08a0cd97f4d9b521b9a67a39a50962bff10
+branch refs/heads/s21/qa-publication-service
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-regression-gap
+HEAD da4de2dca62053ca05135f35e025a8eaa0177b52
+branch refs/heads/s21/qa-regression-gap
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-retained-demand
+HEAD 4c6a05bc6ef7fdaf40720af0d038443b6674c503
+branch refs/heads/s21/qa-retained-demand
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-scan
+HEAD 93853c526c7d9f64b287cba93d3046d262060217
+branch refs/heads/s21/qa-scan
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-sourcing
+HEAD f3bbe9c6e279a56b3de8f0a7ac1182d3eee7e424
+branch refs/heads/s21/qa-sourcing
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-qa-workforce
+HEAD 49c67f1eae7e8da49a6828725311c6a244486414
+branch refs/heads/s21/qa-workforce-import
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-renewal-calendar
+HEAD 30b8bf2e737e9c6ca628bca0267c9d3d32a9b595
+branch refs/heads/s21/renewal-calendar
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-smoke-service-binding
+HEAD 35d60acdb0a23a09cd765d7b0dade7c313ccec06
+branch refs/heads/s21/smoke-service-binding
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-sourcing-dates
+HEAD b7c8d54cacb1deb5915b21baf374622666cabf52
+branch refs/heads/s21/sourcing-dates
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-sourcing-ui
+HEAD 010554294066ae2c9a08ec71a5a9dfaa4ea81ac4
+branch refs/heads/s21/sourcing-ui
+
+worktree /Users/srikanthparimi/OfficeApp/dealgate-s21-stage-qualified
+HEAD 6a64321f6fddc8b301f412e5dc4644a4c93b9f5a
+branch refs/heads/s21/stage-qualified
+
+

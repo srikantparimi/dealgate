@@ -23,21 +23,18 @@
  *  - W6 next-action + latest-comment slots read live
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, ExternalLink, Upload } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   getDealTimeline,
-  getPipelineFacets,
   getPipelineOpportunity,
   listDealComments,
   listNextActions,
   listPipelineStages,
-  patchNextAction,
-  type DealCommentRow,
-  type NextActionRow,
-  type PipelineFacets,
+  type DealCommentList,
+  type NextActionList,
   type PipelineOpportunityRow,
   type PipelineStageCount,
   type TimelineEntry,
@@ -45,9 +42,11 @@ import {
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
+import { ClientAgreementPresence } from "../../ui-v2/ClientAgreementPresence";
 import { WatchStar } from "../../ui-v2/WatchStar";
 import { Badge } from "../../ui-v2/primitives/badge";
 import { Button } from "../../ui-v2/primitives/button";
+import { DealTracking } from "./DealTracking";
 
 const HUBSPOT_DEAL_URL = "https://app.hubspot.com/contacts/48656168/record/0-3/";
 
@@ -117,20 +116,16 @@ export function DealDetailPage() {
   const navigate = useNavigate();
   const [deal, setDeal] = useState<PipelineOpportunityRow | null>(null);
   const [stages, setStages] = useState<PipelineStageCount[]>([]);
-  const [nextActions, setNextActions] = useState<NextActionRow[]>([]);
-  const [latestComment, setLatestComment] = useState<DealCommentRow | null>(
-    null,
-  );
+  const [nextActions, setNextActions] = useState<NextActionList>({ items: [] });
+  const [comments, setComments] = useState<DealCommentList>({ items: [], latest: null });
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
-  const [facets, setFacets] = useState<PipelineFacets>({
-    owners: [],
-    business_units: [],
-  });
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const trackingGeneration = useRef(0);
 
   useEffect(() => {
     if (!id) return;
+    trackingGeneration.current += 1;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -140,7 +135,7 @@ export function DealDetailPage() {
         if (cancelled) return;
         setDeal(d);
 
-        const [stageList, actions, comments, tl, fct] = await Promise.all([
+        const [stageList, actions, comments, tl] = await Promise.all([
           d.hubspot_pipeline_id
             ? listPipelineStages(d.hubspot_pipeline_id)
             : Promise.resolve([] as PipelineStageCount[]),
@@ -149,17 +144,12 @@ export function DealDetailPage() {
           getDealTimeline(d.opportunity_id).catch(() => ({
             items: [] as TimelineEntry[],
           })),
-          getPipelineFacets().catch(() => ({
-            owners: [],
-            business_units: [],
-          })),
         ]);
         if (cancelled) return;
         setStages(stageList);
-        setNextActions(actions.items);
-        setLatestComment(comments.latest);
+        setNextActions(actions);
+        setComments(comments);
         setTimeline(tl.items);
-        setFacets(fct);
       } catch (err) {
         if (!cancelled) setError(err);
       } finally {
@@ -169,8 +159,23 @@ export function DealDetailPage() {
     load();
     return () => {
       cancelled = true;
+      trackingGeneration.current += 1;
     };
   }, [id]);
+
+  const renderedTrackingGeneration = trackingGeneration.current;
+  async function refreshTracking() {
+    if (!deal || renderedTrackingGeneration !== trackingGeneration.current) return;
+    const generation = renderedTrackingGeneration;
+    const [actions, nextComments, activity] = await Promise.all([
+      listNextActions({ opportunity_id: deal.opportunity_id }),
+      listDealComments(deal.opportunity_id), getDealTimeline(deal.opportunity_id),
+    ]);
+    if (generation !== trackingGeneration.current) return;
+    setNextActions(actions);
+    setComments(nextComments);
+    setTimeline(activity.items);
+  }
 
   const heading = useMemo(() => {
     if (!deal) return "Deal";
@@ -299,6 +304,7 @@ export function DealDetailPage() {
         }
       />
 
+      <ClientAgreementPresence clientId={deal.client_id} />
       {/* Facts panel. */}
       <section
         aria-label="Deal facts"
@@ -400,122 +406,8 @@ export function DealDetailPage() {
         </section>
       ) : null}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Next action + latest comment (W6). */}
-        <section
-          aria-label="Next action"
-          className="rounded-panel border border-divider bg-surface p-4"
-          data-testid="deal-next-action"
-        >
-          <h2 className="mb-3 text-heading-3 text-text">Next action</h2>
-          {nextActions.length === 0 ? (
-            <p className="text-body text-text-secondary">
-              No next actions on this deal. When one is created via My Work
-              or by an approver, it will appear here.
-            </p>
-          ) : (
-            <ol className="space-y-3">
-              {nextActions.slice(0, 3).map((a) => (
-                <li key={a.id} data-testid={`next-action-${a.id}`}>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <div className="font-medium text-text">
-                      {a.title || a.description}
-                    </div>
-                    <div className="text-secondary text-text-secondary tnum">
-                      {a.due_date ? `due ${formatDate(a.due_date)}` : "no due"}
-                    </div>
-                  </div>
-                  {a.title && a.description ? (
-                    <div className="mt-1 text-body text-text-secondary">
-                      {a.description}
-                    </div>
-                  ) : null}
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-secondary">
-                    <Badge
-                      tone={a.status === "open" ? "warning" : "neutral"}
-                      data-testid={`next-action-status-${a.status}`}
-                    >
-                      {a.status}
-                    </Badge>
-                    {a.blocker ? (
-                      <span className="text-text-secondary">
-                        blocker: {a.blocker}
-                      </span>
-                    ) : null}
-                    {/* S20 W6 Session 4b item 1 · inline assignee picker. */}
-                    <label className="inline-flex items-center gap-1 text-text-secondary">
-                      assignee
-                      <select
-                        className="rounded border border-divider bg-surface px-1 py-0.5 text-body"
-                        value={a.assignee_user_id ?? ""}
-                        onChange={async (e) => {
-                          const next = e.target.value || null;
-                          const patched = await patchNextAction(a.id, {
-                            assignee_user_id: next,
-                          });
-                          setNextActions((cur) =>
-                            cur.map((x) => (x.id === a.id ? patched : x)),
-                          );
-                        }}
-                        data-testid={`next-action-assignee-${a.id}`}
-                      >
-                        <option value="">— unassigned —</option>
-                        {facets.owners.map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {/* S20 W6 Session 4b item 1 · inline Mark Complete. */}
-                    {a.status !== "complete" ? (
-                      <button
-                        type="button"
-                        className="rounded-panel border border-success bg-success/5 px-2 py-0.5 text-secondary text-success"
-                        data-testid={`next-action-complete-${a.id}`}
-                        onClick={async () => {
-                          const patched = await patchNextAction(a.id, {
-                            status: "complete",
-                          });
-                          setNextActions((cur) =>
-                            cur.map((x) => (x.id === a.id ? patched : x)),
-                          );
-                        }}
-                      >
-                        Mark complete
-                      </button>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-
-        <section
-          aria-label="Latest comment"
-          className="rounded-panel border border-divider bg-surface p-4"
-          data-testid="deal-latest-comment"
-        >
-          <h2 className="mb-3 text-heading-3 text-text">Latest comment</h2>
-          {latestComment ? (
-            <div>
-              <div className="text-body text-text">{latestComment.body}</div>
-              <div className="mt-2 text-secondary text-text-secondary">
-                {latestComment.author_name_fallback || "Someone"} ·{" "}
-                {formatAgo(latestComment.created_at)}
-                {latestComment.source === "hubspot_note" ? " · HubSpot note" : null}
-              </div>
-            </div>
-          ) : (
-            <p className="text-body text-text-secondary">
-              No comments yet on this deal.
-            </p>
-          )}
-        </section>
-      </div>
-
-      {/* SOW list or Upload SOW button (L09). */}
+      <DealTracking key={deal.opportunity_id} opportunityId={deal.opportunity_id}
+        actions={nextActions} comments={comments} refresh={refreshTracking} />
       <section
         aria-label="SOW packages"
         className="mt-6 rounded-panel border border-divider bg-surface p-4"
@@ -534,8 +426,8 @@ export function DealDetailPage() {
               scope is ready.
             </p>
             <Link
-              to={`/sows/new?opportunity_id=${deal.opportunity_id}${
-                deal.client_id ? `&client_id=${deal.client_id}` : ""
+              to={`/sows/new?bindOppId=${deal.opportunity_id}${
+                deal.client_id ? `&bindClientId=${deal.client_id}` : ""
               }`}
               data-testid="upload-sow-cta"
             >
@@ -589,7 +481,7 @@ export function DealDetailPage() {
                 <div className="flex items-baseline justify-between gap-3">
                   <div className="text-body text-text">
                     <span className="mr-2 rounded bg-primary-subtle px-1.5 py-0.5 text-secondary text-primary">
-                      {t.source}
+                      {t.kind === "hubspot_note" || t.comment_source === "hubspot_note" ? "HubSpot note" : t.kind || t.source}
                     </span>
                     {t.actor_name ? (
                       <span className="font-medium">{t.actor_name} </span>

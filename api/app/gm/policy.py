@@ -75,6 +75,22 @@ def check_floors(
       - ``failing``: list[str] — names of failing components, in evaluation
         order. Empty when everything passes.
     """
+    if result.gm_outcome is not None:
+        outcome = (result.commercial_schedule.assess(us_floor=us_floor_value, india_floor=india_floor_value)
+                   if result.commercial_schedule and not result.policy_frozen else result.gm_outcome)
+        def breaches(node):
+            found = [key for key, value in node.passes.items() if value is False]
+            for child in node.components:
+                found.extend(breaches(child))
+            return found
+        failing = list(dict.fromkeys(breaches(outcome)))
+        assessed = outcome.status == "ok"
+        return {
+            "us_pass": assessed and "US" not in failing,
+            "india_pass": assessed and "India" not in failing,
+            "requires_ceo": bool(failing) or not assessed,
+            "failing": failing,
+        }
     failing: list[str] = []
 
     us_present = result.revenue_us > 0

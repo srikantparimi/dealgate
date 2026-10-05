@@ -27,6 +27,7 @@ class WatchedItemOut(BaseModel):
 class WatchedListOut(BaseModel):
     items: list[WatchedItemOut]
     counts: dict[str, int]
+    matching_deal_count: int
 
 
 class WatchToggleBody(BaseModel):
@@ -42,22 +43,47 @@ def _check_kind(kind: str) -> None:
         )
 
 
+async def _visible_ids(session, user, *, kind, item_ids):
+    from app.models.client import Client
+    from app.services.hubspot_pipeline import (
+        PipelineFilters, _client_visibility, matching_opportunity_ids, scope_pipeline_filters,
+    )
+    filters = await scope_pipeline_filters(session, user, PipelineFilters(include_closed=True))
+    if kind == "client":
+        return set((await session.scalars(select(Client.id).where(
+            Client.id.in_(item_ids), *_client_visibility(filters)))).all())
+    from dataclasses import replace
+    return await matching_opportunity_ids(session, replace(filters, opportunity_id=tuple(item_ids)))
+
+
 @router.get("", response_model=WatchedListOut)
 async def list_watchlist(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> WatchedListOut:
+    from app.routers.pipeline import _require_reader
+    _require_reader(user)
     rows = (
         await session.execute(
             select(WatchedItem).where(WatchedItem.user_id == user.id)
         )
     ).scalars().all()
+    visible = {kind: await _visible_ids(session, user, kind=kind,
+               item_ids=[r.item_id for r in rows if r.kind == kind]) for kind in WATCH_KINDS}
+    rows = [r for r in rows if r.item_id in visible[r.kind]]
     counts: dict[str, int] = {"opportunity": 0, "client": 0}
     for r in rows:
         counts[r.kind] = counts.get(r.kind, 0) + 1
+    from dataclasses import replace
+    from app.services.hubspot_pipeline import PipelineFilters, matching_opportunity_ids, scope_pipeline_filters
+    filters = await scope_pipeline_filters(session, user, PipelineFilters())
+    client_deals = await matching_opportunity_ids(session, replace(filters, client=tuple(visible["client"]))) if visible["client"] else set()
+    matching = await matching_opportunity_ids(session, replace(filters,
+        opportunity_id=tuple(visible["opportunity"] | client_deals)))
     return WatchedListOut(
         items=[WatchedItemOut(id=r.id, kind=r.kind, item_id=r.item_id) for r in rows],
         counts=counts,
+        matching_deal_count=len(matching),
     )
 
 
@@ -67,7 +93,11 @@ async def add_watch(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> WatchedItemOut:
+    from app.routers.pipeline import _require_reader
+    _require_reader(user)
     _check_kind(body.kind)
+    if body.item_id not in await _visible_ids(session, user, kind=body.kind, item_ids=[body.item_id]):
+        raise HTTPException(status_code=404, detail="watch subject not found")
     row = WatchedItem(user_id=user.id, kind=body.kind, item_id=body.item_id)
     session.add(row)
     try:

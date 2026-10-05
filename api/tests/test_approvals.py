@@ -11,7 +11,7 @@ on the pure GM library exactly like the delivery-model tests do.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import httpx
@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.db import get_session
 from app.main import app as main_app
-from app.models.approval import Approval, ApprovalPackage
+from app.models.approval import ApprovalPackage
 from app.models.audit import AuditEvent
 from app.models.client import Client, LegalEntity
 from app.models.notification import Notification
@@ -31,12 +31,10 @@ from app.models.user import User
 from app.services.approvals import (
     ApprovalError,
     decide,
-    package_hash,
+    load_package,
     submit_package,
-    void_on_change,
 )
 from app.services.delivery_model import (
-    CostLinePayload,
     GmModelPayload,
     ResourceLinePayload,
     create_gm_model_version,
@@ -75,6 +73,10 @@ async def app_with_session(session):
 
 
 async def _seed_user(session, email: str, groups: list[str]) -> User:
+    existing = await session.get(User, _uid(email))
+    if existing:
+        assert existing.groups == list(groups)
+        return existing
     u = User(id=_uid(email), email=email, name=email.split("@")[0], groups=groups)
     session.add(u)
     await session.commit()
@@ -234,6 +236,9 @@ async def _seed_full_deal(
     owner_email: str = "owner@smartek21.com",
 ) -> tuple[Opportunity, SowVersion, User]:
     owner = await _seed_owner(session, owner_email)
+    for email, group in (("d", "Delivery"), ("h", "HR"), ("s", "Sales"),
+                         ("f", "Finance"), ("l", "Legal"), ("c", "CEO")):
+        await _seed_user(session, f"{email}@smartek21.com", [group])
     opp, version = await _seed_opp_with_sow(session, owner)
     payload = _passing_payload(version.id) if passing else _failing_payload(version.id)
     await create_gm_model_version(
@@ -266,7 +271,7 @@ async def test_submit_creates_pending_delivery_hr_with_audit(session):
     assert await _count_audits(session, "package.submitted") == 1
 
 
-async def test_delivery_then_hr_advances_to_finance_legal(session):
+async def test_delivery_hr_and_sales_advance_to_finance_legal(session):
     opp, _v, owner = await _seed_full_deal(session)
     pkg = await submit_package(session, actor_id=owner.id, opportunity_id=opp.id)
 
@@ -279,6 +284,7 @@ async def test_delivery_then_hr_advances_to_finance_legal(session):
         package_id=pkg.id,
         function="delivery",
         decision="approve",
+        reason="Reviewed source and economics",
     )
     assert after_delivery.status == "pending_delivery_hr"
 
@@ -288,8 +294,14 @@ async def test_delivery_then_hr_advances_to_finance_legal(session):
         package_id=pkg.id,
         function="hr",
         decision="approve",
+        reason="Reviewed source and economics",
     )
-    assert after_hr.status == "pending_finance_legal"
+    assert after_hr.status == "pending_delivery_hr"
+    sales = await _seed_user(session, "s@smartek21.com", ["Sales"])
+    after_sales = await decide(session, actor_id=sales.id, package_id=pkg.id,
+                               function="sales", decision="approve", reason="Commercial review")
+    assert after_sales.status == "pending_finance_legal"
+    assert await _count_audits(session, "approval.sales.approve") == 1
     assert await _count_audits(session, "approval.delivery.approve") == 1
     assert await _count_audits(session, "approval.hr.approve") == 1
     assert await _count_audits(session, "package.delivery_hr_passed") == 1
@@ -302,16 +314,18 @@ async def test_finance_then_legal_moves_to_ready_to_sign_when_floors_pass(sessio
     h = await _seed_user(session, "h@smartek21.com", ["HR"])
     f = await _seed_user(session, "f@smartek21.com", ["Finance"])
     lg = await _seed_user(session, "l@smartek21.com", ["Legal"])
-    await decide(session, actor_id=d.id, package_id=pkg.id, function="delivery", decision="approve")
-    await decide(session, actor_id=h.id, package_id=pkg.id, function="hr", decision="approve")
+    await decide(session, actor_id=d.id, package_id=pkg.id, function="delivery", decision="approve", reason="Reviewed source and economics")
+    await decide(session, actor_id=h.id, package_id=pkg.id, function="hr", decision="approve", reason="Reviewed source and economics")
+    sales = await _seed_user(session, "s@smartek21.com", ["Sales"])
+    await decide(session, actor_id=sales.id, package_id=pkg.id, function="sales", decision="approve", reason="Commercial review")
 
     still_pending = await decide(
-        session, actor_id=f.id, package_id=pkg.id, function="finance", decision="approve"
+        session, actor_id=f.id, package_id=pkg.id, function="finance", decision="approve", reason="Reviewed source and economics"
     )
     assert still_pending.status == "pending_finance_legal"
 
     final = await decide(
-        session, actor_id=lg.id, package_id=pkg.id, function="legal", decision="approve"
+        session, actor_id=lg.id, package_id=pkg.id, function="legal", decision="approve", reason="Reviewed source and economics"
     )
     assert final.status == "ready_to_sign"
     assert final.released_at is not None
@@ -325,11 +339,13 @@ async def test_below_floor_model_routes_to_ceo_exception(session):
     h = await _seed_user(session, "h@smartek21.com", ["HR"])
     f = await _seed_user(session, "f@smartek21.com", ["Finance"])
     lg = await _seed_user(session, "l@smartek21.com", ["Legal"])
-    await decide(session, actor_id=d.id, package_id=pkg.id, function="delivery", decision="approve")
-    await decide(session, actor_id=h.id, package_id=pkg.id, function="hr", decision="approve")
-    await decide(session, actor_id=f.id, package_id=pkg.id, function="finance", decision="approve")
+    await decide(session, actor_id=d.id, package_id=pkg.id, function="delivery", decision="approve", reason="Reviewed source and economics")
+    await decide(session, actor_id=h.id, package_id=pkg.id, function="hr", decision="approve", reason="Reviewed source and economics")
+    sales = await _seed_user(session, "s@smartek21.com", ["Sales"])
+    await decide(session, actor_id=sales.id, package_id=pkg.id, function="sales", decision="approve", reason="Commercial review")
+    await decide(session, actor_id=f.id, package_id=pkg.id, function="finance", decision="approve", reason="Reviewed source and economics")
     final = await decide(
-        session, actor_id=lg.id, package_id=pkg.id, function="legal", decision="approve"
+        session, actor_id=lg.id, package_id=pkg.id, function="legal", decision="approve", reason="Reviewed source and economics"
     )
     assert final.status == "pending_ceo_exception"
     assert await _count_audits(session, "package.escalated_to_ceo") == 1
@@ -401,6 +417,7 @@ async def test_submitter_cannot_approve_own_package(session):
             package_id=pkg.id,
             function="delivery",
             decision="approve",
+            reason="Reviewed source and economics",
         )
     assert exc.value.status_code == 403
     assert "separation of duties" in exc.value.detail
@@ -409,28 +426,39 @@ async def test_submitter_cannot_approve_own_package(session):
 async def test_duplicate_approval_for_same_function_conflicts(session):
     opp, _v, owner = await _seed_full_deal(session)
     pkg = await submit_package(session, actor_id=owner.id, opportunity_id=opp.id)
-    d1 = await _seed_user(session, "d1@smartek21.com", ["Delivery"])
+    d1 = await _seed_user(session, "d@smartek21.com", ["Delivery"])
     d2 = await _seed_user(session, "d2@smartek21.com", ["Delivery"])
-    await decide(session, actor_id=d1.id, package_id=pkg.id, function="delivery", decision="approve")
+    await decide(session, actor_id=d1.id, package_id=pkg.id, function="delivery", decision="approve", reason="Reviewed source and economics")
     with pytest.raises(ApprovalError) as exc:
         await decide(
-            session, actor_id=d2.id, package_id=pkg.id, function="delivery", decision="approve"
+            session, actor_id=d2.id, package_id=pkg.id, function="delivery", decision="approve", reason="Reviewed source and economics"
         )
-    assert exc.value.status_code == 409
+    assert exc.value.status_code == 403
+    assert "assigned reviewer" in exc.value.detail
+    with pytest.raises(ApprovalError) as duplicate:
+        await decide(session, actor_id=d1.id, package_id=pkg.id, function="delivery",
+                     decision="approve", reason="Repeated request")
+    assert duplicate.value.status_code == 409
 
 
 async def test_dual_role_user_can_approve_only_one_function_per_package(session):
     opp, _v, owner = await _seed_full_deal(session)
-    pkg = await submit_package(session, actor_id=owner.id, opportunity_id=opp.id)
     both = await _seed_user(session, "both@smartek21.com", ["Finance", "Delivery", "HR"])
+    from app.services.approval_routing import submission_plan
+    plan = await submission_plan(session, actor_id=owner.id, opportunity_id=opp.id,
+                                 choices={"delivery": {"approver_id": str(both.id)}})
+    pkg = await submit_package(session, actor_id=owner.id, opportunity_id=opp.id, routing=plan)
     await decide(
-        session, actor_id=both.id, package_id=pkg.id, function="delivery", decision="approve"
+        session, actor_id=both.id, package_id=pkg.id, function="delivery", decision="approve", reason="Reviewed source and economics"
     )
     with pytest.raises(ApprovalError) as exc:
         await decide(
-            session, actor_id=both.id, package_id=pkg.id, function="hr", decision="approve"
+            session, actor_id=both.id, package_id=pkg.id, function="hr", decision="approve", reason="Reviewed source and economics"
         )
-    assert exc.value.status_code == 409
+    assert exc.value.status_code == 403
+    assert "assigned reviewer" in exc.value.detail
+    fresh = await load_package(session, pkg.id)
+    assert [(a.function, a.approver_id) for a in fresh.approvals] == [("delivery", both.id)]
 
 
 async def test_reject_returns_owner_to_sowdraft_and_notifies(session):
@@ -486,7 +514,7 @@ async def test_duplicate_package_hash_resubmit_conflicts(session):
 
 
 async def test_http_submit_requires_owner_or_admin(app_with_session, session):
-    owner = await _seed_owner(session)
+    await _seed_owner(session)
     opp, _v, _o = await _seed_full_deal(session, owner_email="owner2@smartek21.com")
 
     # A non-owner Sales user (using the local auth stub) is rejected 403.

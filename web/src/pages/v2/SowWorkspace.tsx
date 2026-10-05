@@ -78,6 +78,7 @@ export function SowWorkspacePage() {
   const { id, tab } = useParams<{ id: string; tab?: string }>();
   const nav = useNavigate();
   const [snap, setSnap] = useState<WorkspaceSnapshot | null>(null);
+  const [snapshotRoute, setSnapshotRoute] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [degraded, setDegraded] = useState<string[]>([]);
@@ -89,6 +90,8 @@ export function SowWorkspacePage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const requestNo = useRef(0);
+  const currentRoute = useRef(id);
+  currentRoute.current = id;
   useEffect(() => { getMe().then(setViewer).catch(() => setViewer(null)); }, []);
   // S20 W3 D6: fetch the deletion assessment so the Delete/Archive
   // button renders the right label from first render. Assessment is
@@ -115,17 +118,9 @@ export function SowWorkspacePage() {
     setDeleting(true);
     setDeleteError(null);
     try {
-      // S21 item 1 reverses S20 W3 D6: a SOW is hard-deletable at every
-      // state (draft, submitted, approved, signed). `services/deletion.py`
-      // cascades to approvals, versions, GM runs, documents, next
-      // actions, comments, renewals, and the project created from it.
-      // Archive is removed from the UI; the decision history survives
-      // in the audit trail, not in zombie rows (CLAUDE.md rule 4
-      // concerns immutability of accepted facts, not retention of
-      // deleted drafts' metadata).
-      await deleteSow(snap.sow.sow_id);
+      const result = await deleteSow(snap.sow.sow_id);
       setDeleteOpen(false);
-      nav("/sows");
+      nav(`/deletions/${result.job_id}`);
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : "Action failed");
     } finally {
@@ -134,16 +129,16 @@ export function SowWorkspacePage() {
   }, [snap, nav]);
 
   const refresh = useCallback(async () => {
-    if (!id) return;
+    if (!id || currentRoute.current !== id) return;
     const number = ++requestNo.current;
     try {
       const res = await loadWorkspace(id);
-      if (number !== requestNo.current) return;
-      setSnap(res.snap); setDegraded(res.degradedEndpoints); setError(null);
+      if (number !== requestNo.current || currentRoute.current !== id) return;
+      setSnap(res.snap); setSnapshotRoute(id); setDegraded(res.degradedEndpoints); setError(null);
       if (!res.degradedEndpoints.includes("listApprovalPackages") && !res.degradedEndpoints.includes("getApprovalPackage")) setUpdatedAt(Date.now());
     } catch (err) {
-      if (number === requestNo.current) setError(err instanceof Error ? err.message : "Workspace unavailable");
-    } finally { if (number === requestNo.current) setLoading(false); }
+      if (number === requestNo.current && currentRoute.current === id) setError(err instanceof Error ? err.message : "Workspace unavailable");
+    } finally { if (number === requestNo.current && currentRoute.current === id) setLoading(false); }
   }, [id]);
 
   useEffect(() => {
@@ -171,7 +166,7 @@ export function SowWorkspacePage() {
     return <EmptyState title="Missing SOW id" description="Return to the SOW list." />;
   }
 
-  if (loading && !snap) {
+  if ((loading && !snap) || (snap && snapshotRoute !== id && !error)) {
     return (
       <div className="p-6">
         <p className="text-body text-text-secondary">Loading workspace…</p>
@@ -279,12 +274,12 @@ export function SowWorkspacePage() {
     value: key,
     label: TAB_LABELS[key],
     href: `/sows/${id}/${key}`,
-    content: key === "approvals" ? <ApprovalsTab snap={snap} refresh={refresh} updatedAt={updatedAt} canSubmit={canSubmit} /> : renderTab(key, snap),
+    content: key === "approvals" ? <ApprovalsTab snap={snap} refresh={refresh} updatedAt={updatedAt} canSubmit={canSubmit} /> : renderTab(key, snap, viewer, refresh),
   }));
 
   return (
     <div className="space-y-4 min-w-0">
-      <div className="lg:sticky top-0 z-10 bg-background pb-3">
+      <div data-testid="workspace-header" className="lg:sticky top-header z-10 bg-canvas pb-3">
         <RecordHeader
           eyebrow={snap.deal?.client_name ?? "Client"}
           title={workspaceTitle(snap)}
@@ -429,6 +424,13 @@ export function SowWorkspacePage() {
                     className="text-body text-text"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2"><span>{item.label}</span><StatusBadge tone={item.status} label={item.statusLabel} /></div>
+                    {(item.owner || item.due) && (
+                      <p className="text-secondary text-text-secondary mt-1">
+                        {item.owner ? <>Owner: {item.owner}</> : null}
+                        {item.owner && item.due ? " · " : null}
+                        {item.due ? <>Due: {item.due}</> : null}
+                      </p>
+                    )}
                     {item.hint && <p className="text-secondary text-text-secondary mt-1">{item.hint}</p>}
                   </li>
                 ))}
@@ -449,12 +451,11 @@ export function SowWorkspacePage() {
               {snap.deal?.client_name ?? "Unassigned"}
             </p>
             <p className="text-secondary text-text-secondary">
-              S21 item 1: delete is permitted at every state. Hard
-              deletes cascade to SOW versions, approvals, GM runs,
-              documents, next actions, comments, renewals, and any
-              project created from this SOW. An audit line records who
-              deleted the SOW, when, its title, stage and price. This
-              cannot be undone.
+              Permanently remove this SOW, its versions, approvals, staffing,
+              GM runs, owned files and review tasks. Projects and financial
+              actuals are retained with their source marked deleted. The
+              client, deal, NDA/MSA files and other SOWs are retained.
+              A deletion audit entry remains. This cannot be undone.
             </p>
             {deleteAssessment ? (
               <ul className="text-body">
@@ -473,7 +474,7 @@ export function SowWorkspacePage() {
             <Button variant="secondary" onClick={() => setDeleteOpen(false)} disabled={deleting}>
               Cancel
             </Button>
-            <Button onClick={() => void confirmDelete()} disabled={deleting}>
+            <Button onClick={() => void confirmDelete()} disabled={deleting || !deleteAssessment || !!deleteError}>
               {deleting ? "Deleting…" : "Delete SOW"}
             </Button>
           </DialogFooter>
@@ -483,7 +484,7 @@ export function SowWorkspacePage() {
   );
 }
 
-function renderTab(key: TabKey, snap: WorkspaceSnapshot) {
+function renderTab(key: TabKey, snap: WorkspaceSnapshot, viewer?: MeResponse | null, refresh?: () => Promise<void>) {
   switch (key) {
     case "overview":
       return <OverviewTab snap={snap} />;
@@ -496,9 +497,9 @@ function renderTab(key: TabKey, snap: WorkspaceSnapshot) {
     case "documents":
       return <DocumentsTab snap={snap} />;
     case "signature":
-      return <SignatureTab snap={snap} />;
+      return <SignatureTab snap={snap} viewer={viewer} refresh={refresh} />;
     case "handoff":
-      return <HandoffTab snap={snap} />;
+      return <HandoffTab snap={snap} viewer={viewer} refresh={refresh} />;
     case "activity":
       return <ActivityTab snap={snap} />;
   }

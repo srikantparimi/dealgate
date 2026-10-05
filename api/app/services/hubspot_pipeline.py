@@ -33,14 +33,17 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import Date, Integer, and_, case, func, or_, select
+from sqlalchemy import Boolean, Date, Integer, and_, case, cast, false, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import FunctionElement
 
 from app.models.approval import ApprovalPackage
 from app.models.client import Agreement, Client
@@ -50,6 +53,7 @@ from app.models.opportunity import Opportunity
 from app.models.signed_sow import SignedSowUpload
 from app.models.sow import Sow, SowVersion
 from app.models.user import User
+from app.services.hubspot_properties import HubspotPropertyMapping
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,7 @@ class PipelineDeal:
     close_date: date | None
     hubspot_last_seen_at: datetime | None
     linked_sows: tuple[LinkedSow, ...] = field(default_factory=tuple)
+    source_origin: str = "hubspot"
 
 
 CLOSED_LOST_LABELS: frozenset[str] = frozenset({"closedlost", "closed lost", "closed-lost"})
@@ -104,15 +109,15 @@ async def _collect_linked_sows(
     return {opp_id: tuple(v) for opp_id, v in grouped.items()}
 
 
-def _base_query():
-    """Every Pipeline read starts here — HubSpot-sourced, non-archived."""
+def _base_query(filters=None):
+    """Shared CRM population plus explicitly authorized local fixture IDs."""
 
     return (
         select(Opportunity, Client, User)
         .join(Client, Client.id == Opportunity.client_id, isouter=True)
         .join(User, User.id == Opportunity.owner_id, isouter=True)
-        .where(Opportunity.source == "hubspot")
         .where(Opportunity.archived_at.is_(None))
+        .where(*_base_opportunity_filter(filters or PipelineFilters(include_closed=True)))
     )
 
 
@@ -127,6 +132,7 @@ def _row_to_deal(
     display_name = real_name or opp.stage_label or opp.sales_stage or opp.hubspot_deal_id
     return PipelineDeal(
         opportunity_id=opp.id,
+        source_origin="local_test_fixture" if opp.source == "sow_upload" else "hubspot",
         hubspot_deal_id=opp.hubspot_deal_id,
         name=display_name,
         client_id=client.id if client else None,
@@ -149,6 +155,7 @@ async def list_pipeline_deals(
     include_closed_lost: bool = False,
     page: int = 1,
     size: int = 50,
+    filters: PipelineFilters | None = None,
 ) -> tuple[list[PipelineDeal], int, int]:
     """Return (rows, total_open, total_closed_lost) for the Pipeline UI."""
 
@@ -162,8 +169,9 @@ async def list_pipeline_deals(
             Opportunity.is_closed_lost,
             func.count(Opportunity.id),
         )
-        .where(Opportunity.source == "hubspot")
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
         .where(Opportunity.archived_at.is_(None))
+        .where(*_base_opportunity_filter(filters or PipelineFilters(include_closed=True)))
         .group_by(Opportunity.is_closed_won, Opportunity.is_closed_lost)
     )
     total_open = 0
@@ -174,7 +182,7 @@ async def list_pipeline_deals(
         elif not is_won:
             total_open += count
 
-    stmt = _base_query()
+    stmt = _base_query(filters)
     if not include_closed_lost:
         lowered = func.lower(func.coalesce(Opportunity.stage_label, Opportunity.sales_stage, ""))
         stmt = stmt.where(~lowered.in_([s for s in CLOSED_LOST_LABELS]))
@@ -198,9 +206,9 @@ async def list_pipeline_deals(
 
 
 async def get_pipeline_deal(
-    session: AsyncSession, opportunity_id: uuid.UUID
+    session: AsyncSession, opportunity_id: uuid.UUID, *, filters: PipelineFilters | None = None
 ) -> PipelineDeal | None:
-    stmt = _base_query().where(Opportunity.id == opportunity_id)
+    stmt = _base_query(filters).where(Opportunity.id == opportunity_id)
     row = (await session.execute(stmt)).one_or_none()
     if row is None:
         return None
@@ -209,11 +217,26 @@ async def get_pipeline_deal(
     return _row_to_deal(opp, client, owner, linked.get(opp.id, ()))
 
 
+async def list_client_opportunity_records(
+    session: AsyncSession, client_id: uuid.UUID
+) -> tuple[Opportunity, ...]:
+    """Return one client's active deals through the shared Pipeline boundary."""
+
+    rows = await session.scalars(
+        select(Opportunity)
+        .where(Opportunity.client_id == client_id)
+        .where(Opportunity.archived_at.is_(None))
+        .order_by(Opportunity.id.asc())
+    )
+    return tuple(rows.all())
+
+
 async def get_opportunity_row(
     session: AsyncSession,
     *,
     opportunity_id: uuid.UUID,
     now: datetime | None = None,
+    filters: PipelineFilters | None = None,
 ) -> OpportunityRow | None:
     """S20 W2 · single-opportunity in the S19 OpportunityRow shape.
 
@@ -243,20 +266,21 @@ async def get_opportunity_row(
             subq_sow_id,
             subq_signed,
             subq_sow_ct,
+            _effective_bu_column().label("business_unit"),
         )
         .join(Client, Client.id == Opportunity.client_id, isouter=True)
         .join(User, User.id == Opportunity.owner_id, isouter=True)
         .where(
             Opportunity.id == opportunity_id,
-            Opportunity.source == "hubspot",
             Opportunity.archived_at.is_(None),
+            *_base_opportunity_filter(filters or PipelineFilters(include_closed=True)),
         )
     )
     row = (await session.execute(stmt)).one_or_none()
     if row is None:
         return None
 
-    opp, client, owner, na_open, na_due, pkg_status, sow_id, signed_ct, sow_ct = row
+    opp, client, owner, na_open, na_due, pkg_status, sow_id, signed_ct, sow_ct, business_unit = row
     signed_count = int(signed_ct or 0)
     state = _derive_sow_state(
         sow_id=sow_id, latest_status=pkg_status, signed_count=signed_count
@@ -276,6 +300,7 @@ async def get_opportunity_row(
     display_name = raw_name or opp.stage_label or opp.hubspot_deal_id
     return OpportunityRow(
         opportunity_id=opp.id,
+        source_origin="local_test_fixture" if opp.source == "sow_upload" else "hubspot",
         hubspot_deal_id=opp.hubspot_deal_id,
         name=display_name,
         client_id=client.id if client else None,
@@ -297,10 +322,7 @@ async def get_opportunity_row(
         next_action_min_due=na_due,
         sow_count=int(sow_ct or 0),
         hubspot_pipeline_id=opp.hubspot_pipeline_id,
-        business_unit=(
-            getattr(opp, "hubspot_business_unit", None)
-            or (getattr(client, "hubspot_business_unit", None) if client else None)
-        ),
+        business_unit=business_unit,
     )
 
 
@@ -323,23 +345,23 @@ class PipelineFacets:
     business_units: tuple[str, ...]
 
 
-async def list_pipeline_facets(session: AsyncSession) -> PipelineFacets:
+async def list_pipeline_facets(session: AsyncSession, *, filters: PipelineFilters | None = None) -> PipelineFacets:
     """Return the facet lists the Pipeline filter bar renders as selects.
 
     - ``owners`` = distinct users who own at least one non-archived
       HubSpot opportunity. Sorted by name for a stable UI.
-    - ``business_units`` = distinct non-null BU values across the
-      opportunity + client mirrors. Empty on staging today (D10 evidence
-      — property not on the deal schema); rendered as an empty-select
-      note in the UI so the axis is present but honest.
+    - ``business_units`` = current, observed known option values from the
+      configured source object, within the same matching deal population.
     """
 
+    filters = filters or PipelineFilters(include_closed=True)
     owner_rows = (
         await session.execute(
             select(User.id, User.name, User.email)
             .join(Opportunity, Opportunity.owner_id == User.id)
+            .join(Client, Client.id == Opportunity.client_id, isouter=True)
+            .where(*_base_opportunity_filter(filters))
             .where(
-                Opportunity.source == "hubspot",
                 Opportunity.archived_at.is_(None),
                 User.name.is_not(None),
             )
@@ -351,33 +373,12 @@ async def list_pipeline_facets(session: AsyncSession) -> PipelineFacets:
         OwnerFacet(id=row.id, name=row.name, email=row.email) for row in owner_rows
     )
 
-    bus: set[str] = set()
-    opp_bu = _opportunity_bu_column()
-    client_bu = _client_bu_column()
-    if opp_bu is not None:
-        for (v,) in (
-            await session.execute(
-                select(opp_bu)
-                .where(
-                    Opportunity.source == "hubspot",
-                    Opportunity.archived_at.is_(None),
-                    opp_bu.is_not(None),
-                )
-                .distinct()
-            )
-        ).all():
-            if v:
-                bus.add(str(v))
-    if client_bu is not None:
-        for (v,) in (
-            await session.execute(
-                select(client_bu)
-                .where(client_bu.is_not(None))
-                .distinct()
-            )
-        ).all():
-            if v:
-                bus.add(str(v))
+    bu = _effective_bu_column()
+    bus = set((await session.scalars(
+        select(bu).select_from(Opportunity)
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
+        .where(*_base_opportunity_filter(filters), bu.is_not(None)).distinct()
+    )).all())
 
     return PipelineFacets(owners=owners, business_units=tuple(sorted(bus)))
 
@@ -424,7 +425,7 @@ async def list_pipeline_stages(
 
 
 async def search_pipeline_deals(
-    session: AsyncSession, *, q: str, limit: int = 10
+    session: AsyncSession, *, q: str, limit: int = 10, filters: PipelineFilters | None = None
 ) -> list[PipelineDeal]:
     """SOW-upload picker feed. Matches deal id, stage label, or client name."""
 
@@ -433,7 +434,7 @@ async def search_pipeline_deals(
         return []
     like = f"%{query.lower()}%"
     stmt = (
-        _base_query()
+        _base_query(filters)
         .where(
             or_(
                 func.lower(func.coalesce(Opportunity.hubspot_deal_id, "")).like(like),
@@ -536,9 +537,8 @@ class PipelineFilters:
       ``hubspot_owner_id`` mirrored onto ``client.hubspot_owner_id`` once
       W1's owner mirror lands the column — see requests.md
       W2-2026-09-30-02). Distinct filter; NEVER derived from a deal.
-    - ``business_unit`` — HubSpot BU property (D10). Read from
-      ``opportunity.hubspot_business_unit`` or (per W1's discovery)
-      ``client.hubspot_business_unit``.
+    - ``business_unit`` — current observed known option values from the
+      configured deal or company property, never a cross-object fallback.
 
     Date presets (contracts §4): ``last7 | last30 | last90 | next7 |
     next30 | next90 | this_month | this_quarter | custom``. The caller
@@ -575,6 +575,77 @@ class PipelineFilters:
     include_closed: bool = False  # legacy toggle: include closed-lost + closed-won
     open_closed: str | None = None  # 'open' | 'closed_won' | 'closed_lost' | 'any'
     missing: tuple[str, ...] = ()  # rows missing a field: 'owner' | 'stage' | 'close_date' | 'amount' | 'business_unit'
+    show_clients_without_matches: bool = False
+    as_of: datetime | None = None
+    authorized_client_ids: tuple[uuid.UUID, ...] | None = None
+    hidden_client_ids: tuple[uuid.UUID, ...] = ()
+    authorized_opportunity_ids: tuple[uuid.UUID, ...] | None = None
+    # Server-derived capability, never accepted from an HTTP or saved-view filter.
+    authorized_fixture_opportunity_ids: tuple[uuid.UUID, ...] = ()
+
+
+async def scope_pipeline_filters(session, user, filters: PipelineFilters) -> PipelineFilters:
+    """Apply trusted fixture visibility before any aggregation or pagination."""
+    from app.models.audit import AuditEvent
+    from app.services.test_fixtures import ISSUED, account_scope, user_allowed
+
+    grants = (await session.execute(select(AuditEvent.entity_id, AuditEvent.after).where(
+        AuditEvent.action == ISSUED, AuditEvent.entity == "client",
+    ))).all()
+    fixture_ids = set()
+    candidate_ids = set()
+    for value, data in grants:
+        try:
+            client_id = uuid.UUID(value)
+        except (ValueError, TypeError):
+            continue
+        fixture_ids.add(client_id)
+        participants = data.get("participant_ids") if isinstance(data, dict) else None
+        if isinstance(participants, list) and str(user.id) in participants:
+            candidate_ids.add(client_id)
+    if user_allowed(user, None):
+        return replace(filters, hidden_client_ids=tuple(fixture_ids), authorized_fixture_opportunity_ids=())
+    allowed_clients = []
+    allowed_deals = []
+    # This is only a prefilter. Latest grant, expiry, issuer, ownership and
+    # exact deal are still revalidated below; an old membership grants nothing.
+    for client_id in candidate_ids:
+        scope = await account_scope(session, client_id)
+        if not user_allowed(user, scope):
+            continue
+        allowed_clients.append(client_id)
+        deals = (await session.scalars(select(Opportunity).where(Opportunity.client_id == client_id))).all()
+        for deal in deals:
+            if user_allowed(user, await account_scope(session, client_id, opportunity_id=deal.id)):
+                allowed_deals.append(deal.id)
+    return replace(filters, authorized_client_ids=tuple(allowed_clients), authorized_opportunity_ids=tuple(allowed_deals),
+                   authorized_fixture_opportunity_ids=tuple(allowed_deals))
+
+
+def _has_deal_filters(filters):
+    return any((
+        filters.pipeline, filters.stage, filters.owner, filters.account_owner,
+        filters.business_unit, filters.client, filters.readiness, filters.attention,
+        filters.date_field, filters.search, filters.open_closed, filters.missing,
+        filters.opportunity_id is not None, filters.watching_ids is not None,
+    ))
+
+
+def _client_visibility(filters):
+    conditions = [Client.archived_at.is_(None)]
+    if filters.authorized_client_ids is not None:
+        conditions.append(Client.id.in_(filters.authorized_client_ids))
+    if filters.hidden_client_ids:
+        conditions.append(or_(Client.id.is_(None), Client.id.not_in(filters.hidden_client_ids)))
+    return conditions
+
+
+async def matching_opportunity_ids(session, filters: PipelineFilters) -> set[uuid.UUID]:
+    return set((await session.scalars(
+        select(Opportunity.id)
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
+        .where(*_base_opportunity_filter(filters))
+    )).all())
 
 
 VALID_DATE_FIELDS: frozenset[str] = frozenset(
@@ -642,6 +713,7 @@ class OpportunityRow:
     latest_comment_author: str | None = None
     latest_comment_pinned: bool = False
     latest_comment_at: datetime | None = None
+    source_origin: str = "hubspot"
 
 
 @dataclass(frozen=True)
@@ -764,12 +836,69 @@ def _client_hubspot_owner_column():
     return getattr(Client, "hubspot_owner_id", None)
 
 
+class _KnownBusinessUnitOption(FunctionElement):
+    """Structured JSON option membership, compiled for the two supported DBs."""
+
+    type = Boolean()
+    inherit_cache = True
+
+
+def _compile_bu_option(element, compiler, *, postgres: bool, **kw):
+    options, value = list(element.clauses)
+    if postgres:
+        safe_options = case((func.jsonb_typeof(options) == "array", options),
+                            else_=cast(literal("[]"), JSONB))
+        entries = func.jsonb_array_elements(safe_options).table_valued("value")
+        option_value = entries.c.value.op("->>")("value")
+    else:
+        safe_options = case((func.json_type(options) == "array", options), else_=literal("[]"))
+        entries = func.json_each(safe_options).table_valued("value")
+        option_value = func.json_extract(entries.c.value, "$.value")
+    predicate = (select(1).select_from(entries).where(option_value == value)
+                 .correlate(Opportunity, Client, HubspotPropertyMapping).exists())
+    return compiler.process(predicate, **kw)
+
+
+@compiles(_KnownBusinessUnitOption, "postgresql")
+def _compile_bu_option_postgres(element, compiler, **kw):
+    return _compile_bu_option(element, compiler, postgres=True, **kw)
+
+
+@compiles(_KnownBusinessUnitOption, "sqlite")
+def _compile_bu_option_sqlite(element, compiler, **kw):
+    return _compile_bu_option(element, compiler, postgres=False, **kw)
+
+
+def _bu_observation_condition(model, object_type: str, *, known_option: bool = False):
+    conditions = [
+        HubspotPropertyMapping.key == "business_unit",
+        HubspotPropertyMapping.availability_state == "configured",
+        HubspotPropertyMapping.field_type == "enumeration",
+        HubspotPropertyMapping.internal_name.is_not(None),
+        HubspotPropertyMapping.internal_name != "",
+        HubspotPropertyMapping.object_type == object_type,
+        HubspotPropertyMapping.mapping_version == model.business_unit_mapping_version,
+    ]
+    if known_option:
+        conditions.append(_KnownBusinessUnitOption(
+            HubspotPropertyMapping.options, model.business_unit_value))
+    return and_(model.business_unit_observed_at.is_not(None),
+        select(1).where(*conditions).correlate(model).exists())
+
+
 def _opportunity_bu_column():
-    return getattr(Opportunity, "hubspot_business_unit", None)
+    return case((_bu_observation_condition(Opportunity, "deal", known_option=True),
+                 func.nullif(Opportunity.business_unit_value, "")), else_=None)
 
 
 def _client_bu_column():
-    return getattr(Client, "hubspot_business_unit", None)
+    return case((_bu_observation_condition(Client, "company", known_option=True),
+                 func.nullif(Client.business_unit_value, "")), else_=None)
+
+
+def _effective_bu_column():
+    # Exactly one configured object can qualify; a blank never switches source.
+    return func.coalesce(_opportunity_bu_column(), _client_bu_column())
 
 
 def _base_opportunity_filter(filters: PipelineFilters):
@@ -781,9 +910,13 @@ def _base_opportunity_filter(filters: PipelineFilters):
     """
 
     conditions = [
-        Opportunity.source == "hubspot",
+        or_(Opportunity.source == "hubspot", and_(Opportunity.source == "sow_upload",
+            Opportunity.id.in_(filters.authorized_fixture_opportunity_ids))),
         Opportunity.archived_at.is_(None),
+        *_client_visibility(filters),
     ]
+    if filters.authorized_opportunity_ids is not None:
+        conditions.append(Opportunity.id.in_(filters.authorized_opportunity_ids))
     # open_closed takes precedence over the legacy include_closed toggle
     # when set — the review's explicit "open | closed_won | closed_lost |
     # any" contract requires it.
@@ -826,20 +959,11 @@ def _base_opportunity_filter(filters: PipelineFilters):
         client_owner = _client_hubspot_owner_column()
         if client_owner is not None:
             conditions.append(client_owner.in_(filters.account_owner))
-        # else: column not yet mirrored (W1's migration in flight); silently
-        # ignore rather than crash — the UI will show the axis with a
-        # "not yet mirrored" note until W1 lands the column.
+        else:
+            conditions.append(false())
+        # Unavailable source axes must not expand an explicit selection.
     if filters.business_unit:
-        opp_bu = _opportunity_bu_column()
-        client_bu = _client_bu_column()
-        clauses = []
-        if opp_bu is not None:
-            clauses.append(opp_bu.in_(filters.business_unit))
-        if client_bu is not None:
-            clauses.append(client_bu.in_(filters.business_unit))
-        if clauses:
-            conditions.append(or_(*clauses))
-        # else: BU not yet mirrored — filter is a no-op (W1 will populate).
+        conditions.append(_effective_bu_column().in_(filters.business_unit))
     if filters.date_field and (filters.date_from or filters.date_to):
         column = _date_field_column(filters.date_field)
         if column is not None:
@@ -863,15 +987,12 @@ def _base_opportunity_filter(filters: PipelineFilters):
             elif miss == "amount":
                 conditions.append(Opportunity.amount.is_(None))
             elif miss == "business_unit":
-                opp_bu = _opportunity_bu_column()
-                client_bu = _client_bu_column()
-                bu_clauses = []
-                if opp_bu is not None:
-                    bu_clauses.append(opp_bu.is_(None))
-                if client_bu is not None:
-                    bu_clauses.append(client_bu.is_(None))
-                if bu_clauses:
-                    conditions.append(and_(*bu_clauses))
+                conditions.append(or_(
+                    and_(_bu_observation_condition(Opportunity, "deal"), or_(
+                        Opportunity.business_unit_value.is_(None), Opportunity.business_unit_value == "")),
+                    and_(_bu_observation_condition(Client, "company"), or_(
+                        Client.business_unit_value.is_(None), Client.business_unit_value == "")),
+                ))
     if filters.search:
         like = f"%{filters.search.strip().lower()}%"
         name_col = _opp_name_column()
@@ -883,6 +1004,26 @@ def _base_opportunity_filter(filters: PipelineFilters):
                 func.lower(func.coalesce(Client.name, "")).like(like),
             )
         )
+    if filters.readiness:
+        package = _latest_package_status_subq()
+        state = case(
+            (_sow_id_subq().is_(None), "none"),
+            (and_(package == "ready_to_sign", _signed_sow_exists_subq() > 0), "awaiting_signature"),
+            *[(package == status, state.value) for status, state in _PACKAGE_TO_STATE.items()],
+            else_="draft",
+        )
+        conditions.append(state.in_(filters.readiness))
+    if filters.attention:
+        now = filters.as_of or datetime.now(UTC)
+        owner_email = select(User.email).where(User.id == Opportunity.owner_id).correlate(Opportunity).scalar_subquery()
+        attention = {
+            "no_owner": or_(owner_email.is_(None), owner_email == UNASSIGNED_OWNER_EMAIL),
+            "overdue_action": _next_action_min_due_subq() < now.date(),
+            "stalled": and_(_closed_condition(), Opportunity.hubspot_last_activity_at < now - timedelta(days=STALLED_DAYS)),
+            "pending_approval": _latest_package_status_subq().in_(("pending_delivery_hr", "pending_finance_legal", "pending_ceo_exception")),
+            "closed_won_not_released": and_(Opportunity.is_closed_won.is_(True), or_(_sow_id_subq().is_(None), _signed_sow_exists_subq() == 0)),
+        }
+        conditions.append(or_(*(attention.get(key, false()) for key in filters.attention)))
     return conditions
 
 
@@ -978,11 +1119,42 @@ def _next_action_min_due_subq():
     )
 
 
-def _latest_package_status_subq():
+def _current_package_rows():
+    """Newest non-voided package per live SOW, never per whole deal."""
     return (
-        select(ApprovalPackage.status)
-        .where(ApprovalPackage.opportunity_id == Opportunity.id)
-        .order_by(ApprovalPackage.submitted_at.desc())
+        select(
+            ApprovalPackage.id, ApprovalPackage.opportunity_id, ApprovalPackage.status,
+            ApprovalPackage.submitted_at, Sow.id.label("sow_id"),
+            func.row_number().over(
+                partition_by=Sow.id,
+                order_by=(ApprovalPackage.submitted_at.desc(), ApprovalPackage.id.desc()),
+            ).label("position"),
+        )
+        .join(SowVersion, SowVersion.id == ApprovalPackage.sow_version_id)
+        .join(Sow, Sow.id == SowVersion.sow_id)
+        .where(Sow.archived_at.is_(None), ApprovalPackage.status != "voided")
+        .subquery()
+    )
+
+
+def _package_priority(status):
+    return case(
+        (status == "rejected", 6),
+        (status == "pending_ceo_exception", 5),
+        (status == "pending_delivery_hr", 4),
+        (status == "pending_finance_legal", 4),
+        (status == "ready_to_sign", 3),
+        (status == "released", 2),
+        else_=1,
+    )
+
+
+def _latest_package_status_subq():
+    current = _current_package_rows()
+    return (
+        select(current.c.status)
+        .where(current.c.opportunity_id == Opportunity.id, current.c.position == 1)
+        .order_by(_package_priority(current.c.status).desc(), current.c.submitted_at.desc(), current.c.id.desc())
         .limit(1)
         .correlate(Opportunity)
         .scalar_subquery()
@@ -1163,6 +1335,7 @@ async def list_opportunities(
 
     filters = filters or PipelineFilters()
     now = now or datetime.now(tz=UTC)
+    filters = replace(filters, as_of=now)
 
     # Correlated subq columns bind at execute time to the outer opp row so
     # each result set includes everything needed to derive SOW state +
@@ -1198,6 +1371,7 @@ async def list_opportunities(
             subq_c_pinned,
             subq_c_at,
             total,
+            _effective_bu_column().label("business_unit"),
         )
         .join(Client, Client.id == Opportunity.client_id, isouter=True)
         .join(User, User.id == Opportunity.owner_id, isouter=True)
@@ -1245,6 +1419,7 @@ async def list_opportunities(
         c_pinned,
         c_at,
         total_c,
+        business_unit,
     ) in rows:
         total_count = int(total_c or 0)
         signed_count = int(signed_ct or 0)
@@ -1263,10 +1438,6 @@ async def list_opportunities(
             now=now,
         )
         flag_values = tuple(f.value for f in flags)
-        if not _row_matches_attention_filter(flag_values, filters.attention):
-            continue
-        if not _row_matches_readiness_filter(state.value, filters.readiness):
-            continue
         # Deal name: prefer the mirrored HubSpot dealname (once W1 lands
         # the column), then fall back to the stage label or the HubSpot id.
         # NEVER show a raw stage as the deal identity. If closed-lost, the
@@ -1276,6 +1447,7 @@ async def list_opportunities(
         items.append(
             OpportunityRow(
                 opportunity_id=opp.id,
+                source_origin="local_test_fixture" if opp.source == "sow_upload" else "hubspot",
                 hubspot_deal_id=opp.hubspot_deal_id,
                 name=display_name,
                 client_id=client.id if client else None,
@@ -1297,10 +1469,7 @@ async def list_opportunities(
                 next_action_min_due=na_due,
                 sow_count=int(sow_ct or 0),
                 hubspot_pipeline_id=opp.hubspot_pipeline_id,
-                business_unit=(
-                    getattr(opp, "hubspot_business_unit", None)
-                    or (getattr(client, "hubspot_business_unit", None) if client else None)
-                ),
+                business_unit=business_unit,
                 latest_comment_body=c_body,
                 latest_comment_author=(
                     author_names.get(c_author_id) if c_author_id else c_fallback
@@ -1312,11 +1481,12 @@ async def list_opportunities(
 
     # A5, T35, T40: stage_counts + unknown_bucket over the FULL authorized
     # filter set — not the page. Uses the same base filter conditions so
-    # chip counts reconcile with the matching-deal total. Post-Python
-    # filters (attention / readiness) are re-applied to the row set below.
+    # chip counts reconcile with the matching-deal total. Attention and
+    # readiness use the same SQL predicate before paging and aggregation.
     stage_counts_all, unknown_bucket = await _compute_stage_counts(
         session, filters=filters, now=now
     )
+    total_count = sum(stage.count for stage in stage_counts_all) + unknown_bucket
 
     # Freshness envelope (contracts §3): the router populates specifics;
     # we surface the row-set watermark hint by echoing filter state.
@@ -1415,7 +1585,7 @@ async def _compute_stage_counts(
         )
         bucket["count"] += int(count or 0)
         if value_sum is not None and int(count or 0) > 0:
-            ccy = currency or "USD"
+            ccy = currency or "UNK"
             existing = bucket["value_by_currency"].get(ccy, Decimal("0"))
             bucket["value_by_currency"][ccy] = existing + Decimal(str(value_sum))
 
@@ -1547,6 +1717,7 @@ async def list_clients(
 
     filters = filters or PipelineFilters()
     now = now or datetime.now(tz=UTC)
+    filters = replace(filters, as_of=now)
 
     # Q1: Client rows with aggregated columns via correlated subqueries.
     open_count_subq = _client_open_opp_count_subq(filters)
@@ -1554,7 +1725,7 @@ async def list_clients(
     na_min_due_subq = _client_na_min_due_subq(filters)
     na_open_count_subq = _client_na_open_count_subq(filters)
     worst_state_signal_subq = _client_worst_pkg_status_subq(filters)
-    has_open_closed_won_no_release_subq = _client_closed_won_gap_subq()
+    has_open_closed_won_no_release_subq = _client_closed_won_gap_subq(filters)
 
     total = func.count().over().label("total")
 
@@ -1572,11 +1743,13 @@ async def list_clients(
             owner_subq,
             total,
         )
-        .where(Client.archived_at.is_(None))
+        .where(*_client_visibility(filters))
     )
-    # Text search over client name (mirrors search_pipeline_deals shape).
-    if filters.search:
-        stmt = stmt.where(func.lower(Client.name).like(f"%{filters.search.strip().lower()}%"))
+    has_deal_filters = _has_deal_filters(filters)
+    if has_deal_filters and not filters.show_clients_without_matches:
+        stmt = stmt.where(open_count_subq > 0)
+    if has_deal_filters and sort == DEFAULT_SORT_CLIENTS:
+        stmt = stmt.order_by(open_count_subq.desc())
 
     stmt = _apply_client_sort(stmt, sort)
     stmt = stmt.offset(max(0, (page - 1) * page_size)).limit(page_size)
@@ -1584,7 +1757,9 @@ async def list_clients(
     client_rows = (await session.execute(stmt)).all()
 
     if not client_rows:
-        return ListPage(items=(), total=0, page=page, page_size=page_size)
+        count_stmt = select(func.count()).select_from(stmt.limit(None).offset(None).order_by(None).subquery())
+        total_count = int((await session.execute(count_stmt)).scalar_one())
+        return ListPage(items=(), total=total_count, page=page, page_size=page_size)
 
     client_ids = [row[0].id for row in client_rows]
 
@@ -1598,6 +1773,7 @@ async def list_clients(
             func.count(Opportunity.id).label("count"),
             func.coalesce(func.sum(Opportunity.amount), 0).label("total"),
         )
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
         .where(*open_conditions)
         .where(Opportunity.client_id.in_(client_ids))
         .group_by(Opportunity.client_id, Opportunity.currency, Opportunity.stage_label)
@@ -1629,10 +1805,15 @@ async def list_clients(
     # by a correlated subquery so the outer GROUP BY stays per client.
     total_open_subq = (
         select(func.count(Opportunity.id))
-        .where(Opportunity.source == "hubspot")
         .where(Opportunity.archived_at.is_(None))
         .where(_closed_condition())
         .where(Opportunity.client_id == Client.id)
+        .where(*_base_opportunity_filter(PipelineFilters(
+            authorized_client_ids=filters.authorized_client_ids,
+            hidden_client_ids=filters.hidden_client_ids,
+            authorized_opportunity_ids=filters.authorized_opportunity_ids,
+            authorized_fixture_opportunity_ids=filters.authorized_fixture_opportunity_ids,
+        )))
         .correlate(Client)
         .scalar_subquery()
     )
@@ -1685,7 +1866,7 @@ async def list_clients(
     ) in client_rows:
         total_count = int(total_c or 0)
         state = _derive_sow_state(
-            sow_id=None if worst_pkg_status is None else uuid.uuid4(),
+            sow_id=None if worst_pkg_status is None else client.id,
             latest_status=worst_pkg_status,
             signed_count=0,
         )
@@ -1707,10 +1888,6 @@ async def list_clients(
         if bool(closed_won_gap):
             flags.append(AttentionFlag.CLOSED_WON_NOT_RELEASED)
         flag_values = tuple(f.value for f in flags)
-        if not _row_matches_attention_filter(flag_values, filters.attention):
-            continue
-        if not _row_matches_readiness_filter(state.value, filters.readiness):
-            continue
         acct_owner_id = account_owner_ids.get(client.id)
         items.append(
             ClientRow(
@@ -1794,35 +1971,29 @@ def _client_na_open_count_subq(filters: PipelineFilters):
 
 
 def _client_worst_pkg_status_subq(filters: PipelineFilters):
-    """Return the "in-review-most" package status across a client's open opps.
-
-    Simplified worst-case: prefer the earliest-in-approval-flow state so
-    the client card shows the deepest need for attention. In practice
-    this is best-effort — the true worst state is derived downstream.
-    """
-
+    """Roll up current live package states in the same selected deal set."""
     conditions = _base_opportunity_filter(filters)
-    ranked = case(
-        (ApprovalPackage.status == "pending_delivery_hr", 5),
-        (ApprovalPackage.status == "pending_finance_legal", 4),
-        (ApprovalPackage.status == "pending_ceo_exception", 3),
-        (ApprovalPackage.status == "ready_to_sign", 2),
-        (ApprovalPackage.status == "released", 1),
-        else_=0,
-    )
-    return (
-        select(ApprovalPackage.status)
-        .join(Opportunity, Opportunity.id == ApprovalPackage.opportunity_id)
+    current = _current_package_rows()
+    package_status = (
+        select(current.c.status)
+        .join(Opportunity, Opportunity.id == current.c.opportunity_id)
+        .where(current.c.position == 1)
         .where(*conditions)
         .where(Opportunity.client_id == Client.id)
-        .order_by(ranked.desc(), ApprovalPackage.submitted_at.desc())
+        .order_by(_package_priority(current.c.status).desc(), current.c.submitted_at.desc(), current.c.id.desc())
         .limit(1)
         .correlate(Client)
         .scalar_subquery()
     )
+    has_sow = (
+        select(Sow.id).join(Opportunity, Opportunity.id == Sow.opportunity_id)
+        .where(*conditions, Sow.archived_at.is_(None), Opportunity.client_id == Client.id)
+        .correlate(Client).exists()
+    )
+    return func.coalesce(package_status, case((has_sow, "draft"), else_=None))
 
 
-def _client_closed_won_gap_subq():
+def _client_closed_won_gap_subq(filters: PipelineFilters):
     """1 if the client has any closed-won opp without a released package."""
 
     released_pkg_exists = (
@@ -1834,8 +2005,8 @@ def _client_closed_won_gap_subq():
     )
     return (
         select(func.count(Opportunity.id))
-        .where(Opportunity.source == "hubspot")
         .where(Opportunity.archived_at.is_(None))
+        .where(*_base_opportunity_filter(filters))
         .where(Opportunity.is_closed_won.is_(True))
         .where(Opportunity.client_id == Client.id)
         .where(released_pkg_exists == 0)
@@ -1894,6 +2065,7 @@ async def summary(
 
     filters = filters or PipelineFilters()
     now = now or datetime.now(tz=UTC)
+    filters = replace(filters, as_of=now)
     open_conditions = _base_opportunity_filter(filters)
     month_start = now.date().replace(day=1)
     if month_start.month == 12:
@@ -1920,6 +2092,7 @@ async def summary(
                 )
             ).label("closing_this_month"),
         )
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
         .where(*open_conditions)
         .group_by(Opportunity.currency)
     )
@@ -1971,6 +2144,12 @@ async def summary(
         .where(NextAction.due_date < now.date())
         .where(NextAction.status != "complete")
     )
+    matching_ids = (
+        select(Opportunity.id)
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
+        .where(*open_conditions)
+    )
+    overdue_stmt = overdue_stmt.where(NextAction.opportunity_id.in_(matching_ids))
     pending_stmt = (
         select(func.count(ApprovalPackage.id))
         .where(
@@ -1979,14 +2158,23 @@ async def summary(
             )
         )
     )
+    pending_stmt = pending_stmt.where(ApprovalPackage.opportunity_id.in_(matching_ids))
+    current = _current_package_rows()
+    current_ids = select(current.c.id).where(current.c.position == 1)
+    pending_stmt = pending_stmt.where(ApprovalPackage.id.in_(current_ids))
     # S20 W4 Session 6 · chain two more counts into the same UNION so
     # the three command-center scalars ride the same execute budget.
     # (pending_stmt already counts `sows_in_progress`; we add the CEO
     # subset + total agreement count.)
     ceo_pending_stmt = select(func.count(ApprovalPackage.id)).where(
         ApprovalPackage.status == "pending_ceo_exception"
-    )
-    agreements_stmt = select(func.count(Agreement.id))
+    ).where(ApprovalPackage.opportunity_id.in_(matching_ids), ApprovalPackage.id.in_(current_ids))
+    matching_clients = select(Client.id).where(*_client_visibility(filters))
+    if _has_deal_filters(filters):
+        matching_clients = matching_clients.where(Client.id.in_(
+            select(Opportunity.client_id).where(Opportunity.id.in_(matching_ids))
+        ))
+    agreements_stmt = select(func.count(Agreement.id)).where(Agreement.client_id.in_(matching_clients))
     # Four aggregates but one execute via UNION ALL for the budget test —
     # SQLite requires distinct SELECTs to be UNION'd for combined counting.
     from sqlalchemy import union_all as _union_all
@@ -2008,6 +2196,7 @@ async def summary(
     # NDA OR no MSA file counts as one gap.
     open_client_ids_subq = (
         select(Opportunity.client_id)
+        .join(Client, Client.id == Opportunity.client_id, isouter=True)
         .where(*open_conditions)
         .where(Opportunity.client_id.is_not(None))
         .distinct()

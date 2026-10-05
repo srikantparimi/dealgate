@@ -1,0 +1,80 @@
+{
+  "revision": "a612b717d4277cccf4588a96eb29b63fd283dbbf",
+  "database": "s21_t17_61d71c0b4bf7436d957723c632fe1aba",
+  "boundary": "Local identity adapter; real API, PostgreSQL and S3; not staging",
+  "evidence": [
+    {
+      "action": "upload",
+      "kind": "NDA",
+      "row": {
+        "id": "bf343bcd-ad81-4fa4-873b-ec381fab2597",
+        "client_id": "11ceb7d9-1693-49e8-9ab1-596a5d6e5941",
+        "client_name": "S21 e2e b76499f4-64d0-4b29-938f-b8217e3010d0 T17 connected 61d71c0b",
+        "kind": "NDA",
+        "filename": "s21-t17-nda-v1.pdf",
+        "file_size": 638,
+        "uploaded_by": "9f4a230f-d4a4-537d-b8e1-d379c0a43ab1",
+        "uploaded_by_name": "T17 Owner 61d71c0b",
+        "uploaded_at": "2026-10-03T05:52:00.596739+00:00",
+        "version_no": 1
+      }
+    },
+    {
+      "action": "upload",
+      "kind": "MSA",
+      "row": {
+        "id": "9ddadfa2-bd3f-40b4-878a-89980c718b9e",
+        "client_id": "11ceb7d9-1693-49e8-9ab1-596a5d6e5941",
+        "client_name": "S21 e2e b76499f4-64d0-4b29-938f-b8217e3010d0 T17 connected 61d71c0b",
+        "kind": "MSA",
+        "filename": "s21-t17-msa-v1.pdf",
+        "file_size": 638,
+        "uploaded_by": "9f4a230f-d4a4-537d-b8e1-d379c0a43ab1",
+        "uploaded_by_name": "T17 Owner 61d71c0b",
+        "uploaded_at": "2026-10-03T05:52:06.108168+00:00",
+        "version_no": 1
+      }
+    },
+    {
+      "presence": "/clients/11ceb7d9-1693-49e8-9ab1-596a5d6e5941"
+    },
+    {
+      "presence": "/deals/0a66db62-3619-4762-a96e-afe1473864a9"
+    },
+    {
+      "presence": "/sows/0a66db62-3619-4762-a96e-afe1473864a9/documents"
+    },
+    {
+      "presence": "/agreements?client_id=11ceb7d9-1693-49e8-9ab1-596a5d6e5941"
+    },
+    {
+      "action": "replace",
+      "row": {
+        "id": "bf343bcd-ad81-4fa4-873b-ec381fab2597",
+        "client_id": "11ceb7d9-1693-49e8-9ab1-596a5d6e5941",
+        "client_name": "S21 e2e b76499f4-64d0-4b29-938f-b8217e3010d0 T17 connected 61d71c0b",
+        "kind": "NDA",
+        "filename": "s21-t17-nda-v2.pdf",
+        "file_size": 638,
+        "uploaded_by": "9f4a230f-d4a4-537d-b8e1-d379c0a43ab1",
+        "uploaded_by_name": "T17 Owner 61d71c0b",
+        "uploaded_at": "2026-10-03T05:52:28.233312+00:00",
+        "version_no": 2
+      }
+    },
+    {
+      "download_version": 1,
+      "sha256": "e7593da29efcd40fb895d0f7ec5736d4e57a342f434718a0637a72cbdae7e26f"
+    },
+    {
+      "download_version": 2,
+      "sha256": "1949b8167d6d48ae9482c3289d82b3c0f68ab770c1b353878615b2cf83d28d40"
+    },
+    {
+      "read_only_continuation": true,
+      "sow_id": "d95a10b3-9811-418a-b6ef-958d148c00b7",
+      "sow_sha256": "7104c0fe8432aac30032689e0e8d89d6fe752bff0001b730826f08083561c0fc",
+      "limitation": "Original run59018 passed all document assertions; final equality differed only in expiring URL query. Not an uninterrupted green run."
+    }
+  ]
+}

@@ -15,13 +15,14 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "../lib/cn";
 
-export type FunctionLetter = "D" | "H" | "F" | "L";
+export type FunctionLetter = "D" | "H" | "S" | "F" | "L";
 export type FunctionState = "pending" | "progress" | "ok" | "bad";
 
 const FUNCTION_LETTERS: FunctionLetter[] = ["D", "H", "F", "L"];
 const FUNCTION_LABEL: Record<FunctionLetter, string> = {
   D: "Delivery",
   H: "HR",
+  S: "Sales",
   F: "Finance",
   L: "Legal",
 };
@@ -77,15 +78,17 @@ export interface FunctionMarkRowProps
    * omitted, the count is the number of `ok` states.
    */
   count?: number;
+  letters?: FunctionLetter[];
 }
 
 export function FunctionMarkRow({
   states,
   count,
+  letters = FUNCTION_LETTERS,
   className,
   ...rest
 }: FunctionMarkRowProps) {
-  const resolved = FUNCTION_LETTERS.map((l) => ({
+  const resolved = letters.map((l) => ({
     letter: l,
     state: (states[l] ?? "pending") as FunctionState,
   }));
@@ -96,7 +99,7 @@ export function FunctionMarkRow({
         "flex items-center gap-2 text-[12px] text-text-muted",
         className,
       )}
-      title="Delivery · HR · Finance · Legal"
+      title={letters.map(l => FUNCTION_LABEL[l]).join(" · ")}
       {...rest}
     >
       <div className="flex items-center gap-1">
@@ -104,7 +107,7 @@ export function FunctionMarkRow({
           <FunctionMark key={r.letter} letter={r.letter} state={r.state} />
         ))}
       </div>
-      <span className="tnum">{okCount}/4 reviews</span>
+      <span className="tnum">{okCount}/{letters.length} reviews</span>
     </div>
   );
 }

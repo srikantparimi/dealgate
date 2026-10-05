@@ -1,0 +1,17 @@
+{
+  "database": "s21_agreement_3db36d82e81b419fb11cd46356fe6a40",
+  "run": "3db36d82e81b419fb11cd46356fe6a40",
+  "state": "passed",
+  "shared_database_touched": false,
+  "migration": "20261003_0063_agreement_versions",
+  "legacy_hash": null,
+  "legacy_roundtrip": "passed",
+  "populated_downgrade": "refused",
+  "client_lock_wait": "observed",
+  "stale_competitor": 409,
+  "new_storage_writes": 1,
+  "versions": 2,
+  "parent_delete_race": "passed",
+  "identity_sync": "committed_before_lock",
+  "cleanup_keys": 3
+}

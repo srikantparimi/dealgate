@@ -4,16 +4,9 @@
 # Replaces the every-5-minute EventBridge-scheduled task-def with a
 # long-running Fargate service that drains the queue continuously. See
 # `docs/directives/s20-overnight.md` §4 for the cutover plan. The service
-# is deployed with `desired_count = 0` so applying this file has zero
-# behavioural change; the Lead flips the count to 1 during D5 deploy
-# after confirming the queue is empty and disabling the schedule rule.
-#
-# Why a new file (not additions to main.tf):
-#   - Kept isolated so a rollback is `terraform destroy -target=
-#     module.schedulers.aws_ecs_service.hubspot_intake_continuous` without
-#     ripping through the legacy scheduled task-def.
-#   - Terraform plan output stays readable — every resource in this
-#     file is new (no `~` updates to existing task-defs).
+# defaults to zero. A single Terraform flag atomically plans the service
+# desired count and legacy schedule state. Cutover/rollback both require
+# a reviewed whole-root plan and human confirmation; never CLI scaling.
 # -----------------------------------------------------------------------------
 
 # ---- Task definition -----------------------------------------------------
@@ -24,6 +17,7 @@
 # killed. The container is essential so a crash triggers ECS restart.
 
 resource "aws_ecs_task_definition" "hubspot_intake_continuous" {
+  count                    = var.hubspot_continuous_enabled ? 1 : 0
   family                   = "${var.name_prefix}-hubspot-intake-continuous"
   cpu                      = tostring(var.cpu)
   memory                   = tostring(var.memory)
@@ -50,6 +44,7 @@ resource "aws_ecs_task_definition" "hubspot_intake_continuous" {
           # (ECS) will restart the task when it exits or crashes; the
           # long-lived process just keeps looping.
           { name = "HUBSPOT_WORKER_SOFT_BUDGET", value = "86400" },
+          { name = "HUBSPOT_WORKER_CONTINUOUS", value = "1" },
         ],
       )
       secrets = local.hubspot_base_secrets
@@ -70,17 +65,18 @@ resource "aws_ecs_task_definition" "hubspot_intake_continuous" {
 # variable override once the schedule rule has been disabled and the
 # queue is drained (§4 D4 step 3).
 
-variable "hubspot_intake_service_desired_count" {
-  description = "Desired count for the continuous HubSpot intake service. Kept at 0 on first apply so the schedule-rule cutover (S20 §4 D4) is a separate, reversible flip."
-  type        = number
-  default     = 0
+variable "hubspot_continuous_enabled" {
+  description = "Enable one continuous consumer and disable the legacy scheduled intake in the same plan."
+  type        = bool
+  default     = false
 }
 
 resource "aws_ecs_service" "hubspot_intake_continuous" {
+  count           = var.hubspot_continuous_enabled ? 1 : 0
   name            = "${var.name_prefix}-hubspot-intake"
   cluster         = var.ecs_cluster_arn
-  task_definition = aws_ecs_task_definition.hubspot_intake_continuous.arn
-  desired_count   = var.hubspot_intake_service_desired_count
+  task_definition = aws_ecs_task_definition.hubspot_intake_continuous[0].arn
+  desired_count   = 1
   launch_type     = "FARGATE"
 
   # No load balancer, no service registry — the task only talks OUTBOUND
@@ -104,14 +100,6 @@ resource "aws_ecs_service" "hubspot_intake_continuous" {
   enable_ecs_managed_tags = true
   propagate_tags          = "SERVICE"
 
-  # Ignore desired_count in normal drift so an on-call `aws ecs update-
-  # service --desired-count 0` incident scale-down survives a terraform
-  # apply without immediately being reverted. Rule 12/15 still requires
-  # the *cutover* to go through terraform, but a paging response is a
-  # separate story.
-  lifecycle {
-    ignore_changes = [desired_count]
-  }
 }
 
 # ---- CloudWatch freshness alarms (D4, T32) ------------------------------

@@ -218,6 +218,19 @@ async def queue_notification(
     """
 
     _validate_category(category)
+    from fastapi import HTTPException
+    from app.services.deletion_fences import lock_source, source_deleted
+    from app.services.test_fixtures import notification_block_reason
+
+    await lock_source(session, related_entity, related_entity_id)
+    if await source_deleted(session, related_entity, related_entity_id):
+        raise HTTPException(410, "Notification source was deleted")
+    blocked = await notification_block_reason(
+        session, user_id=user_id, related_entity=related_entity,
+        related_entity_id=related_entity_id,
+    )
+    if blocked:
+        raise HTTPException(403, blocked)
     target_channels = channels if channels is not None else NOTIFICATION_CHANNELS
     for ch in target_channels:
         _validate_channel(ch)

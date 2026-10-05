@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/web
+
+ ✓ src/__tests__/ui-v2/DeletionConfirmationDialog.test.tsx (4 tests) 375ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  23:05:13
+   Duration  6.17s (transform 565ms, setup 470ms, collect 1.61s, tests 375ms, environment 2.79s, prepare 345ms)
+

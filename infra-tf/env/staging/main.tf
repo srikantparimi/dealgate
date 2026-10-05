@@ -79,6 +79,7 @@ module "api" {
   cognito_user_pool_id   = module.auth.user_pool_id
   cognito_client_id      = module.auth.client_id
   kms_key_arn            = module.kms.key_arn
+  hubspot_portal_id      = var.hubspot_portal_id
 
   allow_dev_seed_endpoint = true
 }
@@ -111,6 +112,7 @@ module "schedulers" {
   task_security_group_ids  = [module.api.api_security_group_id]
   ecr_repository_url       = module.ecr.repository_url
   image_tag                = var.image_tag
+  hubspot_portal_id        = var.hubspot_portal_id
   db_url_secret_arn        = module.secrets.db_url_secret_arn
   task_execution_role_arn  = module.api.task_execution_role_arn
   cognito_user_pool_id     = module.auth.user_pool_id

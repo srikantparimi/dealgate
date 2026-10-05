@@ -54,6 +54,8 @@ from app.services.hubspot_pipeline import (
     list_pipeline_stages,
     resolve_date_preset,
     search_pipeline_deals,
+    scope_pipeline_filters,
+    matching_opportunity_ids,
     summary as _summary,
 )
 
@@ -79,6 +81,7 @@ class LinkedSowRow(BaseModel):
 
 
 class PipelineDealRow(BaseModel):
+    source_origin: str = "hubspot"
     opportunity_id: uuid.UUID
     hubspot_deal_id: str | None
     name: str | None
@@ -105,6 +108,7 @@ class PipelineListResponse(BaseModel):
 
 def _to_row(deal: PipelineDeal) -> PipelineDealRow:
     return PipelineDealRow(
+        source_origin=deal.source_origin,
         opportunity_id=deal.opportunity_id,
         hubspot_deal_id=deal.hubspot_deal_id,
         name=deal.name,
@@ -138,6 +142,7 @@ async def list_deals(
         include_closed_lost=include_closed_lost,
         page=page,
         size=size,
+        filters=await scope_pipeline_filters(session, user, PipelineFilters(include_closed=True)),
     )
     return PipelineListResponse(
         items=[_to_row(d) for d in deals],
@@ -148,14 +153,14 @@ async def list_deals(
     )
 
 
-@router.get("/deals/{opportunity_id}", response_model=PipelineDealRow)
+@router.get("/deals/{opportunity_id:uuid}", response_model=PipelineDealRow)
 async def get_deal(
     opportunity_id: uuid.UUID,
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> PipelineDealRow:
     _require_reader(user)
-    deal = await get_pipeline_deal(session, opportunity_id)
+    deal = await get_pipeline_deal(session, opportunity_id, filters=await scope_pipeline_filters(session, user, PipelineFilters(include_closed=True)))
     if deal is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="deal not found")
     return _to_row(deal)
@@ -171,7 +176,7 @@ async def search_deals(
     """Feeds the SOW-upload picker's HubSpot-deal dropdown."""
 
     _require_reader(user)
-    deals = await search_pipeline_deals(session, q=q, limit=limit)
+    deals = await search_pipeline_deals(session, q=q, limit=limit, filters=await scope_pipeline_filters(session, user, PipelineFilters(include_closed=True)))
     return [_to_row(d) for d in deals]
 
 
@@ -181,6 +186,7 @@ async def search_deals(
 
 
 class OpportunityRowOut(BaseModel):
+    source_origin: str = "hubspot"
     opportunity_id: uuid.UUID
     hubspot_deal_id: str | None
     name: str | None
@@ -452,6 +458,7 @@ async def _resolve_scope(
 
     from app.models.tracking_group import TrackingGroup, TrackingGroupMember
     from app.models.watchlist import WatchedItem
+    from app.services.tracking_group import load_group
 
     opp_scope: set[uuid.UUID] = set()
     client_scope: set[uuid.UUID] = set()
@@ -466,9 +473,11 @@ async def _resolve_scope(
             )
         ).scalars().all()
         for grp in groups:
+            await load_group(session, actor=user, group_id=grp.id)
             if grp.filter_json:
                 # Rule-based: evaluate through the same engine.
                 sub_filters = PipelineFilters(
+                    pipeline=grp.filter_json.get("pipeline"),
                     stage=tuple(grp.filter_json.get("stage") or ()),
                     owner=tuple(uuid.UUID(o) for o in (grp.filter_json.get("owner") or [])),
                     business_unit=tuple(grp.filter_json.get("business_unit") or ()),
@@ -477,11 +486,8 @@ async def _resolve_scope(
                     open_closed=grp.filter_json.get("open_closed"),
                     include_closed=bool(grp.filter_json.get("include_closed")),
                 )
-                page = await _list_opportunities(
-                    session, filters=sub_filters, page=1, page_size=200
-                )
-                for r in page.items:
-                    opp_scope.add(r.opportunity_id)
+                sub_filters = await scope_pipeline_filters(session, user, sub_filters)
+                opp_scope.update(await matching_opportunity_ids(session, sub_filters))
             else:
                 members = (
                     await session.execute(
@@ -497,6 +503,12 @@ async def _resolve_scope(
                     for m in members:
                         client_scope.add(m.member_id)
 
+    if client_scope:
+        grouped_clients = await scope_pipeline_filters(session, user,
+            PipelineFilters(client=tuple(client_scope), include_closed=True))
+        opp_scope.update(await matching_opportunity_ids(session, grouped_clients))
+        client_scope.clear()
+
     if watching:
         axis_used = True
         rows = (
@@ -511,10 +523,17 @@ async def _resolve_scope(
             elif r.kind == "client":
                 client_scope.add(r.item_id)
 
+        if client_scope:
+            watched_clients = await scope_pipeline_filters(session, user,
+                PipelineFilters(client=tuple(client_scope), include_closed=True))
+            watching_ids.update(await matching_opportunity_ids(session, watched_clients))
+            client_scope.clear()
+
     return {
         "opportunity_id": (
             tuple(opp_scope) if (group_ids and not watching) else
-            (tuple(opp_scope | (watching_ids or set())) if axis_used else None)
+            (tuple(opp_scope & (watching_ids or set())) if group_ids else
+             tuple(watching_ids or ()) if axis_used else None)
         ),
         "client": tuple(client_scope) if client_scope else None,
         "watching_ids": tuple(watching_ids) if watching_ids is not None else None,
@@ -538,6 +557,7 @@ def _parse_sort(raw: str | None, default: tuple[SortSpec, ...]) -> tuple[SortSpe
 
 def _opp_to_out(row: OpportunityRow) -> OpportunityRowOut:
     return OpportunityRowOut(
+        source_origin=row.source_origin,
         opportunity_id=row.opportunity_id,
         hubspot_deal_id=row.hubspot_deal_id,
         name=row.name,
@@ -666,6 +686,7 @@ async def list_opportunities_endpoint(
     )
     if scope["opportunity_id"] is not None:
         filters = replace(filters, opportunity_id=scope["opportunity_id"])
+    filters = await scope_pipeline_filters(session, user, filters)
     sort_spec = _parse_sort(sort, DEFAULT_SORT_OPPS)
     result = await _list_opportunities(
         session, filters=filters, page=page, page_size=page_size, sort=sort_spec
@@ -708,9 +729,14 @@ async def list_clients_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     sort: str | None = Query(None),
+    show_clients_without_matches: bool = Query(False),
+    client: list[uuid.UUID] | None = Query(None),
+    group: list[uuid.UUID] | None = Query(None),
+    watching: bool = Query(False),
 ) -> ClientListOut:
     _require_reader(user)
     _validate_page_size(page_size)
+    scope = await _resolve_scope(session, user=user, group_ids=group, watching=watching)
     filters = _parse_filters(
         pipeline, stage, owner, readiness, attention,
         date_field, date_from, date_to, date_preset, search, include_closed,
@@ -718,7 +744,12 @@ async def list_clients_endpoint(
         business_unit=business_unit,
         open_closed=open_closed,
         missing=missing,
+        client=client,
+        watching_ids=scope["watching_ids"],
     )
+    if scope["opportunity_id"] is not None:
+        filters = replace(filters, opportunity_id=scope["opportunity_id"])
+    filters = await scope_pipeline_filters(session, user, replace(filters, show_clients_without_matches=show_clients_without_matches))
     sort_spec = _parse_sort(sort, DEFAULT_SORT_CLIENTS)
     result = await _list_clients(
         session, filters=filters, page=page, page_size=page_size, sort=sort_spec
@@ -763,8 +794,12 @@ async def summary_endpoint(
     include_closed: bool = Query(False),
     open_closed: str | None = Query(None),
     missing: list[str] | None = Query(None),
+    client: list[uuid.UUID] | None = Query(None),
+    group: list[uuid.UUID] | None = Query(None),
+    watching: bool = Query(False),
 ) -> SummaryOut:
     _require_reader(user)
+    scope = await _resolve_scope(session, user=user, group_ids=group, watching=watching)
     filters = _parse_filters(
         pipeline, stage, owner, readiness, attention,
         date_field, date_from, date_to, date_preset, search, include_closed,
@@ -772,7 +807,12 @@ async def summary_endpoint(
         business_unit=business_unit,
         open_closed=open_closed,
         missing=missing,
+        client=client,
+        watching_ids=scope["watching_ids"],
     )
+    if scope["opportunity_id"] is not None:
+        filters = replace(filters, opportunity_id=scope["opportunity_id"])
+    filters = await scope_pipeline_filters(session, user, filters)
     result: PipelineSummary = await _summary(session, filters=filters)
     return SummaryOut(
         open_count=result.open_count,
@@ -798,7 +838,11 @@ async def get_opportunity_endpoint(
     session: AsyncSession = Depends(get_session),
 ) -> OpportunityRowOut:
     _require_reader(user)
-    row = await get_opportunity_row(session, opportunity_id=opportunity_id)
+    filters = await scope_pipeline_filters(session, user, PipelineFilters(include_closed=True))
+    permitted = await get_pipeline_deal(session, opportunity_id, filters=filters)
+    if permitted is None:
+        raise HTTPException(status_code=404, detail="opportunity not found")
+    row = await get_opportunity_row(session, opportunity_id=opportunity_id, filters=filters)
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="opportunity not found"
@@ -833,16 +877,43 @@ class PipelineFacetsOut(BaseModel):
 
 # S20 W2 Session 3b Rev-2 · facets for the Pipeline filter bar.
 # `owners` populates the Owner multi-select; `business_units` populates
-# the BU select. Both are empty tuples on portals that haven't mirrored
-# the source axis — the UI renders an "unmirrored on this portal" note
-# rather than silently omitting the axis.
+# the BU select. Options describe the normalized, authorized matching population.
 @router.get("/facets", response_model=PipelineFacetsOut)
 async def list_pipeline_facets_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
+    pipeline: str | None = Query(None),
+    stage: list[str] | None = Query(None),
+    owner: list[uuid.UUID] | None = Query(None),
+    account_owner: list[str] | None = Query(None),
+    business_unit: list[str] | None = Query(None),
+    readiness: list[str] | None = Query(None),
+    attention: list[str] | None = Query(None),
+    date_field: str | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    date_preset: str | None = Query(None),
+    search: str | None = Query(None, max_length=200),
+    include_closed: bool = Query(False),
+    open_closed: str | None = Query(None),
+    missing: list[str] | None = Query(None),
+    client: list[uuid.UUID] | None = Query(None),
+    group: list[uuid.UUID] | None = Query(None),
+    watching: bool = Query(False),
 ) -> PipelineFacetsOut:
     _require_reader(user)
-    facets = await list_pipeline_facets(session)
+    scope = await _resolve_scope(session, user=user, group_ids=group, watching=watching)
+    filters = _parse_filters(
+        pipeline, stage, owner, readiness, attention,
+        date_field, date_from, date_to, date_preset, search, include_closed,
+        account_owner=account_owner, business_unit=business_unit,
+        open_closed=open_closed, missing=missing, client=client,
+        watching_ids=scope["watching_ids"],
+    )
+    if scope["opportunity_id"] is not None:
+        filters = replace(filters, opportunity_id=scope["opportunity_id"])
+    filters = await scope_pipeline_filters(session, user, filters)
+    facets = await list_pipeline_facets(session, filters=filters)
     return PipelineFacetsOut(
         owners=[
             OwnerFacetOut(id=o.id, name=o.name, email=o.email) for o in facets.owners

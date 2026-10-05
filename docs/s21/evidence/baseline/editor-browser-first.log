@@ -1,0 +1,190 @@
+
+Running 4 tests using 1 worker
+
+[1A[2K(node:79121) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:79121) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/4] s21-editor-defects.spec.ts:49:7 › fixed_assignment: real editor defect regression with immutable saved economics
+[1A[2K  1) s21-editor-defects.spec.ts:49:7 › fixed_assignment: real editor defect regression with immutable saved economics 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+      [2m- waiting for getByLabel('Assignment location', { exact: true })[22m
+
+
+      31 |   await expect(page.getByLabel("Loaded cost rate", { exact: true })).toHaveValue("");
+      32 |   await page.getByLabel("Role", { exact: true }).fill("Engineer");
+    > 33 |   await page.getByLabel("Assignment location", { exact: true }).selectOption("US");
+         |                                                                 ^
+      34 |   await page.getByLabel("Headcount", { exact: true }).fill("2");
+      35 |   await page.getByLabel("Allocation fraction", { exact: true }).fill("0.5");
+      36 |   await page.getByLabel("Loaded cost rate", { exact: true }).fill("40");
+
+        at addCalendar (/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-editor-defects.spec.ts:33:65)
+        at /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-editor-defects.spec.ts:72:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-fixed-a-3583f-h-immutable-saved-economics/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-fixed-a-3583f-h-immutable-saved-economics/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/s21-editor-defects-fixed-a-3583f-h-immutable-saved-economics/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K(node:79279) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:79279) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[2/4] s21-editor-defects.spec.ts:49:7 › recurring_msp: real editor defect regression with immutable saved economics
+[1A[2K  2) s21-editor-defects.spec.ts:49:7 › recurring_msp: real editor defect regression with immutable saved economics 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+      [2m- waiting for getByLabel('Assignment location', { exact: true })[22m
+
+
+      31 |   await expect(page.getByLabel("Loaded cost rate", { exact: true })).toHaveValue("");
+      32 |   await page.getByLabel("Role", { exact: true }).fill("Engineer");
+    > 33 |   await page.getByLabel("Assignment location", { exact: true }).selectOption("US");
+         |                                                                 ^
+      34 |   await page.getByLabel("Headcount", { exact: true }).fill("2");
+      35 |   await page.getByLabel("Allocation fraction", { exact: true }).fill("0.5");
+      36 |   await page.getByLabel("Loaded cost rate", { exact: true }).fill("40");
+
+        at addCalendar (/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-editor-defects.spec.ts:33:65)
+        at /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-editor-defects.spec.ts:72:7
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-recurri-6149e-h-immutable-saved-economics/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-recurri-6149e-h-immutable-saved-economics/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/s21-editor-defects-recurri-6149e-h-immutable-saved-economics/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K(node:79521) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:79521) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[3/4] s21-editor-defects.spec.ts:49:7 › hybrid: real editor defect regression with immutable saved economics
+[1A[2K  3) s21-editor-defects.spec.ts:49:7 › hybrid: real editor defect regression with immutable saved economics 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+       98 |     await page.screenshot({ path: `../../docs/s21/evidence/baseline/editor-${profile}-desktop.png`, fullPage: true });
+       99 |     await page.setViewportSize({ width: 390, height: 844 });
+    > 100 |     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+          |                                                                                           ^
+      101 |     await page.screenshot({ path: `../../docs/s21/evidence/baseline/editor-${profile}-mobile.png`, fullPage: true });
+      102 |   });
+      103 | }
+
+        at /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-editor-defects.spec.ts:100:91
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-hybrid--c88ed-h-immutable-saved-economics/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-hybrid--c88ed-h-immutable-saved-economics/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/s21-editor-defects-hybrid--c88ed-h-immutable-saved-economics/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K(node:79626) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:79626) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[4/4] s21-editor-defects.spec.ts:49:7 › custom_formula: real editor defect regression with immutable saved economics
+[1A[2K  4) s21-editor-defects.spec.ts:49:7 › custom_formula: real editor defect regression with immutable saved economics 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeDisabled[2m()[22m
+
+    Locator: getByRole('button', { name: 'Save version', exact: true })
+    Expected: disabled
+    Received: <element(s) not found>
+    Call log:
+      [2m- expect.toBeDisabled with timeout 5000ms[22m
+    [2m  - waiting for getByRole('button', { name: 'Save version', exact: true })[22m
+
+
+      61 |     if (profile === "custom_formula") {
+      62 |       await expect(page.getByRole("alert").filter({ hasText: "Unsupported commercial model" })).toBeVisible();
+    > 63 |       await expect(page.getByRole("button", { name: "Save version", exact: true })).toBeDisabled();
+         |                                                                                     ^
+      64 |       await expect(page.getByRole("button", { name: "Preview", exact: true })).toBeDisabled();
+      65 |       return;
+      66 |     }
+
+        at /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/tests/e2e/local/s21-editor-defects.spec.ts:63:85
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-custom--69233-h-immutable-saved-economics/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/s21-editor-defects-custom--69233-h-immutable-saved-economics/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/s21-editor-defects-custom--69233-h-immutable-saved-economics/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K  4 failed
+    s21-editor-defects.spec.ts:49:7 › fixed_assignment: real editor defect regression with immutable saved economics 
+    s21-editor-defects.spec.ts:49:7 › recurring_msp: real editor defect regression with immutable saved economics 
+    s21-editor-defects.spec.ts:49:7 › hybrid: real editor defect regression with immutable saved economics 
+    s21-editor-defects.spec.ts:49:7 › custom_formula: real editor defect regression with immutable saved economics 
+Traceback (most recent call last):
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_editor_journey.py", line 103, in <module>
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/scripts/s21_editor_journey.py", line 85, in main
+    for profile, fixture in fixtures.items():
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Editor browser workflow failed

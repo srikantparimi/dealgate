@@ -1,0 +1,13 @@
+[smoke] target: https://app.dealgateapp.com
+[smoke] run tag: smoke 20261001T234918Z
+[smoke] step 0 · mint Cognito token for e2e user
+[smoke] step 0.5 · single-truth grep gate
+single-truth guarantee ok — every router lists deals through hubspot_pipeline
+[smoke] step 1 · /healthz
+[smoke] step 2 · bedrock inference profile in region
+[smoke] step 3 · POST /sows/upload
+[smoke] step 4 · POST /sows/jobs/9c68a34a-65e9-4466-8923-0b7d6a4e6edc/pick (create_new: smoke 20261001T234918Z)
+[smoke] step 5 · confirmation.extract_status
+[smoke] FAIL: extract_status=manual_required (expected complete)
+[smoke] cleanup · DELETE client cd451fdb-42fe-4fee-9120-bb5b57871964
+[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs on https://app.dealgateapp.com

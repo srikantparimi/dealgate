@@ -1,0 +1,16 @@
+
+==================================== ERRORS ====================================
+______________ ERROR collecting tests/test_deployment_manifest.py ______________
+ImportError while importing test module '/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/api/tests/test_deployment_manifest.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/local/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+api/tests/test_deployment_manifest.py:3: in <module>
+    from scripts.deployment_manifest import validate_manifest
+E   ModuleNotFoundError: No module named 'scripts.deployment_manifest'
+=========================== short test summary info ============================
+ERROR api/tests/test_deployment_manifest.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.16s

@@ -1,0 +1,194 @@
+{
+  "revision": "f74df880e8b1a718e0544accb8f9e1d32730d77c",
+  "database": "s21_t17_8d7c388a1eda40cfbe2a184eb00524ad",
+  "boundary": "Local named identities, real PG/S3/Bedrock, explicit SES sink. No staging or inbox proof.",
+  "proof": [
+    {
+      "condition": "T17.01/.04 empty named deal",
+      "value": {
+        "sows": 0,
+        "versions": 0,
+        "packages": 0,
+        "projects": 0
+      },
+      "at": "2026-10-03T06:02:29.522Z"
+    },
+    {
+      "condition": "real extraction/source binding",
+      "value": {
+        "id": "41a1fc38-1d4e-4c3d-93c8-c4db02562f51",
+        "hash": "1a34d0c1872a930116f87429b5f8df72e4dd5126f2a00f2431319ef84ce01e65"
+      },
+      "at": "2026-10-03T06:02:43.242Z"
+    },
+    {
+      "condition": "independent fixed assessment economics",
+      "value": {
+        "component": {
+          "component_id": "241e7acd-5f76-470a-93f5-6c67fd1ca710",
+          "version": "1",
+          "source_id": "33828d12-04ff-49a2-b834-8f131de7d0ef",
+          "source_version": "41a1fc38-1d4e-4c3d-93c8-c4db02562f51",
+          "workstream_id": "assessment",
+          "profile": "fixed_assignment",
+          "profile_version": "1",
+          "policy_version": "blueprint-defaults-v1",
+          "source_evidence": [
+            "SOW 41a1fc38-1d4e-4c3d-93c8-c4db02562f51: synthetic fixed fee, US October allocation and loaded subcontract cost clauses; SHA256 1a34d0c1872a930116f87429b5f8df72e4dd5126f2a00f2431319ef84ce01e65"
+          ],
+          "service_start": "2026-10-01",
+          "service_end": "2026-10-31",
+          "timezone": "America/New_York",
+          "currency": "USD",
+          "billing_cadence": "upon_delivery",
+          "cost_basis": "Fixed subcontracted assessment fee including all labor",
+          "costs_confirmed": true,
+          "costs": [
+            {
+              "source_id": "c36f0472-2b49-4f25-a930-a928ba8f55fd",
+              "month": "2026-10-01",
+              "location": "US",
+              "amount": "10000"
+            }
+          ],
+          "pricing": {
+            "total_fee": "24000",
+            "allocations": [
+              {
+                "month": "2026-10-01",
+                "location": "US",
+                "weight": "1"
+              }
+            ],
+            "allocation_basis": "Explicit single-month US allocation in signed test source",
+            "minor_unit": "0.01"
+          },
+          "staffing": []
+        },
+        "rows": [
+          {
+            "month": "2026-10-01",
+            "location": "US",
+            "revenue": "24000.00",
+            "cost": "10000",
+            "scheduled_hours": null,
+            "billable_hours": null,
+            "paid_hours": null,
+            "revenue_uses_ratio": false
+          }
+        ],
+        "missing": [],
+        "status": "ok",
+        "calculation_version": "commercial-schedule-v1",
+        "calendar_rows": [],
+        "children": []
+      },
+      "at": "2026-10-03T06:02:50.840Z"
+    },
+    {
+      "condition": "scope/financials/review submission",
+      "value": {
+        "sow_version": "41a1fc38-1d4e-4c3d-93c8-c4db02562f51"
+      },
+      "at": "2026-10-03T06:03:01.809Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "delivery",
+        "person": "43ae9e42-b525-5e16-87c4-0e6a58e9055d"
+      },
+      "at": "2026-10-03T06:03:11.058Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "hr",
+        "person": "677ab359-951a-517b-b903-8a55644dac19"
+      },
+      "at": "2026-10-03T06:03:22.226Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "sales",
+        "person": "fb7a92d8-cac1-5883-8c85-3f2e88d87c3b"
+      },
+      "at": "2026-10-03T06:03:30.993Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "finance",
+        "person": "1a4d5160-6202-5411-b923-e7546845b9a6"
+      },
+      "at": "2026-10-03T06:03:37.968Z"
+    },
+    {
+      "condition": "distinct reviewer approved",
+      "value": {
+        "role": "legal",
+        "person": "34536b42-8f6e-51e5-b0c1-33faa29e340c"
+      },
+      "at": "2026-10-03T06:03:45.086Z"
+    },
+    {
+      "condition": "actual signed bytes verified",
+      "value": {
+        "sow_version": "41a1fc38-1d4e-4c3d-93c8-c4db02562f51"
+      },
+      "at": "2026-10-03T06:04:05.052Z"
+    },
+    {
+      "condition": "persisted five reviewers and single source-bound project, no agreements",
+      "value": {
+        "agreements": 0,
+        "projects": [
+          {
+            "id": "a50946e3-4b85-45aa-b57b-d32eda1e6b0f",
+            "opportunity_id": "bd55ab45-63b1-4093-93b5-0ca8c6c45568",
+            "sow_version_id": "41a1fc38-1d4e-4c3d-93c8-c4db02562f51",
+            "gm_model_id": "c4953913-f2d8-4469-bba0-aceccb8d6520",
+            "package_id": "2bf5ee43-b831-4eda-9f3c-dda396d7d826"
+          }
+        ],
+        "approvals": [
+          {
+            "function": "delivery",
+            "approver_id": "43ae9e42-b525-5e16-87c4-0e6a58e9055d",
+            "decision": "approve"
+          },
+          {
+            "function": "hr",
+            "approver_id": "677ab359-951a-517b-b903-8a55644dac19",
+            "decision": "approve"
+          },
+          {
+            "function": "sales",
+            "approver_id": "fb7a92d8-cac1-5883-8c85-3f2e88d87c3b",
+            "decision": "approve"
+          },
+          {
+            "function": "finance",
+            "approver_id": "1a4d5160-6202-5411-b923-e7546845b9a6",
+            "decision": "approve"
+          },
+          {
+            "function": "legal",
+            "approver_id": "34536b42-8f6e-51e5-b0c1-33faa29e340c",
+            "decision": "approve"
+          }
+        ]
+      },
+      "at": "2026-10-03T06:04:32.034Z"
+    },
+    {
+      "condition": "T17.02 continuous browser core",
+      "value": {
+        "released": true,
+        "errors": []
+      },
+      "at": "2026-10-03T06:04:32.513Z"
+    }
+  ]
+}

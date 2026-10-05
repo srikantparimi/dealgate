@@ -145,6 +145,8 @@ class GmModelPayload:
     total_price: Optional[Decimal] = None
     direct_costs_reviewed: bool = True
     resolve_missing_rates: bool = True
+    commercial_inputs: Optional[dict] = None
+    commercial_snapshot: Optional[dict] = None
 
     def __post_init__(self):  # dataclass frozen shim
         if self.phases is None:
@@ -445,6 +447,28 @@ def _payload_to_compute_inputs(payload: GmModelPayload) -> dict:
 def compute_live(payload: GmModelPayload, *, extra_inputs: Optional[dict] = None) -> TemplateResult:
     """Pure preview. No I/O. Delegates to :func:`app.gm.compute`."""
 
+    if payload.commercial_inputs is not None:
+        from app.gm.commercial_adapter import compute_commercial, to_template_result
+        from app.services.commercial_models import OUTCOME, SCHEDULE, CommercialInputError, parse_component
+        policy = (payload.commercial_snapshot or {}).get("policy", {})
+        try:
+            if payload.commercial_snapshot:
+                result = to_template_result(
+                    SCHEDULE.validate_python(payload.commercial_snapshot["schedule"]),
+                    frozen_outcome=OUTCOME.validate_python(payload.commercial_snapshot["outcome"]),
+                )
+            else:
+                result = compute_commercial(
+                    parse_component(payload.commercial_inputs),
+                    us_floor=Decimal(policy.get("us_floor", str(US_FLOOR))),
+                    india_floor=Decimal(policy.get("india_floor", str(INDIA_FLOOR))),
+                )
+        except CommercialInputError as exc:
+            raise DeliveryModelInputError(str(exc)) from exc
+        result.policy_us_floor = Decimal(policy.get("us_floor", str(US_FLOOR)))
+        result.policy_india_floor = Decimal(policy.get("india_floor", str(INDIA_FLOOR)))
+        return result
+
     engagement = parse_engagement_type(payload.engagement_type)
     inputs = _payload_to_compute_inputs(payload)
     if payload.engagement_type in ("fixed_price", "assessment") and payload.total_price is not None:
@@ -589,6 +613,7 @@ async def create_gm_model_version(
     opportunity_id: uuid.UUID,
     actor_id: Optional[uuid.UUID],
     payload: GmModelPayload,
+    commit: bool = True,
 ) -> GmModel:
     """Create one immutable GM model version + its child rows + audit row.
 
@@ -850,7 +875,10 @@ async def create_gm_model_version(
         actor_id=actor_id,
     )
 
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
 
     return await load_gm_model(session, model.id)
 
@@ -977,6 +1005,8 @@ def _model_to_payload(model: GmModel) -> GmModelPayload:
         warranty_days=model.warranty_days,
         resource_lines=resources,
         cost_lines=costs,
+        commercial_inputs=model.commercial_inputs,
+        commercial_snapshot=model.commercial_snapshot,
     )
 
 
@@ -1053,11 +1083,40 @@ def serialize_phase(p: GmModelPhase) -> dict:
     }
 
 
-def build_compute_response(result: TemplateResult, *, us_floor: Decimal = US_FLOOR, india_floor: Decimal = INDIA_FLOOR) -> dict:
+def build_compute_response(result: TemplateResult, *, us_floor: Decimal | None = None, india_floor: Decimal | None = None) -> dict:
     """Format a ``TemplateResult`` for the JSON API. Mirrors the sandbox
     shape (minus the policy-lookup fields) so the Builder can reuse the
     same rendering code path."""
 
+    if result.policy_frozen:
+        us_floor, india_floor = result.policy_us_floor, result.policy_india_floor
+    us_floor = us_floor if us_floor is not None else (result.policy_us_floor or US_FLOOR)
+    india_floor = india_floor if india_floor is not None else (result.policy_india_floor or INDIA_FLOOR)
+    if result.gm_outcome is not None:
+        from app.services.commercial_models import OUTCOME
+        outcome = (result.commercial_schedule.assess(us_floor=us_floor, india_floor=india_floor)
+                   if result.commercial_schedule and not result.policy_frozen else result.gm_outcome)
+        assessed = outcome.status == "ok"
+        floors = check_floors(result, us_floor_value=us_floor, india_floor_value=india_floor)
+        return {
+            "revenue_us": _fmt(outcome.revenue_by_location.get("US", Decimal("0"))) if assessed else None,
+            "revenue_india": _fmt(outcome.revenue_by_location.get("India", Decimal("0"))) if assessed else None,
+            "cost_us": _fmt(outcome.cost_by_location.get("US", Decimal("0"))) if assessed else None,
+            "cost_india": _fmt(outcome.cost_by_location.get("India", Decimal("0"))) if assessed else None,
+            "gm_us": _fmt(outcome.gm_by_location.get("US")) if assessed else None,
+            "gm_india": _fmt(outcome.gm_by_location.get("India")) if assessed else None,
+            "gm_blended": _fmt(outcome.gm_blended) if assessed else None,
+            "geography": result.geography, "complete": assessed,
+            "missing": list(result.missing), "assessment_status": outcome.status,
+            "min_price_us": None, "min_price_india": None, "finance_summary": {},
+            "commercial_outcome": OUTCOME.dump_python(outcome, mode="json"),
+            "policy": {**floors, "us_floor": _fmt(us_floor), "india_floor": _fmt(india_floor),
+                       "us_applicable": outcome.passes.get("US") is not None,
+                       "india_applicable": outcome.passes.get("India") is not None,
+                       "us_delta": _fmt(floor_delta(outcome.gm_by_location.get("US"), us_floor)),
+                       "india_delta": _fmt(floor_delta(outcome.gm_by_location.get("India"), india_floor))},
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+        }
     us_present = result.revenue_us > 0 or result.cost_us > 0
     india_present = result.revenue_india > 0 or result.cost_india > 0
     us_pass = True
@@ -1218,9 +1277,12 @@ def serialize_gm_model(
         "created_by": str(model.created_by) if model.created_by else None,
         "created_at": model.created_at.isoformat() if model.created_at else None,
         "phases": [serialize_phase(p) for p in (getattr(model, "phases", []) or [])],
-        "phase_summary": _phase_summary(model),
+        "phase_summary": [] if model.commercial_inputs is not None else _phase_summary(model),
         "resource_lines": [serialize_resource_line(r) for r in model.resource_lines],
         "cost_lines": [serialize_cost_line(c) for c in model.cost_lines],
+        "commercial_inputs": model.commercial_inputs,
+        "commercial_snapshot": model.commercial_snapshot,
+        "commercial_profile": model.engagement_type if model.commercial_inputs is not None else None,
         "completeness_issues": resource_completeness_issues(
             [
                 ResourceLinePayload(

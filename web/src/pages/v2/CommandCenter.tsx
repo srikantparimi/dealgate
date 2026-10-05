@@ -32,7 +32,6 @@ import {
   getPipelineSummary,
   getSalesDashboard,
   listAgreements,
-  listApprovalPackages,
   listPipelineClients,
   listRenewals,
   type AgreementRow,
@@ -45,6 +44,7 @@ import {
   type RenewalRow,
   type SalesDashboard,
 } from "../../api/client";
+import { loadApprovalPopulation } from "../../api/approvalPopulation";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { SourceFreshness } from "../../ui-v2/SourceFreshness";
 import { ExecutiveBanner, type BannerMetric } from "./command/ExecutiveBanner";
@@ -117,6 +117,8 @@ interface CommandData {
   approvalsDelivery: ApprovalPackage[];
   approvalsFinance: ApprovalPackage[];
   approvalsCeo: ApprovalPackage[];
+  inReviewTotal: number | null;
+  inReviewRevision: string | null;
   fetchedAt: Date;
 }
 
@@ -169,6 +171,7 @@ function packageMarkers(pkg: ApprovalPackage): FunctionalReviewMarkers {
   return {
     delivery: marker(byFn.delivery),
     hr: marker(byFn.hr),
+    sales: pkg.required_functions?.includes("sales") ? marker(byFn.sales) : undefined,
     finance: marker(byFn.finance),
     legal: marker(byFn.legal),
   };
@@ -198,16 +201,7 @@ function bannerMetrics(
   const pipelineValue = isCeo
     ? formatMoney(pipelineFromSummary ?? data.ceo?.pipeline_value ?? null)
     : formatMoney(pipelineFromSummary);
-  // S20 W4 Session 6 · all three card numbers now route through
-  // `pipelineSummary` (one source) with a `/pipeline?...` deep-link that
-  // produces the same count when opened. Falls back to the local arrays
-  // only when the summary endpoint is unreachable — honest fallback,
-  // not a parallel number.
-  const sowsInProgress =
-    data.pipelineSummary?.sows_in_progress ??
-    data.approvalsDelivery.length +
-      data.approvalsFinance.length +
-      data.approvalsCeo.length;
+  const sowsInProgress = data.inReviewRevision ? data.inReviewTotal : null;
   const agreementsCount =
     data.pipelineSummary?.agreements_uploaded ?? data.agreements.length;
   const ceoPendingFromSummary = data.pipelineSummary?.ceo_pending ?? null;
@@ -236,9 +230,7 @@ function bannerMetrics(
       id: "sows_in_progress",
       label: "SOW packages in progress",
       value: formatCount(sowsInProgress),
-      // Deep-link: /pipeline?attention=pending_approval — the exact
-      // filter that yields `summary.sows_in_progress`.
-      href: "/pipeline?attention=pending_approval",
+      href: `/sows?status=in_review${data.inReviewRevision ? `&population_revision=${encodeURIComponent(data.inReviewRevision)}` : ""}`,
       description: "Across every approval lane",
     },
     {
@@ -421,7 +413,7 @@ function packageToCard(pkg: ApprovalPackage, deals: DealRow[]): ApprovalCard {
     stripe,
     nextAction:
       pkg.routing_blockers?.length ? pkg.routing_blockers.join("; ") : pkg.pending_with?.length ? `Pending with ${pkg.pending_with.join(", ")}` : pkg.status === "pending_delivery_hr"
-        ? "Delivery + HR review"
+        ? pkg.required_functions?.includes("sales") ? "Delivery + HR + Sales review" : "Delivery + HR review"
         : pkg.status === "pending_finance_legal"
           ? "Finance + Legal review"
           : pkg.status === "pending_ceo_exception"
@@ -562,9 +554,7 @@ export function CommandCenterPage() {
         clientsPage,
         agreementsList,
         renewalsPage,
-        pkgDelivery,
-        pkgFinance,
-        pkgCeo,
+        inReview,
       ] = await Promise.all([
         // Never call /dashboards/ceo from a non-CEO/SysAdmin role
         // (agent brief). Roles without access get null and the CEO-only
@@ -588,21 +578,7 @@ export function CommandCenterPage() {
         ),
         safe(listAgreements(), "Agreements", failures),
         safe(listRenewals({ status: "open", size: 25 }), "Renewals", failures),
-        safe(
-          listApprovalPackages({ status: "pending_delivery_hr", size: 10 }),
-          "Delivery/HR approvals",
-          failures,
-        ),
-        safe(
-          listApprovalPackages({ status: "pending_finance_legal", size: 10 }),
-          "Finance/Legal approvals",
-          failures,
-        ),
-        safe(
-          listApprovalPackages({ status: "pending_ceo_exception", size: 10 }),
-          "CEO exceptions",
-          failures,
-        ),
+        safe(loadApprovalPopulation({ status: "in_review" }), "In-review packages", failures),
       ]);
 
       setData({
@@ -614,9 +590,11 @@ export function CommandCenterPage() {
         clients: clientsPage?.items ?? [],
         agreements: agreementsList?.items ?? [],
         renewals: renewalsPage?.items ?? [],
-        approvalsDelivery: pkgDelivery?.items ?? [],
-        approvalsFinance: pkgFinance?.items ?? [],
-        approvalsCeo: pkgCeo?.items ?? [],
+        approvalsDelivery: inReview?.items.filter(p => p.status === "pending_delivery_hr").slice(0, 10) ?? [],
+        approvalsFinance: inReview?.items.filter(p => p.status === "pending_finance_legal").slice(0, 10) ?? [],
+        approvalsCeo: inReview?.items.filter(p => p.status === "pending_ceo_exception").slice(0, 10) ?? [],
+        inReviewTotal: inReview?.total ?? null,
+        inReviewRevision: inReview?.population_revision ?? null,
         fetchedAt: new Date(),
       });
       // A module that failed no longer blanks the board, but it must not
@@ -646,7 +624,7 @@ export function CommandCenterPage() {
     import("../../api/client").then(({ listWatchlist }) =>
       listWatchlist()
         .then((r) =>
-          setWatchingCount((r.counts.opportunity || 0) + (r.counts.client || 0)),
+          setWatchingCount(r.matching_deal_count ?? ((r.counts.opportunity || 0) + (r.counts.client || 0))),
         )
         .catch(() => setWatchingCount(0)),
     );

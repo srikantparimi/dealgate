@@ -1,10 +1,9 @@
 """S19 slice 1 §B5 — HubSpot SQS consumer worker.
 
-Runs as a scheduled Fargate task (rate(5 min) via EventBridge, see
-modules/schedulers). Each invocation long-polls the events queue (20s)
-and processes what's there until the queue reports empty or a soft time
-budget elapses; then exits so the tick can restart cleanly on the next
-schedule.
+Runs scheduled or continuously under an explicitly configured ECS service.
+Both modes long-poll the events queue; continuous mode stays alive on quiet
+polls until its soft budget expires. A successful poll plus durable database
+heartbeat proves liveness separately from the CRM processed watermark.
 
 - Long-poll 20 s (matches SQS max).
 - Visibility timeout is set on the queue (5 min per B5) — this worker
@@ -26,7 +25,6 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import UTC, datetime
 
 import structlog
 
@@ -54,6 +52,8 @@ def _select_queue() -> HubSpotEventsQueue:
 
     if os.environ.get("HUBSPOT_EVENT_QUEUE_URL", "").strip():
         return get_queue()
+    if os.environ.get("DEALGATE_ENV", "local") not in {"local", "test"}:
+        raise RuntimeError("HUBSPOT_EVENT_QUEUE_URL is required outside local/test")
     log.warning("hubspot_worker_stub_queue")
     return StubHubSpotEventsQueue()
 
@@ -87,11 +87,13 @@ async def run_once(
     queue: HubSpotEventsQueue | None = None,
     client: HubSpotClient | None = None,
     soft_budget_seconds: float = SOFT_BUDGET_SECONDS,
+    continuous: bool | None = None,
 ) -> dict[str, int]:
-    """Drain the queue until it reports empty or the budget elapses."""
+    """Drain scheduled work, or keep polling quietly in continuous mode."""
 
     queue = queue or _select_queue()
     client = client or HubSpotClient()
+    continuous = os.environ.get("HUBSPOT_WORKER_CONTINUOUS") == "1" if continuous is None else continuous
     start = time.monotonic()
     total_processed = 0
     total_errors = 0
@@ -103,20 +105,27 @@ async def run_once(
         )
         if not messages:
             empty_polls += 1
-            if empty_polls >= 2:
-                break
-            continue
-        empty_polls = 0
-        processed, errors = await _process(queue, client, messages)
-        total_processed += processed
-        total_errors += errors
+        else:
+            empty_polls = 0
+            processed, errors = await _process(queue, client, messages)
+            total_processed += processed
+            total_errors += errors
+        # A quiet successful poll proves liveness, never a new CRM business watermark.
+        async with session_factory() as session:
+            await touch_source(session, source="hubspot_consumer", success=total_errors == 0,
+                               error=f"{total_errors} event processing errors" if total_errors else None)
+            await session.commit()
+        if total_errors == 0:
+            log.info("hubspot_worker_heartbeat", quiet=not messages, processed=total_processed)
+        if empty_polls >= 2 and not continuous:
+            break
 
     async with session_factory() as session:
         await touch_source(
             session,
             source="hubspot_webhook",
-            success=True,
-            error=None,
+            success=total_errors == 0,
+            error=f"{total_errors} event processing errors" if total_errors else None,
         )
         await session.commit()
 

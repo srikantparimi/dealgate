@@ -21,6 +21,9 @@
 resource "aws_s3_bucket" "agreements" {
   bucket        = "${var.name_prefix}-agreements-${var.account_id}"
   force_destroy = false
+  lifecycle {
+    prevent_destroy = true
+  }
 
   tags = {
     Name    = "${var.name_prefix}-agreements"
@@ -112,14 +115,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "agreements" {
 resource "aws_s3_bucket" "sows" {
   bucket        = "${var.name_prefix}-sows-${var.account_id}"
   force_destroy = false
+  lifecycle {
+    prevent_destroy = true
+  }
 
   # S7: enables the aws_s3_bucket_object_lock_configuration below. Required at
   # create time. See caveat above about existing buckets.
-  object_lock_enabled = true
+  object_lock_enabled = var.sow_object_lock_enabled
 
   tags = {
     Name    = "${var.name_prefix}-sows"
-    Purpose = "SOW uploads for AI extraction + human confirm (S3-E5)"
+    Purpose = "SOW uploads for AI extraction and human confirm - S3-E5"
   }
 }
 
@@ -190,6 +196,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "sows" {
 # -----------------------------------------------------------------------------
 
 resource "aws_s3_bucket_object_lock_configuration" "sows" {
+  count  = var.sow_object_lock_enabled ? 1 : 0
   bucket = aws_s3_bucket.sows.id
 
   rule {
@@ -202,6 +209,11 @@ resource "aws_s3_bucket_object_lock_configuration" "sows" {
   # Versioning + object-lock-enabled must both be in place before the config
   # can attach; make the ordering explicit for first-apply.
   depends_on = [aws_s3_bucket_versioning.sows]
+}
+
+moved {
+  from = aws_s3_bucket_object_lock_configuration.sows
+  to   = aws_s3_bucket_object_lock_configuration.sows[0]
 }
 
 # -----------------------------------------------------------------------------

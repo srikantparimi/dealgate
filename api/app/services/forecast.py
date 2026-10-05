@@ -87,7 +87,7 @@ def _week_ending_sunday(day: date) -> date:
 async def _load_gm_model(session: AsyncSession, gm_model_id: uuid.UUID) -> GmModel:
     stmt = (
         select(GmModel)
-        .options(selectinload(GmModel.resource_lines))
+        .options(selectinload(GmModel.resource_lines), selectinload(GmModel.cost_lines))
         .where(GmModel.id == gm_model_id)
     )
     row = (await session.execute(stmt)).scalar_one_or_none()
@@ -249,6 +249,14 @@ async def update_forecast(
     await _assert_released(session, gm_model_id)
 
     gm_model = await _load_gm_model(session, gm_model_id)
+    commercial_result = None
+    if gm_model.commercial_inputs is not None:
+        from app.services.delivery_model import _model_to_payload, compute_live
+        commercial_result = compute_live(_model_to_payload(gm_model))
+        if not commercial_result.complete:
+            raise ForecastError(status_code=409, detail="Commercial schedule is not assessed")
+        if lines:
+            raise ForecastError(status_code=422, detail="Commercial schedules use versioned period costs, not legacy remaining-hour overrides")
 
     # Merge overrides on top of last week's snapshot.
     prev = await _prev_forecast(session, gm_model_id)
@@ -307,6 +315,16 @@ async def update_forecast(
 
     gm_us = _component_gm(revenue_us, cost_us)
     gm_india = _component_gm(revenue_india, cost_india)
+    if commercial_result is not None:
+        from app.services.commercial_models import SCHEDULE
+        revenue_us, revenue_india = commercial_result.revenue_us, commercial_result.revenue_india
+        cost_us, cost_india = commercial_result.cost_us, commercial_result.cost_india
+        gm_us, gm_india = commercial_result.gm_us, commercial_result.gm_india
+        schedule = commercial_result.commercial_schedule
+        snapshot = [{"basis": "signed_service_schedule", "actuals_available": False,
+                     "source_version": str(gm_model.sow_version_id),
+                     "gm_model_id": str(gm_model.id),
+                     "commercial_snapshot": SCHEDULE.dump_python(schedule, mode="json")}]
 
     week_ending = _week_ending_sunday(_now().date())
 
@@ -364,6 +382,11 @@ async def update_forecast(
     policy = await active_policy(session)
     us_fails = gm_us is not None and gm_us < policy.us_floor
     india_fails = gm_india is not None and gm_india < policy.india_floor
+    if commercial_result is not None:
+        from app.services.delivery_model import build_compute_response
+        commercial_policy = build_compute_response(commercial_result)["policy"]
+        us_fails = not commercial_policy["us_pass"]
+        india_fails = not commercial_policy["india_pass"]
     if us_fails or india_fails:
         failing: list[str] = []
         if us_fails:

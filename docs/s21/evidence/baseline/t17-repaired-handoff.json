@@ -1,0 +1,255 @@
+{
+  "revision": "6ad2171eb33c86c32074ec5dca3e7140f0afda5f",
+  "database": "s21_t17_61d71c0b4bf7436d957723c632fe1aba",
+  "verification": {
+    "id": "49f4ab59-a384-4f76-96e3-e623830f5221",
+    "package_id": "7a2404c1-b3ae-4bc6-850b-7cf6f436a7c8",
+    "file_s3_key": "verification/s21/61d71c0b4bf7436d957723c632fe1aba/sow/0a66db62-3619-4762-a96e-afe1473864a9/20261003T042648Z-610dfb03-s21-t17-61d71c0b-sow.docx.docx",
+    "file_hash": "7104c0fe8432aac30032689e0e8d89d6fe752bff0001b730826f08083561c0fc",
+    "uploaded_by": "9f4a230f-d4a4-537d-b8e1-d379c0a43ab1",
+    "uploaded_at": "2026-10-03T04:26:48.553455+00:00",
+    "verify_status": "verified",
+    "verify_reason": null,
+    "signer_state": "signed",
+    "diff_json": {
+      "match": true,
+      "fields": [
+        {
+          "field": "price",
+          "match": true,
+          "approved": "USD 24000.00",
+          "extracted": "USD 24000.00",
+          "approved_currency": "USD",
+          "extracted_currency": "USD"
+        },
+        {
+          "field": "term_start",
+          "match": true,
+          "approved": "2026-10-01",
+          "extracted": "2026-10-01"
+        },
+        {
+          "field": "term_end",
+          "match": true,
+          "approved": "2026-10-31",
+          "extracted": "2026-10-31"
+        },
+        {
+          "field": "scope_summary",
+          "match": true,
+          "approved": "Assess the synthetic data platform and deliver a written assessment report.",
+          "extracted": "Assess the synthetic data platform and deliver a written assessment report.",
+          "threshold": 0.9,
+          "similarity": 1
+        },
+        {
+          "field": "signatories",
+          "match": true,
+          "missing": [],
+          "approved": [
+            "alex example",
+            "casey example"
+          ],
+          "extracted": [
+            "alex example",
+            "casey example"
+          ],
+          "unexpected": []
+        }
+      ]
+    },
+    "verified_at": "2026-10-03T04:44:19.401476+00:00",
+    "released_at": null
+  },
+  "persistence": {
+    "agreements": 0,
+    "projects": [
+      {
+        "id": "aa26879a-826c-445f-9792-4a995039b409",
+        "opportunity_id": "0a66db62-3619-4762-a96e-afe1473864a9",
+        "sow_version_id": "d95a10b3-9811-418a-b6ef-958d148c00b7",
+        "gm_model_id": "6eae85bf-cc2d-4233-af18-9d4298bceaed",
+        "package_id": "7a2404c1-b3ae-4bc6-850b-7cf6f436a7c8",
+        "baseline": {
+          "price": "USD 24000.00",
+          "currency": "USD",
+          "term_end": "2026-10-31",
+          "gm_version": 2,
+          "package_id": "7a2404c1-b3ae-4bc6-850b-7cf6f436a7c8",
+          "revenue_us": "24000.00",
+          "term_start": "2026-10-01",
+          "gm_model_id": "6eae85bf-cc2d-4233-af18-9d4298bceaed",
+          "source_scope": {
+            "sow_id": "cc35a4b4-fafd-403d-8ff2-21dcc537db11",
+            "owner_id": "9f4a230f-d4a4-537d-b8e1-d379c0a43ab1",
+            "tenant_id": "s21_t17_61d71c0b4bf7436d957723c632fe1aba",
+            "account_id": "11ceb7d9-1693-49e8-9ab1-596a5d6e5941",
+            "environment": "local",
+            "gm_model_id": "6eae85bf-cc2d-4233-af18-9d4298bceaed",
+            "source_hash": "63c40be09b46269909c55fa8c466675dc473103ce8fec470a47f1baddce1b801",
+            "opportunity_id": "0a66db62-3619-4762-a96e-afe1473864a9",
+            "schema_version": "project-source-v1",
+            "sow_version_id": "d95a10b3-9811-418a-b6ef-958d148c00b7",
+            "fixture_grant_id": "3606ccf6-3fd7-4e50-b013-f2230ec2b276"
+          },
+          "revenue_india": "0",
+          "scope_summary": "Assess the synthetic data platform and deliver a written assessment report.",
+          "warranty_days": null,
+          "opportunity_id": "0a66db62-3619-4762-a96e-afe1473864a9",
+          "resource_lines": [],
+          "sow_version_id": "d95a10b3-9811-418a-b6ef-958d148c00b7",
+          "sow_version_no": 1,
+          "contingency_pct": null,
+          "engagement_type": "fixed_assignment",
+          "delivery_pattern": null,
+          "commercial_inputs": {
+            "costs": [
+              {
+                "month": "2026-10-01",
+                "amount": "10000",
+                "location": "US",
+                "source_id": "0e9c27f1-36d6-40ed-8167-bb1cc041643b"
+              }
+            ],
+            "pricing": {
+              "total_fee": "24000",
+              "minor_unit": "0.01",
+              "allocations": [
+                {
+                  "month": "2026-10-01",
+                  "weight": "1",
+                  "location": "US"
+                }
+              ],
+              "allocation_basis": "Explicit single-month US allocation in signed test source"
+            },
+            "profile": "fixed_assignment",
+            "version": "1",
+            "currency": "USD",
+            "staffing": [],
+            "timezone": "America/New_York",
+            "source_id": "cc35a4b4-fafd-403d-8ff2-21dcc537db11",
+            "cost_basis": "Fixed subcontracted assessment fee including all labor",
+            "service_end": "2026-10-31",
+            "component_id": "71984781-8fea-402e-9bb9-eea7d476f64d",
+            "service_start": "2026-10-01",
+            "workstream_id": "assessment",
+            "policy_version": "blueprint-defaults-v1",
+            "source_version": "d95a10b3-9811-418a-b6ef-958d148c00b7",
+            "billing_cadence": "upon_delivery",
+            "costs_confirmed": true,
+            "profile_version": "1",
+            "source_evidence": [
+              "SOW d95a10b3-9811-418a-b6ef-958d148c00b7: synthetic fixed fee, US October allocation and loaded subcontract cost clauses; SHA256 7104c0fe8432aac30032689e0e8d89d6fe752bff0001b730826f08083561c0fc"
+            ]
+          },
+          "commercial_snapshot": {
+            "policy": {
+              "version": "blueprint-defaults-v1",
+              "us_floor": "0.35",
+              "india_floor": "0.50",
+              "fx_convention": "fixed_at_sow_date"
+            },
+            "outcome": {
+              "extra": {
+                "list_price": "24000.00",
+                "discount_total": "0.00",
+                "pass_through_total": "0"
+              },
+              "notes": [
+                "revenue allocated by recorded basis (confirmed component schedule)"
+              ],
+              "passes": {
+                "US": true,
+                "India": null
+              },
+              "reason": null,
+              "status": "ok",
+              "missing": [],
+              "components": [],
+              "gm_blended": "0.5833333333333333333333333333",
+              "gm_by_location": {
+                "US": "0.5833333333333333333333333333",
+                "India": null
+              },
+              "cost_by_location": {
+                "US": "10000"
+              },
+              "revenue_by_location": {
+                "US": "24000.00"
+              }
+            },
+            "schedule": {
+              "rows": [
+                {
+                  "cost": "10000",
+                  "month": "2026-10-01",
+                  "revenue": "24000.00",
+                  "location": "US",
+                  "paid_hours": null,
+                  "billable_hours": null,
+                  "scheduled_hours": null,
+                  "revenue_uses_ratio": false
+                }
+              ],
+              "status": "ok",
+              "missing": [],
+              "children": [],
+              "component": {
+                "costs": [
+                  {
+                    "month": "2026-10-01",
+                    "amount": "10000",
+                    "location": "US",
+                    "source_id": "0e9c27f1-36d6-40ed-8167-bb1cc041643b"
+                  }
+                ],
+                "pricing": {
+                  "total_fee": "24000",
+                  "minor_unit": "0.01",
+                  "allocations": [
+                    {
+                      "month": "2026-10-01",
+                      "weight": "1",
+                      "location": "US"
+                    }
+                  ],
+                  "allocation_basis": "Explicit single-month US allocation in signed test source"
+                },
+                "profile": "fixed_assignment",
+                "version": "1",
+                "currency": "USD",
+                "staffing": [],
+                "timezone": "America/New_York",
+                "source_id": "cc35a4b4-fafd-403d-8ff2-21dcc537db11",
+                "cost_basis": "Fixed subcontracted assessment fee including all labor",
+                "service_end": "2026-10-31",
+                "component_id": "71984781-8fea-402e-9bb9-eea7d476f64d",
+                "service_start": "2026-10-01",
+                "workstream_id": "assessment",
+                "policy_version": "blueprint-defaults-v1",
+                "source_version": "d95a10b3-9811-418a-b6ef-958d148c00b7",
+                "billing_cadence": "upon_delivery",
+                "costs_confirmed": true,
+                "profile_version": "1",
+                "source_evidence": [
+                  "SOW d95a10b3-9811-418a-b6ef-958d148c00b7: synthetic fixed fee, US October allocation and loaded subcontract cost clauses; SHA256 7104c0fe8432aac30032689e0e8d89d6fe752bff0001b730826f08083561c0fc"
+                ]
+              },
+              "calendar_rows": [],
+              "calculation_version": "commercial-schedule-v1"
+            },
+            "tenant_id": "s21_t17_61d71c0b4bf7436d957723c632fe1aba",
+            "environment": "local",
+            "change_reason": "Confirm explicit synthetic fixed assessment terms",
+            "schema_version": "commercial-model-v1"
+          }
+        }
+      }
+    ],
+    "tasks": 7,
+    "uploads": 1
+  },
+  "repeat_release": 409,
+  "boundary": "Diagnostic continuation, not uninterrupted T17.02; real S3/Bedrock, local identities and SES sink"
+}

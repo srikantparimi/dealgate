@@ -42,6 +42,9 @@ COST_FIELDS: frozenset[str] = frozenset(
         "direct_costs",
         "direct_cost_proposals",
         "finance_summary",
+        "commercial_inputs",
+        "commercial_snapshot",
+        "commercial_outcome",
     }
 )
 

@@ -1,0 +1,56 @@
+{
+  "observed_at": "2026-10-03T19:07:00Z",
+  "application_commit": "3a754550da58da1cf941195a016e2f4d8778489b",
+  "checkpoint_commit_before_receipt": "17db7064112c1a9567e1c78fda6c1956556e24e1",
+  "image": "669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:s21-3a75455",
+  "image_digest": "sha256:8699352798ae837a1d50065db48d93ead04925e59f4dce24aea6e3b9fbc45ace",
+  "terraform_apply": {
+    "added": 11,
+    "changed": 14,
+    "destroyed": 11,
+    "persistent_data_destroyed": false,
+    "migration_task": "961d105658e4438a8629a59e23aa064d",
+    "migration_exit": 0
+  },
+  "api": {
+    "task_definition": "officeapp-dev-api:73",
+    "desired": 1,
+    "running": 1,
+    "pending": 0,
+    "rollout_state": "COMPLETED",
+    "health": "ok"
+  },
+  "schedule_safety": {
+    "forecast_plans": "ENABLED",
+    "deletion_cleanup": "ENABLED",
+    "legacy_hubspot_intake": "DISABLED"
+  },
+  "deploy_smoke": {
+    "run_tag": "smoke 20261003T190350Z",
+    "upload_job": "f6d39c82-ebd4-44af-9530-2a026fb82f65",
+    "result": "GREEN",
+    "fixture_deleted": true,
+    "global_leak_gate_clients": 0,
+    "global_leak_gate_approvers": 0
+  },
+  "scanned_upload": {
+    "fixture_text_layer_chars": 0,
+    "upload_status": "done",
+    "extract_status": "manual_required",
+    "extract_source": "textract",
+    "outcome": "explicit_manual_review",
+    "client_id": "287ea9ed-133e-4dbf-ac6e-66ec2d78ed8e",
+    "opportunity_id": "8cee6288-ba4e-4d5e-b4c9-20e0a8d12db9",
+    "sow_version_id": "c92f863b-32c4-47a6-996c-ba7c48beefc5",
+    "fixture_deleted": true,
+    "global_leak_gate_clients": 0,
+    "global_leak_gate_approvers": 0
+  },
+  "remaining_limitation": {
+    "behavior": "The explicit manual-review fallback is verified, but usable live OCR recovery is not.",
+    "evidence": "The Terraform API task-role policy has no Textract action; runtime AccessDenied was not retained in the receipt.",
+    "release_impact": "nonblocking under T16.01 because explicit review and source preservation are the accepted fallback"
+  },
+  "main_merged": false,
+  "product_owner_accepted": false
+}

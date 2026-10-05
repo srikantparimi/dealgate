@@ -5,8 +5,14 @@ import type {
   DeliveryGmModel,
   SignedSowUpload,
   SowVersion,
+  HandoffGate,
+  DeliveryAcceptance,
 } from "../../../api/client";
 import type { ReadinessItem } from "../../../ui-v2/ReadinessChecklist";
+import {
+  CURRENT_APPROVAL_FUNCTIONS,
+  LEGACY_APPROVAL_FUNCTIONS,
+} from "../../../api/client";
 
 /**
  * Shape of the workspace data we consult to derive the readiness list and
@@ -22,6 +28,8 @@ export interface WorkspaceSnapshot {
   approvalHistory?: ApprovalPackage[];
   agreements: AgreementRow[];
   signedSow: SignedSowUpload | null;
+  handoffGate?: HandoffGate | null;
+  deliveryAcceptance?: DeliveryAcceptance | null;
 }
 
 export interface NextStep {
@@ -76,6 +84,10 @@ export function defaultTabFor(snap: WorkspaceSnapshot): string {
  */
 export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
   const items: ReadinessItem[] = [];
+  const accountOwner =
+    snap.approvalPackage?.owner?.name ||
+    snap.deal?.owner?.name ||
+    "Account owner (name unavailable)";
   // S17: NDA/MSA no longer gate readiness. The upload checkbox lands as a
   // note but never a blocker; the register lives at /agreements.
   const agreementsMarked = snap.sow?.agreements_signed === true;
@@ -94,10 +106,17 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
     id: "scope",
     label: "Scope confirmed",
     status: scopeConfirmed ? "ok" : "warn",
-    statusLabel: scopeConfirmed ? "Confirmed" : "Draft",
+    statusLabel: scopeConfirmed
+      ? "Confirmed"
+      : snap.sow
+        ? "Draft"
+        : "Unavailable",
+    owner: accountOwner,
     hint: scopeConfirmed
-      ? undefined
-      : "Owner must confirm each SOW field before submitting for review.",
+      ? "Confirmed scope is recorded; open Scope to inspect the source fields."
+      : snap.sow
+        ? "Open Scope and confirm each SOW field before submitting for review."
+        : "SOW draft data is unavailable. Open Scope to inspect source availability.",
   });
 
   const gmComputed = snap.gmModel?.computed?.complete === true;
@@ -105,10 +124,17 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
     id: "gm",
     label: "GM computed",
     status: gmComputed ? "ok" : "warn",
-    statusLabel: gmComputed ? "Complete" : "Incomplete",
+    statusLabel: gmComputed
+      ? "Complete"
+      : snap.gmModel
+        ? "Incomplete"
+        : "Unavailable",
+    owner: accountOwner,
     hint: gmComputed
-      ? undefined
-      : "Complete the delivery model — staffing, cost lines and revenue.",
+      ? "Validated calculation is recorded; open Staffing & GM to inspect it."
+      : snap.gmModel
+        ? `${snap.gmModel.completeness_issues?.join("; ") || "Validated staffing costs or revenue are missing."} Open Staffing & GM to resolve the missing inputs.`
+        : "GM data is unavailable. Open Staffing & GM to inspect the model.",
   });
 
   const pkg = snap.approvalPackage;
@@ -117,22 +143,46 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
       .filter((a) => a.decision === "approve")
       .map((a) => a.function),
   );
-  const functions: ("delivery" | "hr" | "finance" | "legal")[] = [
-    "delivery",
-    "hr",
-    "finance",
-    "legal",
-  ];
+  const functions =
+    pkg?.required_functions ??
+    (pkg ? LEGACY_APPROVAL_FUNCTIONS : CURRENT_APPROVAL_FUNCTIONS);
   for (const fn of functions) {
     const ok = approvedFns.has(fn);
-    const assignment = pkg?.assignments?.find(a => a.function === fn);
-    const decision = pkg?.approvals.find(a => a.function === fn);
+    const assignment = pkg?.assignments?.find((a) => a.function === fn);
+    const decision = pkg?.approvals.find((a) => a.function === fn);
     items.push({
       id: `fn-${fn}`,
       label: `${fn === "hr" ? "HR" : fn[0].toUpperCase() + fn.slice(1)} review`,
       status: ok ? "ok" : pkg ? "warn" : "neutral",
-      statusLabel: ok ? "Approved" : decision ? decision.decision.replaceAll("_", " ") : assignment?.blocked ? "Blocked" : pkg ? "Pending" : "Not submitted",
-      hint: decision?.reason ?? (assignment ? assignment.blocked ? "Owner: SystemAdmin. Configure an eligible reviewer." : `${assignment.active ? "Pending with" : "Queued for"} ${assignment.approver_name}` : undefined),
+      statusLabel: ok
+        ? "Approved"
+        : decision
+          ? decision.decision.replaceAll("_", " ")
+          : assignment?.blocked
+            ? "Blocked"
+            : pkg
+              ? "Pending"
+              : "Not submitted",
+      owner:
+        decision && decision.decision !== "approve"
+          ? accountOwner
+          : assignment?.blocked
+            ? "SystemAdmin"
+            : assignment?.approver_name ||
+              decision?.approver_name ||
+              (pkg ? "Reviewer name unavailable" : accountOwner),
+      due: assignment?.due_date,
+      hint: decision
+        ? `${decision.approver_name || assignment?.approver_name || "Reviewer"}: ${decision.reason || (ok ? "Approval recorded." : "No decision reason supplied.")} ${ok ? "View the decision in Approvals." : "Resolve the review feedback in Approvals before resubmitting."}`
+        : assignment
+          ? assignment.blocked
+            ? "No eligible reviewer is assigned. Configure an eligible reviewer in Approvals."
+            : assignment.active
+              ? "Decision pending. Open Approvals for the assigned reviewer's permitted actions."
+              : "Queued behind the current review stage. View routing in Approvals."
+          : pkg
+            ? "Reviewer assignment is unavailable. Open Approvals to inspect routing."
+            : "Submit the confirmed scope and complete GM model in Approvals.",
     });
   }
 
@@ -151,6 +201,14 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
             : pkg.status === "pending_ceo_exception"
               ? "Pending"
               : "Queued",
+        owner:
+          pkg.ceo_pending_with ||
+          pkg.ceo_exception?.decided_by_name ||
+          "CEO (name unavailable)",
+        hint:
+          pkg.ceo_exception?.decision === "approve"
+            ? "Exception decision recorded; inspect its conditions and validity in Approvals."
+            : "Margin requires an executive exception. Open Approvals to inspect the pending decision.",
       });
     } else {
       items.push({
@@ -163,7 +221,7 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
     }
   }
 
-  const signed = snap.signedSow;
+  const signed = snap.signedSow?.package_id === pkg?.id ? snap.signedSow : null;
   items.push({
     id: "signature",
     label: "Signed SOW verified",
@@ -173,11 +231,52 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
         ? "Verified"
         : signed?.verify_status === "blocked"
           ? "Blocked"
-          : "Not uploaded",
+          : signed?.verify_status === "pending"
+            ? "Awaiting verification"
+            : signed
+              ? signed.verify_status[0].toUpperCase() +
+                signed.verify_status.slice(1)
+              : "Not uploaded",
+    owner: accountOwner,
     hint:
-      signed?.verify_status === "blocked"
-        ? "Uploaded PDF does not match approved package — see Signature tab."
-        : undefined,
+      signed?.verify_status === "verified"
+        ? "Verification is recorded for this package. Review Delivery acceptance in Handoff."
+        : signed
+          ? `${signed.verify_reason || (signed.verify_status === "pending" ? "Verify the uploaded signed document." : "Signed document verification has not passed.")} Open Signature to inspect or replace the upload.`
+          : pkg?.status === "ready_to_sign"
+            ? "Upload the signed document for this approved package in Signature, then verify it."
+            : "Current-package approvals must finish before signed-document upload. Open Approvals to inspect the current gate.",
+  });
+
+  const acceptance =
+    snap.deliveryAcceptance?.package_id === pkg?.id
+      ? snap.deliveryAcceptance
+      : null;
+  const acceptanceKnown =
+    snap.deliveryAcceptance !== undefined && snap.deliveryAcceptance !== null
+      ? acceptance !== null
+      : snap.deliveryAcceptance === null && snap.handoffGate != null;
+  const accepted =
+    acceptance?.staffing_confirmed === true &&
+    acceptance.billing_setup_confirmed === true &&
+    acceptance.po_confirmed === true;
+  items.push({
+    id: "delivery-acceptance",
+    label: "Delivery acceptance",
+    status: accepted ? "ok" : acceptanceKnown ? "warn" : "neutral",
+    statusLabel: !acceptanceKnown
+      ? "Unavailable"
+      : accepted
+        ? "Recorded"
+        : acceptance
+          ? "Incomplete"
+          : "Not recorded",
+    owner: "Delivery",
+    hint: !acceptanceKnown
+      ? "Delivery acceptance data is unavailable here. Open Handoff to load the recorded checks."
+      : accepted
+        ? "Staffing, billing setup and PO confirmations are recorded. Open Handoff to inspect release readiness."
+        : "Delivery must confirm staffing, billing setup and PO in Handoff before release.",
   });
 
   const handoffDone = signed?.released_at != null;
@@ -186,6 +285,14 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
     label: "Handoff released",
     status: handoffDone ? "ok" : "neutral",
     statusLabel: handoffDone ? "Released" : "Not released",
+    owner: accountOwner,
+    hint: handoffDone
+      ? "Release is recorded. Open Handoff to view the release receipt; downstream work is not inferred from release."
+      : snap.handoffGate
+        ? snap.handoffGate.ok
+          ? "Release checks passed. The account owner can release from Handoff."
+          : `${snap.handoffGate.reasons.join("; ") || "Release checks have not passed."} Open Handoff to inspect the blocking checks.`
+        : "Release checks are unavailable here. Open Handoff to load current checks before release.",
   });
 
   return items;
@@ -204,14 +311,46 @@ export function nextValidStep(snap: WorkspaceSnapshot): NextStep {
     return { label: "View review status", href: "approvals", disabled: false };
   }
   if (status === "pending_ceo_exception") {
-    return { label: "Awaiting CEO decision", href: "approvals", disabled: false };
+    return {
+      label: "Awaiting CEO decision",
+      href: "approvals",
+      disabled: false,
+    };
   }
   if (pkg && status === "ready_to_sign") {
-    if (pkg.ceo_exception?.conditions_unmet) return { label: `Blocked: ${pkg.ceo_exception.conditions_text}`, href: "approvals", disabled: false, reason: `Owner: ${pkg.owner?.name ?? "Account owner"}. Evidence of satisfied CEO conditions is required.` };
-    if (pkg.ceo_exception?.expired) return { label: "Resolve expired CEO exception", href: "approvals", disabled: false };
+    if (pkg.ceo_exception?.conditions_unmet)
+      return {
+        label: `Blocked: ${pkg.ceo_exception.conditions_text}`,
+        href: "approvals",
+        disabled: false,
+        reason: `Owner: ${pkg.owner?.name ?? "Account owner"}. Evidence of satisfied CEO conditions is required.`,
+      };
+    if (pkg.ceo_exception?.expired)
+      return {
+        label: "Resolve expired CEO exception",
+        href: "approvals",
+        disabled: false,
+      };
+    if (
+      snap.signedSow?.package_id === pkg.id &&
+      snap.signedSow?.verify_status === "verified"
+    ) {
+      return {
+        label: "Review handoff",
+        href: "handoff",
+        disabled: false,
+        reason: snap.handoffGate
+          ? snap.handoffGate.ok
+            ? "Release checks passed; the account owner may release from Handoff."
+            : snap.handoffGate.reasons.join("; ") ||
+              "Release checks have not passed."
+          : "Load current Delivery acceptance and release checks in Handoff.",
+      };
+    }
     return { label: "Prepare signature", href: "signature", disabled: false };
   }
-  if (status === "released") return { label: "View handoff", href: "handoff", disabled: false };
+  if (status === "released")
+    return { label: "View handoff", href: "handoff", disabled: false };
 
   if (!snap.sow || snap.sow.confirmed_at == null) {
     return {
@@ -226,11 +365,13 @@ export function nextValidStep(snap: WorkspaceSnapshot): NextStep {
       label: "Open Staffing & GM",
       href: "staffing",
       disabled: false,
-      reason: snap.gmModel?.completeness_issues?.join("; ") || "Missing validated staffing costs or revenue.",
+      reason:
+        snap.gmModel?.completeness_issues?.join("; ") ||
+        "Missing validated staffing costs or revenue.",
     };
   }
   if (!pkg || status === "voided" || status === "rejected") {
-    const returned = pkg?.approvals.find(a => a.decision !== "approve");
+    const returned = pkg?.approvals.find((a) => a.decision !== "approve");
     return {
       label: status === "rejected" ? "Resolve review" : "Submit for approval",
       href: "approvals",
@@ -259,21 +400,24 @@ export function buildRail(snap: WorkspaceSnapshot): RailStep[] {
   const ceoRequired = pkg?.floors?.requires_ceo === true;
   const ceoDone =
     ceoRequired && (status === "ready_to_sign" || status === "released");
-  const signedDone = snap.signedSow?.verify_status === "verified";
-  const handoffDone = snap.signedSow?.released_at != null;
+  const currentSigned =
+    snap.signedSow?.package_id === pkg?.id ? snap.signedSow : null;
+  const signedDone = currentSigned?.verify_status === "verified";
+  const handoffDone = currentSigned?.released_at != null;
 
   const rail: RailStep[] = [
     { key: "intake", label: "Intake", state: snap.sow ? "done" : "current" },
     {
       key: "scope_gm",
       label: "Scope & GM",
-      state: scopeDone && gmDone
-        ? "done"
-        : scopeDone
-          ? "current"
-          : snap.sow
+      state:
+        scopeDone && gmDone
+          ? "done"
+          : scopeDone
             ? "current"
-            : "upcoming",
+            : snap.sow
+              ? "current"
+              : "upcoming",
       href: "scope",
     },
     {
@@ -307,11 +451,7 @@ export function buildRail(snap: WorkspaceSnapshot): RailStep[] {
     {
       key: "handoff",
       label: "Handoff",
-      state: handoffDone
-        ? "done"
-        : signedDone
-          ? "current"
-          : "upcoming",
+      state: handoffDone ? "done" : signedDone ? "current" : "upcoming",
       href: "handoff",
     },
   ];
@@ -327,8 +467,15 @@ export function agreementValid(_a: AgreementRow): boolean {
 }
 
 export function workspaceTitle(snap: WorkspaceSnapshot): string {
-  const fields = snap.sow?.extracted_fields as Record<string, { value?: unknown }> | undefined;
+  const fields = snap.sow?.extracted_fields as
+    | Record<string, { value?: unknown }>
+    | undefined;
   const title = fields?.sow_title?.value ?? fields?.title?.value;
   if (typeof title === "string" && title.trim()) return title.trim();
-  return [snap.deal?.client_name ?? "SOW", snap.deal?.engagement_type?.replaceAll("_", " ")].filter(Boolean).join(" · ");
+  return [
+    snap.deal?.client_name ?? "SOW",
+    snap.deal?.engagement_type?.replaceAll("_", " "),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }

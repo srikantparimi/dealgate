@@ -25,6 +25,7 @@ import { FinanceGmPanel, type FinanceGmResult } from "./staffing/FinanceGmPanel"
 import { ResourceLineRow } from "./staffing/ResourceLineRow";
 import { GateSteps, type GateStep } from "../../../ui-v2/GateSteps";
 import { ResourcesEditor } from "./ResourcesEditor";
+import { CommercialModelEditor } from "./CommercialModelEditor";
 
 type ViewerRole = "restricted" | "full";
 
@@ -50,7 +51,11 @@ export function StaffingGmTab({
 }: StaffingGmTabProps) {
   const gm = snap.gmModel;
   const [preview, setPreview] = useState<FinanceGmResult | null>(null);
+  const [commercial, setCommercial] = useState(false);
   const showComputed = useCallback((result: FinanceGmResult | null) => setPreview(result ?? {}), []);
+  if (gm?.commercial_profile || gm?.commercial_inputs || commercial || (!gm && snap.sow)) {
+    return <CommercialModelEditor key={`${snap.sow?.id}:${gm?.id ?? "new"}`} snap={snap} />;
+  }
   if (!gm) {
     // No GM model yet. This used to be a dead end — an empty state whose only
     // action was "Build from SOW", which cannot work when the SOW lists no
@@ -80,6 +85,7 @@ export function StaffingGmTab({
   return (
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0 space-y-6">
+        {snap.sow && <Button variant="secondary" onClick={() => setCommercial(true)}>Commercial pricing</Button>}
         <StaffingGateSteps gm={gm} />
         <StaffingHeader gm={gm} hasNewerSow={hasNewerSow} onRebuildFromSow={onRebuildFromSow} />
         <StaffingGrid gm={gm} viewer={viewer} onSaveRow={onSaveRow} />

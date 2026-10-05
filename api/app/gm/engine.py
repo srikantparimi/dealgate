@@ -221,7 +221,9 @@ class GmOutcome:
         failure — there is nothing there to fall short.
         """
 
-        return any(v is False for v in self.passes.values())
+        return any(v is False for v in self.passes.values()) or any(
+            component.requires_ceo for component in self.components
+        )
 
 
 # --- helpers shared by the rules -----------------------------------------
@@ -911,6 +913,13 @@ def _compute_hybrid(
             missing=tuple(incomplete),
             components=results,
             reason="one or more components is missing a required input",
+        )
+
+    if any(result.status != "ok" for result in results):
+        return GmOutcome(
+            status="exception",
+            components=results,
+            reason="one or more components cannot be assessed",
         )
 
     rev_by_loc: dict[str, Decimal] = {}

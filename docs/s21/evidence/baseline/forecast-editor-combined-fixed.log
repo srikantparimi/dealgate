@@ -1,0 +1,30 @@
+
+ RUN  v2.1.9 /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast/web
+
+stderr | src/__tests__/v2/ForecastOverviewIndependent.test.tsx > Independent Forecast Overview boundaries > uses authorized server aggregates rather than reconstructing them from the current plan page
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ src/__tests__/v2/ForecastOverviewIndependent.test.tsx (14 tests) 1271ms
+ ✓ src/__tests__/v2/CommercialProfiles.test.tsx (12 tests) 1385ms
+ ✓ src/__tests__/v2/CommercialEditorIndependent.test.tsx (19 tests) 2511ms
+   ✓ Independent commercial editor boundary checks > preserves exact canonical fixed_assignment inputs during a workstream edit 322ms
+stderr | src/__tests__/v2/Forecast.test.tsx > Forecast > keeps financial measure bases distinct from scheduled revenue
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ src/__tests__/v2/Forecast.test.tsx (11 tests) 1742ms
+   ✓ Forecast > defaults to company/accounts and keeps all 15 months and chosen scenario on account drilldown 520ms
+ ✓ src/__tests__/v2/CommercialModelEditor.test.tsx (9 tests) 1184ms
+   ✓ Commercial model editor > keeps the signed SOW financial basis read-only for a writing role 308ms
+stderr | src/__tests__/v2/ForecastOverview.test.tsx > Forecast Overview > displays server aggregate decimals, separate periods and honest unavailable dependencies
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ src/__tests__/v2/ForecastOverview.test.tsx (5 tests) 632ms
+
+ Test Files  6 passed (6)
+      Tests  70 passed (70)
+   Start at  23:52:32
+   Duration  30.05s (transform 894ms, setup 2.05s, collect 4.98s, tests 8.72s, environment 10.88s, prepare 1.02s)
+

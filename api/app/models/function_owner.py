@@ -17,7 +17,7 @@ from app.db.base import Base
 
 
 ALLOWED_FUNCTIONS: frozenset[str] = frozenset(
-    {"delivery", "hr", "finance", "legal"}
+    {"delivery", "hr", "sales", "finance", "legal"}
 )
 
 
@@ -37,7 +37,7 @@ class FunctionOwner(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "function IN ('delivery', 'hr', 'finance', 'legal')",
+            "function IN ('delivery', 'hr', 'sales', 'finance', 'legal')",
             name="ck_function_owner_function",
         ),
     )

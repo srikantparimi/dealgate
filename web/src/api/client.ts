@@ -120,7 +120,7 @@ async function authHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
@@ -375,6 +375,7 @@ export type AgreementKind = "NDA" | "MSA";
 // S17: agreements are a flat doc store. One row per uploaded file.
 // The old state/owner/next_action/dates/signatories shape is gone.
 export interface AgreementRow {
+  version_no?: number;
   id: UUID;
   client_id: UUID;
   client_name: string;
@@ -425,13 +426,39 @@ export function getAgreementDownloadUrl(
   return request(`/agreements/${id}/download`);
 }
 
-export function deleteAgreement(id: UUID): Promise<void> {
-  return request<void>(`/agreements/${id}`, { method: "DELETE" });
+export function deleteAgreement(id: UUID): Promise<DeletionJobResponse> {
+  return request<DeletionJobResponse>(`/agreements/${id}`, { method: "DELETE" });
+}
+
+export interface AgreementFileVersion {
+  version_no: number;
+  filename: string;
+  file_size: number;
+  file_hash: string | null;
+  uploaded_by: UUID;
+  uploaded_by_name: string;
+  uploaded_at: ISODateTime;
+}
+
+export function listAgreementVersions(id: UUID): Promise<{items: AgreementFileVersion[]}> {
+  return request(`/agreements/${id}/versions`);
+}
+
+export function replaceAgreement(id: UUID, expectedVersion: number, file: File): Promise<AgreementRow> {
+  const body = new FormData();
+  body.append('expected_version', String(expectedVersion));
+  body.append('file', file);
+  return request(`/agreements/${id}/replace`, {method:'POST', body});
+}
+
+export function getAgreementVersionDownloadUrl(id: UUID, version: number): Promise<{url: string; filename: string}> {
+  return request(`/agreements/${id}/versions/${version}/download`);
 }
 
 export interface ProjectRow {
-  id: UUID; package_id: UUID; gm_model_id: UUID; title: string; client_name: string | null;
-  owner_name: string; sow_version: number; gm_version: number; released_at: string; term_end: string | null;
+  id: UUID; package_id: UUID | null; gm_model_id: UUID | null; title: string; client_name: string | null;
+  source_deleted?: boolean;
+  owner_name: string; sow_version: number | null; gm_version: number | null; released_at: string; term_end: string | null;
   approved: { us: string | null; india: string | null };
   forecast: { us: string | null; india: string | null; as_of: string | null };
   resources: { id: UUID; name: string | null; role: string; location: string; allocation: string; hours: string; start_date: string; end_date: string }[];
@@ -1786,6 +1813,9 @@ export interface DeliveryPreviewResponse {
 }
 
 export interface DeliveryGmModel {
+  commercial_profile?: string | null;
+  commercial_inputs?: import("./commercial").CommercialComponent | null;
+  commercial_snapshot?: import("./commercial").CommercialSnapshot | null;
   version?: number;
   id: UUID;
   opportunity_id: UUID | null;
@@ -2553,7 +2583,9 @@ export type ApprovalPackageStatus =
   | "voided"
   | "rejected";
 
-export type ApprovalFunction = "delivery" | "hr" | "finance" | "legal";
+export type ApprovalFunction = "delivery" | "hr" | "sales" | "finance" | "legal";
+export const LEGACY_APPROVAL_FUNCTIONS: ApprovalFunction[] = ["delivery", "hr", "finance", "legal"];
+export const CURRENT_APPROVAL_FUNCTIONS: ApprovalFunction[] = ["delivery", "hr", "sales", "finance", "legal"];
 export type ApprovalDecision = "approve" | "reject" | "request_changes";
 
 export interface ApprovalRow {
@@ -2576,6 +2608,8 @@ export interface ApprovalPackageFloors extends SowConfirmationFloors {
 }
 
 export interface ApprovalPackage {
+  routing_policy_version?: number;
+  required_functions?: ApprovalFunction[];
   sow_version?: number;
   gm_version?: number;
   // S17: board cards read these to render a real title + client name.
@@ -2621,6 +2655,7 @@ export interface ApprovalPackageListResponse {
   page: number;
   size: number;
   total: number;
+  population_revision?: string | null;
 }
 
 export interface ApprovalPackageSummary {
@@ -2632,7 +2667,8 @@ export interface ApprovalPackageSummary {
 }
 
 export interface ListApprovalPackagesQuery {
-  status?: ApprovalPackageStatus;
+  status?: ApprovalPackageStatus | "in_review";
+  population_revision?: string;
   opportunity_id?: UUID;
   page?: number;
   size?: number;
@@ -2721,6 +2757,7 @@ export function listApprovalPackages(
 ): Promise<ApprovalPackageListResponse> {
   const params = new URLSearchParams();
   if (query.status) params.set("status", query.status);
+  if (query.population_revision) params.set("population_revision", query.population_revision);
   if (query.opportunity_id) params.set("opportunity_id", query.opportunity_id);
   if (query.page) params.set("page", String(query.page));
   if (query.size) params.set("size", String(query.size));
@@ -2768,6 +2805,9 @@ export interface PatchRenewalBody {
   outcome_summary?: string | null;
   status?: "closed" | "extended";
   replacement_sow_version_id?: UUID | null;
+  /** S21-16 (T14.06): explicit decision kind; `not_renewing` files
+   * closeout/roll-off tasks on the account owner server-side. */
+  outcome?: string;
 }
 
 export function listRenewals(
@@ -3180,6 +3220,19 @@ export function createSignedSowUpload(
   return request<SignedSowUpload>(`/signed-sow/${packageId}`, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+export function uploadSignedSowFile(
+  packageId: UUID,
+  file: File,
+  hasSignatureEvidence: boolean,
+): Promise<SignedSowUpload> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("has_signature_evidence", String(hasSignatureEvidence));
+  return request<SignedSowUpload>(`/signed-sow/${packageId}/file`, {
+    method: "POST", body,
   });
 }
 
@@ -3814,6 +3867,27 @@ export interface DeletionAssessmentResponse {
   state: DeletionState;
   reason: string;
   counts: Record<string, number>;
+  job_id?: UUID;
+  subject_type?: "sow" | "client" | "opportunity" | "agreement";
+}
+
+export interface DeletionJobResponse extends DeletionAssessmentResponse {
+  job_id: UUID;
+  status: "pending" | "failed" | "done";
+  source_deleted: boolean;
+  sow_title: string;
+  attempts: number;
+  last_error: string | null;
+  next_attempt_at: string | null;
+  completed_at: string | null;
+}
+
+export function getDeletionJob(jobId: UUID): Promise<DeletionJobResponse> {
+  return request<DeletionJobResponse>(`/deletion-jobs/${jobId}`);
+}
+
+export function retryDeletionJob(jobId: UUID): Promise<DeletionJobResponse> {
+  return request<DeletionJobResponse>(`/deletion-jobs/${jobId}/retry`, { method: "POST" });
 }
 
 export function assessClientDeletion(
@@ -3857,9 +3931,9 @@ export function assessSowDeletion(
 export function deleteSow(
   sowId: UUID,
   reason?: string,
-): Promise<DeletionAssessmentResponse> {
+): Promise<DeletionJobResponse> {
   const qs = reason ? `?reason=${encodeURIComponent(reason)}` : "";
-  return request<DeletionAssessmentResponse>(`/sows/${sowId}${qs}`, {
+  return request<DeletionJobResponse>(`/sows/${sowId}${qs}`, {
     method: "DELETE",
   });
 }
@@ -3927,6 +4001,7 @@ export function deleteBulkImportBatch(
 // ---------------------------------------------------------------------------
 
 export interface PipelineOpportunityRow {
+  source_origin?: "hubspot" | "local_test_fixture";
   opportunity_id: UUID;
   hubspot_deal_id: string | null;
   name: string | null;
@@ -3961,6 +4036,7 @@ export interface PipelineOpportunityRow {
 export function patchNextAction(
   id: UUID,
   patch: {
+    expected_revision?: string;
     status?: string;
     assignee_user_id?: UUID | null;
     due_date?: ISODate | null;
@@ -4090,6 +4166,7 @@ export interface PipelineFilters {
   group?: UUID[];
   // S20 W6 Session 4 · per-user watchlist axis. `true` = only starred rows.
   watching?: boolean;
+  show_clients_without_matches?: boolean;
   page?: number;
   page_size?: number;
   sort?: string;
@@ -4108,6 +4185,7 @@ function pipelineParams(filters: PipelineFilters): URLSearchParams {
   filters.client?.forEach((c) => p.append("client", c));
   filters.group?.forEach((g) => p.append("group", g));
   if (filters.watching) p.set("watching", "true");
+  if (filters.show_clients_without_matches) p.set("show_clients_without_matches", "true");
   if (filters.date_field) p.set("date_field", filters.date_field);
   if (filters.date_from) p.set("date_from", filters.date_from);
   if (filters.date_to) p.set("date_to", filters.date_to);
@@ -4180,8 +4258,9 @@ export interface PipelineFacets {
   business_units: string[];
 }
 
-export function getPipelineFacets(): Promise<PipelineFacets> {
-  return request<PipelineFacets>(`/pipeline/facets`);
+export function getPipelineFacets(filters: PipelineFilters = {}): Promise<PipelineFacets> {
+  const params = pipelineParams(filters);
+  return request<PipelineFacets>(`/pipeline/facets${params.size ? `?${params}` : ""}`);
 }
 
 // S20 W6 Session 4 · tracking groups (manual + rule-based).
@@ -4236,6 +4315,7 @@ export interface WatchedItemRow {
 export interface WatchedList {
   items: WatchedItemRow[];
   counts: { opportunity?: number; client?: number };
+  matching_deal_count?: number;
 }
 
 export function listWatchlist(): Promise<WatchedList> {
@@ -4268,6 +4348,7 @@ export interface TimelineEntry {
   actor_name: string | null;
   body: string;
   entity_id: UUID | null;
+  comment_source?: string | null;
 }
 
 export function getDealTimeline(
@@ -4316,11 +4397,28 @@ export interface DealCommentRow {
   created_at: ISODateTime;
   edited_at: ISODateTime | null;
   deleted_at: ISODateTime | null;
+  revision?: string;
+  author_name?: string | null;
+  can_edit?: boolean;
+  can_delete?: boolean;
 }
 
 export interface DealCommentList {
   items: DealCommentRow[];
   latest: DealCommentRow | null;
+  can_create?: boolean;
+}
+
+export function createDealComment(opportunityId: UUID, body: string): Promise<DealCommentRow> {
+  return request(`/deals/${opportunityId}/comments`, { method: "POST", body: JSON.stringify({ body }) });
+}
+
+export function patchDealComment(id: UUID, patch: { expected_revision: string; body?: string; pinned?: boolean }): Promise<DealCommentRow> {
+  return request(`/deal-comments/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export function deleteDealComment(id: UUID, revision: string): Promise<void> {
+  return request(`/deal-comments/${id}`, { method: "DELETE", headers: { "If-Match": revision } });
 }
 
 export function listDealComments(
@@ -4342,19 +4440,31 @@ export interface NextActionRow {
   blocker: string | null;
   outcome: string | null;
   approval_package_id: UUID | null;
+  revision?: string;
+  can_edit?: boolean;
+}
+
+export interface NextActionList {
+  items: NextActionRow[];
+  can_create?: boolean;
+  assignees?: { id: UUID; name: string }[];
+}
+
+export function createNextAction(payload: { opportunity_id: UUID; title: string; assignee_user_id: UUID; due_date: ISODate | null }): Promise<NextActionRow> {
+  return request("/next-actions", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export function listNextActions(params: {
   opportunity_id?: UUID;
   assignee_user_id?: UUID;
   status?: string;
-}): Promise<{ items: NextActionRow[] }> {
+}): Promise<NextActionList> {
   const p = new URLSearchParams();
   if (params.opportunity_id) p.set("opportunity_id", params.opportunity_id);
   if (params.assignee_user_id)
     p.set("assignee_user_id", params.assignee_user_id);
   if (params.status) p.set("status", params.status);
-  return request<{ items: NextActionRow[] }>(
+  return request<NextActionList>(
     `/next-actions${p.toString() ? "?" + p.toString() : ""}`,
   );
 }
@@ -4528,6 +4638,19 @@ export function getApprovalsAging(): Promise<ApprovalsAgingReport> {
 }
 
 export const reportsPipelineCsvUrl = "/reports/pipeline/export.csv";
+
+export async function downloadPipelineCsv(filters: PipelineFilters = {}): Promise<Blob> {
+  const params = pipelineParams({ ...filters, page: undefined, page_size: undefined, show_clients_without_matches: undefined });
+  const response = await fetch(`${BASE_URL}${reportsPipelineCsvUrl}?${params}`, {
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    const body = text ? safeJson(text) : null;
+    throw new ApiError(response.status, body, errorMessage(body, response.status));
+  }
+  return response.blob();
+}
 
 // S20 W4 Session 6 · integrations status cards.
 

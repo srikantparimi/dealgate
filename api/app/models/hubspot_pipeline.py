@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -30,6 +30,7 @@ class HubspotStage(Base):
     __tablename__ = "hubspot_stage"
     __table_args__ = (
         Index("ix_hubspot_stage_pipeline_order", "pipeline_id", "display_order"),
+        UniqueConstraint("pipeline_id", "id", name="uq_hubspot_stage_pipeline_id"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
