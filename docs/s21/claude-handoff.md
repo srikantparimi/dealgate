@@ -2,6 +2,24 @@
 
 ## RESUME HERE
 
+**2026-10-05 later. SIGNATORY LEAK FIX + UX ROUND DEPLOYED; explainer
+published.** Branch HEAD = signatory-filter commit, staging image
+`s21fix-<HEAD8>` smoke GREEN + gate clean. This round: test identities
+filtered from /signatories/internal (+isolation test); PlanTeamPanel
+auto-runs when the model has no staffing; allocation rows show live
+percent/dollar summary and 100% validation; labels renamed
+("Weight (1 = 100%)", "Rounding unit (advanced)"). Owner explainer
+artifact: https://claude.ai/artifact/KS9Cu1PcXZHZcyVg3p5UPX (private).
+
+Backlog from owner questions (logged, not built): duration-aware term
+assist (kickoff date + stated weeks → term_end, provenance calculated);
+default internal signatory per policy; surface staffing advice on the
+Confirm page's GM block (today it lives on the workspace Staffing & GM
+tab). Approver auto-routing + conditional CEO escalation confirmed
+working as designed — no change.
+
+Branch now carries TEN deployed-verified commits awaiting owner "merge".
+
 **2026-10-05 S22 slice 2: PLAN-THE-TEAM ADVISOR DEPLOYED.** Branch
 `fix/s21-identity-and-owner-display` HEAD `fe5ca00c`, staging image
 `s21fix-fe5ca00c` (digest sha256:1924a963…03fe), smoke GREEN + leak gate
