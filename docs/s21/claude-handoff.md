@@ -2,6 +2,22 @@
 
 ## RESUME HERE
 
+**2026-10-05 S22 slice: SOW/auto-staffing commercial prefill DEPLOYED
+(owner directive "AI auto-populate Staffing & GM").** Branch
+`fix/s21-identity-and-owner-display` HEAD `10f0857c`, staging image
+`s21fix-10f0857c`, smoke GREEN + leak gate clean. New:
+`services/commercial_proposal.propose_component` + GET
+/delivery-model/{opp}/commercial/proposal (Delivery/SystemAdmin) + editor
+prefill with banner/warnings/reset. Proposal = extraction (term,
+currency, price, engagement→profile map incl. staff_aug→
+calendar_staff_aug) + persisted auto-staffing resource lines (roles,
+allocation fractions, bill/cost rates) — provenance per field,
+costs_confirmed always False, signed basis 409, round-trips through
+save_commercial_model (tested). 7 backend + 3 web tests; 135 commercial
++ 44 editor neighbors green. Branch now carries THREE unmerged commits
+(identity/owner fixes 1209ba8, header UUID 5c79adb+docs, prefill
+10f0857c) — squash-merge to main after owner verification.
+
 **2026-10-05 post-release patch branch `fix/s21-identity-and-owner-display`
 (HEAD 5c79adb), deployed to staging as image `s21fix-1209ba80` + SPA; smoke
 GREEN, leak gate clean, 657-population intact. NOT yet merged to main —
