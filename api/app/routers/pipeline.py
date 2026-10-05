@@ -202,6 +202,8 @@ class OpportunityRowOut(BaseModel):
     owner_id: uuid.UUID | None
     owner_name: str | None
     owner_email: str | None
+    source_owner_id: str | None = None
+    owner_archived: bool | None = None
     hubspot_last_activity_at: datetime | None
     sow_approval_state: str
     attention_flags: list[str]
@@ -573,6 +575,8 @@ def _opp_to_out(row: OpportunityRow) -> OpportunityRowOut:
         owner_id=row.owner_id,
         owner_name=row.owner_name,
         owner_email=row.owner_email,
+        source_owner_id=row.source_owner_id,
+        owner_archived=row.owner_archived,
         hubspot_last_activity_at=row.hubspot_last_activity_at,
         sow_approval_state=row.sow_approval_state,
         attention_flags=list(row.attention_flags),

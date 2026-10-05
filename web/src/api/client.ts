@@ -4017,6 +4017,8 @@ export interface PipelineOpportunityRow {
   owner_id: UUID | null;
   owner_name: string | null;
   owner_email: string | null;
+  source_owner_id?: string | null;
+  owner_archived?: boolean | null;
   hubspot_last_activity_at: ISODateTime | null;
   sow_approval_state: string;
   attention_flags: string[];

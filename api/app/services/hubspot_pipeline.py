@@ -298,6 +298,15 @@ async def get_opportunity_row(
     )
     raw_name = getattr(opp, "name", None)
     display_name = raw_name or opp.stage_label or opp.hubspot_deal_id
+    source_owner_id = getattr(opp, "hubspot_owner_id", None)
+    mirror_row = (
+        (await _owner_mirror_map(session, [source_owner_id])).get(str(source_owner_id))
+        if source_owner_id
+        else None
+    )
+    mirror_name, mirror_email = (
+        _mirror_display(mirror_row) if mirror_row else (None, None)
+    )
     return OpportunityRow(
         opportunity_id=opp.id,
         source_origin="local_test_fixture" if opp.source == "sow_upload" else "hubspot",
@@ -313,8 +322,12 @@ async def get_opportunity_row(
         currency=opp.currency,
         close_date=opp.close_date,
         owner_id=owner.id if owner else None,
-        owner_name=owner.name if owner else None,
-        owner_email=owner.email if owner else None,
+        owner_name=mirror_name if mirror_name else (owner.name if owner else None),
+        owner_email=mirror_email
+        if (mirror_name or mirror_email)
+        else (owner.email if owner else None),
+        source_owner_id=source_owner_id,
+        owner_archived=mirror_row.archived if mirror_row else None,
         hubspot_last_activity_at=opp.hubspot_last_activity_at,
         sow_approval_state=state.value,
         attention_flags=tuple(f.value for f in flags),
@@ -697,6 +710,8 @@ class OpportunityRow:
     owner_id: uuid.UUID | None
     owner_name: str | None
     owner_email: str | None
+    source_owner_id: str | None
+    owner_archived: bool | None
     hubspot_last_activity_at: datetime | None
     sow_approval_state: str
     attention_flags: tuple[str, ...]
@@ -1313,6 +1328,32 @@ def _row_matches_readiness_filter(row_state: str, requested: tuple[str, ...]) ->
 # --- Public list surfaces ---------------------------------------------------
 
 
+
+async def _owner_mirror_map(session: AsyncSession, raw_ids) -> dict:
+    """Batch-resolve HubSpot owner ids via the owner mirror (D2/W1).
+
+    One bounded IN query per page; archived owners resolve too so a deal
+    owned by a departed rep still renders the human's name.
+    """
+    from app.services.hubspot_owners import HubspotOwner
+
+    wanted = {str(i).strip() for i in raw_ids if i and str(i).strip()}
+    if not wanted:
+        return {}
+    rows = (
+        await session.scalars(
+            select(HubspotOwner).where(HubspotOwner.id.in_(wanted))
+        )
+    ).all()
+    return {row.id: row for row in rows}
+
+
+def _mirror_display(row) -> tuple[str | None, str | None]:
+    """(name, email) from a mirror row; name None when nothing useful."""
+    full = f"{(row.first_name or '').strip()} {(row.last_name or '').strip()}".strip()
+    return (full or None), (row.email or None)
+
+
 async def list_opportunities(
     session: AsyncSession,
     *,
@@ -1383,6 +1424,10 @@ async def list_opportunities(
 
     rows = (await session.execute(stmt)).all()
 
+    owner_mirror = await _owner_mirror_map(
+        session, (getattr(row[0], "hubspot_owner_id", None) for row in rows)
+    )
+
     # Resolve latest-comment authors into display names via one batched
     # query — stays within the C7 ≤3-query budget (main select, this
     # author batch, and the stage-count aggregate below).
@@ -1442,6 +1487,11 @@ async def list_opportunities(
         # the column), then fall back to the stage label or the HubSpot id.
         # NEVER show a raw stage as the deal identity. If closed-lost, the
         # UI adds the "Closed Lost" pill next to the name (L07).
+        source_owner_id = getattr(opp, "hubspot_owner_id", None)
+        mirror_row = owner_mirror.get(str(source_owner_id)) if source_owner_id else None
+        mirror_name, mirror_email = (
+            _mirror_display(mirror_row) if mirror_row else (None, None)
+        )
         raw_name = getattr(opp, "name", None)
         display_name = raw_name or opp.stage_label or opp.hubspot_deal_id
         items.append(
@@ -1460,8 +1510,14 @@ async def list_opportunities(
                 currency=opp.currency,
                 close_date=opp.close_date,
                 owner_id=owner.id if owner else None,
-                owner_name=owner.name if owner else None,
-                owner_email=owner.email if owner else None,
+                owner_name=mirror_name
+                if mirror_name
+                else (owner.name if owner else None),
+                owner_email=mirror_email
+                if (mirror_name or mirror_email)
+                else (owner.email if owner else None),
+                source_owner_id=source_owner_id,
+                owner_archived=mirror_row.archived if mirror_row else None,
                 hubspot_last_activity_at=opp.hubspot_last_activity_at,
                 sow_approval_state=state.value,
                 attention_flags=flag_values,
@@ -1849,6 +1905,9 @@ async def list_clients(
         for row in client_rows:
             c = row[0]
             account_owner_ids[c.id] = getattr(c, "hubspot_owner_id", None)
+    account_owner_mirror = await _owner_mirror_map(
+        session, account_owner_ids.values()
+    )
 
     total_count = 0
     items: list[ClientRow] = []
@@ -1889,14 +1948,20 @@ async def list_clients(
             flags.append(AttentionFlag.CLOSED_WON_NOT_RELEASED)
         flag_values = tuple(f.value for f in flags)
         acct_owner_id = account_owner_ids.get(client.id)
+        acct_mirror = (
+            account_owner_mirror.get(str(acct_owner_id)) if acct_owner_id else None
+        )
+        acct_name, acct_email = (
+            _mirror_display(acct_mirror) if acct_mirror else (None, None)
+        )
         items.append(
             ClientRow(
                 client_id=client.id,
                 client_name=client.name,
                 hubspot_company_id=client.hubspot_company_id,
                 account_owner_id=acct_owner_id,
-                account_owner_name=None,  # W1's mirror lookup populates this
-                account_owner_email=None,
+                account_owner_name=acct_name,
+                account_owner_email=acct_email,
                 owner_id=owner_id,
                 owner_name=None,  # per-deal owner: filled below batch-side
                 owner_email=None,

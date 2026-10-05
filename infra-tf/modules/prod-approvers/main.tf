@@ -20,26 +20,32 @@ locals {
     delivery = {
       email = "shawnnad@smartek21.com"
       label = "Delivery"
+      name  = "Shawnna DelHierro"
     }
     delivery_fallback = {
       email = "srikanthp@smartek21.com"
       label = "Delivery fallback (OOO)"
+      name  = "Srikanth Parimi"
     }
     sales = {
       email = "janicek@smartek21.com"
       label = "Sales"
+      name  = "Janice Krpan"
     }
     legal = {
       email = "seema@smartek21.com"
       label = "Legal"
+      name  = "Seema Anil"
     }
     finance = {
       email = "scottpf@smartek21.com"
       label = "Finance"
+      name  = "Scott Pfeiffer"
     }
     ceo_exception = {
       email = "al@smartek21.com"
       label = "CEO exception"
+      name  = "Al Lalji"
     }
   }
 }
@@ -92,9 +98,12 @@ resource "aws_cognito_user" "prod_approver" {
 
   desired_delivery_mediums = ["EMAIL"]
 
+  # `name` lands in the ID token, so the app header shows the human
+  # instead of the Cognito sub.
   attributes = {
     email          = each.value.email
     email_verified = "true"
+    name           = each.value.name
   }
 }
 

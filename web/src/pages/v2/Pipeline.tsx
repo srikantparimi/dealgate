@@ -1426,7 +1426,9 @@ function OpportunitiesTable({
             const ownerLabel =
               row.owner_name ||
               row.owner_email ||
-              (row.owner_id ? "Owner details unavailable" : "Unassigned");
+              (row.owner_id || row.source_owner_id
+                ? "Owner details unavailable"
+                : "Unassigned");
             return (
               <tr
                 key={row.opportunity_id}

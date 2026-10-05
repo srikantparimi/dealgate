@@ -121,10 +121,12 @@ class PickRequest(BaseModel):
 # --- helpers --------------------------------------------------------------
 
 
-def _ensure_read_access(user: AuthUser, uploader_id: uuid.UUID) -> None:
+def _ensure_read_access(
+    user: AuthUser, uploader_id: uuid.UUID, *, db_user_id: uuid.UUID | None = None
+) -> None:
     if any(role in _LEADER_ROLES for role in user.groups):
         return
-    if user.id == uploader_id:
+    if user.id == uploader_id or db_user_id == uploader_id:
         return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -380,7 +382,11 @@ async def get_upload_job(
     job = await get_job(session, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    _ensure_read_access(user, job.uploader_id)
+    # The upload resolved the caller through `ensure_user`, which may have
+    # adopted an admin-invited row by email; ownership must be judged
+    # against that same identity, not the raw token id.
+    db_user = await ensure_user(session, user)
+    _ensure_read_access(user, job.uploader_id, db_user_id=db_user.id)
     return _job_to_response(job)
 
 
@@ -403,8 +409,14 @@ async def pick_upload_job(
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     # Only the original uploader (or an admin) can resume the pipeline —
-    # a random viewer must not be able to force a client match.
-    if user.id != job.uploader_id and "SystemAdmin" not in user.groups:
+    # a random viewer must not be able to force a client match. Ownership
+    # is judged against the adopted identity, same as the upload itself.
+    db_user = await ensure_user(session, user)
+    if (
+        user.id != job.uploader_id
+        and db_user.id != job.uploader_id
+        and "SystemAdmin" not in user.groups
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="only the uploader can resume this job",
