@@ -74,6 +74,20 @@ const TAB_LABELS: Record<TabKey, string> = {
  * mirror the spec's information architecture, and an always-visible
  * readiness panel so the "primary action" is never mysteriously disabled.
  */
+/** Mirrors the server's governance-scoped _DELETE_ROLES in
+ * api/app/routers/deletion.py — keep the two lists in sync. */
+export const SOW_DELETE_ROLES = [
+  "SystemAdmin",
+  "CEO",
+  "SalesLeader",
+  "Finance",
+  "Legal",
+] as const;
+
+export function canDeleteSow(groups: readonly string[] | undefined): boolean {
+  return !!groups?.some((g) => (SOW_DELETE_ROLES as readonly string[]).includes(g));
+}
+
 export function SowWorkspacePage() {
   const { id, tab } = useParams<{ id: string; tab?: string }>();
   const nav = useNavigate();
@@ -109,7 +123,12 @@ export function SowWorkspacePage() {
       const a = await assessSowDeletion(snap.sow.sow_id);
       setDeleteAssessment(a);
     } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : "Assessment failed");
+      const raw = e instanceof Error ? e.message : "Assessment failed";
+      setDeleteError(
+        raw.includes("insufficient role")
+          ? "Deleting a SOW needs a governance role (Finance, Legal, Sales leadership, CEO or SystemAdmin). You are signed in without one."
+          : raw,
+      );
     }
   }, [snap]);
 
@@ -373,7 +392,9 @@ export function SowWorkspacePage() {
                 Back
               </Button>
               {/* S21 item 1: Delete at every state. One label, one
-                  action — the confirm dialog names the cascade. */}
+                  action — the confirm dialog names the cascade. Rule 11:
+                  the control only renders for roles that can use it. */}
+              {canDeleteSow(viewer?.groups) && (
               <Button
                 type="button"
                 variant="secondary"
@@ -384,6 +405,7 @@ export function SowWorkspacePage() {
                 <Trash2 className="h-4 w-4 mr-1" />
                 Delete SOW
               </Button>
+              )}
             </div>
           }
         />
