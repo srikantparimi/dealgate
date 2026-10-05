@@ -208,3 +208,18 @@ export const saveCommercialVersion = (
     `/delivery-model/${opportunityId}/commercial/versions`,
     { method: "POST", body: JSON.stringify(body) },
   );
+
+/** S22 · SOW/auto-staffing proposed draft for the editor (Delivery/SystemAdmin). */
+export interface CommercialProposal {
+  component: CommercialComponent;
+  provenance: Record<string, string>;
+  warnings: string[];
+  suggested_profile: string;
+  engagement_type: string;
+  saved_version_exists: boolean;
+  sow_version_id: string;
+}
+export const getCommercialProposal = (opportunityId: string) =>
+  request<CommercialProposal>(
+    `/delivery-model/${opportunityId}/commercial/proposal`,
+  );

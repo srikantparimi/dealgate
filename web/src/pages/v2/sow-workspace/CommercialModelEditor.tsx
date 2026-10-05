@@ -8,6 +8,8 @@ import {
   type CommercialComponent,
   type CommercialPreview,
   type CommercialSchedule,
+  getCommercialProposal,
+  type CommercialProposal,
 } from "../../../api/commercial";
 import { Button } from "../../../ui-v2/primitives/button";
 import { Input } from "../../../ui-v2/primitives/input";
@@ -84,6 +86,31 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [proposal, setProposal] = useState<CommercialProposal | null>(null);
+  // S22 · pre-fill from the SOW + auto-staffing proposal when nothing is
+  // saved yet and the human has not started typing. Every value stays
+  // editable; the machine never confirms costs.
+  useEffect(() => {
+    if (snap.gmModel?.commercial_inputs || !snap.deal) return;
+    let active = true;
+    getCommercialProposal(snap.deal.id)
+      .then((p) => {
+        if (!active) return;
+        setProposal(p);
+      })
+      .catch(() => {
+        /* read-only roles or signed basis: the empty editor stands */
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snap.deal?.id]);
+  useEffect(() => {
+    if (!proposal || dirty || snap.gmModel?.commercial_inputs) return;
+    setInputs(structuredClone(proposal.component));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proposal]);
   const [calculationState, setCalculationState] = useState<
     "saved" | "preview" | "stale_preview"
   >("saved");
@@ -208,6 +235,38 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
+      {proposal && !snap.gmModel?.commercial_inputs && (
+        <div
+          role="note"
+          data-testid="commercial-proposal-banner"
+          className="rounded-panel border border-primary/40 bg-primary-subtle/30 p-3 text-secondary"
+        >
+          <p className="text-text">
+            Proposed from the SOW and auto-staffing — every value below is
+            editable; nothing is confirmed until you save.
+          </p>
+          {proposal.warnings.length > 0 && (
+            <ul className="mt-1 list-disc pl-5 text-text-secondary">
+              {proposal.warnings.map((w, i) => (
+                <li key={i} data-testid="proposal-warning">{w}</li>
+              ))}
+            </ul>
+          )}
+          {dirty && (
+            <button
+              type="button"
+              data-testid="proposal-reset"
+              className="mt-2 underline"
+              onClick={() => {
+                setInputs(structuredClone(proposal.component));
+                setDirty(false);
+              }}
+            >
+              Reset to proposal
+            </button>
+          )}
+        </div>
+      )}
       {signedBasis && (
         <p role="status">
           Signed financial basis. Changes require a separate amendment version.

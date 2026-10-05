@@ -124,6 +124,25 @@ async def commercial_preview(
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
+@router.get("/{opportunity_id}/commercial/proposal")
+async def commercial_proposal(
+    opportunity_id: uuid.UUID,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """S22 · SOW/auto-staffing proposed draft for the commercial editor.
+
+    Write roles only: the proposal exists to be edited and saved, and it
+    carries looked-up cost rates. Signed basis refuses (409).
+    """
+    from app.services.commercial_proposal import ProposalError, propose_component
+
+    try:
+        return await propose_component(session, opportunity_id=opportunity_id)
+    except ProposalError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
 @router.post("/{opportunity_id}/commercial/versions", status_code=201)
 async def create_commercial_version(
     opportunity_id: uuid.UUID, body: CommercialRequest,
