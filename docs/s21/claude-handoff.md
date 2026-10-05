@@ -2,6 +2,24 @@
 
 ## RESUME HERE
 
+**2026-10-05 S22 slice 2: PLAN-THE-TEAM ADVISOR DEPLOYED.** Branch
+`fix/s21-identity-and-owner-display` HEAD `fe5ca00c`, staging image
+`s21fix-fe5ca00c` (digest sha256:1924a963…03fe), smoke GREEN + leak gate
+clean. New: `gm/staffing_mix.py` pure-Decimal solver (half-FTE steps,
+explicit min_onshore constraint, loud delivery caution when
+required_fte > max at target GM); `integrations/bedrock_team_estimate`
+(schema-validated scope→FTE draft with verbatim quotes; S3_STUB=1
+selects the stub); `services/staffing_advice` (rate-card median costs,
+policy-floor default target with warning); POST
+/delivery-model/{opp}/commercial/staffing-advice (write roles);
+PlanTeamPanel in the commercial editor with Apply-mix →
+calendar assignments. Proposal price parsing now accepts "$75,400".
+22 backend + 6 web tests for the slice. Advisory blended-vs-per-geo
+floor policy question logged in docs/questions.md (rule 1). Owner's
+Caesars doc grounded the fixtures (75,400 / 7 weeks / 2.5 FTE).
+Branch carries SIX unmerged deployed-verified commits — squash-merge
+to main pending owner verification + "merge".
+
 **2026-10-05 S22 slice: SOW/auto-staffing commercial prefill DEPLOYED
 (owner directive "AI auto-populate Staffing & GM").** Branch
 `fix/s21-identity-and-owner-display` HEAD `10f0857c`, staging image
