@@ -2,6 +2,13 @@
 
 ## RESUME HERE
 
+**2026-10-06 DRAFT PERSISTENCE DEPLOYED.** Image `s21fix-dd3956e`, migration
+0064 (commercial_draft) applied via the gate, rollout COMPLETED on the
+exact image, draft route live (401 unauth), SPA synced with cache
+headers, invalidation I6CHL0H0N8QF1JFUDHG96PNJPF, smoke GREEN, leak
+gate clean. The Staffing & GM plan now auto-saves server-side, restores
+after reload, and renders on the Confirm page with provisional GM.
+
 **2026-10-05 night. OWNER CLICK-THROUGH ROUND 2 — DEPLOYED.** Image
 `s21fix-e1ea4a1`, task-def rev 83, rollout COMPLETED on the exact
 image; SPA synced, invalidation IAK7MPHK7XGS6OZJMDGPUJOTJK; smoke
