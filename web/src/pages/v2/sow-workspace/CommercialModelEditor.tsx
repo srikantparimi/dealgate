@@ -46,6 +46,7 @@ import { CalendarFields } from "./commercial-editor/CalendarFields";
 import { HybridFields } from "./commercial-editor/HybridFields";
 import { bindCommercialSource } from "./commercial-editor/bindings";
 import { PlanTeamPanel, type ResolutionAction } from "./commercial-editor/PlanTeamPanel";
+import { FinanceGmPanel } from "./staffing/FinanceGmPanel";
 
 function initialInputs(snap: WorkspaceSnapshot): CommercialComponent {
   if (snap.gmModel?.commercial_inputs)
@@ -91,6 +92,72 @@ function initialInputs(snap: WorkspaceSnapshot): CommercialComponent {
       allocation_basis: null,
       minor_unit: "",
     },
+  };
+}
+
+/**
+ * A role with no dates inherits the contract term. Existing explicit role
+ * dates remain independent so a partial assignment is not silently widened.
+ */
+function inheritMissingRoleDates(
+  component: CommercialComponent,
+): CommercialComponent {
+  return {
+    ...component,
+    staffing: component.staffing.map((row) => ({
+      ...row,
+      start: row.start || component.service_start,
+      end: row.end || component.service_end,
+      calendar: row.calendar
+        ? {
+            ...row.calendar,
+            coverage_start:
+              row.calendar.coverage_start || component.service_start || "",
+            coverage_end:
+              row.calendar.coverage_end || component.service_end || "",
+          }
+        : row.calendar,
+    })),
+  };
+}
+
+/**
+ * Keep inherited role/calendar dates aligned with an edited contract term.
+ * A row that differs from the previous term is an explicit override and is
+ * deliberately preserved.
+ */
+function updateContractDate(
+  component: CommercialComponent,
+  key: "service_start" | "service_end",
+  value: string | null,
+): CommercialComponent {
+  const previous = component[key];
+  return {
+    ...component,
+    [key]: value,
+    staffing: component.staffing.map((row) => {
+      if (key === "service_start") {
+        const calendar = row.calendar;
+        return {
+          ...row,
+          start: !row.start || row.start === previous ? value : row.start,
+          calendar:
+            calendar &&
+            (!calendar.coverage_start || calendar.coverage_start === previous)
+              ? { ...calendar, coverage_start: value || "" }
+              : calendar,
+        };
+      }
+      const calendar = row.calendar;
+      return {
+        ...row,
+        end: !row.end || row.end === previous ? value : row.end,
+        calendar:
+          calendar && (!calendar.coverage_end || calendar.coverage_end === previous)
+            ? { ...calendar, coverage_end: value || "" }
+            : calendar,
+      };
+    }),
   };
 }
 
@@ -204,7 +271,7 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   const draftKey = `${snap.sow?.id ?? "none"}:${snap.gmModel?.id ?? "new"}`;
   const cached = draftCache.get(draftKey);
   const [inputs, setInputs] = useState(() =>
-    cached?.dirty ? cached.inputs : initialInputs(snap),
+    inheritMissingRoleDates(cached?.dirty ? cached.inputs : initialInputs(snap)),
   );
   const [modelId, setModelId] = useState(snap.gmModel?.id ?? null);
   const [result, setResult] = useState<CommercialPreview>({
@@ -244,7 +311,7 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
         // A live in-memory draft from this session wins; otherwise the
         // server draft is the newest working state — restore it.
         if (!draftCache.get(draftKey)?.dirty) {
-          setInputs(structuredClone(draft.inputs));
+          setInputs(inheritMissingRoleDates(structuredClone(draft.inputs)));
           setDirty(true);
           setDraftRestored(draft.updated_at ?? "");
         }
@@ -319,7 +386,7 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   }, [snap.deal?.id]);
   useEffect(() => {
     if (!proposal || dirty || snap.gmModel?.commercial_inputs) return;
-    setInputs(structuredClone(proposal.component));
+    setInputs(inheritMissingRoleDates(structuredClone(proposal.component)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proposal]);
   const [calculationState, setCalculationState] = useState<
@@ -424,7 +491,15 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
     );
   };
   const patch = (key: keyof CommercialComponent, value: unknown) => {
-    setInputs((p) => ({ ...p, [key]: value }));
+    setInputs((previous) =>
+      key === "service_start" || key === "service_end"
+        ? updateContractDate(
+            previous,
+            key,
+            typeof value === "string" && value ? value : null,
+          )
+        : { ...previous, [key]: value },
+    );
     setNotice("");
     setDirty(true);
     setCalculationState((state) =>
@@ -449,7 +524,9 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
           change_reason: reason,
         });
         setModelId(response.gm_model.id);
-        setInputs(response.gm_model.commercial_inputs ?? body);
+        setInputs(
+          inheritMissingRoleDates(response.gm_model.commercial_inputs ?? body),
+        );
         setResult({
           computed: response.gm_model.computed,
           commercial_snapshot:
@@ -698,7 +775,7 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
               setDraftStamp(null);
               setDraftRestored(null);
               setDirty(false);
-              setInputs(initialInputs(snap));
+              setInputs(inheritMissingRoleDates(initialInputs(snap)));
             }}
           >
             Discard draft and start from the saved version
@@ -771,7 +848,9 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
               data-testid="proposal-reset"
               className="mt-2 underline"
               onClick={() => {
-                setInputs(structuredClone(proposal.component));
+                setInputs(
+                  inheritMissingRoleDates(structuredClone(proposal.component)),
+                );
                 setDirty(false);
               }}
             >
@@ -931,33 +1010,54 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
 
             {sectionShell(
               "team",
-              <>
-                {floors && (
-                  <p className="text-secondary text-text-secondary">
-                    Configured policy floors: US {formatPercent(floors.us, 0)} ·
-                    India {formatPercent(floors.india, 0)}. These apply per
-                    geography at approval — a blended margin alone does not
-                    pass them.
-                  </p>
-                )}
-                {editable && snap.deal && (
-                  <PlanTeamPanel
-                    opportunityId={snap.deal.id}
-                    inputs={inputs}
-                    advice={advice}
-                    onAdvice={setAdvice}
-                    onApply={replaceComponent}
-                    onResolve={handleResolve}
+              <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                <div className="min-w-0 space-y-5">
+                  {floors && (
+                    <p className="text-secondary text-text-secondary">
+                      Configured policy floors: US {formatPercent(floors.us, 0)} ·
+                      India {formatPercent(floors.india, 0)}. These apply per
+                      geography at approval — a blended margin alone does not
+                      pass them.
+                    </p>
+                  )}
+                  {editable && snap.deal && (
+                    <PlanTeamPanel
+                      opportunityId={snap.deal.id}
+                      inputs={inputs}
+                      advice={advice}
+                      onAdvice={setAdvice}
+                      onApply={replaceComponent}
+                      onResolve={handleResolve}
+                    />
+                  )}
+                  {(inputs.profile === "calendar_staff_aug" ||
+                    inputs.profile === "fixed_assignment" ||
+                    inputs.profile === "recurring_msp" ||
+                    inputs.pricing?.calendar_estimates ||
+                    inputs.staffing.length > 0) && (
+                    <CalendarFields component={inputs} onChange={replaceComponent} />
+                  )}
+                </div>
+                <aside className="min-w-0 xl:sticky xl:top-4 xl:self-start">
+                  <FinanceGmPanel
+                    result={
+                      result.computed
+                        ? {
+                            ...result.computed,
+                            ...result.computed.policy,
+                            gm_version: snap.gmModel?.version,
+                          }
+                        : null
+                    }
+                    locations={inputs.staffing
+                      .map((row) => row.location)
+                      .filter((location): location is string => !!location)}
+                    state={
+                      calculationState === "saved" && !dirty ? "saved" : "draft"
+                    }
                   />
-                )}
-                {(inputs.profile === "calendar_staff_aug" ||
-                  inputs.profile === "fixed_assignment" ||
-                  inputs.profile === "recurring_msp" ||
-                  inputs.pricing?.calendar_estimates ||
-                  inputs.staffing.length > 0) && (
-                  <CalendarFields component={inputs} onChange={replaceComponent} />
-                )}
-              </>,
+                </aside>
+              </div>,
             )}
 
             {sectionShell(

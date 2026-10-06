@@ -2,6 +2,46 @@
 
 ## RESUME HERE
 
+**2026-10-06 14:26 PDT — STAFFING TERM SYNC + LIVE GM LOCAL CHECKPOINT.**
+Authoritative integration tree:
+`/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast`, branch
+`fix/s21-identity-and-owner-display`, base/current committed HEAD before this
+checkpoint `eff19001387c26ba81c87c8a1ac8cabda692b162`. Three owned application
+files are intentionally dirty pending the checkpoint commit:
+`web/src/pages/v2/sow-workspace/CommercialModelEditor.tsx`,
+`web/src/pages/v2/sow-workspace/commercial-editor/CalendarFields.tsx`, and
+`web/src/__tests__/v2/StaffingGmRedesign.test.tsx`. Preserve unrelated untracked
+`dev.db` and `docs/s21/evidence/baseline/full-commercial.xml`; do not commit or
+delete them.
+
+Root cause: contract `service_start/service_end` and staffing row
+`start/end` (plus calendar coverage) are separate draft fields. Restore and
+contract edits did not reconcile them. The fix fills only blank inherited role
+and calendar dates on initial/saved/draft/proposal load, cascades later contract
+term changes only where the row still equals the previous inherited term, and
+preserves explicit partial-assignment overrides. Team & calendars now names the
+canonical contract term. The existing server-calculated `FinanceGmPanel` is
+rendered beside Team & calendars and follows the debounced preview; no browser
+money calculation was added.
+
+Evidence on the dirty tree: focused Staffing & GM **20/20 passed**; adjacent
+commercial/staffing/GM suites **75/75 passed**; `npm run typecheck` passed;
+`npm run build` passed. Exact commands:
+`cd web && npm test -- --run src/__tests__/v2/StaffingGmRedesign.test.tsx`,
+then the eight adjacent files recorded in the 14:24 shell history,
+`npm run typecheck`, `npm run build`. The targeted `npx eslint ...` command did
+not execute because installed ESLint 10 cannot find an `eslint.config.*`; this
+is existing repository tooling, not a test failure. No API, Vite, browser,
+test, migration or deployment process owned by this work is active. Staging
+still runs the earlier round-3 candidate and does **not** contain this patch.
+
+Exact resume step if interrupted:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s21-forecast && git status --short && git diff --check`;
+review and commit the three owned application/test files plus this incremental
+handoff entry, then prepare the normal immutable-image Terraform staging plan.
+Do not merge main before the owner's staging click-through and explicit merge
+approval.
+
 **2026-10-06 ROUND 3 DEPLOYED.** Image `s21fix-785b67c`, rollout
 COMPLETED on the exact image, SPA synced (cache headers), invalidation
 I76IHVRTLMP7HNBN67EO5T000V, smoke GREEN, leak gate clean. Round 3:

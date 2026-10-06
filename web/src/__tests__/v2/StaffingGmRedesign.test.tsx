@@ -195,6 +195,97 @@ describe("Staffing & GM four-section plan", () => {
     expect(roles[1]).toHaveValue("Consultant (copy)");
   });
 
+  it("fills blank team dates from the contract term when a draft is restored", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    const restored = structuredClone(staffedInputs) as api.CommercialComponent;
+    restored.staffing[0].start = null;
+    restored.staffing[0].end = null;
+    vi.spyOn(api, "getCommercialDraft").mockResolvedValue({
+      exists: true,
+      inputs: restored,
+      sow_version_id: "version-a",
+      updated_at: "2026-10-06T01:00:00+00:00",
+    });
+
+    render(<CommercialModelEditor snap={snap()} />);
+    await screen.findByTestId("draft-restored-banner");
+
+    expect(screen.getByLabelText("Role start")).toHaveValue("2026-10-01");
+    expect(screen.getByLabelText("Role end")).toHaveValue("2026-11-18");
+  });
+
+  it("keeps inherited team dates in sync while preserving explicit role overrides", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    const snapshot = snap();
+    const original = snapshot.gmModel!.commercial_inputs!;
+    original.staffing.push({
+      ...structuredClone(original.staffing[0]),
+      assignment_id: "row-override",
+      role: "Architect",
+      start: "2026-10-15",
+      end: "2026-11-10",
+    });
+
+    render(<CommercialModelEditor snap={snapshot} />);
+    fireEvent.change(screen.getByLabelText("Contract start"), {
+      target: { value: "2026-10-05" },
+    });
+    fireEvent.change(screen.getByLabelText("Contract end"), {
+      target: { value: "2026-11-30" },
+    });
+
+    const starts = screen.getAllByLabelText("Role start");
+    const ends = screen.getAllByLabelText("Role end");
+    expect(starts[0]).toHaveValue("2026-10-05");
+    expect(ends[0]).toHaveValue("2026-11-30");
+    expect(starts[1]).toHaveValue("2026-10-15");
+    expect(ends[1]).toHaveValue("2026-11-10");
+  });
+
+  it("shows the live server-calculated GM summary beside the staffing plan", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    vi.spyOn(api, "previewCommercial").mockResolvedValue({
+      computed: {
+        complete: true,
+        gm_us: null,
+        gm_india: "0.7215",
+        gm_blended: "0.7215",
+        finance_summary: {
+          revenue: "75400",
+          labor_cost: "21000",
+          direct_cost: "0",
+          total_delivery_cost: "21000",
+          gross_profit: "54400",
+          labor_pct: "0.2785",
+          direct_pct: "0",
+          total_cost_pct: "0.2785",
+          pass_through: "0",
+        },
+        policy: {
+          us_floor: "0.35",
+          india_floor: "0.50",
+          us_applicable: false,
+          india_applicable: true,
+          us_pass: true,
+          india_pass: true,
+          requires_ceo: false,
+          failing: [],
+        },
+      } as never,
+    });
+
+    render(<CommercialModelEditor snap={snap()} />);
+    const panel = screen.getByRole("region", { name: "GM summary" });
+    await waitFor(
+      () => expect(panel).toHaveTextContent("Contract price$75,400"),
+      { timeout: 4000 },
+    );
+    expect(panel).toHaveTextContent("Total delivery cost$21,000");
+    expect(panel).toHaveTextContent("Gross profit$54,400");
+    expect(panel).toHaveTextContent("Gross margin72.2%");
+    expect(panel).toHaveTextContent("Passes India floor");
+  });
+
   it("monthly share edits in percent keep the exact fraction in the save payload", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
     const preview = vi.spyOn(api, "previewCommercial").mockResolvedValue({});

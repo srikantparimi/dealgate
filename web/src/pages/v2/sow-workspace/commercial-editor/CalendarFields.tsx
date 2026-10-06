@@ -94,7 +94,17 @@ export function CalendarFields({
   };
   return (
     <section aria-label="Calendar staffing" className="min-w-0 space-y-5">
-      <h3 className="font-medium">Team roles & calendars</h3>
+      <div className="space-y-1">
+        <h3 className="font-medium">Team roles & calendars</h3>
+        <p
+          className="text-secondary text-text-secondary"
+          data-testid="team-contract-term"
+        >
+          Contract term: {component.service_start || "start not set"} to{" "}
+          {component.service_end || "end not set"}. New and inherited roles use
+          these dates until you override a role.
+        </p>
+      </div>
       {assignments.map((row, index) => {
         const patch = (key: keyof CommercialStaffing, value: unknown) =>
           update(index, { ...row, [key]: value });
