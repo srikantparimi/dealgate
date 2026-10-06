@@ -9,7 +9,9 @@
  * When a new blocker key ships, add it to CANONICAL_BLOCKER_KEYS AND to
  * the BLOCKER_REGISTRY in one PR.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import * as client from "../../api/client";
 import {
   BLOCKER_REGISTRY,
   assertRegistered,
@@ -60,5 +62,70 @@ describe("Rule 13 · blocker registry completeness", () => {
       expect(typeof BLOCKER_REGISTRY[key].Editor).toBe("function");
       expect(BLOCKER_REGISTRY[key].label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/** S22 click-through fix · duration-aware term assist on the Confirm
+ * page: "seven weeks from kickoff" SOWs get a derived end date as a
+ * labeled, click-to-apply suggestion — never a silent guess. */
+describe("Term assist in the date blockers", () => {
+  function payload(fields: Record<string, unknown>) {
+    return {
+      sow_version: { id: "version-a", extracted_fields: fields },
+    } as never;
+  }
+  const assist = {
+    available: true,
+    weeks: 7,
+    source_field: "milestones",
+    quote: "Week 7 — Roadmap & Executive Readout",
+  };
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("term start explains the kickoff role when the SOW states only a duration", async () => {
+    vi.spyOn(client, "getTermAssist").mockResolvedValue(assist);
+    const Editor = BLOCKER_REGISTRY.term_start.Editor;
+    render(<Editor payload={payload({})} onChanged={() => {}} />);
+    const hint = await screen.findByTestId("term-assist-hint");
+    expect(hint).toHaveTextContent("7 weeks");
+    expect(hint).toHaveTextContent("kickoff");
+  });
+
+  it("term end offers the derived date and saves it on one explicit click", async () => {
+    vi.spyOn(client, "getTermAssist").mockResolvedValue({
+      ...assist,
+      start: "2026-10-01",
+      suggested_end: "2026-11-18",
+    });
+    const confirm = vi
+      .spyOn(client, "confirmSowField")
+      .mockResolvedValue({} as never);
+    const onChanged = vi.fn();
+    const Editor = BLOCKER_REGISTRY.term_end.Editor;
+    render(
+      <Editor
+        payload={payload({
+          term_start: { value: "2026-10-01", status: "confirmed" },
+        })}
+        onChanged={onChanged}
+      />,
+    );
+    const apply = await screen.findByTestId("term-assist-apply");
+    expect(apply).toHaveTextContent("Use 2026-11-18 (kickoff + 7 weeks)");
+    expect(confirm).not.toHaveBeenCalled(); // nothing until the click
+    fireEvent.click(apply);
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith("version-a", "term_end", "2026-11-18"),
+    );
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("term end without a kickoff points at term start instead of guessing", async () => {
+    vi.spyOn(client, "getTermAssist").mockResolvedValue(assist);
+    const Editor = BLOCKER_REGISTRY.term_end.Editor;
+    render(<Editor payload={payload({})} onChanged={() => {}} />);
+    const hint = await screen.findByTestId("term-assist-hint");
+    expect(hint).toHaveTextContent("Set Term start");
+    expect(screen.queryByTestId("term-assist-apply")).not.toBeInTheDocument();
   });
 });

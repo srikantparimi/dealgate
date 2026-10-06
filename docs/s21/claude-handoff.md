@@ -2,6 +2,34 @@
 
 ## RESUME HERE
 
+**2026-10-05 night. OWNER CLICK-THROUGH ROUND 2 — three findings, fixed
+locally (tests green), deploy next.** Findings and root causes:
+1. *Dates not auto-populated*: the Caesars SOW states only "7 weeks"
+   (milestones end at Week 7) — extractor is right that no dates exist.
+   FIX: duration-aware term assist — `services/term_assist.py`
+   (deterministic regex: explicit "N weeks/months" beats milestone
+   "Week N" labels; verbatim quote carried) + GET
+   `/sow/versions/{id}/term-assist?start=` (read-roles; server does the
+   date arithmetic). UI: Confirm-page term_start editor explains the
+   kickoff role; term_end editor offers "Use <date> (kickoff + 7
+   weeks)" one-click apply-and-save; commercial editor contract section
+   has the same assist for service_end. Nothing auto-saves.
+2. *GM not calculated*: GM only computed on manual Preview/Save. FIX:
+   the commercial editor auto-previews (1.2s debounce, deduped body)
+   whenever dates + fee-or-staffing are present — server Decimal math,
+   labeled provisional, with a "Save version to publish to approvals"
+   nudge. Save stays the human attestation.
+3. *Approval flow "not implemented"*: it IS — `gm/policy.py`
+   requires_ceo (floor fail OR unassessed) → `approval_routing`
+   executive step; green path asserted in test_gm_policy, below-floor
+   in test_approval_routing. It was invisible because GM never
+   computed (finding 2). Added `approval-flow-note` in the editor
+   naming the conditional CEO step. OPEN QUESTION logged in
+   docs/questions.md: owner's stated flow omits HR and Sales — rule 1,
+   not changed silently; ask the owner.
+New tests: api test_s22_term_assist.py (6, incl. endpoint permission
+test), web StaffingGmRedesign (12) + blockerRegistry term-assist (3).
+
 **2026-10-05 latest. STAFFING & GM REDESIGN DEPLOYED (owner: "deploy"
 in chat).** Staging image `s21fix-211eeb3`, digest
 `sha256:a1347ff7…7db96`, API task-def **rev 82**, rollout COMPLETED,

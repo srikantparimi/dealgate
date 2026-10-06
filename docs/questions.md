@@ -216,3 +216,13 @@ guess. Each question names the sprint it blocks.
   by what attribution rule? The saved commercial model already goes
   through the real engine and real floors; this question is only about
   the planning aid's verdict. (Owner directive session, S22.)
+
+- [ ] **Approval flow membership (owner 2026-10-05 click-through).** The
+  owner describes the rule as "Delivery, Legal and Finance when GM is
+  green; plus CEO when below floor". The implemented flow (blueprint +
+  `approval_routing.FUNCTIONS`) routes **Delivery, HR, Sales, Finance,
+  Legal** always, with the CEO exception added automatically when a
+  floor fails or GM is unassessed. The conditional CEO step matches the
+  owner's rule and is tested; the open question is whether HR and Sales
+  reviews should be REMOVED from the flow. Rule 1: approval order is
+  policy — not changed without an explicit owner decision. (S22.)

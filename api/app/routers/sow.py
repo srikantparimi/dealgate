@@ -29,6 +29,7 @@ confirmed — the extract endpoint sets ``status="unconfirmed"`` and only
 from __future__ import annotations
 
 import uuid
+import datetime as _dt
 from datetime import datetime
 from typing import Any
 
@@ -365,6 +366,35 @@ async def get_version(
     download = s3.generate_download_url(state.file_s3_key)
     uploader_name = await _resolve_uploader_name(session, state.uploaded_by)
     return _to_response(state, download_url=download, user=_user, uploaded_by_name=uploader_name)
+
+
+@router.get("/versions/{sow_version_id}/term-assist")
+async def term_assist(
+    sow_version_id: uuid.UUID,
+    start: _dt.date | None = None,
+    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """S22 click-through fix: the SOW's stated duration, deterministically.
+
+    When the document states a duration ("seven weeks", a milestone plan
+    ending at Week 7) but no calendar dates, a human supplies the
+    kickoff and the server derives the end date — a labeled suggestion
+    with its verbatim source snippet, applied through the normal
+    field-confirm flow. Never guessed, never auto-saved.
+    """
+    from app.services.term_assist import derived_end, stated_duration
+
+    _user = await _actor(session, _user)
+    state = await _load_version_or_404(session, sow_version_id, _user)
+    duration = stated_duration(state.extracted_fields)
+    if duration is None:
+        return {"available": False}
+    out: dict = {"available": True, **duration}
+    if start is not None:
+        out["start"] = start.isoformat()
+        out["suggested_end"] = derived_end(start, duration).isoformat()
+    return out
 
 
 @router.patch(

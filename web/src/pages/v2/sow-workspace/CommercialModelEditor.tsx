@@ -11,7 +11,13 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Calculator, Plus, Save, Trash2 } from "lucide-react";
-import { getMe, type SowFieldName } from "../../../api/client";
+import {
+  getMe,
+  getTermAssist,
+  type SowFieldName,
+  type TermAssist,
+  type UUID,
+} from "../../../api/client";
 import {
   getCommercialProfiles,
   previewCommercial,
@@ -130,7 +136,29 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   const [proposal, setProposal] = useState<CommercialProposal | null>(null);
   const [advice, setAdvice] = useState<StaffingAdvice | null>(null);
   const [resolution, setResolution] = useState<ResolutionAction | null>(null);
+  const [termAssist, setTermAssist] = useState<TermAssist | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  // S22 click-through fix: when the SOW states a duration but the
+  // contract dates are unknown, surface the server-derived end date as
+  // a labeled suggestion (applied by click, never silently).
+  useEffect(() => {
+    if (!snap.sow?.id || inputs.service_end) {
+      setTermAssist(null);
+      return;
+    }
+    let active = true;
+    getTermAssist(snap.sow.id as UUID, inputs.service_start)
+      .then((result) => {
+        if (active) setTermAssist(result.available ? result : null);
+      })
+      .catch(() => {
+        /* best-effort assist */
+      });
+    return () => {
+      active = false;
+    };
+  }, [snap.sow?.id, inputs.service_start, inputs.service_end]);
 
   // Draft survives tab navigation: every change lands in the cache.
   useEffect(() => {
@@ -263,6 +291,28 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       setBusy(false);
     }
   }
+  // S22 click-through fix ("GM is not calculated"): preview runs by
+  // itself, debounced, whenever the draft has enough to compute — the
+  // server's Decimal engine does the math and the result is labeled
+  // provisional. Saving (the human attestation) stays a manual action.
+  const lastAutoPreview = useRef("");
+  useEffect(() => {
+    if (!editable || !policy || !snap.sow || busy) return;
+    const computable =
+      !!inputs.service_start &&
+      !!inputs.service_end &&
+      (!!inputs.pricing?.total_fee || inputs.staffing.length > 0);
+    if (!computable) return;
+    const body = JSON.stringify(inputs);
+    if (body === lastAutoPreview.current) return;
+    const timer = setTimeout(() => {
+      lastAutoPreview.current = body;
+      void calculate(false);
+    }, 1200);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputs, editable, policy, busy]);
+
   function field(label: string, key: keyof CommercialComponent, type = "text") {
     return (
       <label className="space-y-1 text-secondary">
@@ -566,6 +616,41 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
                     ? `Stated term: ${inputs.service_start} to ${inputs.service_end}.`
                     : "Contract dates unknown — they stay unknown until set; nothing is guessed. A SOW stating only a duration (e.g. seven weeks from kickoff) needs the kickoff date here."}
                 </p>
+                {termAssist && !inputs.service_end && (
+                  <div
+                    className="flex flex-wrap items-center gap-2"
+                    data-testid="editor-term-assist"
+                  >
+                    {termAssist.suggested_end ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          data-testid="editor-term-assist-apply"
+                          onClick={() => patch("service_end", termAssist.suggested_end)}
+                        >
+                          Use {termAssist.suggested_end} (start +{" "}
+                          {termAssist.weeks
+                            ? `${termAssist.weeks} weeks`
+                            : `${termAssist.months} months`}
+                          )
+                        </Button>
+                        <span className="text-secondary text-text-secondary">
+                          Derived from the SOW: “{termAssist.quote}”
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-secondary text-text-secondary">
+                        The SOW states{" "}
+                        {termAssist.weeks
+                          ? `${termAssist.weeks} weeks`
+                          : `${termAssist.months} months`}{" "}
+                        (“{termAssist.quote}”). Enter the contract start
+                        (kickoff) and the end date will be suggested here.
+                      </span>
+                    )}
+                  </div>
+                )}
                 {inputs.profile === "hybrid" ? (
                   <HybridFields component={inputs} onChange={replaceComponent} />
                 ) : (
@@ -843,6 +928,16 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
             : result.computed.policy.requires_ceo
               ? "CEO exception required"
               : "GM within policy"}
+        </p>
+      )}
+      {result.computed && (
+        <p className="text-secondary text-text-secondary" data-testid="approval-flow-note">
+          {result.computed.complete && !result.computed.policy.requires_ceo
+            ? "Approval flow: margin is within policy, so submission routes to the configured function reviews only — no CEO step."
+            : "Approval flow: the configured function reviews plus the CEO exception step, which is added automatically while the margin is below a policy floor or not yet assessed."}
+          {dirty || calculationState !== "saved"
+            ? " This is a provisional calculation — Save version to publish it to the approval flow."
+            : ""}
         </p>
       )}
       {result.computed && (

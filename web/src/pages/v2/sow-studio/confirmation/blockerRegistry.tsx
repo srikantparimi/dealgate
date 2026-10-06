@@ -16,14 +16,16 @@
  * `needs_you` row), then add an entry here. The `assertRegistered`
  * helper below is what the test calls with the canonical list.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   ApiError,
   confirmSowField,
+  getTermAssist,
   type PickedSignatory,
   type SowConfirmationPayload,
   type SowFieldName,
+  type TermAssist,
   type UUID,
 } from "../../../../api/client";
 import { Button } from "../../../../ui-v2/primitives/button";
@@ -241,6 +243,12 @@ function DateEditor({
 }: {
   fieldName: SowFieldName;
 }): (props: BlockerEditorProps) => ReactNode {
+  // S22 click-through fix: the Caesars pattern — a SOW stating "seven
+  // weeks" with no dates. Term start doubles as the kickoff; once it is
+  // known, the server derives the end date from the SOW's own stated
+  // duration. The suggestion carries its source quote and is applied by
+  // an explicit click — never silently.
+  const termAssisted = fieldName === "term_start" || fieldName === "term_end";
   function Editor({ payload, onChanged }: BlockerEditorProps) {
     const raw = String(
       readField(payload.sow_version.extracted_fields, fieldName)?.value ?? "",
@@ -251,16 +259,37 @@ function DateEditor({
     const [value, setValue] = useState(initial);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [assist, setAssist] = useState<TermAssist | null>(null);
     const versionId = payload.sow_version.id as UUID;
-    async function save() {
-      if (!value) {
+    const startRaw = String(
+      readField(payload.sow_version.extracted_fields, "term_start")?.value ?? "",
+    );
+    const start = /^\d{4}-\d{2}-\d{2}$/.test(startRaw) ? startRaw : null;
+    useEffect(() => {
+      if (!termAssisted) return;
+      let active = true;
+      getTermAssist(versionId, fieldName === "term_end" ? start : null)
+        .then((result) => {
+          if (active) setAssist(result.available ? result : null);
+        })
+        .catch(() => {
+          /* assist is best-effort; the manual editor stands */
+        });
+      return () => {
+        active = false;
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [versionId, start]);
+    async function save(next?: string) {
+      const date = next ?? value;
+      if (!date) {
         setError("Pick a date before saving.");
         return;
       }
       setBusy(true);
       setError(null);
       try {
-        await confirmSowField(versionId, fieldName, value);
+        await confirmSowField(versionId, fieldName, date);
         onChanged();
       } catch (err) {
         setError(
@@ -274,19 +303,57 @@ function DateEditor({
         setBusy(false);
       }
     }
+    const durationText = assist
+      ? assist.weeks
+        ? `${assist.weeks} weeks`
+        : `${assist.months} months`
+      : "";
     return (
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          type="date"
-          data-testid={`blocker-editor-${fieldName}`}
-          aria-label={`${fieldName} date`}
-          className="rounded-control border border-divider bg-surface p-2 text-body"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-        <Button onClick={save} disabled={busy || !value}>
-          {busy ? "Saving…" : "Save"}
-        </Button>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="date"
+            data-testid={`blocker-editor-${fieldName}`}
+            aria-label={`${fieldName} date`}
+            className="rounded-control border border-divider bg-surface p-2 text-body"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <Button onClick={() => void save()} disabled={busy || !value}>
+            {busy ? "Saving…" : "Save"}
+          </Button>
+        </div>
+        {assist && fieldName === "term_start" && (
+          <p className="text-secondary text-text-secondary" data-testid="term-assist-hint">
+            The SOW states {durationText} but no dates (“{assist.quote}”).
+            Enter the kickoff date here — the end date can then be derived
+            automatically.
+          </p>
+        )}
+        {assist && fieldName === "term_end" && assist.suggested_end && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              data-testid="term-assist-apply"
+              disabled={busy}
+              onClick={() => {
+                setValue(assist.suggested_end!);
+                void save(assist.suggested_end!);
+              }}
+            >
+              Use {assist.suggested_end} (kickoff + {durationText})
+            </Button>
+            <span className="text-secondary text-text-secondary">
+              Derived from the SOW: “{assist.quote}”
+            </span>
+          </div>
+        )}
+        {assist && fieldName === "term_end" && !assist.suggested_end && (
+          <p className="text-secondary text-text-secondary" data-testid="term-assist-hint">
+            The SOW states {durationText} (“{assist.quote}”). Set Term start
+            (the kickoff) first and the end date will be suggested here.
+          </p>
+        )}
         {error ? (
           <p role="alert" className="text-secondary text-danger">
             {error}

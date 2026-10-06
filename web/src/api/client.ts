@@ -1143,6 +1143,28 @@ export function reextractSowVersion(sowVersionId: UUID): Promise<SowVersion> {
   );
 }
 
+/** S22 · the SOW's stated duration + server-derived end date for a
+ * given kickoff. Deterministic (regex over extracted text) — a labeled
+ * suggestion with its verbatim source snippet, never a guess. */
+export interface TermAssist {
+  available: boolean;
+  weeks?: number;
+  months?: number;
+  source_field?: string;
+  quote?: string;
+  start?: string;
+  suggested_end?: string;
+}
+export function getTermAssist(
+  sowVersionId: UUID,
+  start?: string | null,
+): Promise<TermAssist> {
+  const query = start ? `?start=${start}` : "";
+  return request<TermAssist>(
+    `/sow/versions/${sowVersionId}/term-assist${query}`,
+  );
+}
+
 export function confirmSowField(
   sowVersionId: UUID,
   fieldName: SowFieldName,

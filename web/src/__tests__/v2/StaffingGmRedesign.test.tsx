@@ -132,6 +132,7 @@ function goodAdvice(): api.StaffingAdvice {
 beforeEach(() => {
   vi.restoreAllMocks();
   resetCommercialDraftCache();
+  vi.spyOn(client, "getTermAssist").mockResolvedValue({ available: false });
   vi.spyOn(client, "getMe").mockResolvedValue({
     groups: ["Delivery"],
   } as client.MeResponse);
@@ -212,6 +213,77 @@ describe("Staffing & GM four-section plan", () => {
           }),
         }),
       ),
+    );
+  });
+
+  it("derives the contract end date from the SOW's stated duration on click (never silently)", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    vi.spyOn(client, "getTermAssist").mockResolvedValue({
+      available: true,
+      weeks: 7,
+      source_field: "milestones",
+      quote: "Week 7 — Roadmap & Executive Readout",
+      start: "2026-10-01",
+      suggested_end: "2026-11-18",
+    });
+    const snapshot = snap();
+    const inputs = snapshot.gmModel!.commercial_inputs!;
+    inputs.service_start = "2026-10-01";
+    inputs.service_end = null;
+    render(<CommercialModelEditor snap={snapshot} />);
+    const apply = await screen.findByTestId("editor-term-assist-apply");
+    expect(apply).toHaveTextContent("Use 2026-11-18 (start + 7 weeks)");
+    expect(screen.getByTestId("editor-term-assist")).toHaveTextContent(
+      "Week 7 — Roadmap & Executive Readout",
+    );
+    // Not applied until the human clicks.
+    expect(screen.getByLabelText("Contract end")).toHaveValue("");
+    fireEvent.click(apply);
+    expect(screen.getByLabelText("Contract end")).toHaveValue("2026-11-18");
+  });
+
+  it("GM previews automatically once the draft is computable — no manual Preview click", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    const preview = vi.spyOn(api, "previewCommercial").mockResolvedValue({
+      computed: {
+        complete: true,
+        gm_us: null,
+        gm_india: "0.60",
+        policy: { requires_ceo: false },
+      } as never,
+    });
+    render(<CommercialModelEditor snap={snap()} />);
+    // Any edit leaves a complete, computable draft; the preview follows
+    // by itself (debounced), labeled provisional.
+    fireEvent.change(screen.getByLabelText("Contract fee"), {
+      target: { value: "75400" },
+    });
+    await waitFor(() => expect(preview).toHaveBeenCalled(), { timeout: 4000 });
+    await screen.findByText("GM within policy");
+    const note = screen.getByTestId("approval-flow-note");
+    expect(note).toHaveTextContent("no CEO step");
+    expect(note).toHaveTextContent("Save version to publish");
+    // It is a preview: nothing was saved.
+    expect(api.saveCommercialVersion).toBeDefined();
+  });
+
+  it("the approval-flow note names the CEO step while GM is below floor or unassessed", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    vi.spyOn(api, "previewCommercial").mockResolvedValue({
+      computed: {
+        complete: true,
+        gm_us: null,
+        gm_india: "0.20",
+        policy: { requires_ceo: true },
+      } as never,
+    });
+    render(<CommercialModelEditor snap={snap()} />);
+    fireEvent.change(screen.getByLabelText("Contract fee"), {
+      target: { value: "10000" },
+    });
+    await screen.findByText("CEO exception required", undefined, { timeout: 4000 });
+    expect(screen.getByTestId("approval-flow-note")).toHaveTextContent(
+      "CEO exception step, which is added automatically",
     );
   });
 
