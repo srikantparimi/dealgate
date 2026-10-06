@@ -2,6 +2,38 @@
 
 ## RESUME HERE
 
+**2026-10-06 14:29 PDT — STAFFING TERM SYNC + LIVE GM DEPLOYED FOR
+CLICK-THROUGH.** Application commit
+`4b31e5d1829634a8c8ebb77b02e5eca71f08197b` on branch
+`fix/s21-identity-and-owner-display`, authoritative worktree
+`/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast`. The frontend-only
+candidate is live at `https://app.dealgateapp.com`; API image, migrations,
+workers, database and Terraform were not changed. SPA bundle
+`assets/index-Dnv1r9ua.js`, stylesheet `assets/index-BTGXDqY1.css`, CloudFront
+invalidation `I5DPP7732GPV6V5LS0TIYRUAO` COMPLETED. Served `index.html` is 200
+with `no-cache, must-revalidate`; JS is 200 with immutable one-year caching;
+the served JS contains the new contract-term inheritance guidance and GM
+summary. `/api/healthz` returns green. The browser bridge exposed no browser,
+so authenticated visual/product-owner verification remains required; do not
+claim it from asset checks.
+
+Local evidence on that commit: Staffing & GM 20/20; eight adjacent commercial,
+staffing, proposal, plan-team and GM suites 75/75; TypeScript clean; production
+build green. Behavior: restored blank role/calendar dates inherit the contract
+term; edits cascade only to dates that still match the old inherited term;
+explicit role overrides remain unchanged; Team & calendars names the canonical
+term; the server preview's finance summary and per-geography floors render in a
+sticky right-side GM panel. No browser-side financial calculation was added.
+No owned process is active. Preserve unrelated untracked `dev.db` and
+`docs/s21/evidence/baseline/full-commercial.xml`.
+
+Exact next step: product-owner click-through at
+`https://app.dealgateapp.com`: open a SOW with confirmed contract dates, open
+Staffing & GM, verify Team & calendars receives the same dates and the GM panel
+updates after the server preview; edit the contract term and confirm inherited
+rows follow while an explicitly overridden row does not. If accepted, request
+explicit merge approval; no main merge has occurred.
+
 **2026-10-06 14:26 PDT — STAFFING TERM SYNC + LIVE GM LOCAL CHECKPOINT.**
 Authoritative integration tree:
 `/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast`, branch
