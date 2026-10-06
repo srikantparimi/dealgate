@@ -2,8 +2,10 @@
 
 ## RESUME HERE
 
-**2026-10-05 night. OWNER CLICK-THROUGH ROUND 2 — three findings, fixed
-locally (tests green), deploy next.** Findings and root causes:
+**2026-10-05 night. OWNER CLICK-THROUGH ROUND 2 — DEPLOYED.** Image
+`s21fix-e1ea4a1`, task-def rev 83, rollout COMPLETED on the exact
+image; SPA synced, invalidation IAK7MPHK7XGS6OZJMDGPUJOTJK; smoke
+GREEN, leak gate clean. Findings and root causes:
 1. *Dates not auto-populated*: the Caesars SOW states only "7 weeks"
    (milestones end at Week 7) — extractor is right that no dates exist.
    FIX: duration-aware term assist — `services/term_assist.py`
