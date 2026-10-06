@@ -217,7 +217,7 @@ guess. Each question names the sprint it blocks.
   through the real engine and real floors; this question is only about
   the planning aid's verdict. (Owner directive session, S22.)
 
-- [ ] **Approval flow membership (owner 2026-10-05 click-through).** The
+- [x] **Approval flow membership (owner 2026-10-05 click-through).** ANSWERED 2026-10-06 (owner: "need have HR and sales as well"): keep all five functions. The implemented flow is already correct — Delivery, HR, Sales, Finance, Legal always; CEO exception added automatically below floor or while GM is unassessed. No change made. The
   owner describes the rule as "Delivery, Legal and Finance when GM is
   green; plus CEO when below floor". The implemented flow (blueprint +
   `approval_routing.FUNCTIONS`) routes **Delivery, HR, Sales, Finance,
