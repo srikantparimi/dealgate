@@ -38,13 +38,21 @@ export function ApproversSection({ payload }: ApproversSectionProps) {
       hint: approverHint(approver),
     };
   });
+  // S22: once GM is actually computed, say which way the automatic
+  // gate went instead of the hypothetical "only if floors fail".
+  const floors = payload.floors as
+    | { requires_ceo?: boolean | null; gm_blended?: string | null }
+    | undefined;
+  const assessed = floors?.gm_blended != null;
   steps.push({
     id: "ceo",
     label: "CEO exception",
     state: willTrigger ? "hold" : "pending",
     hint: willTrigger
       ? "Below-floor SOW — CEO brief pre-drafted"
-      : "Only if floors fail at submit",
+      : assessed && floors?.requires_ceo === false
+        ? "Not required — margin is within policy"
+        : "Only if floors fail at submit",
   });
 
   return (

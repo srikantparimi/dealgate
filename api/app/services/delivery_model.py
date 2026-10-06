@@ -1083,6 +1083,13 @@ def serialize_phase(p: GmModelPhase) -> dict:
     }
 
 
+def _commercial_summary(outcome, schedule) -> dict:
+    from app.gm.finance_summary import commercial_finance_summary
+
+    component = getattr(schedule, "component", None)
+    return commercial_finance_summary(outcome, component)
+
+
 def build_compute_response(result: TemplateResult, *, us_floor: Decimal | None = None, india_floor: Decimal | None = None) -> dict:
     """Format a ``TemplateResult`` for the JSON API. Mirrors the sandbox
     shape (minus the policy-lookup fields) so the Builder can reuse the
@@ -1108,7 +1115,8 @@ def build_compute_response(result: TemplateResult, *, us_floor: Decimal | None =
             "gm_blended": _fmt(outcome.gm_blended) if assessed else None,
             "geography": result.geography, "complete": assessed,
             "missing": list(result.missing), "assessment_status": outcome.status,
-            "min_price_us": None, "min_price_india": None, "finance_summary": {},
+            "min_price_us": None, "min_price_india": None,
+            "finance_summary": _commercial_summary(outcome, result.commercial_schedule),
             "commercial_outcome": OUTCOME.dump_python(outcome, mode="json"),
             "policy": {**floors, "us_floor": _fmt(us_floor), "india_floor": _fmt(india_floor),
                        "us_applicable": outcome.passes.get("US") is not None,

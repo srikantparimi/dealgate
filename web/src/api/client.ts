@@ -1148,11 +1148,15 @@ export function reextractSowVersion(sowVersionId: UUID): Promise<SowVersion> {
  * suggestion with its verbatim source snippet, never a guess. */
 export interface TermAssist {
   available: boolean;
+  /** "staffing_draft": dates lifted from the user's own Staffing & GM
+   * plan; "stated_duration": derived from the SOW's stated duration. */
+  source?: "staffing_draft" | "stated_duration";
   weeks?: number;
   months?: number;
   source_field?: string;
   quote?: string;
   start?: string;
+  suggested_start?: string;
   suggested_end?: string;
 }
 export function getTermAssist(

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { SowConfirmationPayload } from "../../api/client";
 import { StaffingGmSection } from "../../pages/v2/sow-studio/confirmation/StaffingGmSection";
@@ -106,5 +106,101 @@ describe("Commercial draft bridge", () => {
       expect(commercialApi.getCommercialDraft).toHaveBeenCalled(),
     );
     expect(screen.getByText("No staffing lines yet.")).toBeInTheDocument();
+  });
+});
+
+describe("Draft GM gates on the Confirm page (round 3)", () => {
+  function draftInputs(costsConfirmed: boolean) {
+    return {
+      component_id: "c1", version: "1", source_id: "sow-a",
+      source_version: "version-a", workstream_id: "delivery",
+      profile: "fixed_assignment", profile_version: "1", policy_version: "",
+      source_evidence: [], service_start: "2026-10-01",
+      service_end: "2026-12-01", timezone: "America/Los_Angeles",
+      currency: "USD", billing_cadence: null, cost_basis: null,
+      costs_confirmed: costsConfirmed, costs: [],
+      staffing: [{
+        assignment_id: "a1", source_id: "sow-a", source_version: "version-a",
+        component_id: "c1", profile_version: "1", policy_version: "",
+        role: "Offshore consultant", location: "India", timezone: "Asia/Kolkata",
+        currency: "USD", quantity: 2, allocation: "1", calendar: null,
+        bill_rate: null, cost_rate: "30", rate_version: null,
+        cost_version: "rate-card", start: "2026-10-01", end: "2026-12-01",
+        cost_rate_basis: "hourly", cost_proration: null,
+      }],
+      pricing: { total_fee: "75400", allocations: [{ month: "2026-10-01", location: "India", weight: "1" }], allocation_basis: "even", minor_unit: "0.01" },
+    } as unknown as commercialApi.CommercialComponent;
+  }
+  function emptyPayload(): SowConfirmationPayload {
+    const payload = fixture();
+    payload.staffing.lines = [];
+    (payload as unknown as { gm_model: null }).gm_model = null;
+    (payload as unknown as { floors: object }).floors = {};
+    return payload;
+  }
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(client, "getSowStaffing").mockRejectedValue(new Error("none"));
+    vi.spyOn(commercialApi, "getCommercialProfiles").mockResolvedValue({
+      profiles: [], calculation_version: "v1",
+      policy: { version: "policy", us_floor: "0.35", india_floor: "0.5" },
+    });
+  });
+
+  it("explains exactly what GM is waiting on, and the attestation tick writes the draft", async () => {
+    vi.spyOn(commercialApi, "getCommercialDraft").mockResolvedValue({
+      exists: true, inputs: draftInputs(false),
+      sow_version_id: "version-a", updated_at: "2026-10-06T01:00:00+00:00",
+    });
+    vi.spyOn(commercialApi, "previewCommercial").mockResolvedValue({
+      computed: { complete: false, gm_us: null, gm_india: null, policy: {} } as never,
+      commercial_snapshot: {
+        schedule: {
+          rows: [], status: "incomplete",
+          missing: [{ field: "costs_confirmed", reason: "cost plan has not been confirmed" }],
+        },
+      } as never,
+    });
+    const put = vi.spyOn(commercialApi, "putCommercialDraft").mockResolvedValue({
+      exists: true, updated_at: "2026-10-06T02:00:00+00:00",
+    });
+    render(<StaffingGmSection payload={emptyPayload()} opportunityId="deal-a" />);
+    const missing = await screen.findByTestId("draft-gm-missing");
+    expect(missing).toHaveTextContent("cost plan has not been confirmed");
+    fireEvent.click(screen.getByTestId("draft-attest-costs"));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    const body = put.mock.calls[0][1];
+    expect(body.inputs.costs_confirmed).toBe(true);
+    expect(body.expected_updated_at).toBe("2026-10-06T01:00:00+00:00");
+  });
+
+  it("uses the draft's delivery locations for floor applicability — no 'no India resources' lie", async () => {
+    vi.spyOn(commercialApi, "getCommercialDraft").mockResolvedValue({
+      exists: true, inputs: draftInputs(true),
+      sow_version_id: "version-a", updated_at: "2026-10-06T01:00:00+00:00",
+    });
+    vi.spyOn(commercialApi, "previewCommercial").mockResolvedValue({
+      computed: {
+        complete: true, gm_us: null, gm_india: "0.7220",
+        gm_blended: "0.7220",
+        policy: { requires_ceo: false, india_pass: true, us_pass: null },
+        finance_summary: {
+          revenue: "75400.00", labor_cost: "21000.00", direct_cost: "0.00",
+          total_delivery_cost: "21000.00", gross_profit: "54400.00",
+          labor_pct: "0.2785", direct_pct: "0.0000", total_cost_pct: "0.2785",
+          pass_through: "0",
+        },
+      } as never,
+      commercial_snapshot: { schedule: { rows: [], status: "ok", missing: [] } } as never,
+    });
+    render(<StaffingGmSection payload={emptyPayload()} opportunityId="deal-a" />);
+    await screen.findByTestId("draft-staffing");
+    await waitFor(() => {
+      expect(screen.getAllByText("72.2%").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByText("$75,400")).toBeInTheDocument(); // contract price
+    expect(screen.getByText("$54,400")).toBeInTheDocument(); // gross profit
+    expect(screen.queryByText(/no India resources/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Not applicable — no US resources/)).toBeInTheDocument();
   });
 });

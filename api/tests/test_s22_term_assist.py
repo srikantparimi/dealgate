@@ -140,3 +140,55 @@ async def test_endpoint_gates_roles_and_derives_the_end(session, monkeypatch):
             assert "Week 7" in body["quote"]
     finally:
         main_app.dependency_overrides.pop(get_session, None)
+
+
+@pytest.mark.asyncio
+async def test_staffing_draft_dates_win_over_stated_duration(session, monkeypatch):
+    """Round 3: the user's own role dates become the one-click term
+    suggestion — no retyping facts the draft already holds."""
+    import httpx
+
+    from app.db import get_session
+    from app.main import app as main_app
+    from app.models.commercial_draft import CommercialDraft
+    from app.models.user import User
+    from app.models.sow import Sow, SowVersion
+    from sqlalchemy import select
+
+    monkeypatch.setenv("DEALGATE_ENV", "local")
+    version = await _seed_version(session)
+    sow = await session.get(Sow, version.sow_id)
+    actor = (await session.scalars(select(User))).first()
+    session.add(CommercialDraft(
+        opportunity_id=sow.opportunity_id,
+        sow_version_id=version.id,
+        inputs={
+            "service_start": None,
+            "service_end": None,
+            "staffing": [
+                {"start": "2026-10-01", "end": "2026-11-15"},
+                {"start": "2026-10-15", "end": "2026-12-01"},
+            ],
+        },
+        updated_by=actor.id,
+    ))
+    await session.commit()
+
+    async def _override():
+        yield session
+
+    main_app.dependency_overrides[get_session] = _override
+    try:
+        transport = httpx.ASGITransport(app=main_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Delivery")
+            ok = await c.get(
+                f"/sow/versions/{version.id}/term-assist",
+                headers={"X-Test-User": "ta2@smartek21.com"},
+            )
+            body = ok.json()
+            assert body["source"] == "staffing_draft"
+            assert body["suggested_start"] == "2026-10-01"  # earliest role start
+            assert body["suggested_end"] == "2026-12-01"  # latest role end
+    finally:
+        main_app.dependency_overrides.pop(get_session, None)

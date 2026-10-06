@@ -110,6 +110,89 @@ export function resetCommercialDraftCache() {
   draftCache.clear();
 }
 
+/**
+ * S22 round 3 · rule 10: a blank form is a defect. Fill every engine
+ * gate the system can derive, deterministically and visibly, so GM can
+ * compute without retyping facts the draft already holds. Each key is
+ * filled at most once per mount, only when empty — user edits always
+ * win. Returns the patched component plus plain-language notes.
+ */
+function deriveDraftDefaults(
+  inputs: CommercialComponent,
+  applied: Set<string>,
+): { next: CommercialComponent; notes: string[] } {
+  const next = structuredClone(inputs);
+  const notes: string[] = [];
+  const fill = (key: string, note: string, apply: () => void) => {
+    if (applied.has(key)) return;
+    applied.add(key);
+    apply();
+    notes.push(note);
+  };
+  const iso = (value: string | null | undefined) =>
+    value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  // Contract dates ← the envelope of the role dates already entered.
+  const starts = next.staffing.map((r) => iso(r.start)).filter(Boolean) as string[];
+  const ends = next.staffing.map((r) => iso(r.end)).filter(Boolean) as string[];
+  if (!iso(next.service_start) && starts.length)
+    fill("service_start", "Contract start taken from your earliest role start.", () => {
+      next.service_start = [...starts].sort()[0];
+    });
+  if (!iso(next.service_end) && ends.length)
+    fill("service_end", "Contract end taken from your latest role end.", () => {
+      next.service_end = [...ends].sort().at(-1)!;
+    });
+  if (!next.workstream_id)
+    fill("workstream_id", "Workstream defaulted to \"delivery\".", () => {
+      next.workstream_id = "delivery";
+    });
+  if (!next.timezone)
+    fill("timezone", "Contract timezone defaulted to America/Los_Angeles.", () => {
+      next.timezone = "America/Los_Angeles";
+    });
+  if (next.profile === "fixed_assignment") {
+    const pricing = next.pricing ?? {};
+    if (!pricing.allocation_basis && pricing.total_fee)
+      fill("allocation_basis", "Revenue allocation method defaulted to even service months.", () => {
+        next.pricing = { ...pricing, allocation_basis: "even service months (defaulted)" };
+      });
+    const start = iso(next.service_start);
+    const end = iso(next.service_end);
+    if (
+      start && end && pricing.total_fee &&
+      !(pricing.allocations ?? []).length
+    )
+      fill("allocations", "Monthly revenue plan defaulted to equal shares per service month — edit any month below.", () => {
+        // Revenue geography defaults to where the team delivers from
+        // (the dominant staffing location); change it if revenue books
+        // elsewhere. Equal weights are exact: the engine normalizes.
+        const fteByLocation = new Map<string, number>();
+        for (const row of next.staffing) {
+          if (!row.location) continue;
+          fteByLocation.set(
+            row.location,
+            (fteByLocation.get(row.location) ?? 0) +
+              (row.quantity || 0) * (Number(row.allocation) || 0),
+          );
+        }
+        const location =
+          [...fteByLocation.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "US";
+        const months: string[] = [];
+        const cursor = new Date(`${start.slice(0, 7)}-01T00:00:00Z`);
+        const last = new Date(`${end.slice(0, 7)}-01T00:00:00Z`);
+        while (cursor <= last && months.length < 120) {
+          months.push(cursor.toISOString().slice(0, 10));
+          cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+        }
+        next.pricing = {
+          ...(next.pricing ?? {}),
+          allocations: months.map((month) => ({ month, location, weight: "1" })),
+        };
+      });
+  }
+  return { next, notes };
+}
+
 const SECTIONS = [
   { id: "contract", label: "1 · Contract & pricing" },
   { id: "team", label: "2 · Team & calendars" },
@@ -207,9 +290,16 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   // S22 · pre-fill from the SOW + auto-staffing proposal when nothing is
   // saved yet and the human has not started typing. Every value stays
   // editable; the machine never confirms costs.
+  const [proposalSettled, setProposalSettled] = useState(false);
   useEffect(() => {
-    if (snap.gmModel?.commercial_inputs || !snap.deal) return;
-    if (draftCache.get(draftKey)?.dirty) return;
+    if (snap.gmModel?.commercial_inputs || !snap.deal) {
+      setProposalSettled(true);
+      return;
+    }
+    if (draftCache.get(draftKey)?.dirty) {
+      setProposalSettled(true);
+      return;
+    }
     let active = true;
     getCommercialProposal(snap.deal.id)
       .then((p) => {
@@ -218,6 +308,9 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       })
       .catch(() => {
         /* read-only roles or signed basis: the empty editor stands */
+      })
+      .finally(() => {
+        if (active) setProposalSettled(true);
       });
     return () => {
       active = false;
@@ -275,6 +368,30 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
     (snap.approvalPackage?.status === "released" ||
       snap.signedSow?.verify_status === "verified");
   const editable = canWrite && supported && !rawRestricted && !signedBasis;
+  // Rule 10 autofill: whenever the draft gains the facts a default can
+  // be derived from (roles with dates, a fee), fill the remaining
+  // engine gates once, visibly. Runs after any change; each key fires
+  // at most once per mount and never overwrites a value.
+  const defaultsApplied = useRef(new Set<string>());
+  const [defaultNotes, setDefaultNotes] = useState<string[]>([]);
+  useEffect(() => {
+    // Only while no commercial version exists: a saved version's inputs
+    // round-trip untouched (the independent-editor invariants); the
+    // from-scratch draft is where blanks get filled.
+    if (!editable || snap.gmModel?.commercial_inputs) return;
+    // Wait for the SOW proposal fetch to settle and for something
+    // substantive (a team or a fee): autofilling an empty form early
+    // would mark it dirty and block the richer proposal prefill.
+    if (!proposalSettled) return;
+    if (!inputs.staffing.length && !inputs.pricing?.total_fee) return;
+    const { next, notes } = deriveDraftDefaults(inputs, defaultsApplied.current);
+    if (notes.length) {
+      setInputs(next);
+      setDirty(true);
+      setDefaultNotes((prev) => [...prev, ...notes]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputs, editable, proposalSettled]);
   // Debounced auto-save of the working draft to the server. Placed
   // after `editable` so a late role check still arms the effect.
   useEffect(() => {
@@ -536,6 +653,23 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       </nav>
 
       {notice && <p role="status">{notice}</p>}
+      {defaultNotes.length > 0 && (
+        <div
+          role="note"
+          data-testid="defaults-note"
+          className="rounded-panel border border-divider bg-surface p-3 text-secondary"
+        >
+          <p className="text-text">
+            Filled in from what you already entered (every value stays
+            editable):
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-text-secondary">
+            {defaultNotes.map((note, i) => (
+              <li key={i}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {draftError && (
         <p role="alert" data-testid="draft-error" className="text-danger">
           {draftError}

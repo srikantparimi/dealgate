@@ -366,3 +366,64 @@ describe("Server-persisted commercial draft", () => {
     expect(screen.getByLabelText("Contract fee")).toHaveValue("80000");
   });
 });
+
+/** S22 round 3 · rule 10: blanks the system can derive get filled —
+ * visibly — so the engine's completeness gates stop blocking GM. */
+describe("Draft defaults autofill", () => {
+  it("fills dates, timezone, workstream, basis and even-month allocations from the roles, then GM previews", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    const preview = vi.spyOn(api, "previewCommercial").mockResolvedValue({
+      computed: {
+        complete: true, gm_us: null, gm_india: "0.722",
+        policy: { requires_ceo: false },
+      } as never,
+    });
+    const snapshot = snap();
+    // From-scratch flow: no saved commercial version; the user has
+    // entered roles with dates and a fee, nothing else.
+    snapshot.gmModel = null;
+    const bare = structuredClone(staffedInputs) as api.CommercialComponent;
+    bare.service_start = null;
+    bare.service_end = null;
+    bare.timezone = null;
+    bare.workstream_id = "";
+    bare.pricing = {
+      total_fee: "75400", allocations: [], allocation_basis: null, minor_unit: "0.01",
+    };
+    bare.staffing[0].start = "2026-10-01";
+    bare.staffing[0].end = "2026-12-01";
+    vi.spyOn(api, "getCommercialDraft").mockResolvedValue({
+      exists: true, inputs: bare, sow_version_id: "version-a",
+      updated_at: "2026-10-06T01:00:00+00:00",
+    });
+    render(<CommercialModelEditor snap={snapshot} />);
+    await screen.findByTestId("defaults-note");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Contract start")).toHaveValue("2026-10-01");
+      expect(screen.getByLabelText("Contract end")).toHaveValue("2026-12-01");
+    });
+    expect(screen.getByLabelText("Contract timezone")).toHaveValue("America/Los_Angeles");
+    expect(screen.getByLabelText("Workstream")).toHaveValue("delivery");
+    expect(screen.getByLabelText("Revenue allocation method")).toHaveValue(
+      "even service months (defaulted)",
+    );
+    // Oct, Nov, Dec service months → three equal monthly shares, booked
+    // to the dominant delivery location (India).
+    const months = screen.getAllByLabelText(/^Month \d+$/);
+    expect(months).toHaveLength(3);
+    expect(screen.getByTestId("defaults-note")).toHaveTextContent("equal shares per service month");
+    // The engine gets a shot automatically — no Preview click.
+    await waitFor(() => expect(preview).toHaveBeenCalled(), { timeout: 4000 });
+    await screen.findByText("GM within policy");
+  });
+
+  it("never fills blanks on a saved commercial version", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    const snapshot = snap(); // saved version exists (gmModel.commercial_inputs)
+    snapshot.gmModel!.commercial_inputs!.timezone = null;
+    render(<CommercialModelEditor snap={snapshot} />);
+    await waitFor(() => expect(screen.getByLabelText("Contract fee")).toHaveValue("75400"));
+    expect(screen.queryByTestId("defaults-note")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Contract timezone")).toHaveValue("");
+  });
+});

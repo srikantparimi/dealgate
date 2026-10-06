@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Save } from "lucide-react";
 import { getSowStaffing, previewDeliveryModel, putSowStaffing, type DeliveryCostLineInput, type SowConfirmationPayload, type SowResourcesState } from "../../../../api/client";
-import { getCommercialDraft, getCommercialProfiles, previewCommercial, type CommercialStaffing } from "../../../../api/commercial";
+import { getCommercialDraft, getCommercialProfiles, previewCommercial, putCommercialDraft, type CommercialComponent, type CommercialStaffing } from "../../../../api/commercial";
 import { bindCommercialSource } from "../../sow-workspace/commercial-editor/bindings";
 import { fractionToPercent } from "../../sow-workspace/format";
 import { Button } from "../../../../ui-v2/primitives/button";
@@ -43,8 +43,12 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
   const [draftGm, setDraftGm] = useState<{
     result: FinanceGmResult | null;
     staffing: CommercialStaffing[];
+    inputs: CommercialComponent;
+    missing: string[];
     updated_at?: string;
   } | null>(null);
+  const [draftReload, setDraftReload] = useState(0);
+  const [attesting, setAttesting] = useState(false);
   useEffect(() => {
     if (!opportunityId || lines.length) return;
     let active = true;
@@ -66,11 +70,21 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
               ? ({ ...res.computed, ...res.computed.policy } as FinanceGmResult)
               : null,
             staffing,
+            inputs: draft.inputs,
+            missing: (res.commercial_snapshot?.schedule.missing ?? [])
+              .map((item) => item.reason ?? item.field ?? item.key ?? "")
+              .filter(Boolean) as string[],
             updated_at: draft.updated_at,
           });
         } catch {
           if (active)
-            setDraftGm({ result: null, staffing, updated_at: draft.updated_at });
+            setDraftGm({
+              result: null,
+              staffing,
+              inputs: draft.inputs,
+              missing: ["The draft could not be calculated — open Staffing & GM to review it."],
+              updated_at: draft.updated_at,
+            });
         }
       })
       .catch(() => {
@@ -79,7 +93,27 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
     return () => {
       active = false;
     };
-  }, [opportunityId, lines.length, payload.gm_model?.id]);
+  }, [opportunityId, lines.length, payload.gm_model?.id, draftReload]);
+
+  // The one gate the engine reserves for a human: cost attestation.
+  // Ticking it here writes the draft (a deliberate click) and the GM
+  // recalculates in place — no tab hopping.
+  async function attestCosts() {
+    if (!draftGm || !opportunityId) return;
+    setAttesting(true);
+    try {
+      await putCommercialDraft(opportunityId, {
+        inputs: { ...draftGm.inputs, costs_confirmed: true },
+        sow_version_id: draftGm.inputs.source_version || null,
+        expected_updated_at: draftGm.updated_at ?? null,
+      });
+      setDraftReload((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not confirm costs");
+    } finally {
+      setAttesting(false);
+    }
+  }
 
   useEffect(() => {
     if (!opportunityId) return;
@@ -143,6 +177,25 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
             <tbody>{draftGm.staffing.map((row, i) => <tr key={i} className="border-b border-divider"><td className="px-3 py-2 font-medium">{row.role || "—"}</td><td className="px-3 py-2">{row.location ?? "Unconfirmed"}</td><td className="px-3 py-2 text-right">{row.quantity || "—"}</td><td className="px-3 py-2 text-right">{row.allocation ? `${fractionToPercent(row.allocation)}%` : "—"}</td></tr>)}</tbody>
           </table></div>
           <p className="text-secondary text-text-secondary">From the Staffing &amp; GM tab's working draft{draftGm.updated_at ? ` (auto-saved ${draftGm.updated_at.slice(0, 16).replace("T", " ")})` : ""} — provisional until a commercial version is saved there.</p>
+          {!draftGm.inputs.costs_confirmed && (
+            <label className="flex items-center gap-2 text-body text-text">
+              <input
+                type="checkbox"
+                data-testid="draft-attest-costs"
+                checked={false}
+                disabled={attesting}
+                onChange={() => void attestCosts()}
+              />
+              All delivery costs confirmed — calculate the margin
+            </label>
+          )}
+          {draftGm.missing.length > 0 && (
+            <ul className="list-disc pl-5 text-secondary text-text-secondary" data-testid="draft-gm-missing">
+              {draftGm.missing.map((reason, i) => (
+                <li key={i}>GM is waiting on: {reason}</li>
+              ))}
+            </ul>
+          )}
         </div> : <p className="text-warning">No staffing lines yet.</p>}
         {payload.staffing.warnings.length ? <ul className="space-y-1 text-secondary text-text-secondary">{payload.staffing.warnings.map((warning, i) => <li key={i} data-testid="staffing-warning">{warning}</li>)}</ul> : null}
         {(!opportunityId || state?.cost_lines !== undefined) ? <DirectCostsEditor rows={costs} onChange={opportunityId && state ? changeCosts : undefined} disabled={busy} /> : null}
@@ -151,7 +204,16 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
         {error ? <p role="alert" className="text-secondary text-danger">{error}</p> : null}
         {dirty && !preview && !error ? <p role="status" className="text-secondary text-text-secondary">{costsComplete(costs) ? "Updating GM…" : "Direct cost amount needed."}</p> : null}
       </div>
-      <FinanceGmPanel result={result} locations={lines.map((line) => line.location)} />
+      <FinanceGmPanel
+        result={result}
+        locations={
+          !lines.length && draftGm
+            ? (draftGm.staffing
+                .map((row) => row.location)
+                .filter(Boolean) as string[])
+            : lines.map((line) => line.location)
+        }
+      />
     </div>
   </Section>;
 }

@@ -383,14 +383,49 @@ async def term_assist(
     with its verbatim source snippet, applied through the normal
     field-confirm flow. Never guessed, never auto-saved.
     """
+    from app.models.commercial_draft import CommercialDraft
     from app.services.term_assist import derived_end, stated_duration
 
     _user = await _actor(session, _user)
     state = await _load_version_or_404(session, sow_version_id, _user)
+
+    # First source of truth: the user's own Staffing & GM working draft.
+    # If it carries contract dates — or role dates that bound the plan —
+    # the term suggestion is those dates, no typing required.
+    draft = await session.get(CommercialDraft, state.opportunity_id)
+    if draft is not None and isinstance(draft.inputs, dict):
+        iso = r"^\d{4}-\d{2}-\d{2}$"
+        import re as _re
+
+        def _date(raw: object) -> str | None:
+            return raw if isinstance(raw, str) and _re.match(iso, raw) else None
+
+        d_start = _date(draft.inputs.get("service_start"))
+        d_end = _date(draft.inputs.get("service_end"))
+        if not (d_start and d_end):
+            starts = sorted(
+                d for row in draft.inputs.get("staffing") or []
+                if (d := _date(row.get("start"))) is not None
+            )
+            ends = sorted(
+                d for row in draft.inputs.get("staffing") or []
+                if (d := _date(row.get("end"))) is not None
+            )
+            d_start = d_start or (starts[0] if starts else None)
+            d_end = d_end or (ends[-1] if ends else None)
+        if d_start and d_end:
+            return {
+                "available": True,
+                "source": "staffing_draft",
+                "suggested_start": d_start,
+                "suggested_end": d_end,
+                "quote": "dates from your Staffing & GM plan",
+            }
+
     duration = stated_duration(state.extracted_fields)
     if duration is None:
         return {"available": False}
-    out: dict = {"available": True, **duration}
+    out: dict = {"available": True, "source": "stated_duration", **duration}
     if start is not None:
         out["start"] = start.isoformat()
         out["suggested_end"] = derived_end(start, duration).isoformat()

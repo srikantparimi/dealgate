@@ -280,7 +280,7 @@ function DateEditor({
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [versionId, start]);
-    async function save(next?: string) {
+    async function save(next?: string, alsoEnd?: string) {
       const date = next ?? value;
       if (!date) {
         setError("Pick a date before saving.");
@@ -290,6 +290,9 @@ function DateEditor({
       setError(null);
       try {
         await confirmSowField(versionId, fieldName, date);
+        // One click fills BOTH dates when they come from the user's own
+        // staffing plan — no second trip through the form.
+        if (alsoEnd) await confirmSowField(versionId, "term_end", alsoEnd);
         onChanged();
       } catch (err) {
         setError(
@@ -323,14 +326,39 @@ function DateEditor({
             {busy ? "Saving…" : "Save"}
           </Button>
         </div>
-        {assist && fieldName === "term_start" && (
+        {assist && assist.source === "staffing_draft" && assist.suggested_start && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              data-testid="term-assist-from-plan"
+              disabled={busy}
+              onClick={() => {
+                if (fieldName === "term_start") {
+                  setValue(assist.suggested_start!);
+                  void save(assist.suggested_start!, assist.suggested_end ?? undefined);
+                } else {
+                  setValue(assist.suggested_end ?? assist.suggested_start!);
+                  void save(assist.suggested_end ?? assist.suggested_start!);
+                }
+              }}
+            >
+              {fieldName === "term_start"
+                ? `Use ${assist.suggested_start} – ${assist.suggested_end ?? "?"} from your staffing plan`
+                : `Use ${assist.suggested_end ?? assist.suggested_start} from your staffing plan`}
+            </Button>
+            <span className="text-secondary text-text-secondary">
+              These are the dates already on your Staffing &amp; GM roles.
+            </span>
+          </div>
+        )}
+        {assist && assist.source !== "staffing_draft" && fieldName === "term_start" && (
           <p className="text-secondary text-text-secondary" data-testid="term-assist-hint">
             The SOW states {durationText} but no dates (“{assist.quote}”).
             Enter the kickoff date here — the end date can then be derived
             automatically.
           </p>
         )}
-        {assist && fieldName === "term_end" && assist.suggested_end && (
+        {assist && assist.source !== "staffing_draft" && fieldName === "term_end" && assist.suggested_end && (
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
@@ -348,7 +376,7 @@ function DateEditor({
             </span>
           </div>
         )}
-        {assist && fieldName === "term_end" && !assist.suggested_end && (
+        {assist && assist.source !== "staffing_draft" && fieldName === "term_end" && !assist.suggested_end && (
           <p className="text-secondary text-text-secondary" data-testid="term-assist-hint">
             The SOW states {durationText} (“{assist.quote}”). Set Term start
             (the kickoff) first and the end date will be suggested here.

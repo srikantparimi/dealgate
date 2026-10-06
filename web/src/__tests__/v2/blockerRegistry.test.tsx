@@ -129,3 +129,33 @@ describe("Term assist in the date blockers", () => {
     expect(screen.queryByTestId("term-assist-apply")).not.toBeInTheDocument();
   });
 });
+
+describe("Term assist from the staffing draft (round 3)", () => {
+  it("one click fills BOTH term dates from the user's own plan", async () => {
+    vi.spyOn(client, "getTermAssist").mockResolvedValue({
+      available: true,
+      source: "staffing_draft",
+      suggested_start: "2026-10-01",
+      suggested_end: "2026-12-01",
+      quote: "dates from your Staffing & GM plan",
+    });
+    const confirm = vi
+      .spyOn(client, "confirmSowField")
+      .mockResolvedValue({} as never);
+    const onChanged = vi.fn();
+    const Editor = BLOCKER_REGISTRY.term_start.Editor;
+    render(
+      <Editor
+        payload={{ sow_version: { id: "version-a", extracted_fields: {} } } as never}
+        onChanged={onChanged}
+      />,
+    );
+    const button = await screen.findByTestId("term-assist-from-plan");
+    expect(button).toHaveTextContent("Use 2026-10-01 – 2026-12-01 from your staffing plan");
+    fireEvent.click(button);
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
+    expect(confirm).toHaveBeenNthCalledWith(1, "version-a", "term_start", "2026-10-01");
+    expect(confirm).toHaveBeenNthCalledWith(2, "version-a", "term_end", "2026-12-01");
+    expect(onChanged).toHaveBeenCalled();
+  });
+});
