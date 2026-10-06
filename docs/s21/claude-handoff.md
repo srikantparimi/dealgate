@@ -2,8 +2,23 @@
 
 ## RESUME HERE
 
-**2026-10-05 latest. STAFFING & GM REDESIGN (directive) BUILT LOCALLY —
-NOT DEPLOYED.** Branch `fix/s21-identity-and-owner-display`, worktree
+**2026-10-05 latest. STAFFING & GM REDESIGN DEPLOYED (owner: "deploy"
+in chat).** Staging image `s21fix-211eeb3`, digest
+`sha256:a1347ff7…7db96`, API task-def **rev 82**, rollout COMPLETED,
+running task verified on the exact digest. Terraform plan was the known
+image-only 11/13/11 shape (JSON-inspected: every task-def diff = image
+tag only, env identical, zero identity resources touched;
+`production_approver_identities_enabled=true` passed). SPA bundle
+`index-Dr5PuRPR.js` synced, CloudFront invalidation
+`IA256SRWDIUXKSQTEUWLVAEKV6` on `E1XAQZCROIFYG7`. Deploy smoke GREEN
+end-to-end (Bedrock profile ACTIVE, bound upload→extract→confirm→drafts,
+fixture cleaned), leak gate clean (0 test clients / 0 e2e approvers on
+real SOWs). Mid-pipeline classifier denial ("Production Deploy") was
+resolved by explicit owner re-approval via AskUserQuestion — the
+accepted pattern. Owner click-through of the redesigned tab is the next
+gate; merge still needs an explicit "merge".
+
+Branch `fix/s21-identity-and-owner-display`, worktree
 `/Users/srikanthparimi/OfficeApp/dealgate-s21-forecast`. The owner's
 redesign directive (`~/Downloads/DealGate_Staffing_GM_Redesign_Prompt.txt`
 + `DealGate_Staffing_GM_Design.html` — demo data only, NOT rules) is
