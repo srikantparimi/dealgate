@@ -2,6 +2,19 @@
 
 ## RESUME HERE
 
+**2026-10-06 ROUND 3 DEPLOYED.** Image `s21fix-785b67c`, rollout
+COMPLETED on the exact image, SPA synced (cache headers), invalidation
+I76IHVRTLMP7HNBN67EO5T000V, smoke GREEN, leak gate clean. Round 3:
+term-assist reads the staffing draft (one click saves BOTH term
+dates); editor autofills every derivable engine gate (dates from role
+envelope, timezone, workstream, allocation basis, even-month
+allocations; only pre-version, only after proposal settles, never over
+user values); cost attestation checkbox on the Confirm card writes the
+draft and recalculates; commercial finance_summary (pure Decimal in
+app/gm); panel locations from the draft; GM-waiting-on reasons listed;
+CEO column reads "Not required — margin within policy" when assessed
+green. api suite green; web 408/408.
+
 **2026-10-06 DRAFT PERSISTENCE DEPLOYED.** Image `s21fix-dd3956e`, migration
 0064 (commercial_draft) applied via the gate, rollout COMPLETED on the
 exact image, draft route live (401 unauth), SPA synced with cache
