@@ -20,6 +20,7 @@ from app.models.client import Agreement, Client, LegalEntity
 from app.models.client_alias import ClientAlias
 from app.models.client_contact import ClientContact as ClientContact
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
+from app.models.commercial_draft import CommercialDraft as CommercialDraft
 from app.models.delivery_acceptance import DeliveryAcceptance
 from app.models.deletion import DeletionFence, DeletionJob
 from app.models.direct_cost_settings import DirectCostSettings

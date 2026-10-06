@@ -144,6 +144,102 @@ async def commercial_proposal(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
+class DraftPutBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sow_version_id: uuid.UUID | None = None
+    inputs: dict
+    # Optimistic concurrency: the updated_at the client last saw
+    # (ISO string), or null for "no draft existed". A mismatch 409s so
+    # one user's edits never silently overwrite another's.
+    expected_updated_at: str | None = None
+
+
+@router.get("/{opportunity_id}/commercial/draft")
+async def get_commercial_draft(
+    opportunity_id: uuid.UUID,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """S22 · the server-persisted Staffing & GM working draft.
+
+    One mutable draft per opportunity so the plan survives reloads and
+    is visible on every surface. NOT a GM version (those stay immutable
+    and are only created by Save version).
+    """
+    from app.models.commercial_draft import CommercialDraft
+
+    draft = await session.get(CommercialDraft, opportunity_id)
+    if draft is None:
+        return {"exists": False}
+    return {
+        "exists": True,
+        "inputs": draft.inputs,
+        "sow_version_id": str(draft.sow_version_id) if draft.sow_version_id else None,
+        "updated_at": draft.updated_at.isoformat(),
+    }
+
+
+@router.put("/{opportunity_id}/commercial/draft")
+async def put_commercial_draft(
+    opportunity_id: uuid.UUID,
+    body: DraftPutBody,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from datetime import UTC, datetime
+
+    from app.models.commercial_draft import CommercialDraft
+    from app.services.user_provisioning import ensure_user
+
+    opportunity = await session.get(Opportunity, opportunity_id)
+    if opportunity is None:
+        raise HTTPException(404, "Unknown opportunity")
+    db_user = await ensure_user(session, actor)
+    draft = await session.get(CommercialDraft, opportunity_id, with_for_update=True)
+    if draft is None:
+        if body.expected_updated_at is not None:
+            raise HTTPException(409, "Draft was discarded elsewhere — reload")
+        draft = CommercialDraft(
+            opportunity_id=opportunity_id,
+            sow_version_id=body.sow_version_id,
+            inputs=body.inputs,
+            updated_by=db_user.id,
+        )
+        session.add(draft)
+    else:
+        current = draft.updated_at.isoformat()
+        if body.expected_updated_at is not None and body.expected_updated_at != current:
+            raise HTTPException(
+                409,
+                "Draft changed since you loaded it (another session saved at "
+                f"{current}) — reload before overwriting",
+            )
+        draft.inputs = body.inputs
+        draft.sow_version_id = body.sow_version_id
+        draft.updated_by = db_user.id
+        draft.updated_at = datetime.now(UTC)
+    await session.commit()
+    refreshed = await session.get(CommercialDraft, opportunity_id)
+    return {"exists": True, "updated_at": refreshed.updated_at.isoformat()}
+
+
+@router.delete("/{opportunity_id}/commercial/draft", status_code=204)
+async def delete_commercial_draft(
+    opportunity_id: uuid.UUID,
+    actor: AuthUser = Depends(require_role(*_WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Discard the working draft (explicit user action, or after a
+    version save makes it redundant)."""
+    from app.models.commercial_draft import CommercialDraft
+
+    draft = await session.get(CommercialDraft, opportunity_id)
+    if draft is not None:
+        await session.delete(draft)
+        await session.commit()
+    return Response(status_code=204)
+
+
 class StaffingAdviceBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     revenue: str | None = None

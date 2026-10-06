@@ -209,6 +209,37 @@ export const saveCommercialVersion = (
     { method: "POST", body: JSON.stringify(body) },
   );
 
+/** S22 · one server-persisted Staffing & GM working draft per
+ * opportunity, so the plan survives reloads and is visible on every
+ * surface. NOT an immutable GM version — Save version still creates
+ * those explicitly. */
+export interface CommercialDraftResponse {
+  exists: boolean;
+  inputs?: CommercialComponent;
+  sow_version_id?: string | null;
+  updated_at?: string;
+}
+export const getCommercialDraft = (opportunityId: string) =>
+  request<CommercialDraftResponse>(
+    `/delivery-model/${opportunityId}/commercial/draft`,
+  );
+export const putCommercialDraft = (
+  opportunityId: string,
+  body: {
+    inputs: CommercialComponent;
+    sow_version_id: string | null;
+    expected_updated_at: string | null;
+  },
+) =>
+  request<{ exists: true; updated_at: string }>(
+    `/delivery-model/${opportunityId}/commercial/draft`,
+    { method: "PUT", body: JSON.stringify(body) },
+  );
+export const deleteCommercialDraft = (opportunityId: string) =>
+  request<void>(`/delivery-model/${opportunityId}/commercial/draft`, {
+    method: "DELETE",
+  });
+
 /** S22 · SOW/auto-staffing proposed draft for the editor (Delivery/SystemAdmin). */
 export interface CommercialProposal {
   component: CommercialComponent;

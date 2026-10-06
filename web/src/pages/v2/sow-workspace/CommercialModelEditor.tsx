@@ -28,6 +28,9 @@ import {
   getCommercialProposal,
   type CommercialProposal,
   type StaffingAdvice,
+  getCommercialDraft,
+  putCommercialDraft,
+  deleteCommercialDraft,
 } from "../../../api/commercial";
 import { Button } from "../../../ui-v2/primitives/button";
 import { Input } from "../../../ui-v2/primitives/input";
@@ -137,7 +140,43 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   const [advice, setAdvice] = useState<StaffingAdvice | null>(null);
   const [resolution, setResolution] = useState<ResolutionAction | null>(null);
   const [termAssist, setTermAssist] = useState<TermAssist | null>(null);
+  // Server-persisted working draft (S22 root-cause fix): the plan
+  // survives reloads and is visible on the Confirm page. updated_at is
+  // the optimistic-concurrency stamp; a conflict stops auto-save loudly
+  // instead of overwriting another session.
+  const [draftStamp, setDraftStamp] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState("");
+  const draftLoaded = useRef(false);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  useEffect(() => {
+    if (!snap.deal?.id || draftLoaded.current) return;
+    draftLoaded.current = true;
+    let active = true;
+    getCommercialDraft(snap.deal.id)
+      .then((draft) => {
+        if (!active || !draft.exists || !draft.inputs) return;
+        setDraftStamp(draft.updated_at ?? null);
+        // A live in-memory draft from this session wins; otherwise the
+        // server draft is the newest working state — restore it.
+        if (!draftCache.get(draftKey)?.dirty) {
+          setInputs(structuredClone(draft.inputs));
+          setDirty(true);
+          setDraftRestored(draft.updated_at ?? "");
+        }
+      })
+      .catch(() => {
+        /* read-only roles see no draft; the editor stands */
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snap.deal?.id]);
+
+  const draftStampRef = useRef<string | null>(null);
+  draftStampRef.current = draftStamp;
 
   // S22 click-through fix: when the SOW states a duration but the
   // contract dates are unknown, surface the server-derived end date as
@@ -236,6 +275,28 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
     (snap.approvalPackage?.status === "released" ||
       snap.signedSow?.verify_status === "verified");
   const editable = canWrite && supported && !rawRestricted && !signedBasis;
+  // Debounced auto-save of the working draft to the server. Placed
+  // after `editable` so a late role check still arms the effect.
+  useEffect(() => {
+    if (!dirty || !editable || !snap.deal?.id || draftError) return;
+    const timer = setTimeout(() => {
+      putCommercialDraft(snap.deal!.id, {
+        inputs,
+        sow_version_id: snap.sow?.id ?? null,
+        expected_updated_at: draftStampRef.current,
+      })
+        .then((saved) => setDraftStamp(saved.updated_at))
+        .catch((e) => {
+          setDraftError(
+            e instanceof Error && e.message.includes("409")
+              ? "Draft conflict: another session changed this draft — reload before editing further."
+              : "Draft could not be auto-saved — your edits are only in this tab.",
+          );
+        });
+    }, 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputs, dirty, editable, snap.deal?.id, draftError]);
   const pricing = inputs.pricing ?? {};
   const replaceComponent = (next: CommercialComponent) => {
     setInputs(next);
@@ -281,6 +342,13 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
         setDirty(false);
         draftCache.delete(draftKey);
         setCalculationState("saved");
+        // The saved version supersedes the working draft.
+        setDraftStamp(null);
+        setDraftRestored(null);
+        if (snap.deal?.id)
+          deleteCommercialDraft(snap.deal.id).catch(() => {
+            /* draft cleanup is best-effort */
+          });
       } else {
         setResult(await previewCommercial(body));
         setCalculationState("preview");
@@ -395,7 +463,13 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-section">Staffing & GM</h2>
         <span className="flex items-center gap-2 text-secondary">
-          <span data-testid="draft-state">{dirty ? "Unsaved draft" : "Saved"}</span>
+          <span data-testid="draft-state">
+            {dirty
+              ? draftStamp && !draftError
+                ? "Draft auto-saved"
+                : "Unsaved draft"
+              : "Saved"}
+          </span>
           <span>{snap.gmModel?.commercial_profile ?? inputs.profile}</span>
         </span>
       </header>
@@ -462,6 +536,41 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       </nav>
 
       {notice && <p role="status">{notice}</p>}
+      {draftError && (
+        <p role="alert" data-testid="draft-error" className="text-danger">
+          {draftError}
+        </p>
+      )}
+      {draftRestored !== null && dirty && (
+        <div
+          role="note"
+          data-testid="draft-restored-banner"
+          className="rounded-panel border border-primary/40 bg-primary-subtle/30 p-3 text-secondary"
+        >
+          <p className="text-text">
+            Working draft restored
+            {draftRestored ? ` (last saved ${draftRestored.slice(0, 16).replace("T", " ")})` : ""}
+            . It is not an approved version — Save version below to publish
+            it to approvals.
+          </p>
+          <button
+            type="button"
+            data-testid="draft-discard"
+            className="mt-2 underline"
+            onClick={() => {
+              if (snap.deal?.id)
+                deleteCommercialDraft(snap.deal.id).catch(() => {});
+              draftCache.delete(draftKey);
+              setDraftStamp(null);
+              setDraftRestored(null);
+              setDirty(false);
+              setInputs(initialInputs(snap));
+            }}
+          >
+            Discard draft and start from the saved version
+          </button>
+        </div>
+      )}
       {resolution && (
         <div
           role="note"

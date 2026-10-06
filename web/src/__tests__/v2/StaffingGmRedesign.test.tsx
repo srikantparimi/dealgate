@@ -132,6 +132,9 @@ function goodAdvice(): api.StaffingAdvice {
 beforeEach(() => {
   vi.restoreAllMocks();
   resetCommercialDraftCache();
+  vi.spyOn(api, "getCommercialDraft").mockResolvedValue({ exists: false });
+  vi.spyOn(api, "putCommercialDraft").mockResolvedValue({ exists: true, updated_at: "2026-10-06T00:00:00+00:00" });
+  vi.spyOn(api, "deleteCommercialDraft").mockResolvedValue(undefined);
   vi.spyOn(client, "getTermAssist").mockResolvedValue({ available: false });
   vi.spyOn(client, "getMe").mockResolvedValue({
     groups: ["Delivery"],
@@ -298,5 +301,68 @@ describe("Staffing & GM four-section plan", () => {
     render(<CommercialModelEditor snap={snap()} />);
     expect(screen.getByLabelText("Contract fee")).toHaveValue("99999");
     expect(screen.getByTestId("draft-state")).toHaveTextContent("Unsaved draft");
+  });
+});
+
+/** S22 root-cause fix · the working draft is server-persisted: it
+ * auto-saves, restores after a fresh load, can be discarded, and a
+ * version save supersedes it. */
+describe("Server-persisted commercial draft", () => {
+  it("auto-saves the draft after an edit (debounced) and shows the state", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    const put = vi.spyOn(api, "putCommercialDraft").mockResolvedValue({
+      exists: true,
+      updated_at: "2026-10-06T01:00:00+00:00",
+    });
+    render(<CommercialModelEditor snap={snap()} />);
+    fireEvent.change(screen.getByLabelText("Contract fee"), {
+      target: { value: "80000" },
+    });
+    await waitFor(() => expect(put).toHaveBeenCalled(), { timeout: 5000 });
+    const body = put.mock.calls[0][1];
+    expect(body.inputs.pricing!.total_fee).toBe("80000");
+    expect(body.expected_updated_at).toBeNull(); // no prior draft
+    await waitFor(() =>
+      expect(screen.getByTestId("draft-state")).toHaveTextContent("Draft auto-saved"),
+    );
+  });
+
+  it("restores the server draft after a fresh load, with discard", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    vi.spyOn(api, "getCommercialDraft").mockResolvedValue({
+      exists: true,
+      inputs: structuredClone({
+        ...staffedInputs,
+        pricing: { ...staffedInputs.pricing, total_fee: "123456" },
+      }) as api.CommercialComponent,
+      sow_version_id: "version-a",
+      updated_at: "2026-10-06T01:00:00+00:00",
+    });
+    const del = vi.spyOn(api, "deleteCommercialDraft").mockResolvedValue(undefined);
+    render(<CommercialModelEditor snap={snap()} />);
+    await screen.findByTestId("draft-restored-banner");
+    expect(screen.getByLabelText("Contract fee")).toHaveValue("123456");
+    expect(screen.getByTestId("draft-restored-banner")).toHaveTextContent(
+      "Save version below to publish",
+    );
+    fireEvent.click(screen.getByTestId("draft-discard"));
+    await waitFor(() => expect(del).toHaveBeenCalledWith("deal-a"));
+    // Back to the saved version's fee.
+    expect(screen.getByLabelText("Contract fee")).toHaveValue("75400");
+  });
+
+  it("a draft conflict stops auto-save loudly instead of overwriting", async () => {
+    vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
+    vi.spyOn(api, "putCommercialDraft").mockRejectedValue(
+      new Error("409: Draft changed since you loaded it"),
+    );
+    render(<CommercialModelEditor snap={snap()} />);
+    fireEvent.change(screen.getByLabelText("Contract fee"), {
+      target: { value: "80000" },
+    });
+    const alert = await screen.findByTestId("draft-error", undefined, { timeout: 5000 });
+    expect(alert).toHaveTextContent("another session changed this draft");
+    // Edits stay on screen — nothing is thrown away.
+    expect(screen.getByLabelText("Contract fee")).toHaveValue("80000");
   });
 });

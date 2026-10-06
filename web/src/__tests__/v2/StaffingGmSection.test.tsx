@@ -28,3 +28,83 @@ describe("S13b Confirm rates", () => {
     expect(screen.queryByText("— fixed price")).not.toBeInTheDocument();
   });
 });
+
+/** S22 root-cause fix · the Confirm page reads the server-persisted
+ * Staffing & GM draft instead of "No staffing lines yet / GM
+ * unavailable" when no resource lines exist. */
+import { vi, beforeEach } from "vitest";
+import { waitFor } from "@testing-library/react";
+import * as commercialApi from "../../api/commercial";
+import * as client from "../../api/client";
+
+describe("Commercial draft bridge", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  function emptyFixture(): SowConfirmationPayload {
+    const payload = fixture();
+    payload.staffing.lines = [];
+    (payload as unknown as { gm_model: null }).gm_model = null;
+    (payload as unknown as { floors: object }).floors = {};
+    return payload;
+  }
+
+  it("shows the draft team and its provisional GM when no lines are saved", async () => {
+    vi.spyOn(client, "getSowStaffing").mockRejectedValue(new Error("none"));
+    vi.spyOn(commercialApi, "getCommercialDraft").mockResolvedValue({
+      exists: true,
+      inputs: {
+        component_id: "c1", version: "1", source_id: "sow-a",
+        source_version: "version-a", workstream_id: "w", profile: "fixed_assignment",
+        profile_version: "1", policy_version: "", source_evidence: [],
+        service_start: "2026-10-01", service_end: "2026-11-18",
+        timezone: null, currency: "USD", billing_cadence: null,
+        cost_basis: null, costs_confirmed: false, costs: [],
+        staffing: [{
+          assignment_id: "a1", source_id: "sow-a", source_version: "version-a",
+          component_id: "c1", profile_version: "1", policy_version: "",
+          role: "Offshore consultant", location: "India", timezone: "Asia/Kolkata",
+          currency: "USD", quantity: 2, allocation: "1", calendar: null,
+          bill_rate: null, cost_rate: "30", rate_version: null,
+          cost_version: "rate-card", start: "2026-10-01", end: "2026-11-18",
+          cost_rate_basis: "hourly", cost_proration: null,
+        }],
+        pricing: { total_fee: "75400", allocations: [], allocation_basis: "even", minor_unit: "0.01" },
+      } as unknown as commercialApi.CommercialComponent,
+      sow_version_id: "version-a",
+      updated_at: "2026-10-06T01:00:00+00:00",
+    });
+    vi.spyOn(commercialApi, "getCommercialProfiles").mockResolvedValue({
+      profiles: [], calculation_version: "v1",
+      policy: { version: "policy", us_floor: "0.35", india_floor: "0.5" },
+    });
+    vi.spyOn(commercialApi, "previewCommercial").mockResolvedValue({
+      computed: {
+        complete: true, gm_us: null, gm_india: "0.722",
+        policy: { requires_ceo: false, india_pass: true, us_pass: null },
+      } as never,
+    });
+    render(<StaffingGmSection payload={emptyFixture()} opportunityId="deal-a" />);
+    const table = await screen.findByTestId("draft-staffing");
+    expect(table).toHaveTextContent("Offshore consultant");
+    expect(table).toHaveTextContent("India");
+    expect(screen.getByText(/working draft/)).toBeInTheDocument();
+    expect(screen.queryByText("No staffing lines yet.")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(commercialApi.previewCommercial).toHaveBeenCalled(),
+    );
+  });
+
+  it("keeps the honest empty state when no draft exists", async () => {
+    vi.spyOn(client, "getSowStaffing").mockRejectedValue(new Error("none"));
+    vi.spyOn(commercialApi, "getCommercialDraft").mockResolvedValue({ exists: false });
+    vi.spyOn(commercialApi, "getCommercialProfiles").mockResolvedValue({
+      profiles: [], calculation_version: "v1",
+      policy: { version: "policy", us_floor: "0.35", india_floor: "0.5" },
+    });
+    render(<StaffingGmSection payload={emptyFixture()} opportunityId="deal-a" />);
+    await waitFor(() =>
+      expect(commercialApi.getCommercialDraft).toHaveBeenCalled(),
+    );
+    expect(screen.getByText("No staffing lines yet.")).toBeInTheDocument();
+  });
+});

@@ -89,6 +89,9 @@ function proposal(): api.CommercialProposal {
 beforeEach(() => {
   vi.restoreAllMocks();
   resetCommercialDraftCache();
+  vi.spyOn(api, "getCommercialDraft").mockResolvedValue({ exists: false });
+  vi.spyOn(api, "putCommercialDraft").mockResolvedValue({ exists: true, updated_at: "2026-10-06T00:00:00+00:00" });
+  vi.spyOn(api, "deleteCommercialDraft").mockResolvedValue(undefined);
   vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(
     new Error("no advice in this test"),
   );

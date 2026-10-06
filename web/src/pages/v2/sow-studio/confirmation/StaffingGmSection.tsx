@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Save } from "lucide-react";
 import { getSowStaffing, previewDeliveryModel, putSowStaffing, type DeliveryCostLineInput, type SowConfirmationPayload, type SowResourcesState } from "../../../../api/client";
+import { getCommercialDraft, getCommercialProfiles, previewCommercial, type CommercialStaffing } from "../../../../api/commercial";
+import { bindCommercialSource } from "../../sow-workspace/commercial-editor/bindings";
+import { fractionToPercent } from "../../sow-workspace/format";
 import { Button } from "../../../../ui-v2/primitives/button";
 import { Input } from "../../../../ui-v2/primitives/input";
 import { formatQuantity, formatRate } from "../../sow-workspace/format";
@@ -34,6 +37,49 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
   const [reason, setReason] = useState("");
   const lines = payload.staffing.lines;
   const fixedFee = isFixedFee(payload.engagement.primary.type);
+  // S22 root-cause fix: the plan built on the Staffing & GM tab is now
+  // a server-persisted draft — show it here instead of "No staffing
+  // lines yet / GM unavailable". Provisional until a version is saved.
+  const [draftGm, setDraftGm] = useState<{
+    result: FinanceGmResult | null;
+    staffing: CommercialStaffing[];
+    updated_at?: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!opportunityId || lines.length) return;
+    let active = true;
+    Promise.all([getCommercialDraft(opportunityId), getCommercialProfiles()])
+      .then(async ([draft, registry]) => {
+        if (!active || !draft.exists || !draft.inputs) return;
+        const staffing = draft.inputs.staffing ?? [];
+        try {
+          const res = await previewCommercial(
+            bindCommercialSource(draft.inputs, {
+              policy_version: registry.policy.version,
+              source_id: draft.inputs.source_id,
+              source_version: draft.inputs.source_version,
+            }),
+          );
+          if (!active) return;
+          setDraftGm({
+            result: res.computed
+              ? ({ ...res.computed, ...res.computed.policy } as FinanceGmResult)
+              : null,
+            staffing,
+            updated_at: draft.updated_at,
+          });
+        } catch {
+          if (active)
+            setDraftGm({ result: null, staffing, updated_at: draft.updated_at });
+        }
+      })
+      .catch(() => {
+        /* no draft, or a role that cannot read drafts — legacy view stands */
+      });
+    return () => {
+      active = false;
+    };
+  }, [opportunityId, lines.length, payload.gm_model?.id]);
 
   useEffect(() => {
     if (!opportunityId) return;
@@ -81,14 +127,23 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save direct costs"); }
     finally { setBusy(false); }
   }
-  const result = preview ?? (dirty ? { gm_version: payload.floors.gm_version } : { ...payload.floors, gm_version: payload.floors.gm_version ?? payload.gm_model?.version, revenue_total: payload.floors.revenue_total ?? (lines.some((line) => line.location === "India") ? undefined : payload.gm_model?.revenue_us) });
+  const saved = dirty ? { gm_version: payload.floors.gm_version } : { ...payload.floors, gm_version: payload.floors.gm_version ?? payload.gm_model?.version, revenue_total: payload.floors.revenue_total ?? (lines.some((line) => line.location === "India") ? undefined : payload.gm_model?.revenue_us) };
+  // A computed draft result outranks an empty saved state (no lines, no
+  // GM) — the owner's plan lives in the draft until a version is saved.
+  const result = preview ?? (!lines.length && draftGm?.result ? draftGm.result : saved);
   return <Section id="section-staffing" title="Staffing & GM">
     <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
       <div className="min-w-0 space-y-5">
         {lines.length ? <div className="overflow-x-auto"><table aria-label="Staffing grid" className="w-full min-w-[720px] text-secondary tnum">
           <thead className="border-b border-divider bg-surface-sunken text-left text-text-secondary"><tr>{["Role · seniority", "Location", "Bill rate", "Cost /hr", "Hours", "Allocation", "Provenance"].map((title) => <th key={title} className="px-3 py-2 font-medium">{title}</th>)}</tr></thead>
           <tbody>{lines.map((line, i) => <tr key={i} className="border-b border-divider"><td className="px-3 py-2"><span className="font-medium">{line.role}</span><span className="ml-2 text-text-secondary">{line.seniority}</span></td><td className="px-3 py-2">{line.location}</td><td className="whitespace-nowrap px-3 py-2 text-right">{fixedFee ? "— fixed price" : formatRate(line.hourly_bill_rate)}</td><td className="px-3 py-2 text-right">{formatRate(line.hourly_cost)}</td><td className="px-3 py-2 text-right">{formatQuantity(line.hours_billable)}</td><td className="px-3 py-2 text-right">{formatAllocationPct(line.allocation_pct)}%</td><td className="px-3 py-2"><ProvenanceChip entry={{ value: line.role, provenance: line.provenance, source_id: line.source_id ?? undefined, warning: line.warning ?? undefined }} /></td></tr>)}</tbody>
-        </table></div> : <p className="text-warning">No staffing lines yet.</p>}
+        </table></div> : draftGm && draftGm.staffing.length ? <div className="space-y-2" data-testid="draft-staffing">
+          <div className="overflow-x-auto"><table aria-label="Draft staffing" className="w-full min-w-[480px] text-secondary tnum">
+            <thead className="border-b border-divider bg-surface-sunken text-left text-text-secondary"><tr>{["Role", "Delivery location", "People", "Allocation"].map((title) => <th key={title} className="px-3 py-2 font-medium">{title}</th>)}</tr></thead>
+            <tbody>{draftGm.staffing.map((row, i) => <tr key={i} className="border-b border-divider"><td className="px-3 py-2 font-medium">{row.role || "—"}</td><td className="px-3 py-2">{row.location ?? "Unconfirmed"}</td><td className="px-3 py-2 text-right">{row.quantity || "—"}</td><td className="px-3 py-2 text-right">{row.allocation ? `${fractionToPercent(row.allocation)}%` : "—"}</td></tr>)}</tbody>
+          </table></div>
+          <p className="text-secondary text-text-secondary">From the Staffing &amp; GM tab's working draft{draftGm.updated_at ? ` (auto-saved ${draftGm.updated_at.slice(0, 16).replace("T", " ")})` : ""} — provisional until a commercial version is saved there.</p>
+        </div> : <p className="text-warning">No staffing lines yet.</p>}
         {payload.staffing.warnings.length ? <ul className="space-y-1 text-secondary text-text-secondary">{payload.staffing.warnings.map((warning, i) => <li key={i} data-testid="staffing-warning">{warning}</li>)}</ul> : null}
         {(!opportunityId || state?.cost_lines !== undefined) ? <DirectCostsEditor rows={costs} onChange={opportunityId && state ? changeCosts : undefined} disabled={busy} /> : null}
         {state?.requires_notice_on_change && dirty ? <div className="flex flex-wrap gap-3"><label>Effective from<Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} /></label><label>Reason<Input value={reason} onChange={(e) => setReason(e.target.value)} /></label></div> : null}
