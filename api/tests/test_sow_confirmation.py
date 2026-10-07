@@ -253,6 +253,8 @@ def test_saved_commercial_staffing_is_rendered_on_confirmation():
         "India",
     )
     assert line.hours_billable == Decimal("960")
+    assert line.quantity == 2
+    assert line.to_dict()["quantity"] == 2
     assert line.allocation_pct == Decimal("0.5")
     assert line.hourly_bill_rate == Decimal("0")
     assert line.hourly_cost == Decimal("70")

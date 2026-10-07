@@ -352,6 +352,7 @@ def _staffing_from_gm(model: GmModel) -> AutoStaffingResult:
                         role=assignment.role,
                         seniority=assignment.seniority or "Unspecified",
                         location=assignment.location or "Unconfirmed",
+                        quantity=assignment.quantity,
                         allocation_pct=assignment.allocation,
                         hours_billable=hours or Decimal("0"),
                         hourly_bill_rate=assignment.bill_rate or Decimal("0"),

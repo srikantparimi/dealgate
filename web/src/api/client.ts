@@ -1477,6 +1477,8 @@ export interface SowConfirmationStaffingLine {
   role: string;
   seniority: string;
   location: "US" | "India" | string;
+  /** Grouped headcount. Older per-person confirmation rows omit it. */
+  quantity?: number;
   allocation_pct: DecimalStr;
   hours_billable: DecimalStr;
   hourly_bill_rate: DecimalStr;

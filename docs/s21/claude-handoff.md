@@ -2,6 +2,41 @@
 
 ## RESUME HERE
 
+**2026-10-07 14:58 PDT — GENERIC STAFFING QUANTITY DISPLAY FIX VERIFIED
+LOCALLY; COMMIT AND DEPLOY NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, clean starting checkpoint
+`c55ececc1dd453cdc0159e7d7249bfd3e5c25c11`. Six owned application/test files
+plus this handoff are dirty. No build, test, browser, migration or deployment
+operation is active.
+
+The owner's Caesars GM v7 was inspected read-only through the deployed API. Its
+saved typed inputs are two Offshore consultants at 100% plus one at 50%, each
+with 280 per-person hours and USD 30/hour. The authoritative engine correctly
+stored USD 75,400 revenue, USD 21,000 labor cost, USD 54,400 gross profit and
+72.1485411% GM. The engine already applies `hours x quantity x allocation x
+cost_rate` exactly once; the defect is visual/API-contract only:
+`StaffingLine` and Confirm SOW serialization discarded the saved commercial
+assignment's `quantity`, so two people appeared as one line without headcount.
+
+The generic fix adds headcount to the shared confirmation DTO/JSON contract,
+copies every typed assignment's actual saved quantity, retains quantity 1 for
+legacy per-person resource rows, and adds a People column to the reusable
+Confirm SOW staffing table. It contains no customer, amount, dates, role,
+geography or pricing-profile special case. Regression tests failed first on
+the missing People field. After the fix: confirmation UI suites **21/21
+passed**, TypeScript passed, the full focused confirmation/commercial/calendar/
+persistence backend set passed, Ruff passed and `git diff --check` passed.
+
+Exact next commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git status --short`,
+then commit the six application/test files and this handoff, push the feature
+branch, build immutable API and SPA artifacts, and generate/review a fresh
+whole-root Terraform plan. Stop for its required human approval before apply.
+After rollout, prove arbitrary grouped headcount/allocation on an isolated
+fixture and then ask the product owner to check Caesars. Do not merge main
+without explicit acceptance.
+
 **2026-10-07 14:40 PDT — DEPLOYED STAFFING PROOF COMMITTED/PUSHED; STOP FOR
 PRODUCT-OWNER ACCEPTANCE.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

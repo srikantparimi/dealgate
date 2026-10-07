@@ -43,6 +43,9 @@ class StaffingLine:
     hours_billable: Decimal
     hourly_bill_rate: Decimal
     provenance: str
+    # Headcount represented by this role row. Legacy resource lines are
+    # one-person rows; typed commercial assignments may group many people.
+    quantity: int = 1
     # Loaded cost per hour. The number that decides the margin on a fixed
     # fee, where revenue is the agreed price and only cost varies. None
     # until a cost band resolves or someone enters it on the line.
@@ -57,6 +60,7 @@ class StaffingLine:
             "role": self.role,
             "seniority": self.seniority,
             "location": self.location,
+            "quantity": self.quantity,
             "allocation_pct": format(self.allocation_pct, "f"),
             "hours_billable": format(self.hours_billable, "f"),
             "hourly_bill_rate": format(self.hourly_bill_rate, "f"),
