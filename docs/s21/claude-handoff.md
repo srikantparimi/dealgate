@@ -2,6 +2,56 @@
 
 ## RESUME HERE
 
+**2026-10-07 11:00 PDT — RESTORED CONFIRM SOW FLOW DEPLOYED AND CONNECTED
+PROOF GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current committed head
+`0b5a04620b29c9339d65a0a62029bb8d5efd937c`, with application fix
+`5cd52ea490729227b380988288455273e9282684`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched. The deployed-
+proof spec, report, four refreshed screenshots and this handoff are the only
+owned dirty/untracked files; no test, browser, deployment or migration process
+is active.
+
+Terraform applied exactly the approved **11 add / 13 change / 11 destroy**
+plan. Migration task `c7b7207dc72d435ca1c67b3e5eabbd3b` succeeded. The API
+is rollout-complete 1/1 on ECS task definition `officeapp-dev-api:89`, image
+`s22confirm-5cd52ea`, digest
+`sha256:a037c926b3b0691ed5209e6f96c6b9bde7cf3b8c6c4ee428caff772d3338d111`.
+The matching SPA is live as `assets/index-NGaZkXeJ.js` with CSS
+`assets/index-CGMBFthR.css`; CloudFront invalidation
+`I4P250ECLXKHD7DMFHW619SM02` completed. Deploy smoke
+`smoke 20261007T175159Z` passed on that exact task/digest and cleaned its
+fixture.
+
+Fresh-session connected proof is **1 passed in 2.0 minutes**. It used a
+server-issued disposable client, real Cognito roles, deployed SPA/API/RDS and
+the authoritative Decimal GM service. Two staffing rows (two people at 100%,
+one at 50%, 176 hours each at USD 30/hour) plus USD 2,500 Travel independently
+expected USD 75,400 revenue, USD 13,200 labor, USD 15,700 total cost, USD
+59,700 gross profit and 79.2% GM. The UI matched. Save then opened Confirm SOW
+with `2026-10-01` to `2026-10-31`, 79.2% GM, Delivery/HR/Finance/Legal and
+`CEO exception — Not required`; reload preserved them. `Complete scope`
+navigated to Approvals, real reviewer submission succeeded, and the page showed
+the persisted pending/queued review pipeline. Final cleanup gate reported zero
+test-tagged clients and zero e2e approvers on real SOWs.
+
+The first refreshed proof attempt stopped at disabled `Complete scope`. Trace
+evidence isolated it to the proof fixture confirming a null extracted
+signatory; dates, GM and staffing were intact. The fixture was deleted, an
+explicit client signatory was supplied, and the one relevant rerun passed. The
+green conditional-CEO path is proven deployed. The below-floor `CEO will
+trigger` branch remains covered by focused UI and backend routing tests from
+the same application commit, not by a second staging fixture in this
+checkpoint.
+
+Evidence is `docs/s21/evidence/staging/s22-gm-cta/report.md` and the four
+current PNGs linked there. Exact next commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git status --short`,
+then commit/push only the proof spec, report, four refreshed screenshots and
+this handoff. Stop for product-owner staging click-through at
+`https://app.dealgateapp.com`; do not merge main without explicit acceptance.
+
 **2026-10-07 01:09 PDT — CONFIRM SOW FIX COMMITTED/PUSHED; REVIEWED
 TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

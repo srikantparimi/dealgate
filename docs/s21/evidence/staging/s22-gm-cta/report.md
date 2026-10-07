@@ -2,18 +2,18 @@
 
 Tested 2026-10-07 PDT against `https://app.dealgateapp.com` from branch
 `fix/s22-gm-cta`, application checkpoint
-`e92b4ddfef82d0bc808f3fe524773f8dc874b5f7` and pre-deploy documentation
-checkpoint `60fde64f55e89ff924196fb64ca8afe9a4a5fcbb`.
+`5cd52ea490729227b380988288455273e9282684` and pre-deploy documentation
+checkpoint `0b5a04620b29c9339d65a0a62029bb8d5efd937c`.
 
 ## Deployed revisions
 
-- API: ECS task definition `officeapp-dev-api:88`, rollout completed 1/1
-- Image: `s22simple-e92b4dd`
-- Digest: `sha256:34dc726a5e1e4fd034d74c7513bb3d9d812459a2f1ecce3388880f3bff16a455`
-- Frontend: `assets/index-dqUPUe4H.js`, CSS `assets/index-CGMBFthR.css`
-- CloudFront invalidation: `ICQ1QCRL5JXEXS6V5DJFFZTIQ4` (completed)
-- Migration task: `e2518e23e4794eeeafb7aea0d051e255` (succeeded)
-- Deploy smoke: `smoke 20261007T071522Z` (green; cleanup gate clean)
+- API: ECS task definition `officeapp-dev-api:89`, rollout completed 1/1
+- Image: `s22confirm-5cd52ea`
+- Digest: `sha256:a037c926b3b0691ed5209e6f96c6b9bde7cf3b8c6c4ee428caff772d3338d111`
+- Frontend: `assets/index-NGaZkXeJ.js`, CSS `assets/index-CGMBFthR.css`
+- CloudFront invalidation: `I4P250ECLXKHD7DMFHW619SM02` (completed)
+- Migration task: `c7b7207dc72d435ca1c67b3e5eabbd3b` (succeeded)
+- Deploy smoke: `smoke 20261007T175159Z` (green; cleanup gate clean)
 
 ## Connected proof
 
@@ -27,7 +27,7 @@ env AWS_PROFILE=lm-arbiter-poc AWS_PROFILE_STAGING=lm-arbiter-poc \
   --project=chromium
 ```
 
-Result: **1 passed in 2.6 minutes**. The fresh browser used a server-issued
+Result: **1 passed in 2.0 minutes**. The fresh browser used a server-issued
 fixture and six real Cognito identities. It exercised the deployed SPA, API,
 RDS draft/version storage, authoritative Decimal calculation and approval
 state machine; no feature response was mocked.
@@ -55,19 +55,23 @@ The sequence proved:
    screen.
 3. Entering both Hours values and the additional cost produced the independent
    financial expectation through the server calculation service.
-4. The primary action changed to `Save`; saving and fully reloading preserved
-   the commercial version and changed the action to `Submit for approval`.
-5. Confirming the real reviewer plan persisted the review state and changed
-   the action to `View review status`.
-6. Teardown deleted the fixture; `scripts/check-test-data-clean.sh` reported
+4. The primary action changed to `Save`; saving opened `Confirm SOW` rather
+   than exposing approval submission inside Staffing & GM.
+5. Confirm SOW showed term start/end, the saved 79.2% GM, Delivery, HR,
+   Finance and Legal, and `CEO exception — Not required`; a full reload
+   preserved those values.
+6. `Complete scope` navigated to Approvals. Confirming the real reviewer plan
+   persisted the review state and displayed approved/pending/queued pipeline
+   status rather than looping back to Staffing & GM.
+7. Teardown deleted the fixture; `scripts/check-test-data-clean.sh` reported
    zero test clients and zero e2e approvers on real SOWs.
 
 ## Screenshots
 
 - `01-before-known-revenue-and-row-blocker.png`
 - `02-calculated-financials-save-action.png`
-- `03-save-reload-submit-action.png`
-- `04-transition-persisted-review-status.png`
+- `03-confirm-sow-dates-gm-and-approval-path.png`
+- `04-approvals-pipeline-status.png`
 
 ## Original record
 
@@ -75,6 +79,13 @@ Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remained read-only. The
 deployed proof used an isolated equivalent fixture for every mutation.
 
 ## Diagnostic history
+
+- The first refreshed connected run reached the correct confirmation page but
+  stopped because the sample document extracted `signatories.value=null`; the
+  proof had incorrectly treated null as a valid confirmed signatory. Its trace
+  showed dates, complete GM and staffing intact. The fixture was deleted, the
+  proof was corrected to supply an explicit client signatory, and the one
+  relevant rerun passed.
 
 - The 2026-10-06 proof covered the older full-calendar workflow on API
   revision 87 and is superseded by this report and the refreshed screenshots.

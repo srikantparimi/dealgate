@@ -133,6 +133,7 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
       term_start: "2026-10-01",
       term_end: "2026-10-31",
       notice_date: "2026-10-15",
+      signatories: [{ name: "E2E Client Signatory", role: "Client" }],
       engagement_type_suggested: "fixed_price",
     };
     for (const field of REQUIRED_FIELDS) {
@@ -271,13 +272,30 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await page.screenshot({ path: path.join(EVIDENCE, "02-calculated-financials-save-action.png") });
 
     await saveAction.click();
-    await expect(page.getByRole("status")).toContainText("Commercial version saved", { timeout: 45_000 });
-    await expect(page.getByRole("button", { name: "Submit for approval" })).toBeVisible({ timeout: 45_000 });
+    await expect(page).toHaveURL(new RegExp(`/sows/new\\?opportunityId=${opportunityId}`), {
+      timeout: 45_000,
+    });
+    await expect(page.getByRole("heading", { name: "Confirm SOW" })).toBeVisible();
+    await expect(page.getByTestId("field-row-term_start")).toContainText("2026-10-01");
+    await expect(page.getByTestId("field-row-term_end")).toContainText("2026-10-31");
+    await expect(page.locator("#section-staffing")).toContainText("79.2%");
+    const approvalPath = page.locator("#section-approvers");
+    for (const label of ["Delivery", "HR", "Finance", "Legal"]) {
+      await expect(approvalPath).toContainText(label);
+    }
+    await expect(approvalPath).toContainText("Not required");
+    await expect(page.getByRole("button", { name: "Submit for approval" })).toHaveCount(0);
+    await page.screenshot({ path: path.join(EVIDENCE, "03-confirm-sow-dates-gm-and-approval-path.png") });
+
     await page.reload();
+    await expect(page.getByRole("heading", { name: "Confirm SOW" })).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByTestId("field-row-term_start")).toContainText("2026-10-01");
+    await expect(page.getByTestId("field-row-term_end")).toContainText("2026-10-31");
+    await expect(page.locator("#section-staffing")).toContainText("79.2%");
+
+    await page.getByRole("button", { name: "Complete scope" }).click();
+    await expect(page).toHaveURL(new RegExp(`/sows/${opportunityId}/approvals`), { timeout: 45_000 });
     await expect(page.getByRole("button", { name: "Submit for approval" })).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("region", { name: "GM summary" })).toContainText("$15,700");
-    await expect(page.getByRole("region", { name: "GM summary" })).toContainText("79.2%");
-    await page.screenshot({ path: path.join(EVIDENCE, "03-save-reload-submit-action.png") });
 
     await page.getByRole("button", { name: "Submit for approval" }).click();
     await expect(page.getByRole("heading", { name: "Submit for approval" })).toBeVisible();
@@ -290,7 +308,8 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(page).toHaveURL(new RegExp(`/sows/${opportunityId}/approvals`), { timeout: 45_000 });
     await expect(page.getByRole("button", { name: "View review status" })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByText(/Submitted by/).first()).toBeVisible();
-    await page.screenshot({ path: path.join(EVIDENCE, "04-transition-persisted-review-status.png") });
+    await expect(page.getByText(/Pending with|Queued for/).first()).toBeVisible();
+    await page.screenshot({ path: path.join(EVIDENCE, "04-approvals-pipeline-status.png") });
   } finally {
     if (clientId) await deleteAndDrain(api, clientId);
     await api.dispose();
