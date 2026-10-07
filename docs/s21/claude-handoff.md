@@ -2,6 +2,59 @@
 
 ## RESUME HERE
 
+**2026-10-07 15:31 PDT — GENERIC STAFFING QUANTITY FIX DEPLOYED; CONNECTED
+PROOF AND RELEASE GATES GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** The
+authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
+branch `fix/s22-gm-cta`, application commit
+`60a8901a307d1c9ff06fcf640eb25258df7fd6d1`, deployed-evidence commit
+`2dc136f7a57210c4f8218627759f127c4cd31c4a`. Only this handoff update is dirty
+before its checkpoint commit. No server, worker, test, browser, build,
+deployment, migration or other owned process is active. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; its six pre-existing modified
+S19 screenshots remain untouched.
+
+The approved Terraform plan applied exactly **11 add / 13 change / 11
+destroy**. Migration task `3ba05ec61e9540b19f7c4fc675951b7f` succeeded.
+ECS is stable 1/1 on `officeapp-dev-api:91`, image
+`s22quantity-60a8901`, digest
+`sha256:3ac0c6771f56c6b71f7bf348f1bedd3ed269a9fd64702197043d612b6e9ea868`.
+The live SPA is `assets/index-D4d4XS3r.js` plus
+`assets/index-DcoHFPrW.css`; CloudFront invalidation
+`ICL06VS5744E62NGEHRHAQ7F3E` completed. `/api/healthz` is green. Deploy smoke
+`smoke 20261007T222706Z` passed on the same task/digest, and the cleanup gate
+reported zero test-tagged clients and zero e2e approvers on real SOWs.
+
+The fresh connected staging proof passed twice, latest **1/1 in 1.6
+minutes**, with no retries. It independently proved a fixed-fee plan with two
+people at 100% and one at 50%: `176 x USD 30 x (2 + 0.5) = USD 13,200` labor;
+USD 2,500 additional cost; USD 15,700 total cost; USD 59,700 gross profit;
+79.2% GM on USD 75,400 revenue. Confirm SOW displayed the actual saved People
+values `2` and `1`, preserved them and GM after reload, completed scope, and
+entered the real approvals pipeline. Evidence is in
+`docs/s21/evidence/staging/s22-gm-cta/report.md`, especially
+`03a-confirm-sow-quantity-weighted-staffing.png`. The owner's Caesars record
+was inspected read-only and never mutated.
+
+Root cause: the authoritative engine already multiplied per-person hours by
+saved `quantity * allocation` exactly once, but `_staffing_from_gm` converted
+the typed assignment to a `StaffingLine`/JSON contract that omitted quantity.
+The generic fix preserves every saved quantity and defaults legacy per-person
+rows to one. There is no contract-specific hardcoding. One separate visual
+discrepancy remains: the Confirm SOW GM summary includes commercial additional
+costs correctly, while the legacy editable Direct costs list can still say
+`No direct costs`; it does not alter calculated total cost or GM and is not
+silently claimed fixed.
+
+Exact next action: product-owner staging click-through at
+`https://app.dealgateapp.com`. Open the existing Caesars Confirm SOW page and
+verify People `2` / `1`, allocations `100%` / `50%`, labor USD 21,000 and GM
+72.1% after a fresh reload. Do not merge main before explicit acceptance.
+Resume with:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git rev-parse HEAD`.
+If further work is requested, first fix the commercial-cost-to-confirmation
+list projection with a focused regression; do not change the calculation
+formula or the owner's business data.
+
 **2026-10-07 15:01 PDT — GENERIC STAFFING QUANTITY FIX COMMITTED/PUSHED;
 REVIEWED TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
