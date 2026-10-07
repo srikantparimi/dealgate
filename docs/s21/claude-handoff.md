@@ -2,6 +2,39 @@
 
 ## RESUME HERE
 
+**2026-10-07 01:09 PDT — CONFIRM SOW FIX COMMITTED/PUSHED; REVIEWED
+TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`5cd52ea490729227b380988288455273e9282684`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; its six unrelated modified S19
+screenshots are preserved. No test, browser, deployment or migration process is
+active. Only this handoff update is dirty and should be committed after the
+checkpoint is reviewed.
+
+Immutable ECR image `s22confirm-5cd52ea` exists at digest
+`sha256:a037c926b3b0691ed5209e6f96c6b9bde7cf3b8c6c4ee428caff772d3338d111`.
+The authoritative saved plan is `/tmp/s22-confirm-5cd52ea-v2.tfplan`, with
+text rendering `/tmp/s22-confirm-5cd52ea-v2.plan.txt`: exactly **11 add, 13
+change, 11 destroy**. The 11 delete/create pairs are the API and migration task
+definitions, eight scheduled-worker task definitions, and the migration
+trigger. The 13 in-place changes repoint the API service, eight EventBridge
+targets and four RunTask policies to those new revisions. There are no RDS,
+S3, Cognito, approver-identity, network, secret, schedule-state or business-
+data changes. The first plan was rejected and renamed
+`/tmp/s22-confirm-5cd52ea.UNSAFE-29-destroys.stale` because a false production-
+approver flag would have removed 18 live identities; it must never be applied.
+
+Required human action: approve only the v2 plan described above. Exact apply
+command after approval:
+`env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-confirm-5cd52ea-v2.tfplan`.
+After apply, require a successful migration gate and stable API rollout on the
+recorded digest; publish the matching SPA from commit `5cd52ea` using only the
+checked-in `web/.env.production`; run deploy smoke; then execute the disposable
+fresh-session connected proof recorded in the next checkpoint. Do not mutate
+the owner's existing SOW and do not merge main before product-owner staging
+acceptance.
+
 **2026-10-07 01:04 PDT — CONFIRM SOW FLOW RESTORED LOCALLY; FOCUSED
 CONNECTED CONTRACTS GREEN, DEPLOYMENT NOT YET STARTED.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
