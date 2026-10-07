@@ -2,6 +2,19 @@
 
 ## RESUME HERE
 
+**2026-10-07 14:40 PDT — DEPLOYED STAFFING PROOF COMMITTED/PUSHED; STOP FOR
+PRODUCT-OWNER ACCEPTANCE.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, pushed evidence checkpoint
+`fcc5e34ff6d870e4b4d8b990cbc34a48e4992bcb`; use `git rev-parse HEAD` for the
+handoff-only commit containing this entry. Application fix is
+`75f0dd0e2399e0ca734bca1bb03a24cc2fd3a36c`. No process or operation is
+active, and the tree was clean before this entry. Staging is stable on API
+revision 90 and the exact digest recorded below. Exact next action is the
+product owner's fresh-session click-through of the existing Caesars SOW:
+verify its saved roles appear under Confirm SOW after reload, then continue to
+Approvals. Do not merge main without explicit acceptance.
+
 **2026-10-07 14:39 PDT — CONFIRM SOW STAFFING FIX DEPLOYED; CONNECTED PROOF
 AND RELEASE GATES GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** Authoritative tree
 is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
