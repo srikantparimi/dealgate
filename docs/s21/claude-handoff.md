@@ -6,8 +6,11 @@
 PROOF GREEN; OWNER ACCEPTANCE NEXT.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
 `fix/s22-gm-cta`, committed HEAD
-`23001678fd65ec0a9e8ba01e06f0a32fbb9fbf38`; none of this branch is merged to
-main. The tested API image `s22gm-23001678` is live as ECS task definition
+`a85918430a591f08292d43ec88843d7d4a7d7c03` (connected proof/evidence), with
+application fix checkpoint `9b46d9db0a06f18ea8cac3e1b018512680a6579d`;
+none of this branch is merged to main. The tested API image `s22gm-23001678`
+was built from deploy checkpoint `23001678fd65ec0a9e8ba01e06f0a32fbb9fbf38`
+and is live as ECS task definition
 revision 87 with running digest
 `sha256:265feaa8a18192e40dceba21fbf46096515f5abb44c4e7246d70676365f3c243`.
 Migration task `f159f3a9db6e4f55a5f7ef6d898e3747` succeeded. The matching SPA is live as
