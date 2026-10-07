@@ -2,6 +2,49 @@
 
 ## RESUME HERE
 
+**2026-10-07 11:12 PDT — CONFIRM SOW STAFFING-ROW ROOT CAUSE FIXED LOCALLY;
+DEPLOYMENT PLAN NOT YET CREATED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, starting checkpoint
+`451bd0a1285a6ec37372409f2bc6854ccae48457`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; its six unrelated modified S19
+screenshots are preserved. Owned dirty files are
+`api/app/services/sow_confirmation.py`,
+`api/tests/test_sow_confirmation.py`, and this handoff. No process, test,
+browser, deployment or migration is active.
+
+The owner's Confirm SOW screenshot showed a saved GM v4 with USD 51,000 labor
+cost and 72.1% GM, but `No staffing lines yet`. The first lost boundary is
+confirmed: S21/S22 commercial saves persist the authoritative team under
+`gm_model.commercial_inputs.staffing` and intentionally leave the legacy
+`gm_model.resource_lines` relationship empty. `_staffing_from_gm` read only
+that legacy relationship, while `_compute_floors` read the commercial snapshot.
+The same immutable GM version therefore calculated correctly but serialized
+zero staffing rows. This was neither missing user data nor a browser cache
+issue; the owner's record remained read-only.
+
+A new regression first failed with one valid typed commercial staffing
+assignment producing zero confirmation rows. `_staffing_from_gm` now treats
+typed `commercial_inputs` as authoritative when present, recursively includes
+hybrid child components, and maps the saved role, seniority, location, explicit
+or calendar-derived hours, allocation, rates, cost and effective dates into
+the confirmation payload. Legacy GM versions still use `resource_lines`.
+Malformed historical typed inputs surface a precise warning rather than a
+fabricated row. Focused confirmation, commercial persistence and all seven
+commercial-profile suites are **98/98 passed**; Ruff and `git diff --check`
+pass.
+
+Exact next commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git status --short`,
+then commit the three owned files as
+`fix(s22): show saved commercial staffing on confirmation` and push. Build an
+immutable API image from that commit, generate/review a fresh whole-root
+Terraform plan while preserving production approver identities, and stop for
+the required human plan approval. After deployment, open an isolated saved
+commercial fixture in a fresh browser and prove Confirm SOW displays its rows
+beside the same GM version; do not mutate the owner's Caesars record and do not
+merge main before acceptance.
+
 **2026-10-07 11:02 PDT — STAGING EVIDENCE COMMITTED/PUSHED; WAITING ONLY FOR
 PRODUCT-OWNER CLICK-THROUGH.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

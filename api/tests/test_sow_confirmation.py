@@ -186,6 +186,82 @@ async def test_missing_scope_cannot_stamp_confirmation(seeded_sow, session):
 # --- what actually blocks submit (S10-11) --------------------------------
 
 
+def test_saved_commercial_staffing_is_rendered_on_confirmation():
+    """S22 stores staffing inside the immutable commercial input document.
+
+    Confirm SOW must read the same rows that produced its GM summary instead
+    of consulting only the legacy ``resource_line`` relationship.
+    """
+
+    from datetime import date
+    from decimal import Decimal
+
+    from pydantic import TypeAdapter
+
+    from app.gm.calendar import StaffingAssignment
+    from app.gm.commercial import PricingComponent
+    from app.models.gm_model import GmModel
+    from app.services.sow_confirmation import _staffing_from_gm
+    from tests.test_s21_commercial_profiles import component
+
+    assignment = StaffingAssignment(
+        assignment_id="consultant-1",
+        source_id="sow-x",
+        source_version="2",
+        component_id="build",
+        profile_version="1",
+        policy_version="gm-1",
+        role="Intune Consultant",
+        seniority="Senior",
+        location="India",
+        timezone="America/New_York",
+        currency="USD",
+        quantity=2,
+        allocation=Decimal("0.5"),
+        calendar=None,
+        hours_billable=Decimal("960"),
+        bill_rate=None,
+        cost_rate=Decimal("70"),
+        rate_version=None,
+        cost_version="loaded-cost-2026",
+        start=date(2026, 10, 12),
+        end=date(2027, 4, 12),
+    )
+    inputs = TypeAdapter(PricingComponent).dump_python(
+        component(
+            service_start=date(2026, 10, 12),
+            service_end=date(2027, 4, 12),
+            staffing=(assignment,),
+        ),
+        mode="json",
+    )
+    model = GmModel(
+        id=uuid.uuid4(),
+        engagement_type="fixed_assignment",
+        currency="USD",
+        version=3,
+        commercial_inputs=inputs,
+    )
+
+    result = _staffing_from_gm(model)
+
+    assert len(result.lines) == 1
+    line = result.lines[0]
+    assert (line.role, line.seniority, line.location) == (
+        "Intune Consultant",
+        "Senior",
+        "India",
+    )
+    assert line.hours_billable == Decimal("960")
+    assert line.allocation_pct == Decimal("0.5")
+    assert line.hourly_bill_rate == Decimal("0")
+    assert line.hourly_cost == Decimal("70")
+    assert (line.start_date, line.end_date) == (
+        date(2026, 10, 12),
+        date(2027, 4, 12),
+    )
+
+
 def test_fixed_fee_blocks_on_cost_not_bill_rate():
     """Reported: a fixed-price SOW demanded a bill rate on all three staffing
     lines, which is a number nobody has on a contract where nobody bills by
