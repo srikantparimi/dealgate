@@ -10,8 +10,8 @@ checkpoint `60fde64f55e89ff924196fb64ca8afe9a4a5fcbb`.
 - API: ECS task definition `officeapp-dev-api:88`, rollout completed 1/1
 - Image: `s22simple-e92b4dd`
 - Digest: `sha256:34dc726a5e1e4fd034d74c7513bb3d9d812459a2f1ecce3388880f3bff16a455`
-- Frontend: `assets/index-BPgaqF0W.js`, CSS `assets/index-CGMBFthR.css`
-- CloudFront invalidation: `I23X1YLBST202823ESU3DXJ0F5` (completed)
+- Frontend: `assets/index-dqUPUe4H.js`, CSS `assets/index-CGMBFthR.css`
+- CloudFront invalidation: `ICQ1QCRL5JXEXS6V5DJFFZTIQ4` (completed)
 - Migration task: `e2518e23e4794eeeafb7aea0d051e255` (succeeded)
 - Deploy smoke: `smoke 20261007T071522Z` (green; cleanup gate clean)
 
@@ -85,3 +85,12 @@ deployed proof used an isolated equivalent fixture for every mutation.
 - The first image-build command used `api/` as context and failed before push
   because the Dockerfile copies root-relative `api/` and `worker/` paths. The
   corrected `-f api/Dockerfile .` build produced the deployed image above.
+- The first SPA publication manually supplied the Cognito domain without an
+  `https://` scheme. An unauthenticated browser therefore resolved the hosted
+  UI as a relative app path, repeatedly prefixed it and reached CloudFront 414.
+  The first emergency rebuild corrected the domain but also exposed that the
+  manually overridden redirect URI `/` was not in Cognito's callback list.
+  The final bundle was built from the checked-in host-agnostic
+  `web/.env.production`: fresh navigation reaches Cognito over HTTPS with
+  `/auth/callback`, and a real hosted-UI login returns to `/command` with the
+  DealGate shell visible.

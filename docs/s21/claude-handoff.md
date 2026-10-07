@@ -2,6 +2,47 @@
 
 ## RESUME HERE
 
+**2026-10-07 00:32 PDT — POST-DEPLOY LOGIN OUTAGE DIAGNOSED AND RESTORED;
+FRESH HOSTED-UI LOGIN GREEN.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, pushed proof checkpoint
+`b476de4896bd9134239a1da5cc7b122433acaec4`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched. The only current
+owned source-tree changes are this handoff, the deployment report and the
+manual deploy runbook correction; no application code, API, schema or business
+data changed in the recovery.
+
+Confirmed incident cause: the first manual SPA build supplied
+`VITE_COGNITO_DOMAIN=officeapp-dev-405473.auth.us-east-2.amazoncognito.com`
+without `https://`. `auth/cognito.ts` passed it to `window.location.assign`, so
+the browser treated it as a relative app path, repeatedly prefixed the Cognito
+path under `app.dealgateapp.com`, and eventually CloudFront returned HTTP 414.
+Root, the affected SOW route and `/api/healthz` remained HTTP 200; this was an
+SPA OAuth configuration outage, not an origin, API or database outage.
+
+The first emergency rebuild added HTTPS and eliminated the 414, but its manual
+`VITE_COGNITO_REDIRECT_URI=https://app.dealgateapp.com/` override correctly
+failed the fresh-session check with Cognito `redirect_mismatch`. AWS inspection
+confirmed the registered callback is
+`https://app.dealgateapp.com/auth/callback` and logout is the site root. The
+final build removed all interactive overrides and used the checked-in
+host-agnostic `web/.env.production`. It is live as
+`assets/index-dqUPUe4H.js` (CSS `assets/index-CGMBFthR.css`), CloudFront
+invalidation `ICQ1QCRL5JXEXS6V5DJFFZTIQ4` completed. A fresh unauthenticated
+browser received app HTTP 200, one 302 to the absolute Cognito authorize URL,
+then Cognito login HTTP 200 with a 329-character URL and the correct encoded
+`/auth/callback`. A real hosted-UI sign-in using the isolated staging identity
+returned to `https://app.dealgateapp.com/command`, title `DealGate`, with the
+DealGate shell visible. The earlier connected GM proof remains valid because
+the application source and API did not change.
+
+`docs/runbooks/deploy.md` now requires the checked-in production environment,
+explicitly unsets interactive Vite overrides, and makes fresh Cognito redirect
+plus real login a post-invalidation gate. No process is active. Exact next
+commands: `git diff --check && git diff -- docs/runbooks/deploy.md docs/s21/evidence/staging/s22-gm-cta/report.md docs/s21/claude-handoff.md`,
+then commit and push those three documentation updates. Stop for product-owner
+acceptance; do not merge main.
+
 **2026-10-07 00:24 PDT — SIMPLIFIED STAFFING & GM DEPLOYED PROOF GREEN;
 PRODUCT-OWNER ACCEPTANCE NEXT.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
