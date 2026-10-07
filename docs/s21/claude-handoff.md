@@ -2,16 +2,16 @@
 
 ## RESUME HERE
 
-**2026-10-06 22:15 PDT — S22 STAFFING/GM RECURRENCE FIX, LOCAL CANDIDATE
-AWAITING CHECKPOINT COMMIT AND DEPLOYMENT.** Authoritative integration tree for
+**2026-10-06 22:19 PDT — S22 STAFFING/GM RECURRENCE FIX, LOCAL CANDIDATE
+COMMITTED; DEPLOYMENT NEXT.** Authoritative integration tree for
 this repair is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
-`fix/s22-gm-cta`, current base HEAD
-`3ef55e576508af70e5c34d8593eec09db1d01560` (the verified deployed main
-baseline described immediately below). The tree intentionally contains the
-owned application/test changes listed by `git status --short`; none are merged
-to main. Main worktree `/Users/srikanthparimi/OfficeApp/dealgate` remains on
-the same commit and has six pre-existing modified S19 screenshot PNGs; preserve
-them. No test, server, migration, browser or deployment process is active.
+`fix/s22-gm-cta`, application checkpoint
+`9b46d9db0a06f18ea8cac3e1b018512680a6579d`, based on verified deployed main
+baseline `3ef55e576508af70e5c34d8593eec09db1d01560`. The tree is clean before
+this handoff-only update and none of the repair is merged to main. Main
+worktree `/Users/srikanthparimi/OfficeApp/dealgate` remains on the baseline and
+has six pre-existing modified S19 screenshot PNGs; preserve them. No test,
+server, migration, browser or deployment process is active.
 
 Live read-only reproduction used opportunity
 `bbefb2b0-90fc-4a7c-8995-bbe637b44654`. Do not mutate that business record.
@@ -61,8 +61,8 @@ saves, reloads and observes `Submit for approval` without leaving the Staffing
 tab. Historical React Router v7 future warnings are non-failures.
 
 Exact resume command:
-`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git diff --check`.
-Then review/commit the owned repair, build the immutable API image and SPA,
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git log -2 --oneline`.
+Then build the immutable API image and SPA,
 prepare and inspect a fresh whole-root Terraform plan with the currently
 enabled operational variables, deploy through the migration/API/worker gate,
 run focused smoke and a fresh-session browser proof using an isolated fixture,
