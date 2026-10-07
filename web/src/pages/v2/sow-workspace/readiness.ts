@@ -384,7 +384,7 @@ export function nextValidStep(
         };
       if (commercial.state === "ready_to_save")
         return {
-          label: "Save financial version",
+          label: "Save",
           action: "commercial",
           disabled: false,
         };

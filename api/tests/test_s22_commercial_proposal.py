@@ -112,10 +112,14 @@ async def test_proposal_prefills_from_extraction_and_staffing_lines(session):
     # Staffing carried over with utilization intact.
     assert len(component.staffing) == 2
     by_role = {a.role: a for a in component.staffing}
-    assert by_role["Senior Engineer"].allocation == Decimal("0.5")
-    assert by_role["Mid Analyst"].allocation == Decimal("1")
-    assert by_role["Senior Engineer"].cost_rate == Decimal("95")
-    assert by_role["Senior Engineer"].bill_rate == Decimal("150")
+    assert by_role["Engineer"].seniority == "Senior"
+    assert by_role["Engineer"].allocation == Decimal("0.5")
+    assert by_role["Engineer"].hours_billable == Decimal("480")
+    assert by_role["Analyst"].seniority == "Mid"
+    assert by_role["Analyst"].allocation == Decimal("1")
+    assert by_role["Analyst"].hours_billable == Decimal("960")
+    assert by_role["Engineer"].cost_rate == Decimal("95")
+    assert by_role["Engineer"].bill_rate == Decimal("150")
 
     prov = proposal["provenance"]
     assert prov["service_start"] == "extracted"

@@ -249,7 +249,7 @@ describe("S14b workspace state", () => {
         commercial: { state: "ready_to_save" },
       }),
     ).toMatchObject({
-      label: "Save financial version",
+      label: "Save",
       action: "commercial",
     });
     const belowFloor = snap({

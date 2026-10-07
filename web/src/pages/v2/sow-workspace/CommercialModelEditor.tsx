@@ -1,8 +1,6 @@
 /**
- * S22 redesign · Staffing & GM tab content, organized as four local
- * sections over ONE persisted draft (never a wizard):
- *   1 Contract & pricing · 2 Team & calendars ·
- *   3 Monthly plan & expenses · 4 Review & save
+ * Staffing & GM uses one short contract section, one staffing grid and one
+ * Save action. Monthly schedules remain server-derived for Forecast.
  * A Scope needs / Budget supports / Currently planned summary leads the
  * page; a green margin cannot hide an understaffed plan. All seven
  * registered pricing models keep their model-specific editors. Money
@@ -10,7 +8,7 @@
  * display. The single readiness panel lives in the workspace shell.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Calculator, Plus, Save, Trash2 } from "lucide-react";
+import { Save } from "lucide-react";
 import {
   getMe,
   getTermAssist,
@@ -38,12 +36,12 @@ import type { WorkspaceSnapshot } from "./readiness";
 import { formatPercent, fractionToPercent } from "./format";
 import {
   emptyPricing,
-  MonthlyAllocations,
   PricingFields,
   PROFILE_LABELS,
 } from "./commercial-editor/PricingFields";
 import { CalendarFields } from "./commercial-editor/CalendarFields";
 import { HybridFields } from "./commercial-editor/HybridFields";
+import { AdditionalCostsEditor } from "./commercial-editor/AdditionalCostsEditor";
 import { bindCommercialSource } from "./commercial-editor/bindings";
 import { PlanTeamPanel, type ResolutionAction } from "./commercial-editor/PlanTeamPanel";
 import { FinanceGmPanel } from "./staffing/FinanceGmPanel";
@@ -67,23 +65,21 @@ export interface CommercialEditorStatus {
 function blockerCopy(item: CommercialMissing): {
   message: string;
   label: string;
-  section: "contract" | "team" | "monthly" | "review";
+  section: "contract" | "team";
 } {
   const row = item.line ? `Row ${item.line}${item.role ? ` · ${item.role}` : ""}: ` : "";
   const field = item.field ?? item.key ?? "input";
-  const definitions: Record<string, [string, string, "contract" | "team" | "monthly" | "review"]> = {
+  const definitions: Record<string, [string, string, "contract" | "team"]> = {
     billing_cadence: ["confirm the billing schedule", "billing schedule", "contract"],
-    cost_basis: ["confirm the loaded-cost basis", "cost basis", "contract"],
-    costs_confirmed: ["confirm all delivery costs", "cost confirmation", "review"],
     service_period: ["confirm the contract start and end dates", "contract dates", "contract"],
     currency: ["confirm the contract currency", "contract currency", "contract"],
-    calendar: ["add a working calendar", item.line ? `row ${item.line} calendar` : "working calendar", "team"],
-    "calendar.coverage": ["extend the calendar across the role dates", item.line ? `row ${item.line} calendar coverage` : "calendar coverage", "team"],
+    calendar: ["enter total hours", item.line ? `row ${item.line} hours` : "hours", "team"],
+    hours_billable: ["enter total hours", item.line ? `row ${item.line} hours` : "hours", "team"],
     cost_rate: ["enter the delivery cost rate", item.line ? `row ${item.line} cost rate` : "cost rate", "team"],
     cost_version: ["identify the cost rate source/version", item.line ? `row ${item.line} cost source` : "cost source", "team"],
     location: ["confirm the delivery location", item.line ? `row ${item.line} location` : "delivery location", "team"],
-    costs: ["complete the delivery expense", "delivery expense", "monthly"],
-    "costs.amount": ["complete the delivery expense amount", "delivery expense", "monthly"],
+    costs: ["complete the additional cost", "additional cost", "team"],
+    "costs.amount": ["complete the additional cost amount", "additional cost", "team"],
   };
   const [action, label, section] = definitions[field] ?? [
     item.reason ?? `complete ${field.replaceAll("_", " ")}`,
@@ -218,7 +214,7 @@ function updateContractDate(
  */
 const draftCache = new Map<
   string,
-  { inputs: CommercialComponent; reason: string; dirty: boolean }
+  { inputs: CommercialComponent; dirty: boolean }
 >();
 
 /** Test isolation hook: drafts must not leak between test renders. */
@@ -278,7 +274,7 @@ function deriveDraftDefaults(
       start && end && pricing.total_fee &&
       !(pricing.allocations ?? []).length
     )
-      fill("allocations", "Monthly revenue plan defaulted to equal shares per service month — edit any month below.", () => {
+      fill("allocations", "Revenue is distributed evenly across the service months.", () => {
         // Revenue geography defaults to where the team delivers from
         // (the dominant staffing location); change it if revenue books
         // elsewhere. Equal weights are exact: the engine normalizes.
@@ -311,9 +307,7 @@ function deriveDraftDefaults(
 
 const SECTIONS = [
   { id: "contract", label: "1 · Contract & pricing" },
-  { id: "team", label: "2 · Team & calendars" },
-  { id: "monthly", label: "3 · Monthly plan & expenses" },
-  { id: "review", label: "4 · Review & save" },
+  { id: "team", label: "2 · Team & additional costs" },
 ] as const;
 
 export function CommercialModelEditor({
@@ -340,7 +334,6 @@ export function CommercialModelEditor({
   const [canWrite, setCanWrite] = useState(false);
   const [policy, setPolicy] = useState("");
   const [floors, setFloors] = useState<{ us: string; india: string } | null>(null);
-  const [reason, setReason] = useState(cached?.dirty ? cached.reason : "");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -420,8 +413,8 @@ export function CommercialModelEditor({
 
   // Draft survives tab navigation: every change lands in the cache.
   useEffect(() => {
-    draftCache.set(draftKey, { inputs, reason, dirty });
-  }, [draftKey, inputs, reason, dirty]);
+    draftCache.set(draftKey, { inputs, dirty });
+  }, [draftKey, inputs, dirty]);
 
   // S22 · pre-fill from the SOW + auto-staffing proposal when nothing is
   // saved yet and the human has not started typing. Every value stays
@@ -593,7 +586,17 @@ export function CommercialModelEditor({
     setError("");
     setNotice("");
     try {
-      const body = bindCommercialSource(inputs, {
+      // Pressing Save is the human confirmation of the staffing and
+      // additional-cost rows. Cost basis is deliberately not a user field.
+      const body = bindCommercialSource({
+        ...inputs,
+        billing_cadence:
+          inputs.billing_cadence === "on_completion"
+            ? "fixed_post_delivery"
+            : inputs.billing_cadence,
+        cost_basis: null,
+        costs_confirmed: true,
+      }, {
         policy_version: policy,
         source_id: snap.sow!.sow_id,
         source_version: snap.sow!.id,
@@ -603,7 +606,7 @@ export function CommercialModelEditor({
           sow_version_id: snap.sow!.id,
           expected_gm_model_id: modelId,
           inputs: body,
-          change_reason: reason,
+          change_reason: "Staffing and GM checkpoint saved",
         });
         setModelId(response.gm_model.id);
         setInputs(
@@ -652,7 +655,7 @@ export function CommercialModelEditor({
     const computable =
       !!inputs.service_start &&
       !!inputs.service_end &&
-      (!!inputs.pricing?.total_fee || inputs.staffing.length > 0);
+      inputs.pricing !== null;
     if (!computable) return;
     const body = JSON.stringify(inputs);
     if (body === lastAutoPreview.current) return;
@@ -691,22 +694,19 @@ export function CommercialModelEditor({
         : section;
       const labelByField: Record<string, string> = {
         billing_cadence: "Billing schedule",
-        cost_basis: "Cost basis",
         service_period: "Contract start",
         currency: "Contract currency",
-        location: "Delivery location",
-        cost_rate: "Delivery cost rate ($/paid hour)",
-        cost_version: "Cost rate source/version",
+        location: item.line ? `Location ${item.line}` : "Location 1",
+        calendar: item.line ? `Hours ${item.line}` : "Hours 1",
+        hours_billable: item.line ? `Hours ${item.line}` : "Hours 1",
+        cost_rate: item.line ? `Cost per hour ${item.line}` : "Cost per hour 1",
       };
       const label = labelByField[item.field ?? ""];
       const exact = label
         ? [...(row?.querySelectorAll<HTMLElement>("input, select, button") ?? [])]
             .find((control) => control.getAttribute("aria-label") === label)
         : null;
-      const target = exact ??
-        (item.field === "calendar"
-          ? row?.querySelector<HTMLElement>(`[data-add-calendar="${item.line}"]`)
-          : row?.querySelector<HTMLElement>("input, select, button")) ?? section;
+      const target = exact ?? row?.querySelector<HTMLElement>("input, select, button") ?? section;
       target?.closest("details")?.setAttribute("open", "");
       target?.focus?.();
     }, 0);
@@ -739,11 +739,6 @@ export function CommercialModelEditor({
       inputs.staffing.length > 0
         ? `${inputs.staffing.length} role${inputs.staffing.length === 1 ? "" : "s"} · ${plannedFte} FTE`
         : "No roles yet",
-    monthly:
-      (pricing.allocations?.length ?? 0) + inputs.costs.length > 0
-        ? `${pricing.allocations?.length ?? 0} allocations · ${inputs.costs.length} expenses`
-        : "Nothing planned yet",
-    review: dirty ? "Unsaved draft" : "Saved",
   };
 
   const calculationCurrent = !dirty || calculationState === "preview";
@@ -756,20 +751,13 @@ export function CommercialModelEditor({
     const copy = blockerCopy(firstMissing);
     editorStatus = { state: "blocked", blocker: copy.message, blockerLabel: copy.label };
   } else if (calculationCurrent && result.computed?.complete && dirty) {
-    editorStatus = reason.trim()
-      ? { state: "ready_to_save" }
-      : {
-          state: "blocked",
-          blocker: "The calculation is valid. Add a version note before saving it.",
-          blockerLabel: "version note",
-        };
+    editorStatus = { state: "ready_to_save" };
   } else if (dirty) editorStatus = { state: "ready_to_preview" };
   else editorStatus = { state: "idle" };
 
   primaryActionRef.current = () => {
     if (firstMissing) focusMissing(firstMissing);
-    else if (calculationCurrent && result.computed?.complete && dirty && reason.trim()) void calculate(true);
-    else if (calculationCurrent && result.computed?.complete && dirty) goTo("review");
+    else if (calculationCurrent && result.computed?.complete && dirty) void calculate(true);
     else if (dirty) void calculate(false);
     else goTo("contract");
   };
@@ -784,7 +772,7 @@ export function CommercialModelEditor({
   useEffect(() => () => onStatusChange?.(null), [onStatusChange]);
 
   const sectionShell = (
-    id: (typeof SECTIONS)[number]["id"],
+    id: "contract" | "team",
     children: ReactNode,
   ) => (
     <section
@@ -793,13 +781,13 @@ export function CommercialModelEditor({
       ref={(el) => {
         sectionRefs.current[id] = el;
       }}
-      aria-label={SECTIONS.find((s) => s.id === id)!.label}
+      aria-label={SECTIONS.find((s) => s.id === id)?.label ?? id}
       data-testid={`sgm-section-${id}`}
       className="rounded-panel border border-divider bg-surface p-4 space-y-4 scroll-mt-24"
     >
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-section text-text">
-          {SECTIONS.find((s) => s.id === id)!.label}
+          {SECTIONS.find((s) => s.id === id)?.label ?? id}
         </h3>
         <span className="text-secondary text-text-secondary">
           {sectionStatus[id]}
@@ -831,7 +819,7 @@ export function CommercialModelEditor({
       )}
 
       {/* Scope needs / Budget supports / Currently planned — one summary
-          above the four sections. Unknown stays Unknown, never zero. */}
+          above the editor. Unknown stays Unknown, never zero. */}
       <div
         data-testid="sgm-summary"
         className="rounded-panel border border-divider bg-surface p-4"
@@ -872,20 +860,6 @@ export function CommercialModelEditor({
         )}
       </div>
 
-      {/* Section navigation: free movement, status labels, no wizard. */}
-      <nav aria-label="Plan sections" className="flex flex-wrap gap-2">
-        {SECTIONS.map((section) => (
-          <Button
-            key={section.id}
-            type="button"
-            variant="secondary"
-            onClick={() => goTo(section.id)}
-          >
-            {section.label}
-          </Button>
-        ))}
-      </nav>
-
       {notice && <p role="status">{notice}</p>}
       {defaultNotes.length > 0 && (
         <div
@@ -918,8 +892,7 @@ export function CommercialModelEditor({
           <p className="text-text">
             Working draft restored
             {draftRestored ? ` (last saved ${draftRestored.slice(0, 16).replace("T", " ")})` : ""}
-            . It is not an approved version — Save version below to publish
-            it to approvals.
+            . Continue editing or use Save when you are ready to stop.
           </p>
           <button
             type="button"
@@ -1082,13 +1055,29 @@ export function CommercialModelEditor({
                     </div>
                   </section>
                 )}
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {field("Workstream", "workstream_id")}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {field("Contract start", "service_start", "date")}
                   {field("Contract end", "service_end", "date")}
-                  {field("Contract timezone", "timezone")}
                   {field("Contract currency", "currency")}
-                  {field("Billing schedule", "billing_cadence")}
+                  <label className="space-y-1 text-secondary">
+                    Billing schedule
+                    <select
+                      aria-label="Billing schedule"
+                      className="h-10 w-full rounded-md border border-divider bg-surface px-3"
+                      value={
+                        inputs.billing_cadence === "on_completion"
+                          ? "fixed_post_delivery"
+                          : (inputs.billing_cadence ?? "")
+                      }
+                      onChange={(event) => patch("billing_cadence", event.target.value || null)}
+                    >
+                      <option value="">Select</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="biweekly">Bi-weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="fixed_post_delivery">Fixed after project delivery</option>
+                    </select>
+                  </label>
                 </div>
                 <p className="text-secondary text-text-secondary">
                   {inputs.service_start && inputs.service_end
@@ -1130,38 +1119,29 @@ export function CommercialModelEditor({
                     )}
                   </div>
                 )}
-                {inputs.profile === "hybrid" ? (
+                {inputs.profile === "fixed_assignment" ? (
+                  <label className="block text-secondary">
+                    Contract fee
+                    <Input
+                      aria-label="Contract fee"
+                      inputMode="decimal"
+                      value={pricing.total_fee ?? ""}
+                      onChange={(event) =>
+                        patch("pricing", {
+                          ...pricing,
+                          total_fee: event.target.value || null,
+                        })
+                      }
+                    />
+                  </label>
+                ) : inputs.profile === "hybrid" ? (
                   <HybridFields component={inputs} onChange={replaceComponent} />
                 ) : (
                   <PricingFields
                     component={inputs}
                     onChange={(value) => patch("pricing", value)}
-                    monthlyAllocationsElsewhere={inputs.profile === "fixed_assignment"}
                   />
                 )}
-                <details className="text-secondary">
-                  <summary className="cursor-pointer py-1">Advanced pricing details</summary>
-                  <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {field("Cost basis", "cost_basis")}
-                  </div>
-                </details>
-                <details className="text-secondary">
-                  <summary className="cursor-pointer py-1">
-                    Source document & evidence
-                  </summary>
-                  <label className="block text-secondary mt-2">
-                    Evidence lines (document, field, page — from SOW version{" "}
-                    {snap.sow?.version_no ?? "—"})
-                    <textarea
-                      aria-label="Source evidence"
-                      className="mt-1 min-h-20 w-full rounded-md border border-divider bg-surface p-3"
-                      value={inputs.source_evidence.join("\n")}
-                      onChange={(e) =>
-                        patch("source_evidence", e.target.value.split("\n"))
-                      }
-                    />
-                  </label>
-                </details>
               </>,
             )}
 
@@ -1194,6 +1174,11 @@ export function CommercialModelEditor({
                     inputs.staffing.length > 0) && (
                     <CalendarFields component={inputs} onChange={replaceComponent} />
                   )}
+                  <AdditionalCostsEditor
+                    rows={inputs.costs}
+                    serviceStart={inputs.service_start}
+                    onChange={(rows) => patch("costs", rows)}
+                  />
                 </div>
                 <aside className="min-w-0 xl:sticky xl:top-4 xl:self-start">
                   <FinanceGmPanel
@@ -1217,165 +1202,19 @@ export function CommercialModelEditor({
               </div>,
             )}
 
-            {sectionShell(
-              "monthly",
-              <>
-                {inputs.profile === "fixed_assignment" && (
-                  <MonthlyAllocations
-                    pricing={pricing}
-                    onChange={(value) => patch("pricing", value)}
-                  />
-                )}
-                <h3 className="text-body font-medium">Other delivery expenses</h3>
-                <p className="text-secondary text-text-secondary">
-                  Travel, licences, subcontractors — anything that hits
-                  delivery cost beyond the team above.
-                </p>
-                {inputs.costs.map((row, i) => (
-                  <div
-                    key={row.source_id}
-                    className="flex flex-wrap items-end gap-2"
-                  >
-                    <label className="min-w-36 flex-1">
-                      Month
-                      <Input
-                        aria-label={`Cost month ${i + 1}`}
-                        type="date"
-                        value={row.month}
-                        onChange={(e) =>
-                          patch(
-                            "costs",
-                            inputs.costs.map((r, j) =>
-                              j === i ? { ...r, month: e.target.value } : r,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    <Location
-                      label={`Cost location ${i + 1}`}
-                      value={row.location}
-                      onChange={(v) =>
-                        patch(
-                          "costs",
-                          inputs.costs.map((r, j) =>
-                            j === i ? { ...r, location: v } : r,
-                          ),
-                        )
-                      }
-                    />
-                    <label className="min-w-24 flex-1">
-                      Expense amount
-                      <Input
-                        aria-label={`Loaded cost ${i + 1}`}
-                        inputMode="decimal"
-                        value={row.amount ?? ""}
-                        onChange={(e) =>
-                          patch(
-                            "costs",
-                            inputs.costs.map((r, j) =>
-                              j === i
-                                ? { ...r, amount: e.target.value || null }
-                                : r,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    <Remove
-                      label={`Delete cost ${i + 1}`}
-                      onClick={() =>
-                        patch(
-                          "costs",
-                          inputs.costs.filter((_, j) => j !== i),
-                        )
-                      }
-                    />
-                  </div>
-                ))}
-                <Button
-                  variant="secondary"
-                  onClick={() =>
-                    patch("costs", [
-                      ...inputs.costs,
-                      {
-                        source_id: crypto.randomUUID(),
-                        month: "",
-                        location: "",
-                        amount: null,
-                      },
-                    ])
-                  }
-                >
-                  <Plus className="h-4 w-4" /> Add expense
-                </Button>
-                {result.commercial_snapshot && (
-                  <>
-                    <h3 className="text-body font-medium">Monthly schedule</h3>
-                    <p className="text-secondary">
-                      {calculationState === "stale_preview"
-                        ? "Provisional — edits since the last calculation are not reflected"
-                        : calculationState === "preview"
-                          ? "Provisional preview — not the saved plan"
-                          : dirty
-                            ? "Saved calculation; edits not calculated"
-                            : "Saved calculation"}
-                    </p>
-                    <Schedule
-                      schedule={result.commercial_snapshot.schedule}
-                      onFixMissing={focusMissing}
-                    />
-                  </>
-                )}
-              </>,
-            )}
-
-            {sectionShell(
-              "review",
-              <>
-                <label className="flex items-center gap-2">
-                  <input
-                    aria-label="All delivery costs confirmed"
-                    type="checkbox"
-                    checked={inputs.costs_confirmed}
-                    onChange={(e) => patch("costs_confirmed", e.target.checked)}
-                  />
-                  All delivery costs confirmed
-                </label>
-                <p className="text-secondary text-text-secondary">
-                  A human attestation — AI proposals never set this.
-                </p>
-                <label className="block">
-                  Version note (why this version exists)
-                  <Input
-                    aria-label="Change reason"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                  />
-                </label>
-              </>,
-            )}
           </fieldset>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              disabled={!editable || busy || !policy || !snap.sow}
-              onClick={() => void calculate(false)}
-            >
-              <Calculator className="h-4 w-4" /> Preview
-            </Button>
             <Button
               disabled={
                 !editable ||
                 busy ||
                 !policy ||
-                !reason.trim() ||
                 !snap.sow ||
                 !snap.deal
               }
               onClick={() => void calculate(true)}
             >
-              <Save className="h-4 w-4" /> Save version
+              <Save className="h-4 w-4" /> {busy ? "Saving…" : "Save"}
             </Button>
           </div>
         </>
@@ -1409,8 +1248,7 @@ export function CommercialModelEditor({
             }}>Replace unsupported pricing terms</Button>
           </fieldset>
           <div className="flex flex-wrap gap-2">
-            <Button disabled variant="secondary"><Calculator className="h-4 w-4" /> Preview</Button>
-            <Button disabled><Save className="h-4 w-4" /> Save version</Button>
+            <Button disabled><Save className="h-4 w-4" /> Save</Button>
           </div>
         </div>
       )}
@@ -1440,7 +1278,7 @@ export function CommercialModelEditor({
             ? "Approval flow: margin is within policy, so submission routes to the configured function reviews only — no CEO step."
             : "Approval flow: the configured function reviews plus the CEO exception step, which is added automatically while the margin is below a policy floor or not yet assessed."}
           {dirty || calculationState !== "saved"
-            ? " This is a provisional calculation — Save version to publish it to the approval flow."
+            ? " This is a provisional calculation — Save to publish it to the approval flow."
             : ""}
         </p>
       )}
@@ -1453,126 +1291,5 @@ export function CommercialModelEditor({
         </dl>
       )}
     </section>
-  );
-}
-
-function Location({
-  value,
-  label,
-  onChange,
-}: {
-  value: string;
-  label: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <label className="min-w-28 flex-1">
-      Location
-      <select
-        aria-label={label}
-        className="block h-10 w-full rounded-md border border-divider bg-surface px-3"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">Unconfirmed</option>
-        <option value="US">US</option>
-        <option value="India">India</option>
-      </select>
-    </label>
-  );
-}
-function Remove({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <Button variant="ghost" aria-label={label} title={label} onClick={onClick}>
-      <Trash2 className="h-4 w-4" />
-    </Button>
-  );
-}
-function Schedule({
-  schedule,
-  onFixMissing,
-}: {
-  schedule: CommercialSchedule;
-  onFixMissing?: (item: CommercialMissing) => void;
-}) {
-  return (
-    <div className="min-w-0 space-y-2">
-      <h3 className="text-body font-medium">
-        {schedule.component?.workstream_id ?? "Monthly schedule"}
-      </h3>
-      <p className="text-secondary">{schedule.status}</p>
-      {schedule.missing.map((item, i) => (
-        <div key={i} className="flex flex-wrap items-center gap-2 text-warning">
-          <p>{blockerCopy(item).message}</p>
-          {onFixMissing ? (
-            <Button type="button" variant="secondary" onClick={() => onFixMissing(item)}>
-              Fix this input
-            </Button>
-          ) : null}
-        </div>
-      ))}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-body">
-          <thead>
-            <tr>
-              {["Month", "Location", "Revenue", "Cost"].map((label) => (
-                <th className="p-2" key={label}>
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {schedule.rows.map((row, i) => (
-              <tr className="border-t border-divider" key={i}>
-                <td className="p-2 whitespace-nowrap">{row.month}</td>
-                <td className="p-2">{row.location}</td>
-                <td className="p-2">{row.revenue}</td>
-                <td className="p-2">{row.cost ?? "Unconfirmed"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {!!schedule.calendar_rows?.length && (
-        <section aria-label="Calendar calculation details" className="min-w-0 space-y-3">
-          <h4 className="font-medium">Calendar calculation details</h4>
-          {schedule.calendar_rows.map((row, index) => (
-            <div key={`${row.assignment.assignment_id}-${row.month}-${index}`} className="min-w-0 border-t border-divider pt-3">
-              <p>{row.assignment.role} / {row.assignment.location} / {row.month}</p>
-              <p className="text-secondary">{row.period_start} to {row.period_end}; {row.assignment.quantity} people; allocation {row.assignment.allocation}</p>
-              <p className="text-secondary">
-                {row.assignment.cost_rate_basis === "monthly" ? "Monthly cost per person" :
-                  row.assignment.cost_rate_basis === null ? "Unconfirmed cost basis" : "Loaded cost per paid hour"}:
-                {" "}{row.assignment.currency ?? "Unconfirmed currency"} {row.assignment.cost_rate ?? "Unconfirmed"} / {row.assignment.cost_version ?? "Unconfirmed source"}
-              </p>
-              {row.assignment.cost_rate_basis === "monthly" && (
-                <p className="text-secondary">Partial-month cost policy: {row.assignment.cost_proration === "full_month" ? "Full monthly allocation" : "Unconfirmed"}</p>
-              )}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-body">
-                  <thead><tr>{["Scheduled hours", "Billable hours", "Paid hours"].map(label => <th className="p-2" key={label}>{label}</th>)}</tr></thead>
-                  <tbody><tr>{[row.scheduled_hours, row.billable_hours, row.paid_hours].map((value, i) => <td className="p-2" key={i}>{value ?? "Unconfirmed"}</td>)}</tr></tbody>
-                </table>
-              </div>
-              <details>
-                <summary className="cursor-pointer py-2">Daily hours and exceptions</summary>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-body">
-                    <thead><tr>{["Date", "Scheduled hours", "Billable hours", "Paid hours", "Exception"].map(label => <th className="p-2" key={label}>{label}</th>)}</tr></thead>
-                    <tbody>{row.days.map(day => <tr key={day.day} className="border-t border-divider">
-                      <td className="whitespace-nowrap p-2">{day.day}</td><td className="p-2">{day.scheduled_hours}</td><td className="p-2">{day.billable_hours}</td><td className="p-2">{day.paid_hours}</td><td className="p-2">{day.reason ?? ""}</td>
-                    </tr>)}</tbody>
-                  </table>
-                </div>
-              </details>
-            </div>
-          ))}
-        </section>
-      )}
-      {schedule.children?.map((child, i) => (
-        <Schedule key={i} schedule={child} onFixMissing={onFixMissing} />
-      ))}
-    </div>
   );
 }

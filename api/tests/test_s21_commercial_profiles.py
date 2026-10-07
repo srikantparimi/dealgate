@@ -162,7 +162,7 @@ def test_mixed_location_component_floor_is_not_hidden_by_blended_margin():
 
 @pytest.mark.parametrize("changes,field", [
     ({"currency": None}, "currency"), ({"service_start": None}, "service_period"),
-    ({"costs_confirmed": False}, "costs_confirmed"), ({"cost_basis": None}, "cost_basis"),
+    ({"costs_confirmed": False}, "costs_confirmed"),
     ({"source_evidence": ()}, "source_evidence"),
 ])
 def test_material_unresolved_inputs_never_assess(changes, field):
@@ -183,6 +183,43 @@ def test_missing_cost_is_unknown_and_duplicate_cost_source_is_rejected():
     assert result.assess().passes == {}
     duplicate = calculate_component(component(costs=(missing, missing)))
     assert "costs.source_id" in {m.field for m in duplicate.missing}
+
+
+def test_simple_total_hours_drive_fixed_fee_staffing_cost_without_calendar_or_bill_rate():
+    binding = dict(
+        source_id="sow-x", source_version="2", component_id="build",
+        profile_version="1", policy_version="gm-1", role="Consultant",
+        location="India", timezone="America/New_York", currency="USD",
+        calendar=None, bill_rate=None, cost_rate=D("30"), rate_version=None,
+        cost_version="manual", start=date(2026, 10, 1), end=date(2026, 12, 1),
+        cost_rate_basis="hourly", hours_billable=D("960"),
+    )
+    staffing = (
+        StaffingAssignment("full", quantity=1, allocation=D("1"), **binding),
+        StaffingAssignment("partial", quantity=1, allocation=D("0.5"), **binding),
+    )
+    pricing = FixedFee(
+        D("75400"),
+        tuple(FeeAllocation(month, "India", D("1")) for month in (
+            date(2026, 10, 1), date(2026, 11, 1), date(2026, 12, 1),
+        )),
+        "even service months", D("0.01"),
+    )
+    result = calculate_component(component(
+        service_start=date(2026, 10, 1), service_end=date(2026, 12, 1),
+        billing_cadence="monthly", cost_basis=None,
+        costs=(PeriodCost("travel", date(2026, 10, 1), "India", D("2500"), "Travel"),),
+        staffing=staffing, pricing=pricing,
+    ))
+    outcome = result.assess()
+    assert result.complete
+    assert sum(row.paid_hours or D("0") for row in result.calendar_rows) == D("1440")
+    assert outcome.revenue_total == D("75400")
+    assert outcome.cost_total == D("45700")
+    assert outcome.gm_blended == D("29700") / D("75400")
+    assert not {gap.field for gap in result.missing} & {
+        "calendar", "bill_rate", "rate_version", "cost_basis",
+    }
 
 
 @pytest.mark.parametrize("changes", [{"profile": "generated_formula"}, {"profile_version": "999"}])

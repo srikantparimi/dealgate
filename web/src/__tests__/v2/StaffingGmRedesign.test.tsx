@@ -1,8 +1,6 @@
 /**
- * S22 redesign · four-section Staffing & GM plan: exact percent
- * round-trips, the Scope/Budget/Planned summary that a green margin
- * cannot hide behind, draft survival across unmount, and row
- * duplication that visibly changes totals.
+ * S22 simplified Staffing & GM plan: the Scope/Budget/Planned summary,
+ * compact resource and cost rows, draft survival and server calculations.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -148,13 +146,15 @@ beforeEach(() => {
   vi.spyOn(api, "previewCommercial").mockResolvedValue({});
 });
 
-describe("Staffing & GM four-section plan", () => {
-  it("renders all four sections, one summary, and no second readiness panel", async () => {
+describe("Staffing & GM simplified plan", () => {
+  it("renders only contract and team sections, one summary, and no second readiness panel", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
     render(<CommercialModelEditor snap={snap()} />);
-    for (const id of ["contract", "team", "monthly", "review"]) {
+    for (const id of ["contract", "team"]) {
       expect(screen.getByTestId(`sgm-section-${id}`)).toBeInTheDocument();
     }
+    expect(screen.queryByTestId("sgm-section-monthly")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sgm-section-review")).not.toBeInTheDocument();
     expect(screen.getByTestId("sgm-summary")).toBeInTheDocument();
     // The single readiness panel lives in the workspace shell, not here.
     expect(screen.queryByText("Readiness")).not.toBeInTheDocument();
@@ -182,17 +182,16 @@ describe("Staffing & GM four-section plan", () => {
     expect(alert).toHaveTextContent("passing margin does not make this plan delivery-ready");
   });
 
-  it("duplicate creates an editable copy and totals change visibly", async () => {
+  it("adds an editable resource row and totals change visibly", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
     render(<CommercialModelEditor snap={snap()} />);
     expect(screen.getByTestId("summary-planned")).toHaveTextContent("2 people · 1 FTE");
-    fireEvent.click(screen.getByLabelText("Duplicate role 1"));
+    fireEvent.click(screen.getByRole("button", { name: "Add role" }));
     await waitFor(() =>
-      expect(screen.getByTestId("summary-planned")).toHaveTextContent("4 people · 2 FTE"),
+      expect(screen.getByTestId("summary-planned")).toHaveTextContent("3 people · 2 FTE"),
     );
-    const roles = screen.getAllByLabelText("Role");
-    expect(roles).toHaveLength(2);
-    expect(roles[1]).toHaveValue("Consultant (copy)");
+    expect(screen.getByLabelText("Role 1")).toHaveValue("Consultant");
+    expect(screen.getByLabelText("Role 2")).toHaveValue("");
   });
 
   it("fills blank team dates from the contract term when a draft is restored", async () => {
@@ -210,8 +209,8 @@ describe("Staffing & GM four-section plan", () => {
     render(<CommercialModelEditor snap={snap()} />);
     await screen.findByTestId("draft-restored-banner");
 
-    expect(screen.getByLabelText("Role start")).toHaveValue("2026-10-01");
-    expect(screen.getByLabelText("Role end")).toHaveValue("2026-11-18");
+    expect(screen.getByLabelText("Start 1")).toHaveValue("2026-10-01");
+    expect(screen.getByLabelText("End 1")).toHaveValue("2026-11-18");
   });
 
   it("keeps inherited team dates in sync while preserving explicit role overrides", async () => {
@@ -234,8 +233,8 @@ describe("Staffing & GM four-section plan", () => {
       target: { value: "2026-11-30" },
     });
 
-    const starts = screen.getAllByLabelText("Role start");
-    const ends = screen.getAllByLabelText("Role end");
+    const starts = screen.getAllByLabelText(/^Start \d+$/);
+    const ends = screen.getAllByLabelText(/^End \d+$/);
     expect(starts[0]).toHaveValue("2026-10-05");
     expect(ends[0]).toHaveValue("2026-11-30");
     expect(starts[1]).toHaveValue("2026-10-15");
@@ -286,27 +285,29 @@ describe("Staffing & GM four-section plan", () => {
     expect(panel).toHaveTextContent("Passes India floor");
   });
 
-  it("monthly share edits in percent keep the exact fraction in the save payload", async () => {
+  it("keeps server-derived revenue allocation while additional costs feed the preview", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockRejectedValue(new Error("none"));
     const preview = vi.spyOn(api, "previewCommercial").mockResolvedValue({});
     render(<CommercialModelEditor snap={snap()} />);
-    const share = screen.getByLabelText("Share of contract (%) 1");
-    expect(share).toHaveValue("33.33"); // stored 0.3333 shown as percent
-    fireEvent.change(share, { target: { value: "50" } });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.queryByText("Monthly plan & expenses")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add cost" }));
+    fireEvent.change(screen.getByLabelText("Additional cost description 1"), {
+      target: { value: "Travel" },
+    });
+    fireEvent.change(screen.getByLabelText("Additional cost amount 1"), {
+      target: { value: "2500" },
+    });
     await waitFor(() =>
       expect(preview).toHaveBeenCalledWith(
         expect.objectContaining({
           pricing: expect.objectContaining({
             allocations: [
-              { month: "2026-10-01", location: "US", weight: "0.5" },
+              { month: "2026-10-01", location: "US", weight: "0.3333" },
             ],
           }),
+          costs: [expect.objectContaining({ description: "Travel", amount: "2500" })],
         }),
-      ),
+      ), { timeout: 4000 },
     );
   });
 
@@ -356,7 +357,7 @@ describe("Staffing & GM four-section plan", () => {
     await screen.findByText("GM within policy");
     const note = screen.getByTestId("approval-flow-note");
     expect(note).toHaveTextContent("no CEO step");
-    expect(note).toHaveTextContent("Save version to publish");
+    expect(note).toHaveTextContent("Save to publish");
     // It is a preview: nothing was saved.
     expect(api.saveCommercialVersion).toBeDefined();
   });
@@ -434,7 +435,7 @@ describe("Server-persisted commercial draft", () => {
     await screen.findByTestId("draft-restored-banner");
     expect(screen.getByLabelText("Contract fee")).toHaveValue("123456");
     expect(screen.getByTestId("draft-restored-banner")).toHaveTextContent(
-      "Save version below to publish",
+      "use Save when you are ready to stop",
     );
     fireEvent.click(screen.getByTestId("draft-discard"));
     await waitFor(() => expect(del).toHaveBeenCalledWith("deal-a"));
@@ -493,18 +494,15 @@ describe("Draft defaults autofill", () => {
       expect(screen.getByLabelText("Contract start")).toHaveValue("2026-10-01");
       expect(screen.getByLabelText("Contract end")).toHaveValue("2026-12-01");
     });
-    expect(screen.getByLabelText("Contract timezone")).toHaveValue("America/Los_Angeles");
-    expect(screen.getByLabelText("Workstream")).toHaveValue("delivery");
-    expect(screen.getByLabelText("Revenue allocation method")).toHaveValue(
-      "even service months (defaulted)",
-    );
-    // Oct, Nov, Dec service months → three equal monthly shares, booked
-    // to the dominant delivery location (India).
-    const months = screen.getAllByLabelText(/^Month \d+$/);
-    expect(months).toHaveLength(3);
-    expect(screen.getByTestId("defaults-note")).toHaveTextContent("equal shares per service month");
+    expect(screen.getByTestId("defaults-note")).toHaveTextContent("Revenue is distributed evenly");
     // The engine gets a shot automatically — no Preview click.
     await waitFor(() => expect(preview).toHaveBeenCalled(), { timeout: 4000 });
+    const sent = preview.mock.calls.at(-1)![0];
+    expect(sent.timezone).toBe("America/Los_Angeles");
+    expect(sent.workstream_id).toBe("delivery");
+    expect(sent.pricing?.allocation_basis).toBe("even service months (defaulted)");
+    expect(sent.pricing?.allocations).toHaveLength(3);
+    expect(sent.pricing?.allocations?.every((row) => row.location === "India")).toBe(true);
     await screen.findByText("GM within policy");
   });
 
@@ -515,6 +513,6 @@ describe("Draft defaults autofill", () => {
     render(<CommercialModelEditor snap={snapshot} />);
     await waitFor(() => expect(screen.getByLabelText("Contract fee")).toHaveValue("75400"));
     expect(screen.queryByTestId("defaults-note")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Contract timezone")).toHaveValue("");
+    expect(snapshot.gmModel!.commercial_inputs!.timezone).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as client from "../../api/client";
@@ -164,17 +164,9 @@ describe("workspace commercial primary action", () => {
     });
     fireEvent.click(await screen.findByRole("button", { name: "Calculate financials" }));
     await waitFor(() => expect(commercial.previewCommercial).toHaveBeenCalled());
-    expect(await screen.findByRole("button", { name: "Fix version note" })).toBeVisible();
-    fireEvent.change(screen.getByLabelText("Contract fee"), {
-      target: { value: "75400.01" },
-    });
-    fireEvent.click(await screen.findByRole("button", { name: "Calculate financials" }));
-    await waitFor(() => expect(commercial.previewCommercial).toHaveBeenCalledTimes(2));
-    expect(await screen.findByRole("button", { name: "Fix version note" })).toBeVisible();
-    fireEvent.change(screen.getByLabelText("Change reason"), {
-      target: { value: "Confirmed staffing economics" },
-    });
-    fireEvent.click(await screen.findByRole("button", { name: "Save financial version" }));
+    fireEvent.click(
+      within(screen.getByTestId("workspace-header")).getByRole("button", { name: "Save" }),
+    );
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole("button", { name: "Submit for approval" })).toBeVisible();
     expect(loader.loadWorkspace).toHaveBeenCalledTimes(2);
@@ -185,6 +177,12 @@ describe("workspace commercial primary action", () => {
   });
 
   it("keeps an invalid draft in place and focuses the named blocker", async () => {
+    vi.mocked(commercial.getCommercialDraft).mockResolvedValue({
+      exists: true,
+      inputs: { ...inputs, billing_cadence: null },
+      sow_version_id: "sow-version",
+      updated_at: "2026-10-06T00:00:00Z",
+    });
     const save = vi.spyOn(commercial, "saveCommercialVersion");
     vi.spyOn(loader, "loadWorkspace").mockResolvedValue({
       snap: snapshot(false),
@@ -196,7 +194,7 @@ describe("workspace commercial primary action", () => {
         schedule: {
           rows: [],
           status: "incomplete",
-          missing: [{ field: "cost_basis", reason: "no confirmed cost_basis" }],
+          missing: [{ field: "billing_cadence", reason: "billing schedule is required" }],
         },
       },
     });
@@ -210,9 +208,9 @@ describe("workspace commercial primary action", () => {
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Calculate financials" }));
-    const blocker = await screen.findByRole("button", { name: "Fix cost basis" });
+    const blocker = await screen.findByRole("button", { name: "Fix billing schedule" });
     fireEvent.click(blocker);
-    await waitFor(() => expect(screen.getByLabelText("Cost basis")).toHaveFocus());
+    await waitFor(() => expect(screen.getByLabelText("Billing schedule")).toHaveFocus());
     expect(save).not.toHaveBeenCalled();
     expect(screen.getByRole("tab", { name: "Staffing & GM" })).toHaveAttribute(
       "data-state",

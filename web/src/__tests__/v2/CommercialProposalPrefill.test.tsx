@@ -51,12 +51,14 @@ function proposal(): api.CommercialProposal {
           component_id: "proposed",
           profile_version: "1",
           policy_version: "policy-active",
-          role: "Senior Engineer",
+          role: "Engineer",
+          seniority: "Senior",
           location: "US",
           timezone: "America/Los_Angeles",
           currency: "USD",
           quantity: 1,
           allocation: "0.5",
+          hours_billable: "480",
           calendar: null,
           bill_rate: "150",
           cost_rate: "95",
@@ -126,9 +128,11 @@ describe("commercial proposal prefill", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("Contract fee")).toHaveValue("250000.00"),
     );
-    expect(screen.getByLabelText("Role")).toHaveValue("Senior Engineer");
+    expect(screen.getByLabelText("Role 1")).toHaveValue("Engineer");
+    expect(screen.getByLabelText("Seniority 1")).toHaveValue("Senior");
     // Stored fraction "0.5" displays as 50% — plain language, exact schema.
-    expect(screen.getByLabelText("Allocation per person (%)")).toHaveValue("50");
+    expect(screen.getByLabelText("Utilization 1")).toHaveValue("50");
+    expect(screen.getByLabelText("Hours 1")).toHaveValue("480");
   });
 
   it("offers reset after edits instead of silently overwriting", async () => {

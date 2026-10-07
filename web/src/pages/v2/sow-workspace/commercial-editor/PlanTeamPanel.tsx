@@ -113,6 +113,7 @@ export function PlanTeamPanel({
       const base = {
         ...binding,
         role,
+        seniority: null,
         location,
         timezone: inputs.timezone ?? "America/Los_Angeles",
         currency: inputs.currency,
@@ -121,6 +122,13 @@ export function PlanTeamPanel({
         cost_rate: costRate,
         rate_version: null,
         cost_version: "staffing-advice",
+        // The advisor's affordability math already uses the product-wide
+        // 40-hour week. Carry that same explicit total into the editable row
+        // so applying a suggestion can calculate immediately without asking
+        // the user to build a second calendar.
+        hours_billable: advice.inputs.weeks
+          ? String(Number(advice.inputs.weeks) * 40)
+          : null,
         start: inputs.service_start,
         end: inputs.service_end,
         cost_rate_basis: "hourly" as const,

@@ -83,9 +83,8 @@ describe("Commercial pricing profiles", () => {
       });
       expect(screen.getByLabelText("Pricing profile")).toBeDisabled();
       expect(
-        screen.getByRole("button", { name: "Save version" }),
+        screen.getByRole("button", { name: "Save" }),
       ).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled();
       expect(
         screen.getByText(
           "Signed financial basis. Changes require a separate amendment version.",
@@ -125,7 +124,7 @@ describe("Commercial pricing profiles", () => {
     expect(parent.source_id).toBe("sow");
     expect(child.policy_version).toBe("policy");
   });
-  it("edits calendar staffing costs while preserving seven-day hours and holiday evidence", async () => {
+  it("edits a staffing cost while preserving the stored calendar evidence", async () => {
     const inputs = component("calendar_staff_aug", {
       rates: [
         {
@@ -180,22 +179,21 @@ describe("Commercial pricing profiles", () => {
       },
     ];
     render(<CommercialModelEditor snap={snap(inputs)} />);
-    fireEvent.change(screen.getByLabelText("Delivery cost rate ($/paid hour)"), {
+    fireEvent.change(screen.getByLabelText("Cost per hour 1"), {
       target: { value: "61.000001" },
     });
-    expect(screen.getByLabelText("Monday scheduled hours")).toHaveValue("8");
-    expect(screen.getByLabelText("Saturday paid hours")).toHaveValue("0");
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     await waitFor(() =>
       expect(api.previewCommercial).toHaveBeenCalledWith(
         expect.objectContaining({
-          staffing: [{ ...inputs.staffing[0], cost_rate: "61.000001" }],
+          staffing: [expect.objectContaining({
+            assignment_id: "assignment",
+            cost_rate: "61.000001",
+            cost_version: "manual",
+            calendar: inputs.staffing[0].calendar,
+          })],
           pricing: inputs.pricing,
         }),
-      ),
+      ), { timeout: 3000 },
     );
   });
   it("edits hybrid child rates and shared-cost weights without flattening component evidence", async () => {
@@ -244,10 +242,6 @@ describe("Commercial pricing profiles", () => {
       target: { value: "2" },
     });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    await waitFor(() =>
       expect(api.previewCommercial).toHaveBeenCalledWith(
         expect.objectContaining({
           costs: inputs.costs,
@@ -261,7 +255,7 @@ describe("Commercial pricing profiles", () => {
             ],
           },
         }),
-      ),
+      ), { timeout: 3000 },
     );
   });
   it("edits milestone amount and acceptance while preserving accounting references", async () => {
@@ -283,10 +277,6 @@ describe("Commercial pricing profiles", () => {
       target: { value: "43000.02" },
     });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    await waitFor(() =>
       expect(api.previewCommercial).toHaveBeenCalledWith(
         expect.objectContaining({
           source_evidence: inputs.source_evidence,
@@ -296,7 +286,7 @@ describe("Commercial pricing profiles", () => {
             ],
           },
         }),
-      ),
+      ), { timeout: 3000 },
     );
   });
   it("edits unit/story point rates without calculating revenue in the browser", async () => {
@@ -318,15 +308,11 @@ describe("Commercial pricing profiles", () => {
       target: { value: "124.000001" },
     });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    await waitFor(() =>
       expect(api.previewCommercial).toHaveBeenCalledWith(
         expect.objectContaining({
           pricing: { ...inputs.pricing, rate: "124.000001" },
         }),
-      ),
+      ), { timeout: 3000 },
     );
   });
   it("edits T&M cap and approved usage without replacing estimates", async () => {
@@ -363,10 +349,6 @@ describe("Commercial pricing profiles", () => {
       target: { value: "81.25" },
     });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    await waitFor(() =>
       expect(api.previewCommercial).toHaveBeenCalledWith(
         expect.objectContaining({
           pricing: {
@@ -377,7 +359,7 @@ describe("Commercial pricing profiles", () => {
             ],
           },
         }),
-      ),
+      ), { timeout: 3000 },
     );
   });
   it("requires confirmation before replacing incompatible pricing terms", async () => {
@@ -411,6 +393,6 @@ describe("Commercial pricing profiles", () => {
     expect(
       screen.getByRole("button", { name: "Add milestone" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Source evidence")).toHaveValue("SOW page 3");
+    expect(screen.queryByLabelText("Unit rate")).not.toBeInTheDocument();
   });
 });

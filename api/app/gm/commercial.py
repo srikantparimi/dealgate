@@ -75,6 +75,7 @@ class PeriodCost:
     month: date
     location: Location
     amount: Decimal | None
+    description: str | None = None
 
     def __post_init__(self) -> None:
         if self.amount is not None:
@@ -372,7 +373,7 @@ def _month_valid(month: date, component: PricingComponent) -> bool:
 def _validate(component: PricingComponent) -> list[MissingInput]:
     missing = []
     for field in ("component_id", "version", "source_id", "source_version", "workstream_id",
-                  "policy_version", "currency", "billing_cadence", "cost_basis"):
+                  "policy_version", "currency", "billing_cadence"):
         value = getattr(component, field)
         if not isinstance(value, str) or not value.strip():
             missing.append(_gap(field, f"no confirmed {field}"))
