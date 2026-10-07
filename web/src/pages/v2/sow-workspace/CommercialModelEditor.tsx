@@ -140,6 +140,48 @@ function initialInputs(snap: WorkspaceSnapshot): CommercialComponent {
   };
 }
 
+function hasBlankCalendarHours(
+  calendar: NonNullable<CommercialComponent["staffing"][number]["calendar"]>,
+): boolean {
+  const hours = [
+    ...calendar.week,
+    ...calendar.overrides.map((override) => override.hours),
+  ];
+  return hours.some(({ scheduled, billable, paid }) =>
+    [scheduled, billable, paid].some((value) => value.trim() === ""),
+  );
+}
+
+/**
+ * Old working drafts could contain a seven-day calendar shell whose 21 hour
+ * cells were empty strings. It is neither usable evidence nor valid API input.
+ * The simplified editor represents that state as a missing total-hours value.
+ */
+function discardEmptyLegacyCalendars(
+  component: CommercialComponent,
+): CommercialComponent {
+  const pricing =
+    component.profile === "hybrid" && component.pricing?.components
+      ? {
+          ...component.pricing,
+          components: component.pricing.components.map(
+            discardEmptyLegacyCalendars,
+          ),
+        }
+      : component.pricing;
+  return {
+    ...component,
+    pricing,
+    staffing: component.staffing.map((row) => ({
+      ...row,
+      calendar:
+        row.calendar && hasBlankCalendarHours(row.calendar)
+          ? null
+          : row.calendar,
+    })),
+  };
+}
+
 /**
  * A role with no dates inherits the contract term. Existing explicit role
  * dates remain independent so a partial assignment is not silently widened.
@@ -147,19 +189,20 @@ function initialInputs(snap: WorkspaceSnapshot): CommercialComponent {
 function inheritMissingRoleDates(
   component: CommercialComponent,
 ): CommercialComponent {
+  const normalized = discardEmptyLegacyCalendars(component);
   return {
-    ...component,
-    staffing: component.staffing.map((row) => ({
+    ...normalized,
+    staffing: normalized.staffing.map((row) => ({
       ...row,
-      start: row.start || component.service_start,
-      end: row.end || component.service_end,
+      start: row.start || normalized.service_start,
+      end: row.end || normalized.service_end,
       calendar: row.calendar
         ? {
             ...row.calendar,
             coverage_start:
-              row.calendar.coverage_start || component.service_start || "",
+              row.calendar.coverage_start || normalized.service_start || "",
             coverage_end:
-              row.calendar.coverage_end || component.service_end || "",
+              row.calendar.coverage_end || normalized.service_end || "",
           }
         : row.calendar,
     })),

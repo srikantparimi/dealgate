@@ -127,6 +127,38 @@ describe("simplified Staffing & GM editor", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
+  it("drops an empty legacy calendar before previewing the simple hours model", async () => {
+    const preview = vi.spyOn(api, "previewCommercial");
+    const blankWeek = Array.from({ length: 7 }, () => ({
+      scheduled: "",
+      billable: "",
+      paid: "",
+    }));
+    const legacyStaffing: api.CommercialStaffing = {
+      ...staffing,
+      hours_billable: null,
+      calendar: {
+        calendar_id: "legacy-empty",
+        version: "draft",
+        timezone: "America/New_York",
+        coverage_start: "2026-10-01",
+        coverage_end: "2026-12-01",
+        week: blankWeek,
+        overrides: [],
+      },
+    };
+
+    render(
+      <CommercialModelEditor
+        snap={snapshot({ ...inputs, staffing: [legacyStaffing] })}
+      />,
+    );
+
+    expect(await screen.findByLabelText("Hours 1")).toHaveValue("");
+    await waitFor(() => expect(preview).toHaveBeenCalled(), { timeout: 2500 });
+    expect(preview.mock.calls.at(-1)?.[0].staffing[0].calendar).toBeNull();
+  });
+
   it("saves total hours and additional costs as the authoritative version", async () => {
     const save = vi.spyOn(api, "saveCommercialVersion").mockResolvedValue({
       gm_model: { ...snapshot().gmModel!, id: "gm-two" },
