@@ -2,6 +2,75 @@
 
 ## RESUME HERE
 
+**2026-10-06 23:51 PDT — SIMPLIFIED STAFFING & GM CANDIDATE COMMITTED;
+STAGING DEPLOYMENT AND FRESH-SESSION PROOF NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, clean application HEAD
+`1cded57bb1d5b6a77f1f63791bc68db9453a195c`. It is one commit ahead of
+`origin/fix/s22-gm-cta` and is based on deployed-proof checkpoint
+`c475286e060df25c006d1d158e07ddb0c36ad5df`; it is not merged to main. Main
+remains `3ef55e576508af70e5c34d8593eec09db1d01560` in
+`/Users/srikanthparimi/OfficeApp/dealgate`. No worker or other worktree owns
+files in this checkpoint, no unmerged worker commit exists, and no test,
+browser, server, migration or deployment is active.
+
+User-visible behavior on this commit: Contract & pricing no longer shows Cost
+basis, workstream, timezone, monthly allocation or source-evidence controls.
+Billing schedule is one dropdown with Weekly, Bi-weekly, Monthly and Fixed
+after project delivery. Team & additional costs is one compact resource grid
+(role, seniority, location, people, utilization, total hours, applicable bill
+rate, cost/hour and dates), one added-cost table and the live server GM panel.
+The separate Monthly plan & expenses and Review & save sections were deleted;
+the only checkpoint action is Save. The workspace header follows the same
+state machine: a named incomplete field is focused, a valid preview offers
+Save, save reloads the authoritative version, and the next action becomes
+Submit for approval instead of looping back to Staffing & GM.
+
+The authoritative backend now accepts explicit per-person total hours when no
+calendar is supplied, distributes them over service months without losing the
+entered total, applies headcount and partial allocation once, and keeps the
+monthly rows needed by Forecast. Fixed-fee revenue does not require a bill
+rate. Resource cost plus additional cost feeds the same server Decimal GM
+calculation. Cost basis is no longer a completeness gate. SOW/auto-staffing
+proposals preserve separate role and seniority plus total hours, so an applied
+proposal appears directly in the compact table. Legacy stored calendars are
+preserved until a user deliberately enters total hours; then the explicit
+hours replace that row's calendar basis.
+
+Evidence on exact application HEAD `1cded57`: web affected suites **74/74
+passed** (commercial editor, all seven profiles, proposal prefill, plan team,
+draft recovery, direct cost and connected workspace action); readiness/CTA
+follow-up **22/22 passed**; `npm run typecheck` passed. API focused calendar,
+commercial-profile and proposal suites **118/118 passed**, including an
+independently asserted fixed-fee example with one full and one 50%-allocated
+row: USD 75,400 revenue, USD 43,200 resource cost, USD 2,500 additional cost,
+USD 45,700 total cost and USD 29,700 gross profit. The production build passed
+as `assets/index-D4fqjjS9.js` and `assets/index-CGMBFthR.css`; only the existing
+Vite chunk/dynamic-import warnings remain. The earlier failed broad frontend
+run was caused by tests that required the deliberately removed calendar,
+monthly, Cost basis and Preview controls; those tests were updated to retain
+their payload, persistence and model-isolation assertions, and the resulting
+affected run is green.
+
+Deployed state is still the preceding candidate: API ECS revision 87, image
+`s22gm-23001678`, digest
+`sha256:265feaa8a18192e40dceba21fbf46096515f5abb44c4e7246d70676365f3c243`,
+and SPA `assets/index-DYV1BgxV.js`. Therefore none of the simplification above
+is claimed on staging yet. No schema migration is introduced by this commit.
+The owner's real opportunity
+`bbefb2b0-90fc-4a7c-8995-bbe637b44654` remains read-only; use a disposable
+fixture for mutations and cleanup it through the established smoke gate.
+
+Exact resume commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git log -2 --oneline`,
+then `git push origin fix/s22-gm-cta`. Build an immutable API image from
+`1cded57`, prepare and inspect the normal whole-root staging Terraform plan,
+apply only after confirming it contains no persistent-resource change, publish
+the SPA from the same commit, run the focused deploy smoke and fresh-session
+fixed-fee Staffing → GM → Save → Submit proof, capture before/after screenshots,
+and update this entry with image/task/bundle identifiers. Do not mutate the
+owner record and do not merge main before product-owner acceptance.
+
 **2026-10-06 22:48 PDT — S22 GM/CTA CANDIDATE DEPLOYED AND CONNECTED
 PROOF GREEN; OWNER ACCEPTANCE NEXT.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
