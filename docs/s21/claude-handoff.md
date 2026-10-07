@@ -2,6 +2,64 @@
 
 ## RESUME HERE
 
+**2026-10-06 22:48 PDT — S22 GM/CTA CANDIDATE DEPLOYED AND CONNECTED
+PROOF GREEN; OWNER ACCEPTANCE NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, committed HEAD
+`23001678fd65ec0a9e8ba01e06f0a32fbb9fbf38`; none of this branch is merged to
+main. The tested API image `s22gm-23001678` is live as ECS task definition
+revision 87 with running digest
+`sha256:265feaa8a18192e40dceba21fbf46096515f5abb44c4e7246d70676365f3c243`.
+Migration task `f159f3a9db6e4f55a5f7ef6d898e3747` succeeded. The matching SPA is live as
+`assets/index-DYV1BgxV.js`; CloudFront invalidation
+`I9N87XU7RDHU5RX0IG2DPS79L6` completed. Deploy smoke
+`smoke 20261007T053037Z` passed on the exact task/digest and its teardown gate
+reported zero fixture residue.
+
+Fresh-session proof is green: **1 passed in 2.7 minutes**. It created a
+server-issued SOW fixture, restored two India staffing rows totaling 2.5 FTE,
+focused the exact missing calendar, calculated through the deployed service,
+saved GM v1, fully reloaded the page, submitted the five-reviewer plan and
+observed persisted `pending_delivery_hr` plus `View review status`. Independent
+expectation and deployed result agree: USD 75,400 revenue, USD 13,200 labor
+cost, USD 62,200 gross profit and 82.5% displayed GM. Fixed-fee revenue
+calculated with null hourly client billing rates. Four screenshots and the
+exact command are in `docs/s21/evidence/staging/s22-gm-cta/report.md`.
+Teardown completed and `scripts/check-test-data-clean.sh` reports zero fixture
+clients and zero e2e approvers on real SOWs.
+
+The owner's opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remains
+read-only. Its post-deploy preview now returns revenue `75400.00` with all
+cost-derived fields null, plus explicit current blockers for
+`billing_cadence`, `cost_basis` and `costs_confirmed`; nothing was silently
+zeroed or guessed.
+
+Two unsuccessful proof runs are retained as diagnostic history, not product failures:
+
+1. Run 1 stopped before fixture creation because
+   `tests/e2e/fixtures/multi-role-auth.ts` expected the old flat approver-secret
+   shape; the deployed secret stores shared metadata plus a nested `roles`
+   object. All role slots therefore fell back to one SystemAdmin identity.
+   The harness fix accepts both shapes without logging secret values.
+2. Run 2 reached the real deployed workspace and proved the application
+   boundary works: header `Fix row 1 calendar`; reason `Row 1 · Senior
+   consultant: no confirmed calendar. Correction: add a working calendar.`;
+   term Oct 1–31, three people / 2.5 FTE, fixed fee USD 75,400, restored server
+   draft. The run failed only because the test expected the longer accessible
+   name `Fix row 1 working calendar`. Playwright cleared the transient failed-run
+   trace when the green run started; the same observed state is preserved as
+   `docs/s21/evidence/staging/s22-gm-cta/01-before-known-revenue-and-row-blocker.png`.
+
+This checkpoint adds the auth-shape repair, connected deployed proof spec,
+four evidence PNGs, this handoff and its concise report. Existing full e2e
+typecheck has four unrelated historical errors in specs 22/23/24; neither new
+file appears in the error output. No test, browser, migration or deployment is
+active. Exact next command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git diff --check`;
+review and commit only the owned harness/evidence/handoff files, validate every
+referenced path, then stop for product-owner staging acceptance. Do not merge
+main.
+
 **2026-10-06 22:19 PDT — S22 STAFFING/GM RECURRENCE FIX, LOCAL CANDIDATE
 COMMITTED; DEPLOYMENT NEXT.** Authoritative integration tree for
 this repair is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

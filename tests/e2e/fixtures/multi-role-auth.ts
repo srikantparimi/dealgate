@@ -64,6 +64,15 @@ interface StagingCreds {
   region: string;
 }
 
+interface NestedApproverSecret {
+  user_pool_id?: string;
+  client_id?: string;
+  region?: string;
+  roles: Partial<
+    Record<RoleSlot, { username: string; password: string; group?: string }>
+  >;
+}
+
 interface AuthResult {
   IdToken: string;
   AccessToken: string;
@@ -115,7 +124,43 @@ function loadApproversMap(): Record<RoleSlot, StagingCreds> | null {
       "--output",
       "text",
     ]);
-    approversMap = JSON.parse(raw) as Record<RoleSlot, StagingCreds>;
+    const parsed = JSON.parse(raw) as
+      | Record<RoleSlot, StagingCreds>
+      | NestedApproverSecret;
+    if ("roles" in parsed) {
+      // Terraform stores the shared pool/client metadata once and the
+      // role credentials under `roles`. Older local secrets used the flat
+      // shape, so accept both without ever logging credential values.
+      const systemRaw = awsCli([
+        "--profile",
+        profile,
+        "--region",
+        region,
+        "secretsmanager",
+        "get-secret-value",
+        "--secret-id",
+        process.env.STAGING_E2E_SECRET ?? "officeapp-dev-e2e-user",
+        "--query",
+        "SecretString",
+        "--output",
+        "text",
+      ]);
+      const system = JSON.parse(systemRaw) as StagingCreds;
+      approversMap = Object.fromEntries(
+        Object.entries(parsed.roles).map(([role, creds]) => [
+          role,
+          {
+            user_pool_id: parsed.user_pool_id ?? system.user_pool_id,
+            client_id: parsed.client_id ?? system.client_id,
+            region: parsed.region ?? system.region ?? region,
+            username: creds!.username,
+            password: creds!.password,
+          },
+        ]),
+      ) as Record<RoleSlot, StagingCreds>;
+    } else {
+      approversMap = parsed;
+    }
     return approversMap;
   } catch {
     // Secret missing (local dev, or module not yet applied) → return null;
