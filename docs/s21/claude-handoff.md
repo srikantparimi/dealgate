@@ -2,6 +2,35 @@
 
 ## RESUME HERE
 
+**2026-10-07 15:01 PDT — GENERIC STAFFING QUANTITY FIX COMMITTED/PUSHED;
+REVIEWED TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`60a8901a307d1c9ff06fcf640eb25258df7fd6d1`. The tree was clean before this
+handoff-only update; no build, test, browser, deployment or migration process
+is active.
+
+Immutable API image `s22quantity-60a8901` exists at digest
+`sha256:3ac0c6771f56c6b71f7bf348f1bedd3ed269a9fd64702197043d612b6e9ea868`.
+The production frontend build succeeded as `assets/index-D4d4XS3r.js` and
+`assets/index-DcoHFPrW.css`. The authoritative saved Terraform plan is
+`/tmp/s22-quantity-60a8901.tfplan`, with text and JSON renderings at
+`/tmp/s22-quantity-60a8901.plan.txt` and
+`/tmp/s22-quantity-60a8901.plan.json`: exactly **11 add, 13 change, 11
+destroy**. The delete/create pairs are only the API/migration and eight worker
+task definitions plus the migration trigger; in-place changes repoint the API
+service, eight EventBridge targets and four RunTask policies. No RDS, S3,
+Cognito, approver, secret, network, schedule-state or business-data resource
+changes are planned.
+
+Required human action: approve only this saved S22 staffing-quantity plan.
+Exact next command after approval:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-quantity-60a8901.tfplan`.
+Require the migration gate and stable API digest, publish the already-built SPA
+through the established S3/CloudFront path, then run deploy smoke and the
+focused grouped-headcount connected proof. Keep the owner's Caesars record
+read-only and do not merge main before acceptance.
+
 **2026-10-07 14:58 PDT — GENERIC STAFFING QUANTITY DISPLAY FIX VERIFIED
 LOCALLY; COMMIT AND DEPLOY NEXT.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
