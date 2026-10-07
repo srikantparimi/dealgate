@@ -2,6 +2,42 @@
 
 ## RESUME HERE
 
+**2026-10-07 14:12 PDT — CONFIRM SOW STAFFING FIX COMMITTED/PUSHED; REVIEWED
+TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`75f0dd0e2399e0ca734bca1bb03a24cc2fd3a36c`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; its six unrelated modified S19
+screenshots are preserved. No build, test, browser, deployment or migration is
+active. Only this handoff update is dirty.
+
+The fix makes Confirm SOW serialize staffing from the authoritative saved
+`gm_model.commercial_inputs.staffing` component (including hybrid children),
+while retaining the legacy `resource_lines` path for historical GM versions.
+The regression failed before the implementation and the focused confirmation,
+commercial-persistence and commercial-profile suites are **98/98 passed**;
+Ruff and `git diff --check` passed. The owner's Caesars record was inspected
+read-only and was not mutated.
+
+Immutable ECR image `s22staffing-75f0dd0` exists at digest
+`sha256:9e94acdea2271094dd1637a796e32c3cf1e89d092aa489c9b50ca11365d37afe`.
+The authoritative saved plan is `/tmp/s22-staffing-75f0dd0.tfplan`, with text
+and JSON renderings at `/tmp/s22-staffing-75f0dd0.plan.txt` and
+`/tmp/s22-staffing-75f0dd0.plan.json`: exactly **11 add, 13 change, 11
+destroy**. The 11 delete/create pairs are the API and migration task
+definitions, eight scheduled-worker task definitions and the migration
+trigger. The 13 in-place changes repoint the API service, eight EventBridge
+targets and four RunTask policies. There are no RDS, S3, Cognito, approver,
+secret, network, schedule-state or business-data changes.
+
+Required human action: approve only the saved plan described above. Exact next
+command after approval:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-staffing-75f0dd0.tfplan`.
+Then require the migration gate and stable API rollout, add the staffing-row
+assertion to the existing disposable connected proof, run that focused proof
+and cleanup gate, and capture deployed evidence. Do not mutate the owner's
+Caesars record and do not merge main before product-owner acceptance.
+
 **2026-10-07 11:12 PDT — CONFIRM SOW STAFFING-ROW ROOT CAUSE FIXED LOCALLY;
 DEPLOYMENT PLAN NOT YET CREATED.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
