@@ -2,6 +2,35 @@
 
 ## RESUME HERE
 
+**2026-10-06 21:25 PDT — MERGED TO MAIN AND MAIN-IMAGE DEPLOY VERIFIED.**
+Owner explicitly directed “merge to main and deploy.” `main` fast-forwarded
+from `3502c9e6c9f2c75d7f79f17fc048c7d5bfa327bc` to application/deployment
+commit `792feaa6fb002b48800ba0c1672a4d159e8d6924` and was pushed to
+`origin/main`. The pre-existing modified S19 screenshots in the main worktree
+were neither staged nor changed by this work.
+
+Immutable image `s21main-792feaa6`, ECR digest
+`sha256:865c06eacd92d4a3d1110a967e1f16075633ecf11c396449ae5a23ae86dcc53a`,
+was built from the exact main checkout. Saved Terraform plan
+`/tmp/s21-main-792feaa6.tfplan` was inspected before apply: exactly 11 add / 13
+change / 11 destroy, limited to image-bound API/migration/worker task
+definitions, their EventBridge targets and derived IAM task-revision policies,
+the migration gate and API rollout; no database, storage, identity, network or
+other persistent-resource change. Apply completed 11/13/11. Migration task
+`10585f7e6a30442bafb59106af08d77d` exited successfully. API revision 86 is
+stable on task `44b4af695f9241889689423a54f739f8`, exact image tag and digest
+verified; `/api/healthz` returns green.
+
+The SPA was rebuilt from the same main checkout and published as
+`assets/index-Dnv1r9ua.js` plus `assets/index-BTGXDqY1.css`; CloudFront
+invalidation `I7NFLACIGEGHJF7NXZ2EKQM96W` completed. Deploy smoke
+`smoke 20261007T042440Z` passed the main-image task/digest and active Bedrock
+profile checks, bound upload, extraction, confirmation and draft-list journey;
+its client was deleted and the final gate reported zero test-tagged clients and
+zero e2e approvers on real SOWs. No deployment, migration, test or browser
+process remains active. Product behavior is live at
+`https://app.dealgateapp.com`.
+
 **2026-10-06 14:29 PDT — STAFFING TERM SYNC + LIVE GM DEPLOYED FOR
 CLICK-THROUGH.** Application commit
 `4b31e5d1829634a8c8ebb77b02e5eca71f08197b` on branch
