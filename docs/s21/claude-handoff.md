@@ -2,6 +2,63 @@
 
 ## RESUME HERE
 
+**2026-10-07 01:04 PDT — CONFIRM SOW FLOW RESTORED LOCALLY; FOCUSED
+CONNECTED CONTRACTS GREEN, DEPLOYMENT NOT YET STARTED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, committed base
+`a2b11227418a0768dc02d930a1ee821763ca5ec2`. The six owned application/test
+files listed below plus this handoff are dirty; no other worktree was changed.
+Main remains `3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six unrelated
+S19 screenshot modifications preserved. No test, browser, deployment or
+migration process is active.
+
+The S22 simplification had disconnected the still-existing Confirm SOW screen:
+the workspace commercial-save callback refreshed Staffing & GM and exposed
+Submit directly, while the historical `StaffingGate` navigation to
+`/sows/new?opportunityId=<id>` became unreachable when that dedicated route was
+removed. The workspace callback now navigates to Confirm SOW only after the
+authoritative commercial save succeeds. Invalid inputs still remain in the
+editor and focus their named blocker. Saving an unconfirmed draft also stamps
+the commercial model's service start/end into the SOW's existing audited
+`term_start`/`term_end` provenance fields, so confirmation opens with the same
+dates. Submitted/immutable SOW versions are never rewritten.
+
+The existing Confirm SOW implementation remains the single review page: it
+shows extracted scope, contract dates, saved server GM, Delivery/HR/Finance/
+Legal approvers, and a conditional CEO exception. Green GM shows CEO as not
+required; below-floor GM shows that CEO will trigger. `Complete scope` persists
+confirmation and navigates to Approvals. The existing approval stream displays
+package status plus approved, active and queued reviewers. Submission still
+retains the previously approved Sales lane in routing policy v2; this change did
+not silently remove it.
+
+Focused evidence on the dirty tree: frontend confirmation/workspace/reviewer
+tests **21/21 passed**; backend commercial persistence, SOW confirmation,
+approval routing and Sales review tests **34/34 passed**; `npm run typecheck`
+passed; `git diff --check` passed before this handoff edit. New regressions
+prove Save → Confirm SOW (and no direct Submit), populated start/end and GM,
+four functional lanes plus green CEO-not-required, persisted draft terms, and
+approved/pending/queued status after submission. Owned dirty files:
+`api/app/services/commercial_models.py`,
+`api/tests/test_s21_commercial_persistence.py`,
+`web/src/pages/v2/SowWorkspace.tsx`, and the three focused web test files
+`WorkspaceCommercialAction.test.tsx`, `SowStudio.test.tsx`, and
+`S21ReviewerPlan.test.tsx`.
+
+Exact resume commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git status --short`,
+then review and commit the seven owned files as
+`fix(s22): restore confirm SOW before approvals`. Push the feature branch,
+build an immutable API image from that committed revision, create a fresh
+whole-root Terraform plan, and stop for the required human plan approval.
+After apply, publish the matching SPA using checked-in `web/.env.production`,
+verify API/task/image and frontend bundle identifiers, then prove in a fresh
+session with a disposable fixture: Staffing & GM Save → populated Confirm SOW
+→ green four-function path without CEO (plus a below-floor conditional-CEO
+fixture) → Complete scope → Approvals → Submit → visible pipeline statuses.
+Do not mutate the owner's existing SOW and do not merge main before product-
+owner staging acceptance.
+
 **2026-10-07 00:32 PDT — POST-DEPLOY LOGIN OUTAGE DIAGNOSED AND RESTORED;
 FRESH HOSTED-UI LOGIN GREEN.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

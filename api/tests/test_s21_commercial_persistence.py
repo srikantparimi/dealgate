@@ -15,7 +15,13 @@ from app.services.commercial_models import CommercialInputError, parse_component
 from app.services.delivery_model import _model_to_payload, compute_live, serialize_gm_model
 from app.services.redact import redact_costs
 from tests.test_approval_routing import fixture
-from tests.test_approvals import app_with_session, _client  # noqa: F401
+from tests.test_approvals import (
+    app_with_session,
+    _client,
+    _passing_payload,
+    _seed_opp_with_sow,
+    _seed_owner,
+)  # noqa: F401
 from tests.test_s21_commercial_profiles import component
 
 
@@ -60,6 +66,50 @@ async def test_saved_component_roundtrips_exactly_and_existing_reader_uses_it(se
         assert "commercial_inputs" not in redacted
         assert "commercial_snapshot" not in redacted
         assert "cost_india" not in redacted["computed"]
+
+
+@pytest.mark.asyncio
+async def test_saved_commercial_dates_populate_unconfirmed_sow_terms(session):
+    from app.models.sow import SowVersion
+    from app.services.delivery_model import create_gm_model_version
+
+    owner = await _seed_owner(session, "term-owner@smartek21.com")
+    opp, sow = await _seed_opp_with_sow(session, owner, confirmed=False)
+    old = await create_gm_model_version(
+        session,
+        actor_id=owner.id,
+        opportunity_id=opp.id,
+        payload=_passing_payload(sow.id),
+    )
+    inputs = wire(
+        sow,
+        service_start=date(2026, 10, 1),
+        service_end=date(2026, 12, 1),
+    )
+
+    await save_commercial_model(
+        session,
+        opportunity_id=opp.id,
+        actor_id=owner.id,
+        sow_version_id=sow.id,
+        expected_gm_model_id=old.id,
+        inputs=inputs,
+        change_reason="Confirmed staffing plan and contract dates",
+    )
+
+    saved_sow = await session.get(SowVersion, sow.id, populate_existing=True)
+    start = saved_sow.extracted_fields["term_start"]
+    end = saved_sow.extracted_fields["term_end"]
+    assert (start["value"], start["provenance"], start["status"]) == (
+        "2026-10-01",
+        "manual",
+        "confirmed",
+    )
+    assert (end["value"], end["provenance"], end["status"]) == (
+        "2026-12-01",
+        "manual",
+        "confirmed",
+    )
 
 
 @pytest.mark.asyncio

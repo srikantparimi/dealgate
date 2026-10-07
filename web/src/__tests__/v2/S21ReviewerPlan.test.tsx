@@ -97,6 +97,44 @@ it("a matching in-review package suppresses another submission editor", () => {
   expect(api.getSubmissionPlan).not.toHaveBeenCalled();
 });
 
+it("shows approved, active and queued review status after submission", () => {
+  const current = {
+    ...snap,
+    approvalHistory: [{
+      id: "package",
+      sow_version_id: "sow-version",
+      gm_model_id: "gm-version",
+      package_hash: "0123456789abcdef",
+      status: "pending_delivery_hr",
+      submitted_at: "2026-10-07T08:00:00Z",
+      submitted_by_name: "Account owner",
+      approvals: [{
+        id: "delivery-decision",
+        function: "delivery",
+        decision: "approve",
+        reason: "Staffing and delivery plan confirmed",
+        approver_name: "Delivery reviewer",
+        decided_at: "2026-10-07T09:00:00Z",
+      }],
+      assignments: [
+        { function: "delivery", approver_name: "Delivery reviewer", due_date: "2026-10-09", active: false, blocked: false, can_decide: false },
+        { function: "hr", approver_name: "HR reviewer", due_date: "2026-10-09", active: true, blocked: false, can_decide: false },
+        { function: "finance", approver_name: "Finance reviewer", due_date: "2026-10-09", active: false, blocked: false, can_decide: false },
+        { function: "legal", approver_name: "Legal reviewer", due_date: "2026-10-09", active: false, blocked: false, can_decide: false },
+      ],
+      floors: { requires_ceo: false },
+    }],
+  } as unknown as WorkspaceSnapshot;
+
+  render(<MemoryRouter><ApprovalsTab snap={current} canSubmit /></MemoryRouter>);
+
+  expect(screen.getByText("Delivery · Approved")).toBeVisible();
+  expect(screen.getByText("HR · Pending with HR reviewer")).toBeVisible();
+  expect(screen.getByText("Finance · Queued for Finance reviewer")).toBeVisible();
+  expect(screen.getByText("Legal · Queued for Legal reviewer")).toBeVisible();
+  expect(screen.getByText("pending delivery hr")).toBeVisible();
+});
+
 it("an older plan response cannot replace the new source version's plan", async () => {
   let release!: (value: api.SubmissionPlan) => void;
   vi.mocked(api.getSubmissionPlan).mockReturnValueOnce(new Promise(resolve => { release = resolve; }));

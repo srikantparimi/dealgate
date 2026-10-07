@@ -181,9 +181,9 @@ export function SowWorkspacePage() {
   const registerCommercialAction = useCallback((run: (() => void) | null) => {
     commercialPrimaryAction.current = run;
   }, []);
-  const commercialSaved = useCallback(async () => {
-    await refresh();
-  }, [refresh]);
+  const commercialSaved = useCallback(() => {
+    if (id) nav(`/sows/new?opportunityId=${id}`);
+  }, [id, nav]);
 
   useEffect(() => {
     if (activeTab === "staffing") return;

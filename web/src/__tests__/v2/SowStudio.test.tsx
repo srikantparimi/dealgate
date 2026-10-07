@@ -263,6 +263,23 @@ describe("SowStudioPage — confirmation screen", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows contract dates, saved GM and the functional approval path before continuing", async () => {
+    vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValue(makePayload());
+    renderStudio();
+
+    await screen.findByRole("heading", { name: /Confirm SOW/i });
+    expect(screen.getByTestId("field-row-term_start")).toHaveTextContent("2026-10-01");
+    expect(screen.getByTestId("field-row-term_end")).toHaveTextContent("2027-03-31");
+    expect(document.getElementById("section-staffing")).toHaveTextContent("42.0%");
+
+    const approvals = document.getElementById("section-approvers");
+    expect(approvals).not.toBeNull();
+    for (const label of ["Delivery", "HR", "Finance", "Legal"]) {
+      expect(approvals).toHaveTextContent(label);
+    }
+    expect(approvals).toHaveTextContent("Not required");
+  });
+
   it("every field row carries a provenance chip", async () => {
     vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValue(makePayload());
     renderStudio();

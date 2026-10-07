@@ -127,7 +127,7 @@ beforeEach(() => {
 });
 
 describe("workspace commercial primary action", () => {
-  it("calculates, saves, reloads, then advances to approval instead of looping", async () => {
+  it("calculates and saves, then opens Confirm SOW before approvals", async () => {
     vi.mocked(commercial.getCommercialDraft).mockResolvedValue({
       exists: true,
       inputs: { ...inputs, service_start: null, service_end: null },
@@ -151,6 +151,7 @@ describe("workspace commercial primary action", () => {
       <MemoryRouter initialEntries={["/sows/deal/staffing"]}>
         <Routes>
           <Route path="/sows/:id/:tab" element={<SowWorkspacePage />} />
+          <Route path="/sows/new" element={<h1>Confirm SOW</h1>} />
         </Routes>
       </MemoryRouter>,
     );
@@ -168,12 +169,8 @@ describe("workspace commercial primary action", () => {
       within(screen.getByTestId("workspace-header")).getByRole("button", { name: "Save" }),
     );
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole("button", { name: "Submit for approval" })).toBeVisible();
-    expect(loader.loadWorkspace).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("tab", { name: "Staffing & GM" })).toHaveAttribute(
-      "data-state",
-      "active",
-    );
+    expect(await screen.findByRole("heading", { name: "Confirm SOW" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Submit for approval" })).not.toBeInTheDocument();
   });
 
   it("keeps an invalid draft in place and focuses the named blocker", async () => {
