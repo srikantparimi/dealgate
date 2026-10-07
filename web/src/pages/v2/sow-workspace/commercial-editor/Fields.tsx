@@ -81,6 +81,7 @@ export function Field({
     <label className="min-w-0 space-y-1 text-secondary">
       {label}
       <Input
+        aria-label={label}
         type={type === "decimal" ? "text" : type}
         inputMode={type === "decimal" ? "decimal" : undefined}
         placeholder="Unconfirmed"

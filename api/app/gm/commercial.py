@@ -523,11 +523,21 @@ def _assemble(
 
 def _calendar_rows(component: PricingComponent) -> tuple[tuple[MonthlyStaffing, ...], list[MissingInput]]:
     assert component.service_start is not None and component.service_end is not None
-    rows = tuple(row for item in component.staffing for row in monthly_staffing_schedule(
-        item, term_start=component.service_start, term_end=component.service_end,
-    ))
+    indexed_rows = tuple(
+        (line, row)
+        for line, item in enumerate(component.staffing, start=1)
+        for row in monthly_staffing_schedule(
+            item, term_start=component.service_start, term_end=component.service_end,
+        )
+    )
+    rows = tuple(row for _, row in indexed_rows)
     # Fixed/MSP cost plans have no hourly revenue requirement; all cost/calendar gaps still apply.
-    missing = [gap for row in rows for gap in row.missing if gap.field not in ("bill_rate", "rate_version")]
+    missing = [
+        replace(gap, line=line) if gap.line is None else gap
+        for line, row in indexed_rows
+        for gap in row.missing
+        if gap.field not in ("bill_rate", "rate_version")
+    ]
     return rows, missing
 
 

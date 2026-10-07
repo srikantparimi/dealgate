@@ -1801,7 +1801,7 @@ export interface DeliveryPolicyResult {
 export interface FinanceSummary {
   revenue: DecimalStr;
   labor_cost: DecimalStr | null;
-  direct_cost: DecimalStr;
+  direct_cost: DecimalStr | null;
   total_delivery_cost: DecimalStr | null;
   gross_profit: DecimalStr | null;
   labor_pct: DecimalStr | null;

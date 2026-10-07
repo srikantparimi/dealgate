@@ -151,10 +151,11 @@ describe("Commercial model editor", () => {
     ).not.toBeInTheDocument();
   });
   it("prefills exact decimal inputs and saves a new optimistic version without losing evidence", async () => {
+    const onSaved = vi.fn();
     const save = vi.spyOn(api, "saveCommercialVersion").mockResolvedValue({
       gm_model: { ...snapshot().gmModel!, id: "gm-two" },
     });
-    render(<CommercialModelEditor snap={snapshot()} />);
+    render(<CommercialModelEditor snap={snapshot()} onSaved={onSaved} />);
     expect(screen.getByLabelText("Contract fee")).toHaveValue("24000");
     fireEvent.change(screen.getByLabelText("Change reason"), {
       target: { value: "Confirmed loaded cost" },
@@ -180,6 +181,9 @@ describe("Commercial model editor", () => {
       ),
     );
     await screen.findByText("Commercial version saved.");
+    expect(onSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "gm-two" }),
+    );
   });
   it("displays server monthly values and a stale-save error without discarding edits", async () => {
     vi.spyOn(api, "saveCommercialVersion").mockRejectedValue(
@@ -310,7 +314,7 @@ describe("Commercial model editor", () => {
       expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    await screen.findByText("Cost basis unconfirmed");
+    await screen.findByText(/Cost basis unconfirmed.*confirm the loaded-cost basis/);
     expect(preview).toHaveBeenCalledWith(
       expect.objectContaining({
         costs: [],

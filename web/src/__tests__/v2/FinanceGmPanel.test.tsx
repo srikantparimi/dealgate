@@ -41,4 +41,26 @@ describe("Finance GM presentation", () => {
     expect(screen.queryByText("40.4%")).not.toBeInTheDocument();
     expect(screen.queryByRole("meter")).not.toBeInTheDocument();
   });
+
+  it("shows confirmed fixed-fee revenue while unknown staffing costs stay unavailable", () => {
+    render(<FinanceGmPanel result={{
+      complete: false,
+      finance_summary: {
+        revenue: "75400.00",
+        labor_cost: null,
+        direct_cost: null,
+        total_delivery_cost: null,
+        gross_profit: null,
+        labor_pct: null,
+        direct_pct: null,
+        total_cost_pct: null,
+        pass_through: "0",
+      },
+    }} />);
+    expect(screen.getByText("$75,400")).toBeInTheDocument();
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getByTestId("staffing-floor-summary")).toHaveTextContent(
+      "Incomplete staffing costs",
+    );
+  });
 });

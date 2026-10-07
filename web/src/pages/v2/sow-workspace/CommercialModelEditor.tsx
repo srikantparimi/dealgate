@@ -48,6 +48,55 @@ import { bindCommercialSource } from "./commercial-editor/bindings";
 import { PlanTeamPanel, type ResolutionAction } from "./commercial-editor/PlanTeamPanel";
 import { FinanceGmPanel } from "./staffing/FinanceGmPanel";
 
+type CommercialMissing = NonNullable<
+  CommercialSchedule["missing"]
+>[number];
+
+export interface CommercialEditorStatus {
+  state:
+    | "idle"
+    | "calculating"
+    | "blocked"
+    | "ready_to_preview"
+    | "ready_to_save"
+    | "saving";
+  blocker?: string;
+  blockerLabel?: string;
+}
+
+function blockerCopy(item: CommercialMissing): {
+  message: string;
+  label: string;
+  section: "contract" | "team" | "monthly" | "review";
+} {
+  const row = item.line ? `Row ${item.line}${item.role ? ` · ${item.role}` : ""}: ` : "";
+  const field = item.field ?? item.key ?? "input";
+  const definitions: Record<string, [string, string, "contract" | "team" | "monthly" | "review"]> = {
+    billing_cadence: ["confirm the billing schedule", "billing schedule", "contract"],
+    cost_basis: ["confirm the loaded-cost basis", "cost basis", "contract"],
+    costs_confirmed: ["confirm all delivery costs", "cost confirmation", "review"],
+    service_period: ["confirm the contract start and end dates", "contract dates", "contract"],
+    currency: ["confirm the contract currency", "contract currency", "contract"],
+    calendar: ["add a working calendar", item.line ? `row ${item.line} calendar` : "working calendar", "team"],
+    "calendar.coverage": ["extend the calendar across the role dates", item.line ? `row ${item.line} calendar coverage` : "calendar coverage", "team"],
+    cost_rate: ["enter the delivery cost rate", item.line ? `row ${item.line} cost rate` : "cost rate", "team"],
+    cost_version: ["identify the cost rate source/version", item.line ? `row ${item.line} cost source` : "cost source", "team"],
+    location: ["confirm the delivery location", item.line ? `row ${item.line} location` : "delivery location", "team"],
+    costs: ["complete the delivery expense", "delivery expense", "monthly"],
+    "costs.amount": ["complete the delivery expense amount", "delivery expense", "monthly"],
+  };
+  const [action, label, section] = definitions[field] ?? [
+    item.reason ?? `complete ${field.replaceAll("_", " ")}`,
+    field.replaceAll("_", " "),
+    item.line ? "team" : "contract",
+  ];
+  return {
+    message: `${row}${item.reason ?? action}. Correction: ${action}.`,
+    label,
+    section,
+  };
+}
+
 function initialInputs(snap: WorkspaceSnapshot): CommercialComponent {
   if (snap.gmModel?.commercial_inputs)
     return structuredClone(snap.gmModel.commercial_inputs);
@@ -267,7 +316,17 @@ const SECTIONS = [
   { id: "review", label: "4 · Review & save" },
 ] as const;
 
-export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
+export function CommercialModelEditor({
+  snap,
+  onStatusChange,
+  onPrimaryAction,
+  onSaved,
+}: {
+  snap: WorkspaceSnapshot;
+  onStatusChange?: (status: CommercialEditorStatus | null) => void;
+  onPrimaryAction?: (run: (() => void) | null) => void;
+  onSaved?: (model: NonNullable<WorkspaceSnapshot["gmModel"]>) => void | Promise<void>;
+}) {
   const draftKey = `${snap.sow?.id ?? "none"}:${snap.gmModel?.id ?? "new"}`;
   const cached = draftCache.get(draftKey);
   const [inputs, setInputs] = useState(() =>
@@ -299,6 +358,16 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   const [draftError, setDraftError] = useState("");
   const draftLoaded = useRef(false);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const calculationRequest = useRef(0);
+  const draftSaveRequest = useRef(0);
+  const draftSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const saving = useRef(false);
+  const primaryActionRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    onPrimaryAction?.(() => primaryActionRef.current());
+    return () => onPrimaryAction?.(null);
+  }, [onPrimaryAction]);
 
   useEffect(() => {
     if (!snap.deal?.id || draftLoaded.current) return;
@@ -463,14 +532,25 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   // after `editable` so a late role check still arms the effect.
   useEffect(() => {
     if (!dirty || !editable || !snap.deal?.id || draftError) return;
+    const request = ++draftSaveRequest.current;
     const timer = setTimeout(() => {
-      putCommercialDraft(snap.deal!.id, {
-        inputs,
-        sow_version_id: snap.sow?.id ?? null,
-        expected_updated_at: draftStampRef.current,
-      })
-        .then((saved) => setDraftStamp(saved.updated_at))
+      // Serialize writes so a slow older request cannot land after a newer
+      // draft. The server stamp remains the cross-session guard; the local
+      // request number prevents an older response from replacing UI state.
+      draftSaveQueue.current = draftSaveQueue.current
+        .catch(() => undefined)
+        .then(async () => {
+          const saved = await putCommercialDraft(snap.deal!.id, {
+            inputs,
+            sow_version_id: snap.sow?.id ?? null,
+            expected_updated_at: draftStampRef.current,
+          });
+          draftStampRef.current = saved.updated_at;
+          if (request === draftSaveRequest.current)
+            setDraftStamp(saved.updated_at);
+        })
         .catch((e) => {
+          if (request !== draftSaveRequest.current) return;
           setDraftError(
             e instanceof Error && e.message.includes("409")
               ? "Draft conflict: another session changed this draft — reload before editing further."
@@ -507,6 +587,8 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
     );
   };
   async function calculate(save: boolean) {
+    const request = ++calculationRequest.current;
+    saving.current = save;
     setBusy(true);
     setError("");
     setNotice("");
@@ -543,14 +625,21 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
           deleteCommercialDraft(snap.deal.id).catch(() => {
             /* draft cleanup is best-effort */
           });
+        await onSaved?.(response.gm_model);
       } else {
-        setResult(await previewCommercial(body));
+        const preview = await previewCommercial(body);
+        if (request !== calculationRequest.current) return;
+        setResult(preview);
         setCalculationState("preview");
       }
     } catch (e) {
+      if (request !== calculationRequest.current) return;
       setError(e instanceof Error ? e.message : "Commercial request failed");
     } finally {
-      setBusy(false);
+      if (request === calculationRequest.current) {
+        saving.current = false;
+        setBusy(false);
+      }
     }
   }
   // S22 click-through fix ("GM is not calculated"): preview runs by
@@ -580,6 +669,7 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
       <label className="space-y-1 text-secondary">
         {label}
         <Input
+          aria-label={label}
           type={type}
           placeholder="Unconfirmed"
           value={String(inputs[key] ?? "")}
@@ -590,6 +680,36 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
   }
   const goTo = (id: string) => {
     sectionRefs.current[id]?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
+  const focusMissing = (item: CommercialMissing) => {
+    const copy = blockerCopy(item);
+    const section = sectionRefs.current[copy.section];
+    section?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      const row = item.line
+        ? section?.querySelector<HTMLElement>(`[data-staffing-row="${item.line}"]`)
+        : section;
+      const labelByField: Record<string, string> = {
+        billing_cadence: "Billing schedule",
+        cost_basis: "Cost basis",
+        service_period: "Contract start",
+        currency: "Contract currency",
+        location: "Delivery location",
+        cost_rate: "Delivery cost rate ($/paid hour)",
+        cost_version: "Cost rate source/version",
+      };
+      const label = labelByField[item.field ?? ""];
+      const exact = label
+        ? [...(row?.querySelectorAll<HTMLElement>("input, select, button") ?? [])]
+            .find((control) => control.getAttribute("aria-label") === label)
+        : null;
+      const target = exact ??
+        (item.field === "calendar"
+          ? row?.querySelector<HTMLElement>(`[data-add-calendar="${item.line}"]`)
+          : row?.querySelector<HTMLElement>("input, select, button")) ?? section;
+      target?.closest("details")?.setAttribute("open", "");
+      target?.focus?.();
+    }, 0);
   };
   const handleResolve = (action: ResolutionAction) => {
     setResolution(action);
@@ -625,6 +745,43 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
         : "Nothing planned yet",
     review: dirty ? "Unsaved draft" : "Saved",
   };
+
+  const calculationCurrent = !dirty || calculationState === "preview";
+  const firstMissing = calculationCurrent
+    ? result.commercial_snapshot?.schedule.missing?.[0]
+    : undefined;
+  let editorStatus: CommercialEditorStatus;
+  if (busy) editorStatus = { state: saving.current ? "saving" : "calculating" };
+  else if (firstMissing) {
+    const copy = blockerCopy(firstMissing);
+    editorStatus = { state: "blocked", blocker: copy.message, blockerLabel: copy.label };
+  } else if (calculationCurrent && result.computed?.complete && dirty) {
+    editorStatus = reason.trim()
+      ? { state: "ready_to_save" }
+      : {
+          state: "blocked",
+          blocker: "The calculation is valid. Add a version note before saving it.",
+          blockerLabel: "version note",
+        };
+  } else if (dirty) editorStatus = { state: "ready_to_preview" };
+  else editorStatus = { state: "idle" };
+
+  primaryActionRef.current = () => {
+    if (firstMissing) focusMissing(firstMissing);
+    else if (calculationCurrent && result.computed?.complete && dirty && reason.trim()) void calculate(true);
+    else if (calculationCurrent && result.computed?.complete && dirty) goTo("review");
+    else if (dirty) void calculate(false);
+    else goTo("contract");
+  };
+  useEffect(() => {
+    onStatusChange?.(editorStatus);
+  }, [
+    onStatusChange,
+    editorStatus.state,
+    editorStatus.blocker,
+    editorStatus.blockerLabel,
+  ]);
+  useEffect(() => () => onStatusChange?.(null), [onStatusChange]);
 
   const sectionShell = (
     id: (typeof SECTIONS)[number]["id"],
@@ -1164,7 +1321,10 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
                             ? "Saved calculation; edits not calculated"
                             : "Saved calculation"}
                     </p>
-                    <Schedule schedule={result.commercial_snapshot.schedule} />
+                    <Schedule
+                      schedule={result.commercial_snapshot.schedule}
+                      onFixMissing={focusMissing}
+                    />
                   </>
                 )}
               </>,
@@ -1175,6 +1335,7 @@ export function CommercialModelEditor({ snap }: { snap: WorkspaceSnapshot }) {
               <>
                 <label className="flex items-center gap-2">
                   <input
+                    aria-label="All delivery costs confirmed"
                     type="checkbox"
                     checked={inputs.costs_confirmed}
                     onChange={(e) => patch("costs_confirmed", e.target.checked)}
@@ -1327,7 +1488,13 @@ function Remove({ label, onClick }: { label: string; onClick: () => void }) {
     </Button>
   );
 }
-function Schedule({ schedule }: { schedule: CommercialSchedule }) {
+function Schedule({
+  schedule,
+  onFixMissing,
+}: {
+  schedule: CommercialSchedule;
+  onFixMissing?: (item: CommercialMissing) => void;
+}) {
   return (
     <div className="min-w-0 space-y-2">
       <h3 className="text-body font-medium">
@@ -1335,9 +1502,14 @@ function Schedule({ schedule }: { schedule: CommercialSchedule }) {
       </h3>
       <p className="text-secondary">{schedule.status}</p>
       {schedule.missing.map((item, i) => (
-        <p key={i} className="text-warning">
-          {item.reason ?? item.field ?? item.key}
-        </p>
+        <div key={i} className="flex flex-wrap items-center gap-2 text-warning">
+          <p>{blockerCopy(item).message}</p>
+          {onFixMissing ? (
+            <Button type="button" variant="secondary" onClick={() => onFixMissing(item)}>
+              Fix this input
+            </Button>
+          ) : null}
+        </div>
       ))}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-body">
@@ -1399,7 +1571,7 @@ function Schedule({ schedule }: { schedule: CommercialSchedule }) {
         </section>
       )}
       {schedule.children?.map((child, i) => (
-        <Schedule key={i} schedule={child} />
+        <Schedule key={i} schedule={child} onFixMissing={onFixMissing} />
       ))}
     </div>
   );

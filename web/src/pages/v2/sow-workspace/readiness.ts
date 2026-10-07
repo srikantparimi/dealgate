@@ -37,7 +37,16 @@ export interface NextStep {
   href?: string;
   disabled: boolean;
   reason?: string;
-  action?: "submit";
+  action?: "submit" | "commercial";
+}
+
+export interface WorkspaceActionContext {
+  activeTab?: string;
+  commercial?: {
+    state: "idle" | "calculating" | "blocked" | "ready_to_preview" | "ready_to_save" | "saving";
+    blocker?: string;
+    blockerLabel?: string;
+  } | null;
 }
 
 /**
@@ -303,7 +312,10 @@ export function buildReadiness(snap: WorkspaceSnapshot): ReadinessItem[] {
  * disabled we always attach a `reason` so the readiness panel can echo
  * "why" — spec §8 forbids a bare disabled button.
  */
-export function nextValidStep(snap: WorkspaceSnapshot): NextStep {
+export function nextValidStep(
+  snap: WorkspaceSnapshot,
+  context: WorkspaceActionContext = {},
+): NextStep {
   const pkg = snap.approvalPackage;
   const status = pkg?.status;
 
@@ -361,6 +373,40 @@ export function nextValidStep(snap: WorkspaceSnapshot): NextStep {
     };
   }
   if (!snap.gmModel?.computed?.complete) {
+    if (context.activeTab === "staffing" && context.commercial) {
+      const commercial = context.commercial;
+      if (commercial.state === "blocked")
+        return {
+          label: `Fix ${commercial.blockerLabel ?? "financial input"}`,
+          action: "commercial",
+          disabled: false,
+          reason: commercial.blocker,
+        };
+      if (commercial.state === "ready_to_save")
+        return {
+          label: "Save financial version",
+          action: "commercial",
+          disabled: false,
+        };
+      if (commercial.state === "ready_to_preview")
+        return {
+          label: "Calculate financials",
+          action: "commercial",
+          disabled: false,
+        };
+      if (commercial.state === "calculating" || commercial.state === "saving")
+        return {
+          label: commercial.state === "saving" ? "Saving financials…" : "Calculating financials…",
+          action: "commercial",
+          disabled: true,
+        };
+      return {
+        label: "Review financial inputs",
+        action: "commercial",
+        disabled: false,
+        reason: "Review the current Staffing & GM draft and its named blockers.",
+      };
+    }
     return {
       label: "Open Staffing & GM",
       href: "staffing",
@@ -373,7 +419,12 @@ export function nextValidStep(snap: WorkspaceSnapshot): NextStep {
   if (!pkg || status === "voided" || status === "rejected") {
     const returned = pkg?.approvals.find((a) => a.decision !== "approve");
     return {
-      label: status === "rejected" ? "Resolve review" : "Submit for approval",
+      label:
+        status === "rejected"
+          ? "Resolve review"
+          : snap.gmModel?.computed?.policy?.requires_ceo
+            ? "Submit with CEO exception"
+            : "Submit for approval",
       href: "approvals",
       disabled: false,
       action: "submit",

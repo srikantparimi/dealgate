@@ -77,6 +77,62 @@ def test_company_x_fixed_total_is_not_repeated_or_driven_by_billing_cadence():
     assert result.calculation_version == "commercial-schedule-v1"
 
 
+def test_fixed_fee_multiple_staffing_rows_include_partial_allocation_without_bill_rates():
+    workday = DayHours(D("8"), D("8"), D("8"))
+    weekend = DayHours(D("0"), D("0"), D("0"))
+    calendar = WorkCalendar(
+        "india-standard", "2026-v1", "America/New_York",
+        date(2026, 10, 1), date(2026, 12, 1),
+        (workday, workday, workday, workday, workday, weekend, weekend),
+    )
+    binding = dict(
+        source_id="sow-x", source_version="2", component_id="build",
+        profile_version="1", policy_version="gm-1", role="Consultant",
+        location="India", timezone="America/New_York", currency="USD",
+        calendar=calendar, bill_rate=None, cost_rate=D("30"),
+        rate_version=None, cost_version="loaded-cost-2026", start=date(2026, 10, 1),
+        end=date(2026, 12, 1), cost_rate_basis="hourly",
+    )
+    staffing = (
+        StaffingAssignment("india-full-a", quantity=1, allocation=D("1"), **binding),
+        StaffingAssignment("india-full-b", quantity=1, allocation=D("1"), **binding),
+        StaffingAssignment("india-half", quantity=1, allocation=D("0.5"), **binding),
+    )
+    pricing = FixedFee(
+        D("75400"),
+        tuple(FeeAllocation(month, "India", D("1")) for month in (
+            date(2026, 10, 1), date(2026, 11, 1), date(2026, 12, 1),
+        )),
+        "even service months", D("0.01"),
+    )
+    result = calculate_component(component(
+        service_start=date(2026, 10, 1), service_end=date(2026, 12, 1),
+        billing_cadence="on_completion", cost_basis="loaded hourly cost",
+        costs=(), staffing=staffing, pricing=pricing,
+    ))
+    outcome = result.assess()
+    # 44 weekdays x 8 paid hours x 2.5 FTE x $30/hour.
+    assert sum(row.paid_hours or D("0") for row in result.calendar_rows) == D("880.0")
+    assert outcome.revenue_total == D("75400")
+    assert outcome.cost_total == D("26400.0")
+    assert outcome.revenue_total - outcome.cost_total == D("49000.0")
+    assert outcome.gm_blended == D("49000.0") / D("75400")
+    assert not {gap.field for gap in result.missing} & {"bill_rate", "rate_version"}
+
+
+def test_staffing_blockers_name_the_exact_row_and_role():
+    missing_calendar = StaffingAssignment(
+        "row-a", "sow-x", "2", "build", "1", "gm-1", "Architect", "India",
+        "America/New_York", "USD", 1, D("0.5"), None, None, D("30"), None,
+        "loaded-cost-2026", date(2026, 11, 1), date(2026, 11, 30), "hourly",
+    )
+    result = calculate_component(component(costs=(), staffing=(missing_calendar,)))
+    calendar_gap = next(gap for gap in result.missing if gap.field == "calendar")
+    assert calendar_gap.line == 1
+    assert calendar_gap.role == "Architect"
+    assert calendar_gap.reason == "no confirmed calendar"
+
+
 def test_fixed_fee_minor_units_are_conserved_with_deterministic_ties():
     terms = FixedFee(D("0.02"), tuple(FeeAllocation(m, "India", D("1"))
                                     for m in MONTHS[:3]), "confirmed equal", D("0.01"))

@@ -226,6 +226,44 @@ describe("S14b workspace state", () => {
       label: "Open Staffing & GM",
       reason: "Engineer hourly cost missing",
     });
+    expect(
+      nextValidStep(incomplete, {
+        activeTab: "staffing",
+        commercial: {
+          state: "blocked",
+          blocker: "Row 1 · Architect: add a working calendar",
+          blockerLabel: "row 1 calendar",
+        },
+      }),
+    ).toMatchObject({
+      label: "Fix row 1 calendar",
+      action: "commercial",
+      reason: "Row 1 · Architect: add a working calendar",
+    });
+  });
+  it("offers save for a valid draft and approval after the saved version reloads", () => {
+    const incomplete = snap({ gmModel: null });
+    expect(
+      nextValidStep(incomplete, {
+        activeTab: "staffing",
+        commercial: { state: "ready_to_save" },
+      }),
+    ).toMatchObject({
+      label: "Save financial version",
+      action: "commercial",
+    });
+    const belowFloor = snap({
+      gmModel: {
+        computed: {
+          complete: true,
+          policy: { requires_ceo: true },
+        },
+      },
+    });
+    expect(nextValidStep(belowFloor)).toMatchObject({
+      label: "Submit with CEO exception",
+      action: "submit",
+    });
   });
   it.each([
     ["pending_delivery_hr", "View review status"],

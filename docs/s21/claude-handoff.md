@@ -2,6 +2,73 @@
 
 ## RESUME HERE
 
+**2026-10-06 22:15 PDT — S22 STAFFING/GM RECURRENCE FIX, LOCAL CANDIDATE
+AWAITING CHECKPOINT COMMIT AND DEPLOYMENT.** Authoritative integration tree for
+this repair is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current base HEAD
+`3ef55e576508af70e5c34d8593eec09db1d01560` (the verified deployed main
+baseline described immediately below). The tree intentionally contains the
+owned application/test changes listed by `git status --short`; none are merged
+to main. Main worktree `/Users/srikanthparimi/OfficeApp/dealgate` remains on
+the same commit and has six pre-existing modified S19 screenshot PNGs; preserve
+them. No test, server, migration, browser or deployment process is active.
+
+Live read-only reproduction used opportunity
+`bbefb2b0-90fc-4a7c-8995-bbe637b44654`. Do not mutate that business record.
+Its persisted commercial draft has fixed fee USD 75,400, service dates
+2026-10-01 through 2026-12-01 and three India staffing assignments totaling
+2.5 FTE, but `billing_cadence`, `cost_basis`, `costs_confirmed` and every
+working calendar are absent. `GET /delivery-model/{id}` returns `gm_model:null`;
+posting the unmodified draft to preview returns incomplete with an empty
+finance summary. This proves the first loss is commercial validation, not the
+SOW dates, browser cache or an undeployed old bundle. The deployed API is ECS
+revision 86, image `s21main-792feaa6`, digest
+`sha256:865c06eacd92d4a3d1110a967e1f16075633ecf11c396449ae5a23ae86dcc53a`;
+the deployed SPA is `assets/index-Dnv1r9ua.js`.
+
+Root causes and fixes in the dirty candidate:
+
+- `api/app/gm/finance_summary.py::commercial_finance_summary` discarded all
+  known fixed-fee revenue whenever staffing was incomplete. It now returns
+  the confirmed fee while every cost-derived value remains null.
+- `api/app/gm/commercial.py::_calendar_rows` dropped the staffing row number
+  from calendar/rate gaps. It now retains 1-based row and role evidence;
+  fixed-fee calculation still correctly ignores hourly bill-rate gaps.
+- `web/.../readiness.ts::nextValidStep` consulted only the last saved model,
+  while `CommercialModelEditor.calculate(true)` never refreshed the parent.
+  The editor now reports its authoritative preview/save state to the workspace,
+  the header focuses the first named correction or runs calculate/save, a save
+  reloads the snapshot, and a complete below-floor model labels the existing
+  CEO-exception submission route. No approval or permission check is bypassed.
+- Preview responses are request-number guarded and draft writes are serialized
+  with optimistic stamps so old responses cannot replace newer state.
+  Provisional fixed-fee geography follows an explicitly applied team only when
+  the allocation basis is marked proposed/defaulted; confirmed allocations are
+  untouched. AI advice remains provisional and its estimated GM is never copied
+  into the saved financial model.
+
+Focused evidence on this exact dirty tree: API **90/90** passed across
+`test_s22_finance_summary.py`, `test_s21_commercial_profiles.py` and
+`test_s21_commercial_persistence.py`, including independently checked
+USD 75,400 revenue, USD 26,400 labor cost, USD 49,000 gross profit and
+save/reload of 2.5 FTE (two full plus one half allocation). Web **42/42** passed
+across ApprovalReadiness, CommercialModelEditor, Finance/GM presentation,
+PlanTeamPanel and the new connected WorkspaceCommercialAction coverage;
+TypeScript is clean and the production Vite build completed as
+`assets/index-DYV1BgxV.js` plus `assets/index-BTGXDqY1.css`. The connected test clicks the real header action,
+prevents save on an incomplete input and focuses Cost basis, then calculates,
+saves, reloads and observes `Submit for approval` without leaving the Staffing
+tab. Historical React Router v7 future warnings are non-failures.
+
+Exact resume command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git diff --check`.
+Then review/commit the owned repair, build the immutable API image and SPA,
+prepare and inspect a fresh whole-root Terraform plan with the currently
+enabled operational variables, deploy through the migration/API/worker gate,
+run focused smoke and a fresh-session browser proof using an isolated fixture,
+and record screenshots plus deployed identifiers. Do not merge main before the
+owner's staging acceptance.
+
 **2026-10-06 21:25 PDT — MERGED TO MAIN AND MAIN-IMAGE DEPLOY VERIFIED.**
 Owner explicitly directed “merge to main and deploy.” `main` fast-forwarded
 from `3502c9e6c9f2c75d7f79f17fc048c7d5bfa327bc` to application/deployment

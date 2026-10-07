@@ -2,12 +2,15 @@
 
 import copy
 import uuid
+from datetime import date
 from decimal import Decimal
 
 import pytest
 from pydantic import TypeAdapter
 
 from app.gm.commercial import PricingComponent
+from app.gm.calendar import DayHours, StaffingAssignment, WorkCalendar
+from app.gm.commercial import FeeAllocation, FixedFee
 from app.services.commercial_models import CommercialInputError, parse_component, save_commercial_model
 from app.services.delivery_model import _model_to_payload, compute_live, serialize_gm_model
 from app.services.redact import redact_costs
@@ -135,6 +138,73 @@ async def test_api_permission_save_refresh_and_stale_guard(app_with_session, ses
         assert redacted.status_code == 200
         assert "commercial_inputs" not in redacted.json()["gm_model"]
         assert "commercial_outcome" not in redacted.json()["gm_model"]["computed"]
+
+
+@pytest.mark.asyncio
+async def test_fixed_fee_partial_staffing_saves_and_reloads_exact_financials(
+    app_with_session, session, monkeypatch,  # noqa: F811
+):
+    owner, opp, sow, old, _ = await fixture(session)
+    workday = DayHours(Decimal("8"), Decimal("8"), Decimal("8"))
+    weekend = DayHours(Decimal("0"), Decimal("0"), Decimal("0"))
+    calendar = WorkCalendar(
+        "india-standard", "2026-v1", "America/New_York",
+        date(2026, 10, 1), date(2026, 12, 1),
+        (workday, workday, workday, workday, workday, weekend, weekend),
+    )
+    binding = dict(
+        source_id=str(sow.sow_id), source_version=str(sow.id),
+        component_id="delivery", profile_version="1",
+        policy_version="blueprint-defaults-v1", role="Consultant",
+        location="India", timezone="America/New_York", currency="USD",
+        calendar=calendar, bill_rate=None, cost_rate=Decimal("30"),
+        rate_version=None, cost_version="loaded-cost-2026",
+        start=date(2026, 10, 1), end=date(2026, 12, 1),
+        cost_rate_basis="hourly",
+    )
+    staffing = (
+        StaffingAssignment("full-a", quantity=1, allocation=Decimal("1"), **binding),
+        StaffingAssignment("full-b", quantity=1, allocation=Decimal("1"), **binding),
+        StaffingAssignment("half", quantity=1, allocation=Decimal("0.5"), **binding),
+    )
+    commercial = component(
+        component_id="delivery", source_id=str(sow.sow_id), source_version=str(sow.id),
+        policy_version="blueprint-defaults-v1", service_start=date(2026, 10, 1),
+        service_end=date(2026, 12, 1), billing_cadence="on_completion",
+        cost_basis="loaded hourly cost", costs=(), staffing=staffing,
+        pricing=FixedFee(
+            Decimal("75400"),
+            tuple(FeeAllocation(month, "India", Decimal("1")) for month in (
+                date(2026, 10, 1), date(2026, 11, 1), date(2026, 12, 1),
+            )),
+            "confirmed service months", Decimal("0.01"),
+        ),
+    )
+    inputs = TypeAdapter(PricingComponent).dump_python(commercial, mode="json")
+    body = {
+        "sow_version_id": str(sow.id),
+        "expected_gm_model_id": str(old.id),
+        "inputs": inputs,
+        "change_reason": "Confirmed partial staffing plan",
+    }
+    monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Delivery")
+    async with _client(app_with_session) as client:
+        saved = await client.post(
+            f"/delivery-model/{opp.id}/commercial/versions",
+            json=body,
+            headers={"X-Test-User": owner.email},
+        )
+        assert saved.status_code == 201, saved.text
+        reloaded = await client.get(
+            f"/delivery-model/{opp.id}",
+            headers={"X-Test-User": owner.email},
+        )
+    computed = reloaded.json()["gm_model"]["computed"]
+    assert computed["complete"] is True
+    assert computed["finance_summary"]["revenue"] == "75400.00"
+    assert computed["finance_summary"]["labor_cost"] == "26400.00"
+    assert computed["finance_summary"]["gross_profit"] == "49000.00"
+    assert reloaded.json()["gm_model"]["commercial_inputs"] == inputs
 
 
 @pytest.mark.asyncio

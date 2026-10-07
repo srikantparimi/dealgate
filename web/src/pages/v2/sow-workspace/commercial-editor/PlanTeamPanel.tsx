@@ -148,9 +148,36 @@ export function PlanTeamPanel({
     const rows = proposedRows();
     if (!rows.length) return;
     setUndoRows(inputs.staffing ?? []);
+    const fteByLocation = new Map<string, number>();
+    for (const row of rows) {
+      if (!row.location) continue;
+      fteByLocation.set(
+        row.location,
+        (fteByLocation.get(row.location) ?? 0) +
+          row.quantity * (Number(row.allocation) || 0),
+      );
+    }
+    const dominantLocation = [...fteByLocation.entries()].sort(
+      (a, b) => b[1] - a[1],
+    )[0]?.[0];
+    const allocationBasis = inputs.pricing?.allocation_basis ?? "";
+    const pricing =
+      inputs.profile === "fixed_assignment" &&
+      dominantLocation &&
+      /\((?:proposed|defaulted)\)/.test(allocationBasis)
+        ? {
+            ...inputs.pricing,
+            allocations: (inputs.pricing?.allocations ?? []).map((row) => ({
+              ...row,
+              location: dominantLocation,
+            })),
+          }
+        : inputs.pricing;
     // Replaces current rows only through this explicit action; cost
-    // confirmation and saved versions are untouched.
-    onApply({ ...inputs, staffing: rows });
+    // confirmation and saved versions are untouched. A provisional
+    // revenue geography follows the applied delivery team; an explicitly
+    // confirmed allocation is never overwritten.
+    onApply({ ...inputs, staffing: rows, pricing });
     setComparing(false);
   }
 

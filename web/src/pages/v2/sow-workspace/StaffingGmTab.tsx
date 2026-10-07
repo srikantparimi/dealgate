@@ -26,6 +26,7 @@ import { ResourceLineRow } from "./staffing/ResourceLineRow";
 import { GateSteps, type GateStep } from "../../../ui-v2/GateSteps";
 import { ResourcesEditor } from "./ResourcesEditor";
 import { CommercialModelEditor } from "./CommercialModelEditor";
+import type { CommercialEditorStatus } from "./CommercialModelEditor";
 
 type ViewerRole = "restricted" | "full";
 
@@ -41,6 +42,9 @@ export interface StaffingGmTabProps {
   /** Fired when the reviewer asks the server to re-run auto-staffing
    * because a newer SOW version exists. */
   onRebuildFromSow?: () => void | Promise<void>;
+  onCommercialStatusChange?: (status: CommercialEditorStatus | null) => void;
+  onCommercialPrimaryAction?: (run: (() => void) | null) => void;
+  onCommercialSaved?: (model: DeliveryGmModel) => void | Promise<void>;
 }
 
 export function StaffingGmTab({
@@ -48,13 +52,22 @@ export function StaffingGmTab({
   viewer = "full",
   onSaveRow,
   onRebuildFromSow,
+  onCommercialStatusChange,
+  onCommercialPrimaryAction,
+  onCommercialSaved,
 }: StaffingGmTabProps) {
   const gm = snap.gmModel;
   const [preview, setPreview] = useState<FinanceGmResult | null>(null);
   const [commercial, setCommercial] = useState(false);
   const showComputed = useCallback((result: FinanceGmResult | null) => setPreview(result ?? {}), []);
   if (gm?.commercial_profile || gm?.commercial_inputs || commercial || (!gm && snap.sow)) {
-    return <CommercialModelEditor key={`${snap.sow?.id}:${gm?.id ?? "new"}`} snap={snap} />;
+    return <CommercialModelEditor
+      key={`${snap.sow?.id}:${gm?.id ?? "new"}`}
+      snap={snap}
+      onStatusChange={onCommercialStatusChange}
+      onPrimaryAction={onCommercialPrimaryAction}
+      onSaved={onCommercialSaved}
+    />;
   }
   if (!gm) {
     // No GM model yet. This used to be a dead end — an empty state whose only

@@ -114,6 +114,7 @@ export function CalendarFields({
           <section
             key={row.assignment_id}
             aria-label={`Assignment ${index + 1}`}
+            data-staffing-row={index + 1}
             className="space-y-4 border-t border-divider pt-4"
           >
             <div className="flex items-center justify-between gap-2">
@@ -324,6 +325,8 @@ export function CalendarFields({
             ) : (
               <Button
                 variant="secondary"
+                data-add-calendar={index + 1}
+                aria-label={`Add working calendar for row ${index + 1}`}
                 onClick={() =>
                   patch("calendar", {
                     calendar_id: "",

@@ -168,7 +168,7 @@ export interface CommercialSchedule {
   }[];
   children?: CommercialSchedule[];
   status: string;
-  missing: { field?: string; key?: string; reason?: string }[];
+  missing: { field?: string; key?: string; reason?: string; line?: number | null; role?: string | null }[];
 }
 export interface CommercialSnapshot {
   schedule: CommercialSchedule;
