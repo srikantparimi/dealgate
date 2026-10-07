@@ -283,6 +283,12 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(confirmationStaffing).toContainText("Consultant");
     await expect(confirmationStaffing).toContainText("79.2%");
     await expect(confirmationStaffing).not.toContainText("No staffing lines yet");
+    const staffingRows = confirmationStaffing
+      .getByRole("table", { name: "Staffing grid" })
+      .locator("tbody tr");
+    await expect(staffingRows).toHaveCount(2);
+    await expect(staffingRows.nth(0).locator("td").nth(2)).toHaveText("2");
+    await expect(staffingRows.nth(1).locator("td").nth(2)).toHaveText("1");
     const approvalPath = page.locator("#section-approvers");
     for (const label of ["Delivery", "HR", "Finance", "Legal"]) {
       await expect(approvalPath).toContainText(label);
@@ -290,6 +296,9 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(approvalPath).toContainText("Not required");
     await expect(page.getByRole("button", { name: "Submit for approval" })).toHaveCount(0);
     await page.screenshot({ path: path.join(EVIDENCE, "03-confirm-sow-dates-gm-and-approval-path.png") });
+    await confirmationStaffing.screenshot({
+      path: path.join(EVIDENCE, "03a-confirm-sow-quantity-weighted-staffing.png"),
+    });
 
     await page.reload();
     await expect(page.getByRole("heading", { name: "Confirm SOW" })).toBeVisible({ timeout: 45_000 });
@@ -299,6 +308,9 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(confirmationStaffing).toContainText("Consultant");
     await expect(confirmationStaffing).toContainText("79.2%");
     await expect(confirmationStaffing).not.toContainText("No staffing lines yet");
+    await expect(staffingRows).toHaveCount(2);
+    await expect(staffingRows.nth(0).locator("td").nth(2)).toHaveText("2");
+    await expect(staffingRows.nth(1).locator("td").nth(2)).toHaveText("1");
 
     await page.getByRole("button", { name: "Complete scope" }).click();
     await expect(page).toHaveURL(new RegExp(`/sows/${opportunityId}/approvals`), { timeout: 45_000 });

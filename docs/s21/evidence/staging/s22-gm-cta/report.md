@@ -2,18 +2,19 @@
 
 Tested 2026-10-07 PDT against `https://app.dealgateapp.com` from branch
 `fix/s22-gm-cta`, application checkpoint
-`75f0dd0e2399e0ca734bca1bb03a24cc2fd3a36c` and reviewed-plan
-documentation checkpoint `76d9059cebaa982a0e4d1b4a42632bf4a0c0c913`.
+`60a8901a307d1c9ff06fcf640eb25258df7fd6d1`. This is a generic confirmation
+contract fix; it contains no customer, role, geography, date, amount or
+pricing-profile special case.
 
 ## Deployed revisions
 
-- API: ECS task definition `officeapp-dev-api:90`, rollout completed 1/1
-- Image: `s22staffing-75f0dd0`
-- Digest: `sha256:9e94acdea2271094dd1637a796e32c3cf1e89d092aa489c9b50ca11365d37afe`
-- Frontend: `assets/index-NGaZkXeJ.js`, CSS `assets/index-CGMBFthR.css`
-- CloudFront invalidation: `I4P250ECLXKHD7DMFHW619SM02` (completed)
-- Migration task: `d0d2bc55620c416596512f8f627b34d4` (succeeded)
-- Deploy smoke: `smoke 20261007T213844Z` (green; cleanup gate clean)
+- API: ECS task definition `officeapp-dev-api:91`, rollout completed 1/1
+- Image: `s22quantity-60a8901`
+- Digest: `sha256:3ac0c6771f56c6b71f7bf348f1bedd3ed269a9fd64702197043d612b6e9ea868`
+- Frontend: `assets/index-D4d4XS3r.js`, CSS `assets/index-DcoHFPrW.css`
+- CloudFront invalidation: `ICL06VS5744E62NGEHRHAQ7F3E` (completed)
+- Migration task: `3ba05ec61e9540b19f7c4fc675951b7f` (succeeded)
+- Deploy smoke: `smoke 20261007T222706Z` (green; cleanup gate clean)
 
 ## Connected proof
 
@@ -27,7 +28,7 @@ env AWS_PROFILE=lm-arbiter-poc AWS_PROFILE_STAGING=lm-arbiter-poc \
   --project=chromium
 ```
 
-Result: **1 passed in 1.7 minutes**. The fresh browser used a server-issued
+Latest result: **1 passed in 1.6 minutes**. The fresh browser used a server-issued
 fixture and six real Cognito identities. It exercised the deployed SPA, API,
 RDS draft/version storage, authoritative Decimal calculation and approval
 state machine; no feature response was mocked.
@@ -58,9 +59,10 @@ The sequence proved:
 4. The primary action changed to `Save`; saving opened `Confirm SOW` rather
    than exposing approval submission inside Staffing & GM.
 5. Confirm SOW showed both saved staffing roles (`Senior consultant` and
-   `Consultant`), term start/end, the saved 79.2% GM, Delivery, HR, Finance
-   and Legal, and `CEO exception — Not required`; `No staffing lines yet`
-   was absent and a full reload preserved the staffing rows and values.
+   `Consultant`), their saved People values `2` and `1`, allocations `100%`
+   and `50%`, term start/end, the saved 79.2% GM, Delivery, HR, Finance and
+   Legal, and `CEO exception — Not required`; `No staffing lines yet` was
+   absent and a full reload preserved the staffing rows, headcounts and GM.
 6. `Complete scope` navigated to Approvals. Confirming the real reviewer plan
    persisted the review state and displayed approved/pending/queued pipeline
    status rather than looping back to Staffing & GM.
@@ -72,6 +74,7 @@ The sequence proved:
 - `01-before-known-revenue-and-row-blocker.png`
 - `02-calculated-financials-save-action.png`
 - `03-confirm-sow-dates-gm-and-approval-path.png`
+- `03a-confirm-sow-quantity-weighted-staffing.png`
 - `04-approvals-pipeline-status.png`
 
 ## Original record
@@ -80,6 +83,22 @@ Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remained read-only. The
 deployed proof used an isolated equivalent fixture for every mutation.
 
 ## Diagnostic history
+
+- The grouped-headcount calculation was already correct in the authoritative
+  engine. The owner's saved Caesars GM v7 was inspected read-only: two people
+  at 100% plus one at 50%, 280 per-person hours and USD 30/hour produced
+  `280 x 30 x (2 x 1 + 1 x 0.5) = USD 21,000` labor and 72.1485411% GM on
+  USD 75,400 revenue. The loss occurred after calculation: `_staffing_from_gm`
+  converted typed `StaffingAssignment` values into `StaffingLine`, whose
+  shared API/JSON contract had no `quantity`. Commit `60a8901` carries saved
+  quantity across that boundary and displays a reusable People column;
+  legacy per-person rows default to one.
+
+- The latest visual proof also exposes a separate presentation inconsistency:
+  the GM summary correctly includes the USD 2,500 commercial additional cost,
+  while the legacy editable Direct costs list says `No direct costs`. This did
+  not affect the authoritative total-cost or GM calculation and is not being
+  relabeled as part of the grouped-headcount fix.
 
 - The 2026-10-07 Confirm SOW staffing defect was a serializer boundary, not
   missing saved data: S21/S22 persists typed staffing under
