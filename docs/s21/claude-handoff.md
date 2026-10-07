@@ -2,13 +2,14 @@
 
 ## RESUME HERE
 
-**2026-10-06 23:51 PDT — SIMPLIFIED STAFFING & GM CANDIDATE COMMITTED;
-STAGING DEPLOYMENT AND FRESH-SESSION PROOF NEXT.** Authoritative tree is
+**2026-10-06 23:56 PDT — SIMPLIFIED STAFFING & GM DEPLOYMENT PLAN READY;
+HUMAN TERRAFORM APPROVAL REQUIRED.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
-`fix/s22-gm-cta`, clean application HEAD
-`1cded57bb1d5b6a77f1f63791bc68db9453a195c`. It is one commit ahead of
-`origin/fix/s22-gm-cta` and is based on deployed-proof checkpoint
-`c475286e060df25c006d1d158e07ddb0c36ad5df`; it is not merged to main. Main
+`fix/s22-gm-cta`, application commit
+`1cded57bb1d5b6a77f1f63791bc68db9453a195c` and pre-plan documentation
+checkpoint `2acab1e3abb830107d81d573a586dd1808718f2a`. The branch is based on
+deployed-proof checkpoint
+`c475286e060df25c006d1d158e07ddb0c36ad5df`, and is not merged to main. Main
 remains `3ef55e576508af70e5c34d8593eec09db1d01560` in
 `/Users/srikanthparimi/OfficeApp/dealgate`. No worker or other worktree owns
 files in this checkpoint, no unmerged worker commit exists, and no test,
@@ -52,6 +53,19 @@ monthly, Cost basis and Preview controls; those tests were updated to retain
 their payload, persistence and model-isolation assertions, and the resulting
 affected run is green.
 
+The immutable API candidate is present in ECR as
+`officeapp-dev-api:s22simple-1cded57`, digest
+`sha256:3d9a1472c4bbc687411387618489df32ff0835eb66efa3c7ac3a6e2205f498e5`.
+A whole-root Terraform plan is saved at `/tmp/s22-simple-1cded57.tfplan` and
+its text rendering at `/tmp/s22-simple-1cded57.plan.txt`: **11 add, 13 change,
+11 destroy**. All 11 delete/create pairs are revisioned ECS task definitions
+(API, migration and eight scheduled jobs) plus the migration trigger; all
+replacements are caused by the immutable container image or migration trigger.
+The 13 in-place changes are the API service, eight EventBridge targets and four
+run-task policies following the new task revisions. The plan contains no RDS,
+S3, Cognito, network, secret or other persistent-resource change. This is a
+required human infrastructure gate and has not been applied.
+
 Deployed state is still the preceding candidate: API ECS revision 87, image
 `s22gm-23001678`, digest
 `sha256:265feaa8a18192e40dceba21fbf46096515f5abb44c4e7246d70676365f3c243`,
@@ -62,14 +76,17 @@ The owner's real opportunity
 fixture for mutations and cleanup it through the established smoke gate.
 
 Exact resume commands:
-`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git log -2 --oneline`,
-then `git push origin fix/s22-gm-cta`. Build an immutable API image from
-`1cded57`, prepare and inspect the normal whole-root staging Terraform plan,
-apply only after confirming it contains no persistent-resource change, publish
-the SPA from the same commit, run the focused deploy smoke and fresh-session
-fixed-fee Staffing → GM → Save → Submit proof, capture before/after screenshots,
-and update this entry with image/task/bundle identifiers. Do not mutate the
-owner record and do not merge main before product-owner acceptance.
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git rev-parse HEAD`,
+then, only after explicit approval of the plan above,
+`env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-simple-1cded57.tfplan`.
+If `/tmp` was cleared, regenerate the whole-root plan with image tag
+`s22simple-1cded57` and the recorded staging variables before asking for a new
+approval; never reconstruct or partially apply it. After apply, verify the
+migration task and API service stability, publish the SPA from application
+commit `1cded57`, run the focused deploy smoke and fresh-session fixed-fee
+Staffing → GM → Save → Submit proof, capture before/after screenshots, and
+update this entry with image/task/bundle identifiers. Do not mutate the owner
+record and do not merge main before product-owner acceptance.
 
 **2026-10-06 22:48 PDT — S22 GM/CTA CANDIDATE DEPLOYED AND CONNECTED
 PROOF GREEN; OWNER ACCEPTANCE NEXT.** Authoritative tree is
