@@ -5,9 +5,8 @@
 **2026-10-07 00:06 PDT — LIVE/LOCAL MISMATCH CONFIRMED; LEGACY EMPTY-CALENDAR
 COMPATIBILITY FIX GREEN, NEW DEPLOYMENT ARTIFACT REQUIRED.** Authoritative tree
 is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
-`fix/s22-gm-cta`. The last pushed head before this checkpoint is
-`e514ce8e43a1044cdef6e1aa0802ccc569d1f4fb`; the two owned source/test changes
-described below are being committed as the next checkpoint. Main remains
+`fix/s22-gm-cta`. The pushed application checkpoint is
+`e92b4ddfef82d0bc808f3fe524773f8dc874b5f7`. Main remains
 `3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched.
 
 The user screenshot was taken against the preceding deployment, not the
@@ -34,11 +33,25 @@ Focused evidence: the new regression first failed because preview received
 after the normalization change. The full
 `web/src/__tests__/v2/CommercialModelEditor.test.tsx` file is **7/7 passed** and
 `npm run typecheck` passed. No deployment, migration, browser run or server is
-active. The image `s22simple-1cded57` and saved Terraform plan target code
-before this compatibility fix and must not be deployed. Build a new immutable
-image from the new checkpoint, create and inspect a fresh whole-root plan, then
-obtain human approval before apply. After apply, publish the matching SPA and
-prove the affected SOW in a fresh session without mutating its business data.
+active. The first replacement image command failed before build because it used
+`api/` as the Docker context while the Dockerfile copies root-relative `api/`
+and `worker/` paths; no artifact was pushed by that attempt. The corrected
+root-context build succeeded. ECR image `s22simple-e92b4dd` has digest
+`sha256:34dc726a5e1e4fd034d74c7513bb3d9d812459a2f1ecce3388880f3bff16a455`.
+The prior `s22simple-1cded57` plan was renamed with a `.stale` suffix and must
+not be applied.
+
+The fresh whole-root plan is `/tmp/s22-simple-e92b4dd.tfplan`, with text at
+`/tmp/s22-simple-e92b4dd.plan.txt`: **11 add, 13 change, 11 destroy**. As in
+the reviewed predecessor, replacements are only revisioned API/migration/eight
+scheduled-worker task definitions plus the migration trigger; in-place changes
+are the API service, eight EventBridge targets and four run-task policies that
+follow those revisions. There is no RDS, S3, Cognito, network, secret or other
+persistent-resource change. Human approval is required before apply. Exact
+apply command after approval:
+`env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-simple-e92b4dd.tfplan`.
+After apply, publish the matching SPA, then prove the affected SOW in a fresh
+session without mutating its business data.
 
 **2026-10-06 23:56 PDT — SIMPLIFIED STAFFING & GM DEPLOYMENT PLAN READY;
 HUMAN TERRAFORM APPROVAL REQUIRED.** Authoritative tree is
