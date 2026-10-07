@@ -2,6 +2,20 @@
 
 ## RESUME HERE
 
+**2026-10-07 11:02 PDT — STAGING EVIDENCE COMMITTED/PUSHED; WAITING ONLY FOR
+PRODUCT-OWNER CLICK-THROUGH.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, deployed proof checkpoint
+`26c075eb92859b8a698ca3680054a1bf7935ac89`; use `git rev-parse HEAD` for the
+handoff-only commit containing this entry. The source/evidence tree was clean
+before this entry, all operations are complete, and no process is active.
+Staging is `https://app.dealgateapp.com` on API revision 89, image/digest and
+frontend bundle recorded immediately below. Exact next action is the product
+owner's click-through: open an existing draft, save Staffing & GM, confirm the
+dates/GM/approval path on Confirm SOW, click Complete scope, submit on
+Approvals, and inspect the pending/queued stream. After explicit acceptance,
+follow branch policy for the main merge; until then do not merge or redeploy.
+
 **2026-10-07 11:00 PDT — RESTORED CONFIRM SOW FLOW DEPLOYED AND CONNECTED
 PROOF GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
