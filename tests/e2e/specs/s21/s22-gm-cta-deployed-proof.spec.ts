@@ -278,7 +278,11 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(page.getByRole("heading", { name: "Confirm SOW" })).toBeVisible();
     await expect(page.getByTestId("field-row-term_start")).toContainText("2026-10-01");
     await expect(page.getByTestId("field-row-term_end")).toContainText("2026-10-31");
-    await expect(page.locator("#section-staffing")).toContainText("79.2%");
+    const confirmationStaffing = page.locator("#section-staffing");
+    await expect(confirmationStaffing).toContainText("Senior consultant");
+    await expect(confirmationStaffing).toContainText("Consultant");
+    await expect(confirmationStaffing).toContainText("79.2%");
+    await expect(confirmationStaffing).not.toContainText("No staffing lines yet");
     const approvalPath = page.locator("#section-approvers");
     for (const label of ["Delivery", "HR", "Finance", "Legal"]) {
       await expect(approvalPath).toContainText(label);
@@ -291,7 +295,10 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(page.getByRole("heading", { name: "Confirm SOW" })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByTestId("field-row-term_start")).toContainText("2026-10-01");
     await expect(page.getByTestId("field-row-term_end")).toContainText("2026-10-31");
-    await expect(page.locator("#section-staffing")).toContainText("79.2%");
+    await expect(confirmationStaffing).toContainText("Senior consultant");
+    await expect(confirmationStaffing).toContainText("Consultant");
+    await expect(confirmationStaffing).toContainText("79.2%");
+    await expect(confirmationStaffing).not.toContainText("No staffing lines yet");
 
     await page.getByRole("button", { name: "Complete scope" }).click();
     await expect(page).toHaveURL(new RegExp(`/sows/${opportunityId}/approvals`), { timeout: 45_000 });

@@ -2,6 +2,44 @@
 
 ## RESUME HERE
 
+**2026-10-07 14:39 PDT — CONFIRM SOW STAFFING FIX DEPLOYED; CONNECTED PROOF
+AND RELEASE GATES GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** Authoritative tree
+is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current pre-evidence head
+`76d9059cebaa982a0e4d1b4a42632bf4a0c0c913`, with application fix
+`75f0dd0e2399e0ca734bca1bb03a24cc2fd3a36c`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched. The focused
+proof spec, evidence report, four refreshed screenshots and this handoff are
+the only owned dirty files. No build, test, browser, deployment or migration
+process is active.
+
+Terraform applied exactly the approved **11 add / 13 change / 11 destroy**
+plan. Migration task `d0d2bc55620c416596512f8f627b34d4` succeeded. ECS is
+stable 1/1 on task definition `officeapp-dev-api:90`, image
+`s22staffing-75f0dd0`, digest
+`sha256:9e94acdea2271094dd1637a796e32c3cf1e89d092aa489c9b50ca11365d37afe`.
+`/api/healthz` returned `ok`. The existing matching frontend remains
+`assets/index-NGaZkXeJ.js`; no SPA change was required for this backend
+serializer fix.
+
+The fresh-session connected proof is **1 passed in 1.7 minutes**. It used an
+isolated server-issued fixture and the deployed SPA/API/RDS/Cognito identities.
+Confirm SOW displayed both saved commercial staffing roles (`Senior
+consultant` and `Consultant`), rejected the exact `No staffing lines yet`
+regression, preserved those rows and 79.2% GM after reload, then completed
+scope and persisted the real pending/queued approval pipeline. Deploy smoke
+`smoke 20261007T213844Z` passed on the same task/digest. Final cleanup reported
+zero test-tagged clients and zero e2e approvers on real SOWs. The owner's
+Caesars record remained read-only.
+
+Exact next action is product-owner staging click-through at
+`https://app.dealgateapp.com`: open the Caesars SOW, confirm both staffing rows
+under Confirm SOW, reload once, and continue to Approvals. Do not merge main
+without explicit acceptance. Before any subsequent work run
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git rev-parse HEAD`;
+commit/push only the proof spec, evidence report, four refreshed screenshots
+and this handoff if this checkpoint has not yet been committed.
+
 **2026-10-07 14:12 PDT — CONFIRM SOW STAFFING FIX COMMITTED/PUSHED; REVIEWED
 TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

@@ -2,18 +2,18 @@
 
 Tested 2026-10-07 PDT against `https://app.dealgateapp.com` from branch
 `fix/s22-gm-cta`, application checkpoint
-`5cd52ea490729227b380988288455273e9282684` and pre-deploy documentation
-checkpoint `0b5a04620b29c9339d65a0a62029bb8d5efd937c`.
+`75f0dd0e2399e0ca734bca1bb03a24cc2fd3a36c` and reviewed-plan
+documentation checkpoint `76d9059cebaa982a0e4d1b4a42632bf4a0c0c913`.
 
 ## Deployed revisions
 
-- API: ECS task definition `officeapp-dev-api:89`, rollout completed 1/1
-- Image: `s22confirm-5cd52ea`
-- Digest: `sha256:a037c926b3b0691ed5209e6f96c6b9bde7cf3b8c6c4ee428caff772d3338d111`
+- API: ECS task definition `officeapp-dev-api:90`, rollout completed 1/1
+- Image: `s22staffing-75f0dd0`
+- Digest: `sha256:9e94acdea2271094dd1637a796e32c3cf1e89d092aa489c9b50ca11365d37afe`
 - Frontend: `assets/index-NGaZkXeJ.js`, CSS `assets/index-CGMBFthR.css`
 - CloudFront invalidation: `I4P250ECLXKHD7DMFHW619SM02` (completed)
-- Migration task: `c7b7207dc72d435ca1c67b3e5eabbd3b` (succeeded)
-- Deploy smoke: `smoke 20261007T175159Z` (green; cleanup gate clean)
+- Migration task: `d0d2bc55620c416596512f8f627b34d4` (succeeded)
+- Deploy smoke: `smoke 20261007T213844Z` (green; cleanup gate clean)
 
 ## Connected proof
 
@@ -27,7 +27,7 @@ env AWS_PROFILE=lm-arbiter-poc AWS_PROFILE_STAGING=lm-arbiter-poc \
   --project=chromium
 ```
 
-Result: **1 passed in 2.0 minutes**. The fresh browser used a server-issued
+Result: **1 passed in 1.7 minutes**. The fresh browser used a server-issued
 fixture and six real Cognito identities. It exercised the deployed SPA, API,
 RDS draft/version storage, authoritative Decimal calculation and approval
 state machine; no feature response was mocked.
@@ -57,9 +57,10 @@ The sequence proved:
    financial expectation through the server calculation service.
 4. The primary action changed to `Save`; saving opened `Confirm SOW` rather
    than exposing approval submission inside Staffing & GM.
-5. Confirm SOW showed term start/end, the saved 79.2% GM, Delivery, HR,
-   Finance and Legal, and `CEO exception — Not required`; a full reload
-   preserved those values.
+5. Confirm SOW showed both saved staffing roles (`Senior consultant` and
+   `Consultant`), term start/end, the saved 79.2% GM, Delivery, HR, Finance
+   and Legal, and `CEO exception — Not required`; `No staffing lines yet`
+   was absent and a full reload preserved the staffing rows and values.
 6. `Complete scope` navigated to Approvals. Confirming the real reviewer plan
    persisted the review state and displayed approved/pending/queued pipeline
    status rather than looping back to Staffing & GM.
@@ -79,6 +80,15 @@ Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remained read-only. The
 deployed proof used an isolated equivalent fixture for every mutation.
 
 ## Diagnostic history
+
+- The 2026-10-07 Confirm SOW staffing defect was a serializer boundary, not
+  missing saved data: S21/S22 persists typed staffing under
+  `gm_model.commercial_inputs.staffing`, while `_staffing_from_gm` read only
+  the intentionally empty legacy `gm_model.resource_lines`. `_compute_floors`
+  already read the typed snapshot, which explains why the same GM v4 showed
+  72.1% GM but zero staffing rows. Commit `75f0dd0` makes the typed commercial
+  component authoritative when present, retains legacy-version compatibility,
+  and rejects malformed historical inputs with a precise warning.
 
 - The first refreshed connected run reached the correct confirmation page but
   stopped because the sample document extracted `signatories.value=null`; the
