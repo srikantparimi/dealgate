@@ -2,6 +2,50 @@
 
 ## RESUME HERE
 
+**2026-10-07 00:24 PDT — SIMPLIFIED STAFFING & GM DEPLOYED PROOF GREEN;
+PRODUCT-OWNER ACCEPTANCE NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, pushed pre-proof head
+`60fde64f55e89ff924196fb64ca8afe9a4a5fcbb`, with deployed application
+checkpoint `e92b4ddfef82d0bc808f3fe524773f8dc874b5f7`. The refreshed proof spec,
+report and four screenshots listed below are the only owned changes awaiting
+the final evidence commit. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched.
+
+The approved Terraform plan applied exactly **11 add, 13 change, 11 destroy**.
+Migration task `e2518e23e4794eeeafb7aea0d051e255` succeeded. Staging API is
+rollout-complete on ECS task definition `officeapp-dev-api:88`, image
+`s22simple-e92b4dd`, running digest
+`sha256:34dc726a5e1e4fd034d74c7513bb3d9d812459a2f1ecce3388880f3bff16a455`.
+Deploy smoke `smoke 20261007T071522Z` passed on that exact task/digest and its
+cleanup gate was clean. The matching SPA is live as
+`assets/index-BPgaqF0W.js` and `assets/index-CGMBFthR.css`; CloudFront
+invalidation `I23X1YLBST202823ESU3DXJ0F5` completed and `/api/healthz`
+returned 200.
+
+Fresh-session connected proof is **1 passed in 2.6 minutes**. Its disposable
+draft deliberately carried the user's failing legacy shape: 21 empty decimal
+strings in the seven-day calendar. The deployed page discarded the unusable
+calendar shell, displayed one `Fix row 1 hours` action, focused Hours 1, and
+never exposed a Pydantic validation dump. Two compact staffing rows (two people
+at 100%, one at 50%, 176 hours each, USD 30/hour) plus a USD 2,500 Travel cost
+produced the independent expectation: USD 75,400 revenue, USD 13,200 labor,
+USD 2,500 direct costs, USD 15,700 total cost, USD 59,700 gross profit and
+79.2% displayed GM. Save persisted GM v1 across a full reload; the workspace
+action became Submit for approval, the real reviewer plan submitted, and the
+action became View review status. Final teardown gate: zero test clients and
+zero e2e approvers on real SOWs.
+
+Current evidence is
+`docs/s21/evidence/staging/s22-gm-cta/report.md` and its four linked PNGs.
+Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remained read-only. The
+full e2e typecheck still reports only four historical errors in numeric specs
+22/23/24; the updated deployed-proof spec has no type error. No deployment,
+migration, test, browser or server process is active. Exact next command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git diff --check`,
+then validate and commit only the proof spec/report/screenshots plus this
+handoff. Stop for product-owner staging acceptance; do not merge main.
+
 **2026-10-07 00:06 PDT — LIVE/LOCAL MISMATCH CONFIRMED; LEGACY EMPTY-CALENDAR
 COMPATIBILITY FIX GREEN, NEW DEPLOYMENT ARTIFACT REQUIRED.** Authoritative tree
 is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

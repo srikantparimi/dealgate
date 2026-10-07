@@ -94,23 +94,6 @@ async function deleteAndDrain(api: APIRequestContext, clientId: string) {
   throw new Error(`cleanup job ${body.job_id} did not drain`);
 }
 
-async function fillCalendar(row: import("@playwright/test").Locator, index: number) {
-  await row.getByRole("button", { name: `Add working calendar for row ${index}` }).click();
-  await row.getByLabel("Calendar source ID").fill(`india-standard-${index}`);
-  await row.getByLabel("Calendar version").fill("2026.10");
-  await row.getByLabel("Calendar timezone").fill("America/Los_Angeles");
-  for (const day of ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]) {
-    await row.getByLabel(`${day} scheduled hours`).fill("8");
-    await row.getByLabel(`${day} billable hours`).fill("8");
-    await row.getByLabel(`${day} paid hours`).fill("8");
-  }
-  for (const day of ["Saturday", "Sunday"]) {
-    await row.getByLabel(`${day} scheduled hours`).fill("0");
-    await row.getByLabel(`${day} billable hours`).fill("0");
-    await row.getByLabel(`${day} paid hours`).fill("0");
-  }
-}
-
 test("fixed-fee staffing calculates, persists and advances without a CTA loop", async ({ page }) => {
   test.setTimeout(600_000);
   fs.mkdirSync(EVIDENCE, { recursive: true });
@@ -177,12 +160,14 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
       ...binding,
       assignment_id: id,
       role: name,
+      seniority: name.startsWith("Senior") ? "Senior" : "Consultant",
       location: "India",
       timezone: "America/Los_Angeles",
       currency: "USD",
       quantity,
       allocation,
       calendar: null,
+      hours_billable: null,
       bill_rate: null,
       cost_rate: "30",
       rate_version: null,
@@ -202,8 +187,8 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
       service_end: "2026-10-31",
       timezone: "America/Los_Angeles",
       currency: "USD",
-      billing_cadence: "invoice on delivery",
-      cost_basis: "loaded delivery cost from the active rate card",
+      billing_cadence: "fixed_post_delivery",
+      cost_basis: null,
       costs_confirmed: true,
       costs: [],
       pricing: {
@@ -212,10 +197,28 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
         allocation_basis: "single October service month",
         minor_unit: "0.01",
       },
-      staffing: [
-        role("india-senior", "Senior consultant", 2, "1"),
-        role("india-partial", "Consultant", 1, "0.5"),
-      ],
+      staffing: (() => {
+        const legacyCalendar = {
+          calendar_id: "legacy-empty",
+          version: "draft",
+          timezone: "America/Los_Angeles",
+          coverage_start: "2026-10-01",
+          coverage_end: "2026-10-31",
+          week: Array.from({ length: 7 }, () => ({
+            scheduled: "",
+            billable: "",
+            paid: "",
+          })),
+          overrides: [],
+        };
+        return [
+          {
+            ...role("india-senior", "Senior consultant", 2, "1"),
+            calendar: legacyCalendar,
+          },
+          role("india-partial", "Consultant", 1, "0.5"),
+        ];
+      })(),
     };
     await json(
       await api.put(`delivery-model/${opportunityId}/commercial/draft`, {
@@ -230,33 +233,41 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     const gm = page.getByRole("region", { name: "GM summary" });
     await expect(gm).toContainText("Contract price");
     await expect(gm).toContainText("$75,400");
-    const blocker = page.getByRole("button", { name: "Fix row 1 calendar" });
+    await expect(page.getByText(/validation errors for PricingComponent/)).toHaveCount(0);
+    await expect(page.getByText("Cost basis", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/Monthly plan & expenses/)).toHaveCount(0);
+    await expect(page.getByText(/working calendar/i)).toHaveCount(0);
+    const blocker = page.getByRole("button", { name: "Fix row 1 hours" });
     await expect(blocker).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "2 · Team & calendars" }).click();
     await page.screenshot({ path: path.join(EVIDENCE, "01-before-known-revenue-and-row-blocker.png") });
 
     await blocker.click();
-    const row1 = page.locator('[data-staffing-row="1"]');
-    const row2 = page.locator('[data-staffing-row="2"]');
-    await expect(row1.getByRole("button", { name: "Add working calendar for row 1" })).toBeFocused();
-    await fillCalendar(row1, 1);
-    await expect(page.getByRole("button", { name: "Fix row 2 calendar" })).toBeVisible({ timeout: 30_000 });
-    await fillCalendar(row2, 2);
-    await page.getByLabel("Change reason").fill("Connected deployed proof of fixed-fee staffing economics");
+    await expect(page.getByLabel("Hours 1")).toBeFocused();
+    await page.getByLabel("Hours 1").fill("176");
+    await page.getByLabel("Hours 2").fill("176");
+    await page.getByRole("button", { name: "Add cost" }).click();
+    await page.getByLabel("Additional cost description 1").fill("Travel");
+    await page.getByLabel("Additional cost amount 1").fill("2500");
+    await page.getByLabel("Additional cost location 1").selectOption("India");
 
     const expectedRevenue = 75_400;
     const weekdayHours = 22 * 8;
-    const expectedCost = weekdayHours * 30 * (2 + 0.5);
+    const expectedLabor = weekdayHours * 30 * (2 + 0.5);
+    const expectedDirectCost = 2_500;
+    const expectedCost = expectedLabor + expectedDirectCost;
     const expectedProfit = expectedRevenue - expectedCost;
     const expectedGm = expectedProfit / expectedRevenue;
-    expect(expectedCost).toBe(13_200);
-    expect(expectedGm).toBeCloseTo(0.824933687, 8);
+    expect(expectedLabor).toBe(13_200);
+    expect(expectedCost).toBe(15_700);
+    expect(expectedGm).toBeCloseTo(0.791777188, 8);
 
-    const saveAction = page.getByRole("button", { name: "Save financial version" });
+    const saveAction = page.getByRole("button", { name: "Save", exact: true }).first();
     await expect(saveAction).toBeVisible({ timeout: 45_000 });
+    await expect(gm).toContainText(`$${expectedLabor.toLocaleString("en-US")}`);
+    await expect(gm).toContainText(`$${expectedDirectCost.toLocaleString("en-US")}`);
     await expect(gm).toContainText(`$${expectedCost.toLocaleString("en-US")}`);
     await expect(gm).toContainText(`$${expectedProfit.toLocaleString("en-US")}`);
-    await expect(gm).toContainText("82.5%");
+    await expect(gm).toContainText("79.2%");
     await page.screenshot({ path: path.join(EVIDENCE, "02-calculated-financials-save-action.png") });
 
     await saveAction.click();
@@ -264,9 +275,8 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(page.getByRole("button", { name: "Submit for approval" })).toBeVisible({ timeout: 45_000 });
     await page.reload();
     await expect(page.getByRole("button", { name: "Submit for approval" })).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByRole("region", { name: "GM summary" })).toContainText("$13,200");
-    await expect(page.getByRole("region", { name: "GM summary" })).toContainText("82.5%");
-    await page.getByRole("button", { name: "2 · Team & calendars" }).click();
+    await expect(page.getByRole("region", { name: "GM summary" })).toContainText("$15,700");
+    await expect(page.getByRole("region", { name: "GM summary" })).toContainText("79.2%");
     await page.screenshot({ path: path.join(EVIDENCE, "03-save-reload-submit-action.png") });
 
     await page.getByRole("button", { name: "Submit for approval" }).click();

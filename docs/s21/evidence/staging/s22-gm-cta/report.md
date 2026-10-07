@@ -1,18 +1,19 @@
-# S22 Staffing & GM deployed proof
+# S22 simplified Staffing & GM deployed proof
 
-Tested 2026-10-06 PDT against `https://app.dealgateapp.com` from branch
-`fix/s22-gm-cta`, committed application checkpoint
-`9b46d9db0a06f18ea8cac3e1b018512680a6579d` and handoff/deploy checkpoint
-`23001678fd65ec0a9e8ba01e06f0a32fbb9fbf38`.
+Tested 2026-10-07 PDT against `https://app.dealgateapp.com` from branch
+`fix/s22-gm-cta`, application checkpoint
+`e92b4ddfef82d0bc808f3fe524773f8dc874b5f7` and pre-deploy documentation
+checkpoint `60fde64f55e89ff924196fb64ca8afe9a4a5fcbb`.
 
 ## Deployed revisions
 
-- API: ECS task definition `officeapp-dev-api:87`
-- Image: `s22gm-23001678`
-- Digest: `sha256:265feaa8a18192e40dceba21fbf46096515f5abb44c4e7246d70676365f3c243`
-- Frontend: `assets/index-DYV1BgxV.js`
-- CloudFront invalidation: `I9N87XU7RDHU5RX0IG2DPS79L6` (completed)
-- Migration task: `f159f3a9db6e4f55a5f7ef6d898e3747` (succeeded)
+- API: ECS task definition `officeapp-dev-api:88`, rollout completed 1/1
+- Image: `s22simple-e92b4dd`
+- Digest: `sha256:34dc726a5e1e4fd034d74c7513bb3d9d812459a2f1ecce3388880f3bff16a455`
+- Frontend: `assets/index-BPgaqF0W.js`, CSS `assets/index-CGMBFthR.css`
+- CloudFront invalidation: `I23X1YLBST202823ESU3DXJ0F5` (completed)
+- Migration task: `e2518e23e4794eeeafb7aea0d051e255` (succeeded)
+- Deploy smoke: `smoke 20261007T071522Z` (green; cleanup gate clean)
 
 ## Connected proof
 
@@ -23,33 +24,42 @@ cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta/tests/e2e
 env AWS_PROFILE=lm-arbiter-poc AWS_PROFILE_STAGING=lm-arbiter-poc \
   AWS_REGION=us-east-2 E2E_BASE_URL=https://app.dealgateapp.com \
   npx playwright test specs/s21/s22-gm-cta-deployed-proof.spec.ts \
-  --project=chromium --reporter=line
+  --project=chromium
 ```
 
-Result: **1 passed** in 2.7 minutes. The fresh browser used a server-issued
+Result: **1 passed in 2.6 minutes**. The fresh browser used a server-issued
 fixture and six real Cognito identities. It exercised the deployed SPA, API,
-RDS commercial draft/version storage, authoritative Decimal calculation and
-approval state machine; no feature response was mocked.
+RDS draft/version storage, authoritative Decimal calculation and approval
+state machine; no feature response was mocked.
 
-Independent expectation for October 2026: 22 weekdays x 8 paid hours x
-USD 30/hour x (2 full allocations + 1 half allocation) = USD 13,200 labor
-cost. Against the fixed fee of USD 75,400, gross profit is USD 62,200 and GM
-is 82.4933687%. The deployed UI returned USD 75,400 revenue, USD 13,200 cost,
-USD 62,200 gross profit and 82.5% displayed GM. Hourly client billing rates
-were deliberately null: fixed-fee revenue came from the contract fee.
+The fixture deliberately contained the reported legacy failure shape: row 1
+had a seven-day calendar shell with all 21 scheduled/billable/paid values set
+to empty strings. The deployed editor discarded that unusable shell before
+preview. It displayed the compact staffing table and one actionable
+`Fix row 1 hours` CTA; it did not expose a Pydantic validation dump, calendar
+editor, Cost basis, Monthly plan or Review & save section.
+
+Independent expectation: each row had 176 per-person hours at USD 30/hour.
+Row 1 had two people at 100% allocation and row 2 had one person at 50%, so
+labor cost is `176 x 30 x (2 + 0.5) = USD 13,200`. A USD 2,500 Travel cost
+makes total delivery cost USD 15,700. Against the USD 75,400 fixed fee, gross
+profit is USD 59,700 and GM is 79.1777188%. The deployed UI displayed USD
+75,400 revenue, USD 13,200 labor, USD 2,500 direct costs, USD 15,700 total
+cost, USD 59,700 gross profit and 79.2% GM. Hourly client bill rates remained
+absent; fixed-fee revenue came from the contract fee.
 
 The sequence proved:
 
-1. An incomplete draft showed known contract revenue and named the exact row
-   and field (`Fix row 1 calendar`) rather than generic `Unavailable`.
-2. The CTA focused the missing calendar control. Completing both versioned
-   calendars produced the independently expected calculation.
-3. `Save financial version` persisted the commercial model. A full page
-   reload retained the same costs/GM and changed the CTA to
-   `Submit for approval`.
-4. Confirming the real reviewer plan persisted `pending_delivery_hr`, changed
-   the CTA to `View review status`, and refreshed the readiness panel.
-5. Teardown deleted the fixture. `scripts/check-test-data-clean.sh` reported
+1. The empty legacy calendar became one precise row-level Hours blocker.
+2. The workspace CTA focused `Hours 1` instead of navigating back to the same
+   screen.
+3. Entering both Hours values and the additional cost produced the independent
+   financial expectation through the server calculation service.
+4. The primary action changed to `Save`; saving and fully reloading preserved
+   the commercial version and changed the action to `Submit for approval`.
+5. Confirming the real reviewer plan persisted the review state and changed
+   the action to `View review status`.
+6. Teardown deleted the fixture; `scripts/check-test-data-clean.sh` reported
    zero test clients and zero e2e approvers on real SOWs.
 
 ## Screenshots
@@ -59,20 +69,19 @@ The sequence proved:
 - `03-save-reload-submit-action.png`
 - `04-transition-persisted-review-status.png`
 
-## Original record (read-only)
+## Original record
 
-Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` was never mutated. A
-post-deploy preview of its existing draft returned known revenue USD 75,400
-while cost-derived values stayed null. Its current first blockers are the
-missing billing schedule, loaded-cost basis and human cost confirmation. Once
-those are supplied, row-specific calendar/rate blockers are surfaced in order.
+Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remained read-only. The
+deployed proof used an isolated equivalent fixture for every mutation.
 
-## Failed-attempt history
+## Diagnostic history
 
-- Attempt 1 never created a fixture: the auth helper expected an obsolete
-  flat secret shape. The deployed secret uses shared metadata plus nested
-  `roles`; the helper now supports both without logging secret values.
-- Attempt 2 reached the correct deployed state but the proof locator expected
-  `Fix row 1 working calendar`; the actual accessible label is
-  `Fix row 1 calendar`. The screenshot showed the behavior was correct, so
-  only the test locator changed before the successful run.
+- The 2026-10-06 proof covered the older full-calendar workflow on API
+  revision 87 and is superseded by this report and the refreshed screenshots.
+- Before the compatibility fix, the new focused regression reproduced the
+  defect: preview received the legacy calendar with 21 blank decimal strings.
+  After `e92b4dd`, the same regression passed with `calendar:null` and a simple
+  missing-Hours state.
+- The first image-build command used `api/` as context and failed before push
+  because the Dockerfile copies root-relative `api/` and `worker/` paths. The
+  corrected `-f api/Dockerfile .` build produced the deployed image above.
