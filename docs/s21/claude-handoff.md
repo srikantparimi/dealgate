@@ -2,6 +2,55 @@
 
 ## RESUME HERE
 
+**2026-10-07 23:19 PDT — CONFIRM SOW REVIEWER ROSTER FIX COMMITTED;
+FOCUSED CONNECTED CONTRACTS GREEN; DEPLOYMENT ARTIFACT NEXT.** Authoritative
+tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`5909b7e8c4a46edbc3ab86bc47c8206279ec7675` (one local commit ahead of
+`origin/fix/s22-gm-cta` before push). This handoff entry is the only expected
+dirty file before its docs checkpoint. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; it is untouched and no merge is
+authorized. No server, worker, test, browser, migration, deployment, or
+Terraform operation is active.
+
+Root cause: the real submission path
+`app.services.approval_routing.submission_plan()` already enforced the required
+Delivery, Sales, HR, Finance, and Legal functions plus conditional Executive
+review when GM fails a floor. Confirm SOW instead called the legacy
+`app.services.approvers.resolve_all()` path and the SPA intentionally rendered
+only UUID prefixes and fallback sources. The live configured roster was
+read-only verified as populated, so the failure boundary was confirmation
+preview/serialization, not missing people or absent routing policy.
+
+Commit `5909b7e` makes confirmation select from the same scoped ApprovalGroup
+roster as submission, exclude the submitter, avoid reusing a reviewer across
+functions, serialize names/emails, and display those identities in the five
+pipeline stages. A below-floor model additionally displays the configured CEO;
+a passing model explicitly says CEO is not required. The GET confirmation
+route now supplies the canonical actor id so preview and submission apply the
+same exclusion. Legacy FunctionOwner resolution remains only as a compatibility
+fallback outside this scoped preview. The current SOW's missing signatories
+remain an independent submit blocker and were not bypassed.
+
+Verification on `5909b7e`: focused backend confirmation/staffing/routing/
+approval scope **45 passed**; frontend Confirm SOW and review-pipeline scope
+**21 passed**; TypeScript, Ruff, diff check, and production build passed. New
+regressions prove configured names for all five functions and the named CEO on
+the below-floor branch. Production bundle built locally as
+`web/dist/assets/index-o8IHvr-q.js` plus existing
+`web/dist/assets/index-BLyNqDZt.css`; it is not deployed evidence. Latest
+deployed environment is still API revision 93/image `s22identity-b86bcf0` and
+SPA `assets/index-CTxg0uij.js`, so staging does **not** contain this fix yet.
+
+Exact resume:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git show --stat --oneline 5909b7e`.
+Next: checkpoint/push the handoff, build and publish an immutable API image from
+`5909b7e`, create a fresh whole-root Terraform plan with the preserved S22
+variables, inspect resource changes, and stop for the required human approval
+before apply. After approval, migrate/deploy the paired API+SPA, verify exact
+identifiers, and run a fresh isolated connected proof for green five-function
+routing, below-floor CEO routing, save/submit, and visible pipeline status.
+
 **2026-10-07 23:00 PDT — POST-DEPLOY OAUTH STATE ERROR REPRODUCED; FRESH
 LOGIN AND BUILT-IN RECOVERY BOTH VERIFIED, NO APPLICATION CHANGE MADE.**
 Authoritative tree remains
