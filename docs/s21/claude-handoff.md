@@ -2,13 +2,13 @@
 
 ## RESUME HERE
 
-**2026-10-07 23:19 PDT — CONFIRM SOW REVIEWER ROSTER FIX COMMITTED;
-FOCUSED CONNECTED CONTRACTS GREEN; DEPLOYMENT ARTIFACT NEXT.** Authoritative
+**2026-10-07 23:22 PDT — CONFIRM SOW REVIEWER FIX AND IMMUTABLE ARTIFACT
+READY; REVIEWED TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative
 tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
 `fix/s22-gm-cta`, application commit
-`5909b7e8c4a46edbc3ab86bc47c8206279ec7675` (one local commit ahead of
-`origin/fix/s22-gm-cta` before push). This handoff entry is the only expected
-dirty file before its docs checkpoint. Main remains
+`5909b7e8c4a46edbc3ab86bc47c8206279ec7675`; handoff checkpoint/push before
+this update is `2ccd643`. This handoff entry is the only expected dirty file
+before its next docs checkpoint. Main remains
 `3ef55e576508af70e5c34d8593eec09db1d01560`; it is untouched and no merge is
 authorized. No server, worker, test, browser, migration, deployment, or
 Terraform operation is active.
@@ -42,12 +42,27 @@ the below-floor branch. Production bundle built locally as
 deployed environment is still API revision 93/image `s22identity-b86bcf0` and
 SPA `assets/index-CTxg0uij.js`, so staging does **not** contain this fix yet.
 
+Immutable API image `s22reviewers-5909b7e` is in ECR at digest
+`sha256:3017ead9bbe4fa895a46c85efb45f7fa6477ff957b595f8bc087601d645bcc5a`.
+Fresh whole-root plan `/tmp/s22-reviewers-5909b7e.tfplan` has text/JSON at
+`/tmp/s22-reviewers-5909b7e.plan.txt` and
+`/tmp/s22-reviewers-5909b7e.plan.json`; saved-plan SHA-256 is
+`5639eddb47fa1cc43bb96ab37951258f572f9ddc0ccb65ad158160c39852f7b6`.
+It contains **11 add / 13 change / 11 destroy**: API, migration, eight worker
+task definitions and the migration trigger are replaced; the API service,
+eight EventBridge targets, and four RunTask policies follow the new revisions.
+Normalized comparison proves all ten container definitions are equal after
+removing only the image tag and provider-rendered empty arrays/API hostPort.
+There are no RDS, S3, Cognito, production-approver, SES, secret, KMS, network,
+security-group, CloudFront, DNS, schedule-state, or business-data changes.
+Inputs preserve LA/USD, S21 jobs enabled, trusted cleanup/continuous HubSpot/
+operational hardening disabled, and production approver identities enabled.
+
 Exact resume:
 `cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git show --stat --oneline 5909b7e`.
-Next: checkpoint/push the handoff, build and publish an immutable API image from
-`5909b7e`, create a fresh whole-root Terraform plan with the preserved S22
-variables, inspect resource changes, and stop for the required human approval
-before apply. After approval, migrate/deploy the paired API+SPA, verify exact
+Required human action: approve this exact saved Terraform plan. After approval,
+run `cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-reviewers-5909b7e.tfplan`.
+Then migrate/deploy the paired API+SPA, verify exact
 identifiers, and run a fresh isolated connected proof for green five-function
 routing, below-floor CEO routing, save/submit, and visible pipeline status.
 
