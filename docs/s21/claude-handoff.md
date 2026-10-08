@@ -2,6 +2,58 @@
 
 ## RESUME HERE
 
+**2026-10-07 23:45 PDT — CONFIGURED REVIEWER DISPLAY DEPLOYED; GREEN AND
+BELOW-FLOOR ROUTING PROOFS PASSED; PRODUCT-OWNER CLICK-THROUGH NEXT.**
+Authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
+branch `fix/s22-gm-cta`, application commit
+`5909b7e8c4a46edbc3ab86bc47c8206279ec7675`, pre-deploy docs HEAD
+`0488f8536cda8d865d4e076f402605e669336b4e`. Refreshed screenshots, deployed
+proof spec/report, and this entry are intentionally dirty before the evidence
+checkpoint. Main remains `3ef55e576508af70e5c34d8593eec09db1d01560` and is
+untouched. No server, worker, test, browser, migration, deployment, or
+Terraform operation is active.
+
+The owner approved saved plan `/tmp/s22-reviewers-5909b7e.tfplan` (SHA-256
+`5639eddb47fa1cc43bb96ab37951258f572f9ddc0ccb65ad158160c39852f7b6`).
+Terraform applied exactly **11 add / 13 change / 11 destroy**. Migration task
+`9504037f52e24092b995ed1defb67c36` exited 0. ECS is stable 1/1 on API task
+definition revision 94, task `714d7e28c4484ec4b87b7773666cd514`, image
+`s22reviewers-5909b7e`, digest
+`sha256:3017ead9bbe4fa895a46c85efb45f7fa6477ff957b595f8bc087601d645bcc5a`.
+Health is green. Matching SPA `assets/index-o8IHvr-q.js` and
+`assets/index-BLyNqDZt.css` is live; CloudFront invalidation
+`I7PHN3TPJGSQCP10J5I4ILFY9M` completed.
+
+Deploy smoke `smoke 20261008T062723Z` passed on the exact service-bound image,
+including extraction, and cleaned its fixture. The strengthened connected
+green-GM browser journey passed in 1.5 minutes: Confirm SOW displayed real
+configured names/emails for Delivery, Sales, HR, Finance, and Legal, no raw
+UUID/group-fallback or unassigned label, CEO not required, five populated
+submission selectors, and persisted pending/queued pipeline status. A separate
+isolated below-floor run passed in 1.7 minutes: USD 50,000 fixed fee versus USD
+70,400 staffing cost returned `requires_ceo=true`, `will_trigger=true`, and a
+configured CEO id/name. Both fixtures were deleted; final leakage gate is clean
+at zero test clients and zero e2e approvers on real SOWs. Evidence and exact
+diagnostic history are in
+`docs/s21/evidence/staging/s22-gm-cta/report.md`; reviewer screenshot is
+`03c-confirm-sow-configured-reviewers.png`.
+
+The repository-wide E2E TypeScript command still reports four inherited errors
+in unrelated numeric-prefix S14/S17 specs; the changed deployed proof compiled
+and passed through Playwright. Two unsuccessful CEO proof setups are recorded
+in the report: the initial fixture omitted CEO scope, and the unavailable CEO
+secret role fell back to the submitter/fixture owner and was correctly excluded.
+No product assertion was weakened; the successful proof used another authorized
+fixture participant and did not mutate global delegation or customer data.
+
+Exact resume:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git rev-parse HEAD`.
+Next: commit/push the proof checkpoint, then the product owner hard-reloads
+`https://app.dealgateapp.com`, opens the new SOW's Confirm SOW page, verifies
+the five named reviewers (and CEO only on a below-floor SOW), completes scope,
+and confirms the same populated plan in Approvals. Do not merge main before
+explicit product-owner acceptance.
+
 **2026-10-07 23:22 PDT — CONFIRM SOW REVIEWER FIX AND IMMUTABLE ARTIFACT
 READY; REVIEWED TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative
 tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

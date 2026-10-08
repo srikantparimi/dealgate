@@ -293,7 +293,20 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     for (const label of ["Delivery", "Sales", "HR", "Finance", "Legal"]) {
       await expect(approvalPath).toContainText(label);
     }
+    const confirmation = await json<{
+      approvers: Record<string, { name: string | null; email: string | null }>;
+    }>(await api.get(`sow/${opportunityId}/confirmation`));
+    for (const reviewer of Object.values(confirmation.approvers)) {
+      expect(reviewer.name, "Confirm SOW must show a configured reviewer name").toBeTruthy();
+      expect(reviewer.email, "Confirm SOW must show a configured reviewer email").toBeTruthy();
+      await expect(approvalPath).toContainText(reviewer.name!);
+    }
+    await expect(approvalPath).not.toContainText("unassigned");
+    await expect(approvalPath).not.toContainText("group fallback");
     await expect(approvalPath).toContainText("Not required");
+    await approvalPath.screenshot({
+      path: path.join(EVIDENCE, "03c-confirm-sow-configured-reviewers.png"),
+    });
     await expect(page.getByRole("button", { name: "Submit for approval" })).toHaveCount(0);
     await page.screenshot({ path: path.join(EVIDENCE, "03-confirm-sow-dates-gm-and-approval-path.png") });
     await confirmationStaffing.screenshot({
@@ -338,6 +351,144 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(page.getByText(/Pending with|Queued for/).first()).toBeVisible();
     await expect(page.getByTestId("review-sales")).toContainText(/Sales · (Pending with|Queued for)/);
     await page.screenshot({ path: path.join(EVIDENCE, "04-approvals-pipeline-status.png") });
+  } finally {
+    if (clientId) await deleteAndDrain(api, clientId);
+    await api.dispose();
+  }
+});
+
+test("below-floor GM adds the configured CEO to deployed confirmation", async () => {
+  test.setTimeout(480_000);
+  const api = await apiFor("system");
+  let clientId = "";
+  try {
+    const reviewerIds: string[] = [];
+    for (const role of ["system", "delivery", "hr", "finance", "legal", "submitter"] as const) {
+      const roleApi = await apiFor(role);
+      const me = await json<{ id: string }>(await roleApi.get("me"));
+      reviewerIds.push(me.id);
+      await roleApi.dispose();
+    }
+    const fixture = await json<{ client_id: string; opportunity_id: string }>(
+      await api.post("dev/test-fixtures", {
+        data: {
+          label: `S22 CEO routing proof ${new Date().toISOString()}`,
+          reviewer_ids: [...new Set(reviewerIds)],
+          hours: 2,
+        },
+      }),
+    );
+    clientId = fixture.client_id;
+    const opportunityId = fixture.opportunity_id;
+    const sowVersionId = await uploadSow(api, clientId, opportunityId);
+    const detail = await json<{
+      sow_id: string;
+      extracted_fields: Record<string, { value: unknown }>;
+    }>(await api.get(`sow/versions/${sowVersionId}`));
+    const overrides: Partial<Record<(typeof REQUIRED_FIELDS)[number], unknown>> = {
+      price: "50000",
+      currency: "USD",
+      billing_basis: "fixed fee",
+      billing_basis_normalized: "fixed_fee",
+      term_start: "2026-10-01",
+      term_end: "2026-10-31",
+      notice_date: "2026-10-15",
+      signatories: [{ name: "E2E Client Signatory", role: "Client" }],
+      engagement_type_suggested: "fixed_price",
+    };
+    for (const field of REQUIRED_FIELDS) {
+      const value = overrides[field] ?? detail.extracted_fields[field]?.value;
+      expect(value, `extraction must provide ${field}`).not.toBeUndefined();
+      await json(
+        await api.patch(`sow/versions/${sowVersionId}/fields/${field}`, {
+          data: { value },
+        }),
+      );
+    }
+    await json(await api.post(`sow/versions/${sowVersionId}/submit`));
+
+    const registry = await json<{ policy: { version: string } }>(
+      await api.get("delivery-model/commercial/profiles"),
+    );
+    const binding = {
+      source_id: detail.sow_id,
+      source_version: sowVersionId,
+      component_id: "s22-ceo-routing-proof",
+      profile_version: "1",
+      policy_version: registry.policy.version,
+    };
+    const inputs = {
+      ...binding,
+      version: "1",
+      workstream_id: "delivery",
+      profile: "fixed_assignment",
+      source_evidence: [`sow-version:${sowVersionId}:confirmed fixed fee and term`],
+      service_start: "2026-10-01",
+      service_end: "2026-10-31",
+      timezone: "America/Los_Angeles",
+      currency: "USD",
+      billing_cadence: "fixed_post_delivery",
+      cost_basis: null,
+      costs_confirmed: true,
+      costs: [],
+      pricing: {
+        total_fee: "50000",
+        allocations: [{ month: "2026-10-01", location: "India", weight: "1" }],
+        allocation_basis: "single October service month",
+        minor_unit: "0.01",
+      },
+      staffing: [
+        {
+          ...binding,
+          assignment_id: "india-below-floor",
+          role: "Senior consultant",
+          seniority: "Senior",
+          location: "India",
+          timezone: "America/Los_Angeles",
+          currency: "USD",
+          quantity: 2,
+          allocation: "1",
+          calendar: null,
+          hours_billable: "176",
+          bill_rate: null,
+          cost_rate: "200",
+          rate_version: null,
+          cost_version: "S22 proof rate card v1",
+          start: "2026-10-01",
+          end: "2026-10-31",
+          cost_rate_basis: "hourly",
+          cost_proration: null,
+        },
+      ],
+    };
+    await json<{ gm_model: { id: string } }>(
+      await api.post(`delivery-model/${opportunityId}/commercial/versions`, {
+        data: {
+          sow_version_id: sowVersionId,
+          expected_gm_model_id: null,
+          inputs,
+          change_reason: "Deployed below-floor CEO routing proof",
+        },
+      }),
+    );
+    // The fixture owner is also the staging test CEO. Read confirmation as a
+    // different authorized participant so submitter exclusion leaves that CEO
+    // eligible, without changing global delegation or production data.
+    const participantApi = await apiFor("submitter");
+    const confirmation = await json<{
+      floors: { requires_ceo: boolean };
+      approvers: Record<string, { user_id: string | null; name: string | null }>;
+      ceo_gate: {
+        will_trigger: boolean;
+        approver?: { user_id: string | null; name: string | null };
+      };
+    }>(await participantApi.get(`sow/${opportunityId}/confirmation`));
+    await participantApi.dispose();
+    expect(confirmation.floors.requires_ceo).toBe(true);
+    expect(confirmation.ceo_gate.will_trigger).toBe(true);
+    expect(confirmation.ceo_gate.approver?.user_id).toBeTruthy();
+    expect(confirmation.ceo_gate.approver?.name).toBeTruthy();
+
   } finally {
     if (clientId) await deleteAndDrain(api, clientId);
     await api.dispose();

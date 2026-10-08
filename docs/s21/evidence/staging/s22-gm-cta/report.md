@@ -2,19 +2,19 @@
 
 Tested 2026-10-07 PDT against `https://app.dealgateapp.com` from branch
 `fix/s22-gm-cta`, application checkpoint
-`b86bcf049a08b54c54b745e7e271918d8ba36538`. This is a generic confirmation
+`5909b7e8c4a46edbc3ab86bc47c8206279ec7675`. This is a generic confirmation
 and approval-identity fix; it contains no customer, role, geography, date,
 amount or pricing-profile special case.
 
 ## Deployed revisions
 
-- API: ECS task definition `officeapp-dev-api:93`, rollout completed 1/1
-- Image: `s22identity-b86bcf0`
-- Digest: `sha256:9ba08cf3f3d1fecbd6b71a64747a6a6d18c7f8207a133654bb5ad15d65b2551f`
-- Frontend: `assets/index-CTxg0uij.js`, CSS `assets/index-BLyNqDZt.css`
-- CloudFront invalidation: `I7W0CPG6HP0HC88IP8O3PDJQU6` (completed)
-- Migration task: `3faa84910d2145cd9119f75b92717de2` (exit 0)
-- Deploy smoke: `smoke 20261008T054729Z` (green; cleanup gate clean)
+- API: ECS task definition `officeapp-dev-api:94`, rollout completed 1/1
+- Image: `s22reviewers-5909b7e`
+- Digest: `sha256:3017ead9bbe4fa895a46c85efb45f7fa6477ff957b595f8bc087601d645bcc5a`
+- Frontend: `assets/index-o8IHvr-q.js`, CSS `assets/index-BLyNqDZt.css`
+- CloudFront invalidation: `I7PHN3TPJGSQCP10J5I4ILFY9M` (completed)
+- Migration task: `9504037f52e24092b995ed1defb67c36` (exit 0)
+- Deploy smoke: `smoke 20261008T062723Z` (green; cleanup gate clean)
 
 ## Connected proof
 
@@ -28,10 +28,11 @@ env AWS_PROFILE=lm-arbiter-poc AWS_PROFILE_STAGING=lm-arbiter-poc \
   --project=chromium
 ```
 
-Latest result: **1 passed in 2.0 minutes**. The fresh browser used a server-issued
-fixture and six real Cognito identities. It exercised the deployed SPA, API,
-RDS draft/version storage, authoritative Decimal calculation and approval
-state machine; no feature response was mocked.
+Latest focused results: the green-GM journey **passed in 1.5 minutes** and the
+below-floor CEO journey **passed in 1.7 minutes**. The fresh runs used
+server-issued fixtures and real Cognito identities. They exercised the deployed
+SPA, API, RDS draft/version storage, authoritative Decimal calculation and
+approval state machine; no feature response was mocked.
 
 The fixture deliberately contained the reported legacy failure shape: row 1
 had a seven-day calendar shell with all 21 scheduled/billable/paid values set
@@ -61,8 +62,10 @@ The sequence proved:
 5. Confirm SOW showed both saved staffing roles (`Senior consultant` and
    `Consultant`), their saved People values `2` and `1`, allocations `100%`
    and `50%`, term start/end, the saved 79.2% GM, Delivery, Sales, HR, Finance
-   and Legal, and `CEO exception — Not required`; `No staffing lines yet` was
-   absent and a full reload preserved the staffing rows, headcounts and GM.
+   and Legal with configured reviewer names and email addresses, and
+   `CEO exception — Not required`; raw UUID/group-fallback labels,
+   `unassigned`, and `No staffing lines yet` were absent. A full reload
+   preserved the staffing rows, headcounts, GM and reviewer display.
 6. `Complete scope` navigated to Approvals. The configured plan visibly showed
    Stage 1 Delivery/Sales/HR, Stage 2 Finance/Legal, and no CEO stage for the
    green 79.2% GM. Each function had a selected deployed reviewer. Confirming
@@ -70,6 +73,10 @@ The sequence proved:
    with Finance/Legal queued rather than looping back to Staffing & GM.
 7. Teardown deleted the fixture; `scripts/check-test-data-clean.sh` reported
    zero test clients and zero e2e approvers on real SOWs.
+8. A separate isolated USD 50,000 fixed-fee model with USD 70,400 labor cost
+   produced a below-floor GM. Deployed confirmation returned
+   `requires_ceo=true`, `will_trigger=true`, and a configured CEO id and name.
+   Its fixture was also deleted; the final leakage gate remained clean.
 
 ## Screenshots
 
@@ -78,6 +85,7 @@ The sequence proved:
 - `03-confirm-sow-dates-gm-and-approval-path.png`
 - `03a-confirm-sow-quantity-weighted-staffing.png`
 - `03b-approval-plan-green-gm.png`
+- `03c-confirm-sow-configured-reviewers.png`
 - `04-approvals-pipeline-status.png`
 
 ## Original record
@@ -86,6 +94,24 @@ Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remained read-only. The
 deployed proof used an isolated equivalent fixture for every mutation.
 
 ## Diagnostic history
+
+- The reported reviewer defect was a split authority. Real submission already
+  used `approval_routing.submission_plan()` and correctly required Delivery,
+  Sales, HR, Finance, Legal, plus Executive only below a floor. Confirm SOW
+  instead called the legacy `approvers.resolve_all()` path and rendered UUID
+  prefixes with fallback-source text. Commit `5909b7e` makes confirmation use
+  the same scoped ApprovalGroup roster and selection constraints as submission,
+  supplies the canonical viewer id for submitter exclusion, serializes names
+  and emails, and renders the configured identities.
+
+- The first below-floor proof omitted a CEO participant, so fixture scoping
+  correctly produced no eligible executive. Adding a nonexistent `ceo` secret
+  role fell back to the fixture owner, who was correctly excluded as submitter.
+  Reading the same isolated record as a different authorized participant
+  exposed the configured test CEO and proved the conditional branch without
+  changing global delegation or customer data. That participant was the sole
+  Sales identity, so asserting all five functions in that view was invalid;
+  the separate green-GM journey is the authoritative five-function proof.
 
 - The empty Approvals screen was not missing routing configuration. The live
   roster already had defaults for all five functions and CEO. The API compared
