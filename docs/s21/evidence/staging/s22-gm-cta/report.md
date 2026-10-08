@@ -2,19 +2,19 @@
 
 Tested 2026-10-07 PDT against `https://app.dealgateapp.com` from branch
 `fix/s22-gm-cta`, application checkpoint
-`220e2ea45bd60db0ea4898ac98e71703206525ab`. This is a generic confirmation
+`b86bcf049a08b54c54b745e7e271918d8ba36538`. This is a generic confirmation
 and approval-identity fix; it contains no customer, role, geography, date,
 amount or pricing-profile special case.
 
 ## Deployed revisions
 
-- API: ECS task definition `officeapp-dev-api:92`, rollout completed 1/1
-- Image: `s22approvals-220e2ea`
-- Digest: `sha256:02a5869649672d486f970930cc5d8c5ffb637697899a83dae7d1bbe086961af2`
+- API: ECS task definition `officeapp-dev-api:93`, rollout completed 1/1
+- Image: `s22identity-b86bcf0`
+- Digest: `sha256:9ba08cf3f3d1fecbd6b71a64747a6a6d18c7f8207a133654bb5ad15d65b2551f`
 - Frontend: `assets/index-CTxg0uij.js`, CSS `assets/index-BLyNqDZt.css`
-- CloudFront invalidation: `IBZBRLMZFKFDDSRPB00J836GWM` (completed)
-- Migration task: `ba8b342f4c514ab89ba0cce66bd3f132` (exit 0)
-- Deploy smoke: `smoke 20261008T044244Z` (green; cleanup gate clean)
+- CloudFront invalidation: `I7W0CPG6HP0HC88IP8O3PDJQU6` (completed)
+- Migration task: `3faa84910d2145cd9119f75b92717de2` (exit 0)
+- Deploy smoke: `smoke 20261008T054729Z` (green; cleanup gate clean)
 
 ## Connected proof
 
@@ -28,7 +28,7 @@ env AWS_PROFILE=lm-arbiter-poc AWS_PROFILE_STAGING=lm-arbiter-poc \
   --project=chromium
 ```
 
-Latest result: **1 passed in 3.0 minutes**. The fresh browser used a server-issued
+Latest result: **1 passed in 2.0 minutes**. The fresh browser used a server-issued
 fixture and six real Cognito identities. It exercised the deployed SPA, API,
 RDS draft/version storage, authoritative Decimal calculation and approval
 state machine; no feature response was mocked.
@@ -98,6 +98,19 @@ deployed proof used an isolated equivalent fixture for every mutation.
   A focused regression reproduces different IDs with the same email and proves
   both plan and submit. The existing state machine still adds CEO only when
   `requires_ceo` is true; backend green/below-floor routing tests pass.
+
+- The product-owner click-through after `220e2ea` exposed an earlier identity
+  gate that the first repair did not cover. `SowWorkspace` decides whether to
+  expose the pre-submit plan from `GET /me`, but that endpoint still returned
+  the raw access-token principal. Access tokens omit email/name, so the browser
+  saw the Cognito subject in those fields, could not match the invited DealGate
+  owner, and disabled submission before the repaired approval endpoint was
+  called. Commit `b86bcf0` resolves `/me` through the same `ensure_user`
+  authority and returns the canonical invited id/email/name/groups. Its focused
+  regression starts with different Cognito and invited-owner IDs and proves
+  canonical resolution without a duplicate user. A deployed non-SystemAdmin
+  access-token check returned its real email and Delivery group from revision
+  93, and the connected workflow then submitted the full five-function plan.
 
 - The repository-wide E2E `npm run typecheck` remains blocked by four inherited
   errors in unrelated `22-integration-browser-proofs`,

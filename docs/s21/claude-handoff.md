@@ -2,6 +2,47 @@
 
 ## RESUME HERE
 
+**2026-10-07 22:52 PDT — CANONICAL SESSION-IDENTITY FIX DEPLOYED; SMOKE AND
+CONNECTED APPROVAL JOURNEY GREEN; PRODUCT-OWNER CAESARS RELOAD NEXT.**
+Authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
+branch `fix/s22-gm-cta`, application commit
+`b86bcf049a08b54c54b745e7e271918d8ba36538`, pre-deploy docs checkpoint
+`a1763e92623a1eac2819478380db752c4c997432`. Refreshed screenshots, report,
+and this handoff entry are dirty before the evidence checkpoint. No build,
+browser, test, Terraform, migration, or deployment process is active. Main is
+untouched and no merge is authorized.
+
+The owner approved the exact saved plan
+`/tmp/s22-identity-b86bcf0.tfplan` (SHA-256
+`d708bf70686f69adcceeb934abdf46513fc32c078dbd48827e9c04e7199cb19a`).
+Terraform applied exactly **11 add / 13 change / 11 destroy**. Migration task
+`3faa84910d2145cd9119f75b92717de2` exited 0. ECS is stable 1/1 on API task
+definition revision 93, task `6a53bc4bbc4f4e8e8170479ecefc58cb`, image
+`s22identity-b86bcf0`, digest
+`sha256:9ba08cf3f3d1fecbd6b71a64747a6a6d18c7f8207a133654bb5ad15d65b2551f`.
+`/api/healthz` is green. The matching SPA is `assets/index-CTxg0uij.js` plus
+`assets/index-BLyNqDZt.css`; CloudFront invalidation
+`I7W0CPG6HP0HC88IP8O3PDJQU6` completed.
+
+Deploy smoke `smoke 20261008T054729Z` passed on the exact service-bound image,
+including extraction; its cleanup and the final leakage gate are clean at zero
+test clients and zero e2e approvers on real SOWs. A deployed non-SystemAdmin
+Delivery access token now receives a real canonical email and groups from
+`GET /me`. The fresh connected browser proof passed **1/1 in 2.0 minutes** on
+revision 93: fixed-fee revenue/cost/GM, grouped staffing, save/reload, Confirm
+SOW, all five green-GM reviewer functions, submission, and pending/queued
+pipeline status all passed. Its isolated fixture was deleted; Caesars remained
+read-only. Refreshed evidence is under
+`docs/s21/evidence/staging/s22-gm-cta/`.
+
+Exact next action: commit/push this refreshed evidence, then the product owner
+must hard-reload or sign out/in so the SPA fetches canonical `/me`, open the
+existing Caesars Approvals page, and verify the button is enabled and the
+five-function plan opens. If an old tab remains disabled, capture the `/api/me`
+and opportunity-owner response from that same session before changing code.
+Do not merge main before explicit product-owner acceptance. Resume with:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git rev-parse HEAD`.
+
 **2026-10-07 22:35 PDT — CANONICAL SESSION-IDENTITY FIX COMMITTED/PUSHED;
 IMMUTABLE ARTIFACT AND REVIEWED TERRAFORM PLAN READY FOR HUMAN APPROVAL.**
 Authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
