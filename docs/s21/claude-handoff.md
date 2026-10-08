@@ -2,6 +2,62 @@
 
 ## RESUME HERE
 
+**2026-10-07 17:20 PDT — APPROVAL PIPELINE IDENTITY/ROUTING FIX COMMITTED;
+STAGING ARTIFACT/PLAN PREPARATION NEXT.** The authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`220e2ea45bd60db0ea4898ac98e71703206525ab`. The application tree was clean
+immediately after that commit; only this incremental handoff update is dirty.
+No test, build, browser, deployment, migration or Terraform operation is
+active. Main remains `3ef55e576508af70e5c34d8593eec09db1d01560` in its
+separate worktree and was not changed.
+
+The approvals screen defect is reproduced and fixed locally. Root cause was an
+identity-boundary mismatch: deal APIs canonicalized the authenticated Cognito
+`sub` to the existing invited `users.id` by normalized email, while
+`api/app/routers/approvals.py::_require_submit` compared the raw Cognito UUID
+directly with `opportunity.owner_id`. The Caesars owner is the current invited
+row, but the Cognito subject is different; the API therefore returned 403 and
+`SowWorkspacePage` hid the pre-submit editor. This is why Confirm SOW could
+show configured functions while Approvals was empty. The deployed roster was
+inspected read-only and already contains defaults for Delivery, HR, Sales,
+Finance, Legal and CEO; no customer business record or roster was mutated.
+
+Commit `220e2ea` canonicalizes approval actors through the existing
+`ensure_user` path, uses that canonical identity for plan, submit, read,
+decision, route, group and condition endpoints, and mirrors normalized-email
+ownership in the UI while keeping server authorization authoritative. Confirm
+SOW now includes Sales. The Approvals editor renders the actual state machine:
+Stage 1 Delivery/Sales/HR, Stage 2 Finance/Legal, and Stage 3 CEO only when the
+saved GM is below a configured floor. It displays the configured reviewer
+names/emails and refuses submission when a function has no eligible reviewer.
+
+Verification on `220e2ea`: backend approval/routing scope **34 passed**;
+frontend confirmation/approval scope **25 passed**; the final staged-pipeline
+test **10 passed**; TypeScript passed; Ruff passed; `git diff --check` passed;
+the production SPA build succeeded before the final label-only stage alignment
+and must be rebuilt from the exact commit for deployment. The first broad
+container run produced 15 non-product failures because the mounted tests did
+not receive `api/pyproject.toml`'s `asyncio_mode=auto`; rerunning the identical
+scope with `--asyncio-mode=auto` produced 34/34. An earlier focused container
+also mounted source under `/app/api` while the image imported `/app/app`; that
+tested the old image and was discarded. Do not repeat either harness mistake.
+
+Staging is still the prior accepted quantity candidate: API task definition
+revision 91, image `s22quantity-60a8901`, digest
+`sha256:3ac0c6771f56c6b71f7bf348f1bedd3ed269a9fd64702197043d612b6e9ea868`,
+frontend `assets/index-D4d4XS3r.js` / `assets/index-DcoHFPrW.css`. The approval
+fix is **not deployed yet**. Exact next commands: from the authoritative tree,
+run `git status --short --branch && git show --stat --oneline 220e2ea`; rebuild
+the SPA from `220e2ea`, build/push an immutable API image tagged from that
+commit, then create and inspect a fresh whole-root Terraform plan using the
+same S22 variables, including
+`production_approver_identities_enabled=true`. Stop for explicit approval of
+that exact saved plan before apply. After apply, verify API image/digest and
+SPA asset identifiers, run the isolated connected green-GM and below-floor
+pipeline proofs, preserve Caesars read-only, and request product-owner staging
+acceptance. No merge to main before that acceptance.
+
 **2026-10-07 15:31 PDT — GENERIC STAFFING QUANTITY FIX DEPLOYED; CONNECTED
 PROOF AND RELEASE GATES GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** The
 authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
