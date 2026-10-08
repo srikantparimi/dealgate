@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI
 
 from app.auth import AuthUser, current_user, deps as auth_deps, require_role
 from app.auth.cognito import CognitoAuthError
+from app.db import get_session
 from app.main import app as main_app
 
 
@@ -63,7 +64,21 @@ def _client(app):
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
-async def test_valid_bearer_token_returns_user(prod_env, stub_verifier):
+@pytest.fixture
+def app_with_session(session):
+    async def _override():
+        yield session
+
+    main_app.dependency_overrides[get_session] = _override
+    try:
+        yield main_app
+    finally:
+        main_app.dependency_overrides.pop(get_session, None)
+
+
+async def test_valid_bearer_token_returns_user(
+    prod_env, stub_verifier, app_with_session
+):
     stub_verifier.set(
         {
             "sub": "11111111-1111-1111-1111-111111111111",
@@ -73,7 +88,7 @@ async def test_valid_bearer_token_returns_user(prod_env, stub_verifier):
             "token_use": "id",
         }
     )
-    async with _client(main_app) as c:
+    async with _client(app_with_session) as c:
         r = await c.get("/me", headers={"Authorization": "Bearer real-looking-token"})
     assert r.status_code == 200
     body = r.json()
@@ -138,7 +153,9 @@ async def test_cognito_groups_propagate_to_role_check(prod_env, stub_verifier):
     assert r.json() == {"ok": True}
 
 
-async def test_access_token_maps_username_when_email_missing(prod_env, stub_verifier):
+async def test_access_token_maps_username_when_email_missing(
+    prod_env, stub_verifier, app_with_session
+):
     # Access tokens omit `email`; fall back to `username` / `cognito:username`.
     stub_verifier.set(
         {
@@ -149,7 +166,7 @@ async def test_access_token_maps_username_when_email_missing(prod_env, stub_veri
             "client_id": "irrelevant-here-because-verifier-is-stubbed",
         }
     )
-    async with _client(main_app) as c:
+    async with _client(app_with_session) as c:
         r = await c.get("/me", headers={"Authorization": "Bearer access"})
     assert r.status_code == 200
     body = r.json()

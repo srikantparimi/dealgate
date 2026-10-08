@@ -2,6 +2,49 @@
 
 ## RESUME HERE
 
+**2026-10-07 22:30 PDT — USER CLICK-THROUGH REPRODUCED A SECOND IDENTITY
+BOUNDARY; CANONICAL `/me` FIX IMPLEMENTED AND LOCALLY VERIFIED, NOT YET
+DEPLOYED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current committed HEAD
+`d67d0e2e13311190b5250056dad1dcddc28a8be9`. Dirty work is intentionally
+limited to `api/app/routers/me.py`, `api/tests/test_cognito_auth.py`, and new
+`api/tests/test_me.py`; it must be reviewed and committed next. No build,
+browser, test, Terraform, migration, or deployment process is active.
+
+The owner's Caesars screenshot shows the deployed approval-plan UI and Sales
+readiness row, but the pre-submit editor is absent and the header submit button
+is disabled even though readiness says there are no blockers. The first lost
+boundary is now identified: `web/src/pages/v2/SowWorkspace.tsx` derives
+`canSubmit` from `/me`; `api/app/routers/me.py::get_me` returned the raw
+Cognito access-token principal, whose UUID/email fields are the Cognito
+subject, instead of the existing invited DealGate user that owns Caesars. The
+browser therefore disabled submission before calling the approval endpoint.
+The preceding `220e2ea` fix canonicalized actors *inside* the approval router,
+so its deployed isolated SystemAdmin proof passed, but it did not repair the
+earlier `/me` gate exercised by the product owner's non-SystemAdmin session.
+
+Read-only cloud evidence: Cognito subject
+`b18bd590-0091-70b4-5ab6-376d9998f196` resolves to
+`srikanthp@smartek21.com` / `Srikanth Parimi`; staging is still ECS API
+revision 92 on image `s22approvals-220e2ea`. No Caesars business data was
+changed. The new regression constructs an access-token-shaped principal whose
+subject differs from an already invited deal-owner row and proves `/me`
+returns the invited row without creating a duplicate. It failed before the
+application edit and now passes. `get_me` now resolves through the existing
+`ensure_user` authority and returns the canonical id/email/name/groups.
+
+Focused verification on the dirty fix: backend identity/Cognito/approval
+scope **23 passed**, Ruff passed; frontend workspace/approval scope **16
+passed** and TypeScript passed. Exact next command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git diff -- api/app/routers/me.py api/tests/test_me.py api/tests/test_cognito_auth.py`.
+Then commit/push, build immutable API and exact SPA artifacts, create and
+inspect a fresh whole-root Terraform plan with the preserved S22 variables,
+and stop for explicit approval of that exact plan before apply. After apply,
+verify a non-SystemAdmin `/me` identity against the configured owner and repeat
+the connected approval submission proof. Do not merge main before product-owner
+acceptance.
+
 **2026-10-07 21:50 PDT — DEPLOYED APPROVAL PIPELINE EVIDENCE COMMITTED AND
 PUSHED; WAITING FOR PRODUCT-OWNER ACCEPTANCE.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
