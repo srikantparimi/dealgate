@@ -290,7 +290,7 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(staffingRows.nth(0).locator("td").nth(2)).toHaveText("2");
     await expect(staffingRows.nth(1).locator("td").nth(2)).toHaveText("1");
     const approvalPath = page.locator("#section-approvers");
-    for (const label of ["Delivery", "HR", "Finance", "Legal"]) {
+    for (const label of ["Delivery", "Sales", "HR", "Finance", "Legal"]) {
       await expect(approvalPath).toContainText(label);
     }
     await expect(approvalPath).toContainText("Not required");
@@ -320,14 +320,23 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(page.getByRole("heading", { name: "Submit for approval" })).toBeVisible();
     const reviewerPlan = page.getByRole("region", { name: "Planned reviewers" });
     await expect(reviewerPlan.getByText(/Frozen package: SOW v\d+ · GM v\d+/)).toBeVisible();
+    const pipeline = reviewerPlan.getByRole("region", { name: "Approval pipeline" });
+    await expect(pipeline.getByText("Stage 1 · Function reviews")).toBeVisible();
+    await expect(pipeline.getByText("Stage 2 · Commercial and legal reviews")).toBeVisible();
+    await expect(pipeline.getByText("CEO approval is not required")).toBeVisible();
+    for (const label of ["Delivery", "Sales", "HR", "Finance", "Legal"]) {
+      await expect(pipeline.getByText(label, { exact: true })).toBeVisible();
+    }
     const selects = reviewerPlan.locator("select");
     expect(await selects.count()).toBe(5);
     for (let i = 0; i < 5; i += 1) await expect(selects.nth(i)).not.toHaveValue("");
+    await reviewerPlan.screenshot({ path: path.join(EVIDENCE, "03b-approval-plan-green-gm.png") });
     await reviewerPlan.getByRole("button", { name: "Confirm submission" }).click();
     await expect(page).toHaveURL(new RegExp(`/sows/${opportunityId}/approvals`), { timeout: 45_000 });
     await expect(page.getByRole("button", { name: "View review status" })).toBeVisible({ timeout: 45_000 });
     await expect(page.getByText(/Submitted by/).first()).toBeVisible();
     await expect(page.getByText(/Pending with|Queued for/).first()).toBeVisible();
+    await expect(page.getByTestId("review-sales")).toContainText(/Sales · (Pending with|Queued for)/);
     await page.screenshot({ path: path.join(EVIDENCE, "04-approvals-pipeline-status.png") });
   } finally {
     if (clientId) await deleteAndDrain(api, clientId);

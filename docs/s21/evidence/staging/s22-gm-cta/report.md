@@ -2,19 +2,19 @@
 
 Tested 2026-10-07 PDT against `https://app.dealgateapp.com` from branch
 `fix/s22-gm-cta`, application checkpoint
-`60a8901a307d1c9ff06fcf640eb25258df7fd6d1`. This is a generic confirmation
-contract fix; it contains no customer, role, geography, date, amount or
-pricing-profile special case.
+`220e2ea45bd60db0ea4898ac98e71703206525ab`. This is a generic confirmation
+and approval-identity fix; it contains no customer, role, geography, date,
+amount or pricing-profile special case.
 
 ## Deployed revisions
 
-- API: ECS task definition `officeapp-dev-api:91`, rollout completed 1/1
-- Image: `s22quantity-60a8901`
-- Digest: `sha256:3ac0c6771f56c6b71f7bf348f1bedd3ed269a9fd64702197043d612b6e9ea868`
-- Frontend: `assets/index-D4d4XS3r.js`, CSS `assets/index-DcoHFPrW.css`
-- CloudFront invalidation: `ICL06VS5744E62NGEHRHAQ7F3E` (completed)
-- Migration task: `3ba05ec61e9540b19f7c4fc675951b7f` (succeeded)
-- Deploy smoke: `smoke 20261007T222706Z` (green; cleanup gate clean)
+- API: ECS task definition `officeapp-dev-api:92`, rollout completed 1/1
+- Image: `s22approvals-220e2ea`
+- Digest: `sha256:02a5869649672d486f970930cc5d8c5ffb637697899a83dae7d1bbe086961af2`
+- Frontend: `assets/index-CTxg0uij.js`, CSS `assets/index-BLyNqDZt.css`
+- CloudFront invalidation: `IBZBRLMZFKFDDSRPB00J836GWM` (completed)
+- Migration task: `ba8b342f4c514ab89ba0cce66bd3f132` (exit 0)
+- Deploy smoke: `smoke 20261008T044244Z` (green; cleanup gate clean)
 
 ## Connected proof
 
@@ -28,7 +28,7 @@ env AWS_PROFILE=lm-arbiter-poc AWS_PROFILE_STAGING=lm-arbiter-poc \
   --project=chromium
 ```
 
-Latest result: **1 passed in 1.6 minutes**. The fresh browser used a server-issued
+Latest result: **1 passed in 3.0 minutes**. The fresh browser used a server-issued
 fixture and six real Cognito identities. It exercised the deployed SPA, API,
 RDS draft/version storage, authoritative Decimal calculation and approval
 state machine; no feature response was mocked.
@@ -60,12 +60,14 @@ The sequence proved:
    than exposing approval submission inside Staffing & GM.
 5. Confirm SOW showed both saved staffing roles (`Senior consultant` and
    `Consultant`), their saved People values `2` and `1`, allocations `100%`
-   and `50%`, term start/end, the saved 79.2% GM, Delivery, HR, Finance and
-   Legal, and `CEO exception — Not required`; `No staffing lines yet` was
+   and `50%`, term start/end, the saved 79.2% GM, Delivery, Sales, HR, Finance
+   and Legal, and `CEO exception — Not required`; `No staffing lines yet` was
    absent and a full reload preserved the staffing rows, headcounts and GM.
-6. `Complete scope` navigated to Approvals. Confirming the real reviewer plan
-   persisted the review state and displayed approved/pending/queued pipeline
-   status rather than looping back to Staffing & GM.
+6. `Complete scope` navigated to Approvals. The configured plan visibly showed
+   Stage 1 Delivery/Sales/HR, Stage 2 Finance/Legal, and no CEO stage for the
+   green 79.2% GM. Each function had a selected deployed reviewer. Confirming
+   the plan persisted the review state and displayed Delivery/HR/Sales pending
+   with Finance/Legal queued rather than looping back to Staffing & GM.
 7. Teardown deleted the fixture; `scripts/check-test-data-clean.sh` reported
    zero test clients and zero e2e approvers on real SOWs.
 
@@ -75,6 +77,7 @@ The sequence proved:
 - `02-calculated-financials-save-action.png`
 - `03-confirm-sow-dates-gm-and-approval-path.png`
 - `03a-confirm-sow-quantity-weighted-staffing.png`
+- `03b-approval-plan-green-gm.png`
 - `04-approvals-pipeline-status.png`
 
 ## Original record
@@ -83,6 +86,24 @@ Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remained read-only. The
 deployed proof used an isolated equivalent fixture for every mutation.
 
 ## Diagnostic history
+
+- The empty Approvals screen was not missing routing configuration. The live
+  roster already had defaults for all five functions and CEO. The API compared
+  the raw Cognito subject UUID with the invited database owner UUID, while the
+  deal endpoint had already canonicalized the same person by normalized email.
+  That mismatch made `/approvals/plan/{opportunity_id}` return 403 and made the
+  workspace hide the plan. Commit `220e2ea` uses the existing `ensure_user`
+  canonical identity on approval endpoints and mirrors normalized-email owner
+  recognition in the workspace; server authorization remains authoritative.
+  A focused regression reproduces different IDs with the same email and proves
+  both plan and submit. The existing state machine still adds CEO only when
+  `requires_ceo` is true; backend green/below-floor routing tests pass.
+
+- The repository-wide E2E `npm run typecheck` remains blocked by four inherited
+  errors in unrelated `22-integration-browser-proofs`,
+  `23-s14b-two-user-approval`, and `24-s17-simplify-delete` specs. The affected
+  deployed proof compiled and passed through Playwright; no assertion was
+  weakened and no timeout was increased.
 
 - The grouped-headcount calculation was already correct in the authoritative
   engine. The owner's saved Caesars GM v7 was inspected read-only: two people

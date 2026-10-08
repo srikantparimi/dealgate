@@ -2,6 +2,56 @@
 
 ## RESUME HERE
 
+**2026-10-07 21:48 PDT — APPROVAL PIPELINE FIX DEPLOYED AND CONNECTED GREEN;
+PRODUCT-OWNER STAGING CLICK-THROUGH NEXT.** Authoritative tree:
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`; branch
+`fix/s22-gm-cta`; application commit
+`220e2ea45bd60db0ea4898ac98e71703206525ab`; pre-deploy docs checkpoint
+`2efc8d0a47de93e001fc39ab6ce95b3561ee3fe2`. The updated browser proof,
+screenshots, report and this handoff are dirty before the evidence checkpoint.
+No test, browser, build, Terraform, migration or deployment process remains
+active. Main remains untouched and no merge is authorized.
+
+The owner approved `/tmp/s22-approvals-220e2ea-v2.tfplan`; Terraform applied
+exactly **11 add / 13 change / 11 destroy**. Migration task
+`ba8b342f4c514ab89ba0cce66bd3f132` exited 0. ECS is stable 1/1 on API task
+definition revision 92 and running task `090713936a064026a5a1749f768f40a4`,
+image `s22approvals-220e2ea`, digest
+`sha256:02a5869649672d486f970930cc5d8c5ffb637697899a83dae7d1bbe086961af2`.
+`/api/healthz` is green. The live SPA is `assets/index-CTxg0uij.js` and
+`assets/index-BLyNqDZt.css`; CloudFront invalidation
+`IBZBRLMZFKFDDSRPB00J836GWM` completed.
+
+Deploy smoke `smoke 20261008T044244Z` passed on the exact service-bound digest;
+its fixture cleanup and the final leakage gate reported zero test-tagged
+clients and zero e2e approvers on real SOWs. The fresh connected browser proof
+passed **1/1 in 3.0 minutes** against the deployed SPA/API/RDS. It independently
+reproved fixed-fee revenue, quantity/allocation weighted costs, GM persistence,
+Confirm SOW dates/staffing/Sales, save/reload and submission. The new screenshot
+`docs/s21/evidence/staging/s22-gm-cta/03b-approval-plan-green-gm.png` shows the
+configured real pipeline: Stage 1 Delivery/Sales/HR, Stage 2 Finance/Legal,
+and CEO not required for the saved green GM. After submit,
+`04-approvals-pipeline-status.png` shows Delivery/HR/Sales pending and
+Finance/Legal queued. The isolated fixture was deleted; Caesars remained
+read-only.
+
+Local focused verification on the application commit remains 34 backend
+approval tests, 25 frontend confirmation/approval tests, TypeScript, Ruff and
+production build green. Conditional below-floor CEO routing is covered by the
+same authoritative backend state-machine tests and frontend Stage 3 regression;
+the deployed green branch confirms CEO is omitted when policy passes. The full
+E2E TypeScript command is still blocked by four inherited unrelated errors in
+the S14/S17 specs recorded in the evidence report; the affected deployed spec
+compiled and passed through Playwright.
+
+Exact next action: product owner opens the existing Caesars SOW on
+`https://app.dealgateapp.com`, completes Confirm SOW if needed, opens Approvals,
+and verifies the five configured real reviewers and conditional CEO summary.
+Do not merge main before explicit acceptance. Resume with
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git rev-parse HEAD`;
+then inspect the evidence checkpoint and only address a reproduced click-through
+defect. No infrastructure action is pending.
+
 **2026-10-07 17:24 PDT — APPROVAL PIPELINE CANDIDATE AND REVIEWED TERRAFORM
 PLAN READY; HUMAN APPLY APPROVAL REQUIRED.** Authoritative tree:
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`; branch
