@@ -1545,6 +1545,8 @@ export type SowConfirmationApproverFunction =
 
 export interface SowConfirmationApprover {
   user_id: UUID | null;
+  name?: string | null;
+  email?: string | null;
   source: string;
   business_unit: string | null;
 }
@@ -1563,6 +1565,7 @@ export interface SowConfirmationNeedsYou {
 export interface SowConfirmationCeoGate {
   will_trigger: boolean;
   brief?: Record<string, unknown> | null;
+  approver?: SowConfirmationApprover | null;
 }
 
 export interface SowConfirmationSowVersion {

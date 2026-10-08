@@ -8,6 +8,7 @@
  */
 import { type ReactNode } from "react";
 import type {
+  SowConfirmationApprover,
   SowConfirmationApproverFunction,
   SowConfirmationPayload,
 } from "../../../../api/client";
@@ -50,7 +51,7 @@ export function ApproversSection({ payload }: ApproversSectionProps) {
     label: "CEO exception",
     state: willTrigger ? "hold" : "pending",
     hint: willTrigger
-      ? "Below-floor SOW — CEO brief pre-drafted"
+      ? approverHint(payload.ceo_gate.approver) ?? "unassigned"
       : assessed && floors?.requires_ceo === false
         ? "Not required — margin is within policy"
         : "Only if floors fail at submit",
@@ -60,7 +61,7 @@ export function ApproversSection({ payload }: ApproversSectionProps) {
     <Section
       id="section-approvers"
       title="Approvers"
-      description="Function owners are resolved from the owner table. CEO is added automatically when a floor fails."
+      description="The configured review team is attached automatically. CEO is added when a margin floor fails."
     >
       <div className="flex flex-col gap-3">
         <GateSteps steps={steps} ariaLabel="Approval gate progress" />
@@ -82,10 +83,14 @@ export function ApproversSection({ payload }: ApproversSectionProps) {
 }
 
 function approverHint(
-  approver: { user_id: string | null; source: string } | undefined,
+  approver: SowConfirmationApprover | null | undefined,
 ): ReactNode {
   if (!approver) return null;
   if (!approver.user_id) return "unassigned";
+  if (approver.name && approver.email) {
+    return `${approver.name} · ${approver.email}`;
+  }
+  if (approver.name || approver.email) return approver.name ?? approver.email;
   const src =
     approver.source === "group_fallback"
       ? "group fallback"

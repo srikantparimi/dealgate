@@ -12,7 +12,9 @@ import pytest
 import pytest_asyncio
 
 from app.integrations.bedrock_sow_extract import StubBedrock
+from app.models.approval_routing import ApprovalGroup
 from app.models.opportunity import Opportunity
+from app.models.user import User
 from app.services.provenance import wrap
 from app.services.sow_confirmation import (
     build_confirmation,
@@ -115,6 +117,33 @@ async def test_build_confirmation_derives_full_package(seeded_sow, session):
 
 @pytest.mark.asyncio
 async def test_build_confirmation_serialises_cleanly(seeded_sow, session):
+    expected = {}
+    for function, name in (
+        ("delivery", "Delivery Reviewer"),
+        ("sales", "Sales Reviewer"),
+        ("hr", "HR Reviewer"),
+        ("finance", "Finance Reviewer"),
+        ("legal", "Legal Reviewer"),
+    ):
+        user = User(
+            id=uuid.uuid4(),
+            email=f"{function}@review.example",
+            name=name,
+            groups=[],
+        )
+        session.add(user)
+        await session.flush()
+        session.add(
+            ApprovalGroup(
+                function=function,
+                member_ids=[str(user.id)],
+                backup_ids=[],
+                default_approver_id=user.id,
+            )
+        )
+        expected[function] = name
+    await session.flush()
+
     payload = await build_confirmation(
         session, opportunity_id=seeded_sow["opp"].id, actor_id=OWNER
     )
@@ -122,6 +151,10 @@ async def test_build_confirmation_serialises_cleanly(seeded_sow, session):
     assert dumped["engagement"]["primary"]["type"] == payload.engagement.primary.type
     assert "approvers" in dumped
     assert set(dumped["approvers"].keys()) == {"delivery", "hr", "sales", "finance", "legal"}
+    assert {
+        function: reviewer["name"]
+        for function, reviewer in dumped["approvers"].items()
+    } == expected
     assert "needs_you" in dumped
     assert "ceo_gate" in dumped
 

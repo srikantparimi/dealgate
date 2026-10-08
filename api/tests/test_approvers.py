@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from app.models.function_owner import FunctionOwner
+from app.models.approval_routing import ApprovalGroup
 from app.models.user import User
 from app.services.approvers import resolve, resolve_all, upsert_owner
 
@@ -30,6 +30,35 @@ async def test_resolve_prefers_owner_row_over_group(session):
     result = await resolve(session, function="delivery", business_unit="US")
     assert result.user_id == named.id
     assert result.source in ("owner_row", "owner_row_default")
+
+
+@pytest.mark.asyncio
+async def test_resolve_prefers_configured_approval_group_default(session):
+    configured = await _make_user(
+        session, email="delivery-owner@x.com", groups=["Delivery"]
+    )
+    legacy = await _make_user(
+        session, email="legacy-delivery@x.com", groups=["Delivery"]
+    )
+    await upsert_owner(
+        session, function="delivery", business_unit=None, user_id=legacy.id
+    )
+    session.add(
+        ApprovalGroup(
+            function="delivery",
+            member_ids=[str(configured.id)],
+            backup_ids=[],
+            default_approver_id=configured.id,
+        )
+    )
+    await session.flush()
+
+    result = await resolve(session, function="delivery")
+
+    assert result.user_id == configured.id
+    assert result.name == "delivery-owner"
+    assert result.email == "delivery-owner@x.com"
+    assert result.source == "approval_group_default"
 
 
 @pytest.mark.asyncio

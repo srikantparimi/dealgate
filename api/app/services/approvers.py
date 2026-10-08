@@ -22,8 +22,10 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.approval_routing import ApprovalGroup
 from app.models.function_owner import ALLOWED_FUNCTIONS, FunctionOwner
 from app.models.user import User
+from app.services.user_identity import display_user_name
 
 
 # One-to-one mapping of function → Cognito group (fallback path).
@@ -42,8 +44,27 @@ class ResolvedApprover:
 
     function: str
     user_id: uuid.UUID | None
-    source: str  # "owner_row" | "owner_row_default" | "group_fallback" | "none"
+    source: str
     business_unit: str | None = None
+    name: str | None = None
+    email: str | None = None
+
+
+def _resolved(
+    *,
+    function: str,
+    user: User | None,
+    source: str,
+    business_unit: str | None,
+) -> ResolvedApprover:
+    return ResolvedApprover(
+        function=function,
+        user_id=user.id if user else None,
+        source=source,
+        business_unit=business_unit,
+        name=display_user_name(user.name, user.email) if user else None,
+        email=user.email if user else None,
+    )
 
 
 async def resolve(
@@ -57,6 +78,28 @@ async def resolve(
     if function not in ALLOWED_FUNCTIONS:
         raise ValueError(
             f"function must be one of {sorted(ALLOWED_FUNCTIONS)}; got {function!r}"
+        )
+
+    # The approval-group roster is what submission freezes into assignments,
+    # so confirmation must preview that same configured default. A deliberately
+    # empty saved group is authoritative and must not silently fall back to a
+    # legacy function-owner row or arbitrary role member.
+    configured = await session.get(ApprovalGroup, function)
+    if configured is not None:
+        member_ids = [
+            uuid.UUID(str(value)) for value in (configured.member_ids or [])
+        ]
+        selected_id = (
+            configured.default_approver_id
+            if configured.default_approver_id in member_ids
+            else (member_ids[0] if member_ids else None)
+        )
+        selected = await session.get(User, selected_id) if selected_id else None
+        return _resolved(
+            function=function,
+            user=selected,
+            source="approval_group_default" if selected else "approval_group_empty",
+            business_unit=business_unit,
         )
 
     # 1 + 2: rows matching the business unit exactly.
@@ -77,9 +120,9 @@ async def resolve(
             .first()
         )
         if exact is not None:
-            return ResolvedApprover(
+            return _resolved(
                 function=function,
-                user_id=exact.user_id,
+                user=await session.get(User, exact.user_id),
                 source=(
                     "owner_row_default" if exact.is_default else "owner_row"
                 ),
@@ -103,9 +146,9 @@ async def resolve(
         .first()
     )
     if fallback_row is not None:
-        return ResolvedApprover(
+        return _resolved(
             function=function,
-            user_id=fallback_row.user_id,
+            user=await session.get(User, fallback_row.user_id),
             source=(
                 "owner_row_default" if fallback_row.is_default else "owner_row"
             ),
@@ -114,18 +157,20 @@ async def resolve(
 
     # 4: pick the first member of the group.
     group = _FUNCTION_TO_GROUP[function]
-    rows = list((await session.execute(select(User))).scalars().all())
+    rows = list(
+        (await session.execute(select(User).order_by(User.email))).scalars().all()
+    )
     for u in rows:
         if group in (u.groups or []):
-            return ResolvedApprover(
+            return _resolved(
                 function=function,
-                user_id=u.id,
+                user=u,
                 source="group_fallback",
                 business_unit=business_unit,
             )
-    return ResolvedApprover(
+    return _resolved(
         function=function,
-        user_id=None,
+        user=None,
         source="none",
         business_unit=business_unit,
     )

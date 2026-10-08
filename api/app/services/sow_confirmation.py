@@ -41,7 +41,7 @@ from app.services.auto_staffing import (
     lines_to_payload_dicts,
     staff as auto_staff,
 )
-from app.services.approvers import ResolvedApprover, resolve_all
+from app.services.approvers import ResolvedApprover
 from app.services.commercial_models import CommercialInputError, parse_component
 from app.services.delivery_model import (
     GmModelPayload,
@@ -75,6 +75,7 @@ class ConfirmationPayload:
     gm_model: GmModel | None
     floors: dict[str, Any]
     approvers: dict[str, ResolvedApprover]
+    ceo_approver: ResolvedApprover | None
     projected_tasks: list[dict[str, Any]]
     needs_you: list[NeedsYou] = field(default_factory=list)
     ceo_exception: CeoException | None = None
@@ -710,6 +711,53 @@ async def _predraft_ceo_exception(
     return row
 
 
+async def _resolve_approval_team(
+    session: AsyncSession,
+    *,
+    sow_version: SowVersion,
+    actor_id: uuid.UUID | None,
+) -> tuple[dict[str, ResolvedApprover], ResolvedApprover]:
+    """Preview the scoped roster and default selection used at submission."""
+
+    from app.services.approval_routing import groups
+
+    selected_by_function: dict[str, ResolvedApprover] = {}
+    used: set[str] = set()
+    actor = str(actor_id) if actor_id else None
+
+    for group in await groups(session, sow_version=sow_version):
+        function = group["function"]
+        eligible = [member for member in group["members"] if member["id"] != actor]
+        selected = next(
+            (
+                member
+                for member in eligible
+                if member["id"] == group["default_approver_id"]
+                and (function == "executive" or member["id"] not in used)
+            ),
+            next(
+                (
+                    member
+                    for member in eligible
+                    if function == "executive" or member["id"] not in used
+                ),
+                None,
+            ),
+        )
+        if selected and function != "executive":
+            used.add(selected["id"])
+        selected_by_function[function] = ResolvedApprover(
+            function=function,
+            user_id=uuid.UUID(selected["id"]) if selected else None,
+            source="approval_group_default" if selected else "approval_group_empty",
+            name=selected["name"] if selected else None,
+            email=selected["email"] if selected else None,
+        )
+
+    executive = selected_by_function.pop("executive")
+    return selected_by_function, executive
+
+
 # --- public API ----------------------------------------------------------
 
 
@@ -800,7 +848,10 @@ async def build_confirmation(
 
     # 5. Floors + approvers + tasks + CEO pre-draft.
     floors = _compute_floors(gm_model)
-    approvers = await resolve_all(session)
+    approvers, configured_ceo = await _resolve_approval_team(
+        session, sow_version=version, actor_id=actor_id
+    )
+    ceo_approver = configured_ceo if floors.get("requires_ceo") else None
     tasks = _projected_tasks(version)
     ceo_draft = await _predraft_ceo_exception(
         session, sow_version=version, gm_model=gm_model, floors=floors
@@ -816,6 +867,7 @@ async def build_confirmation(
         gm_model=gm_model,
         floors=floors,
         approvers=approvers,
+        ceo_approver=ceo_approver,
         projected_tasks=tasks,
         needs_you=needs,
         ceo_exception=ceo_draft,
@@ -962,6 +1014,8 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
         "approvers": {
             fn: {
                 "user_id": str(r.user_id) if r.user_id else None,
+                "name": r.name,
+                "email": r.email,
                 "source": r.source,
                 "business_unit": r.business_unit,
             }
@@ -974,6 +1028,23 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
             {
                 "will_trigger": True,
                 "brief": payload.ceo_exception.brief_json,
+                "approver": (
+                    {
+                        "user_id": str(payload.ceo_approver.user_id)
+                        if payload.ceo_approver and payload.ceo_approver.user_id
+                        else None,
+                        "name": payload.ceo_approver.name
+                        if payload.ceo_approver
+                        else None,
+                        "email": payload.ceo_approver.email
+                        if payload.ceo_approver
+                        else None,
+                        "source": payload.ceo_approver.source
+                        if payload.ceo_approver
+                        else "approval_group_empty",
+                        "business_unit": None,
+                    }
+                ),
             }
             if payload.ceo_exception
             else {"will_trigger": False}

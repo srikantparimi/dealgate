@@ -533,7 +533,7 @@ async def get_confirmation(
         await _load_version_or_404(session, state.id, _user)
     try:
         payload = await build_confirmation(
-            session, opportunity_id=opportunity_id, actor_id=None
+            session, opportunity_id=opportunity_id, actor_id=_user.id
         )
     except SowNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -145,26 +145,36 @@ function makePayload(
     approvers: {
       delivery: {
         user_id: "00000000-0000-0000-0000-0000000000d1",
+        name: "Shawnna DelHierro",
+        email: "shawnnad@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
       hr: {
         user_id: "00000000-0000-0000-0000-0000000000h1",
+        name: "Sangeeth Mohanan",
+        email: "sangeeth@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
       sales: {
         user_id: "00000000-0000-0000-0000-0000000000s1",
+        name: "Janice Krpan",
+        email: "janicek@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
       finance: {
         user_id: "00000000-0000-0000-0000-0000000000f1",
+        name: "Scott Pfeiffer",
+        email: "scottpf@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
       legal: {
         user_id: "00000000-0000-0000-0000-0000000000l1",
+        name: "Seema Anil",
+        email: "seema@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
@@ -190,6 +200,13 @@ function belowFloorPayload(): SowConfirmationPayload {
     ceo_gate: {
       will_trigger: true,
       brief: { rationale: null },
+      approver: {
+        user_id: "00000000-0000-0000-0000-0000000000c1",
+        name: "Al Lalji",
+        email: "al@smartek21.com",
+        source: "approval_group_default",
+        business_unit: null,
+      },
     },
   });
 }
@@ -281,6 +298,15 @@ describe("SowStudioPage — confirmation screen", () => {
     expect(approvals).not.toBeNull();
     for (const label of ["Delivery", "Sales", "HR", "Finance", "Legal"]) {
       expect(approvals).toHaveTextContent(label);
+    }
+    for (const name of [
+      "Shawnna DelHierro",
+      "Janice Krpan",
+      "Sangeeth Mohanan",
+      "Scott Pfeiffer",
+      "Seema Anil",
+    ]) {
+      expect(approvals).toHaveTextContent(name);
     }
     expect(approvals).toHaveTextContent("Not required");
   });
@@ -396,6 +422,7 @@ describe("SowStudioPage — confirmation screen", () => {
     const gate = screen.getByTestId("gate-step-ceo");
     expect(gate.getAttribute("data-state")).toBe("hold");
     expect(gate.textContent).toMatch(/Will trigger/i);
+    expect(gate).toHaveTextContent("Al Lalji");
     expect(screen.getByTestId("ceo-will-trigger")).toBeInTheDocument();
   });
 
