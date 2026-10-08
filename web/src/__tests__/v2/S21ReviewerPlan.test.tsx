@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import * as api from "../../api/client";
@@ -27,6 +27,14 @@ it("opens planned functions and eligible reviewers directly on unsubmitted Appro
   expect(await screen.findByRole("heading", { name: "Planned reviewers" })).toBeVisible();
   await screen.findByRole("option", { name: "delivery alternative" });
   expect(screen.getAllByRole("combobox")).toHaveLength(5);
+  const pipeline = screen.getByRole("region", { name: "Approval pipeline" });
+  expect(within(pipeline).getByRole("heading", { name: "Approval pipeline" })).toBeVisible();
+  expect(within(pipeline).getByText("Stage 1 · Function reviews")).toBeVisible();
+  expect(within(pipeline).getByText("Stage 2 · Commercial and legal reviews")).toBeVisible();
+  for (const name of functions.map(fn => `${fn} reviewer`)) {
+    expect(within(pipeline).getByText(name)).toBeVisible();
+  }
+  expect(within(pipeline).getByText("CEO approval is not required")).toBeVisible();
   expect(api.submitApprovalPackage).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText("Delivery approver"), { target: { value: "delivery-alternative" } });
   fireEvent.click(screen.getByRole("button", { name: "Confirm submission" }));
@@ -37,10 +45,77 @@ it("opens planned functions and eligible reviewers directly on unsubmitted Appro
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
 });
 
+it("adds CEO as a second stage only when the saved GM is below floor", async () => {
+  vi.mocked(api.getSubmissionPlan).mockResolvedValue({
+    ...structuredClone(plan),
+    floors: { requires_ceo: true },
+    executive: {
+      function: "executive",
+      label: "Executive",
+      approver_id: "ceo-default",
+      default_approver_id: "ceo-default",
+      backup_ids: [],
+      delegations: [],
+      members: [{ id: "ceo-default", name: "CEO reviewer" }],
+    },
+  } as unknown as api.SubmissionPlan);
+
+  render(<MemoryRouter><ApprovalsTab snap={snap} canSubmit /></MemoryRouter>);
+
+  expect(await screen.findByText("Stage 3 · CEO exception")).toBeVisible();
+  expect(screen.getByText("CEO reviewer")).toBeVisible();
+  expect(screen.queryByText("CEO approval is not required")).not.toBeInTheDocument();
+});
+
 it("does not expose a submission editor to a reader without submission authority", () => {
   render(<MemoryRouter><ApprovalsTab snap={snap} canSubmit={false} /></MemoryRouter>);
   expect(screen.queryByRole("button", { name: "Confirm submission" })).not.toBeInTheDocument();
   expect(api.getSubmissionPlan).not.toHaveBeenCalled();
+});
+
+it("shows the approval pipeline when Cognito and invited owner ids differ for the same email", async () => {
+  const workspace = {
+    ...snap,
+    deal: {
+      id: "deal",
+      owner_id: "invited-owner-id",
+      owner: {
+        id: "invited-owner-id",
+        name: "Account owner",
+        email: "owner@example.test",
+      },
+    },
+    sow: {
+      id: "sow-version",
+      extracted_fields: { sow_title: { value: "Identity-safe approvals" } },
+    },
+    gmModel: {
+      id: "gm-version",
+      resource_lines: [],
+      cost_lines: [],
+      completeness_issues: [],
+      computed: { complete: true, policy: { requires_ceo: false } },
+    },
+    agreements: [],
+    signedSow: null,
+  } as unknown as WorkspaceSnapshot;
+  vi.spyOn(loader, "loadWorkspace").mockResolvedValue({ snap: workspace, degradedEndpoints: [] });
+  vi.spyOn(api, "getMe").mockResolvedValue({
+    id: "cognito-sub-id",
+    name: "Account owner",
+    email: "OWNER@example.test",
+    groups: ["Sales"],
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/sows/deal/approvals"]}>
+      <Routes><Route path="/sows/:id/:tab" element={<SowWorkspacePage />} /></Routes>
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByRole("region", { name: "Approval pipeline" })).toBeVisible();
+  expect(api.getSubmissionPlan).toHaveBeenCalledWith("deal");
+  expect(screen.getByRole("button", { name: "Confirm submission" })).toBeEnabled();
 });
 
 it("retains selections and presents server rejection without claiming submission", async () => {
@@ -119,6 +194,7 @@ it("shows approved, active and queued review status after submission", () => {
       assignments: [
         { function: "delivery", approver_name: "Delivery reviewer", due_date: "2026-10-09", active: false, blocked: false, can_decide: false },
         { function: "hr", approver_name: "HR reviewer", due_date: "2026-10-09", active: true, blocked: false, can_decide: false },
+        { function: "sales", approver_name: "Sales reviewer", due_date: "2026-10-09", active: false, blocked: false, can_decide: false },
         { function: "finance", approver_name: "Finance reviewer", due_date: "2026-10-09", active: false, blocked: false, can_decide: false },
         { function: "legal", approver_name: "Legal reviewer", due_date: "2026-10-09", active: false, blocked: false, can_decide: false },
       ],
@@ -130,6 +206,7 @@ it("shows approved, active and queued review status after submission", () => {
 
   expect(screen.getByText("Delivery · Approved")).toBeVisible();
   expect(screen.getByText("HR · Pending with HR reviewer")).toBeVisible();
+  expect(screen.getByText("Sales · Queued for Sales reviewer")).toBeVisible();
   expect(screen.getByText("Finance · Queued for Finance reviewer")).toBeVisible();
   expect(screen.getByText("Legal · Queued for Legal reviewer")).toBeVisible();
   expect(screen.getByText("pending delivery hr")).toBeVisible();

@@ -105,9 +105,10 @@ export function engagementLabel(type: string | null | undefined): string {
   );
 }
 
-/** Human-facing label for the four functions. */
+/** Human-facing label for the five approval functions. */
 export const FUNCTION_LABEL: Record<SowConfirmationApproverFunction, string> = {
   delivery: "Delivery",
+  sales: "Sales",
   hr: "HR",
   finance: "Finance",
   legal: "Legal",

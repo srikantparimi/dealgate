@@ -153,6 +153,11 @@ function makePayload(
         source: "owner_row",
         business_unit: null,
       },
+      sales: {
+        user_id: "00000000-0000-0000-0000-0000000000s1",
+        source: "owner_row",
+        business_unit: null,
+      },
       finance: {
         user_id: "00000000-0000-0000-0000-0000000000f1",
         source: "owner_row",
@@ -274,7 +279,7 @@ describe("SowStudioPage — confirmation screen", () => {
 
     const approvals = document.getElementById("section-approvers");
     expect(approvals).not.toBeNull();
-    for (const label of ["Delivery", "HR", "Finance", "Legal"]) {
+    for (const label of ["Delivery", "Sales", "HR", "Finance", "Legal"]) {
       expect(approvals).toHaveTextContent(label);
     }
     expect(approvals).toHaveTextContent("Not required");

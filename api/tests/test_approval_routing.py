@@ -5,7 +5,9 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from app.auth import AuthUser, current_user
 from app.models.approval_routing import ApprovalAssignment
+from app.models.approval import ApprovalPackage
 from app.models.task import Task
 from app.services import approval_routing as routing
 from app.services.approvals import ApprovalError, decide, submit_package
@@ -33,6 +35,45 @@ async def fixture(session):
             default_approver_id=person.id,
         )
     return owner, opp, sow, gm, people
+
+
+@pytest.mark.asyncio
+async def test_invited_owner_identity_can_preview_and_submit_pipeline(
+    app_with_session,  # noqa: F811 - imported pytest fixture
+    session,
+    monkeypatch,
+):
+    """Cognito sub and invited DB id differ for real users.
+
+    Approval authorization must canonicalize by email exactly like the deal
+    router; otherwise the workspace looks owned by the signed-in person while
+    the approval plan is hidden and submission is rejected.
+    """
+    owner, opp, _, _, _ = await fixture(session)
+    principal = AuthUser(
+        id=uuid.uuid4(),
+        email=owner.email,
+        name=owner.name,
+        groups=("Sales",),
+    )
+    monkeypatch.setitem(
+        app_with_session.dependency_overrides,
+        current_user,
+        lambda: principal,
+    )
+
+    async with _client(app_with_session) as client:
+        preview = await client.get(f"/approvals/plan/{opp.id}")
+        assert preview.status_code == 200, preview.text
+        assert [row["function"] for row in preview.json()["rows"]] == list(
+            routing.FUNCTIONS
+        )
+        submitted = await client.post(f"/approvals/packages/{opp.id}")
+        assert submitted.status_code == 201, submitted.text
+
+    package = await session.scalar(select(ApprovalPackage))
+    assert package is not None
+    assert package.submitted_by == owner.id
 
 
 @pytest.mark.asyncio

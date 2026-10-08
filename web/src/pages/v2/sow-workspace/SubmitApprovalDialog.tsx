@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { AlertCircle, CheckCircle2, Send } from "lucide-react";
 import { ApiError, getSubmissionPlan, submitApprovalPackage, type SubmissionPlan } from "../../../api/client";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "../../../ui-v2/primitives/dialog";
 import { Button } from "../../../ui-v2/primitives/button";
@@ -56,6 +56,7 @@ export function SubmissionPlanEditor({ id, onSubmitted, onCancel, onBusyChange }
       {error && <p role="alert" className="text-danger text-body">{error}</p>}
       {plan && <>
         <p className="text-secondary text-text-secondary">You are excluded from reviewer choices because the submitter cannot approve this package. Each function requires a different reviewer.</p>
+        <ApprovalPipeline plan={plan} />
         <div className="divide-y divide-divider">
           {plan.rows.map((row, index) => <div key={row.function} className="py-3 grid gap-2 sm:grid-cols-[90px_1fr_145px] items-center">
             <span className="font-medium text-body">{row.label}</span>
@@ -70,7 +71,75 @@ export function SubmissionPlanEditor({ id, onSubmitted, onCancel, onBusyChange }
           </div>)}
           {plan.executive && <div className="py-3 text-body"><strong>CEO · {plan.executive.members.find(m => m.id === plan.executive?.approver_id)?.name ?? "Executive group needs a CEO or active delegate"}</strong><p className="text-secondary text-text-secondary">Exception - brief will be generated after functional reviews.</p></div>}
         </div>
-        <div className="flex justify-end gap-2">{onCancel && <Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button>}<Button onClick={submit} disabled={busy || plan.rows.some(r => !r.due_date)}><Send className="h-4 w-4 mr-2" />{busy ? "Submitting..." : "Confirm submission"}</Button></div>
+        <div className="flex justify-end gap-2">{onCancel && <Button variant="secondary" disabled={busy} onClick={onCancel}>Cancel</Button>}<Button onClick={submit} disabled={busy || plan.rows.some(r => !r.due_date || !r.approver_id)}><Send className="h-4 w-4 mr-2" />{busy ? "Submitting..." : "Confirm submission"}</Button></div>
       </>}
   </section>;
+}
+
+function ApprovalPipeline({ plan }: { plan: SubmissionPlan }) {
+  const executive = plan.executive;
+  const executiveMember = executive?.members.find(
+    (member) => member.id === executive.approver_id,
+  );
+  const stages = [
+    {
+      number: 1,
+      label: "Function reviews",
+      functions: ["delivery", "sales", "hr"],
+    },
+    {
+      number: 2,
+      label: "Commercial and legal reviews",
+      functions: ["finance", "legal"],
+    },
+  ];
+  return (
+    <section aria-label="Approval pipeline" className="border-y border-divider py-4">
+      <h4 className="text-heading-3">Approval pipeline</h4>
+      <div className="mt-4 grid gap-4">
+        {stages.map((stage) => (
+          <div key={stage.number} className="grid grid-cols-[32px_minmax(0,1fr)] gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-fg font-semibold tnum">{stage.number}</span>
+            <div className="min-w-0">
+              <p className="font-medium text-body">Stage {stage.number} · {stage.label}</p>
+              <div className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+                {stage.functions.map((fn) => plan.rows.find((row) => row.function === fn)).filter((row) => row !== undefined).map((row) => {
+                const member = row.members.find((item) => item.id === row.approver_id);
+                return (
+                  <div key={row.function} className="flex min-w-0 items-start gap-2 border-l-2 border-primary pl-3">
+                    {member ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />}
+                    <div className="min-w-0">
+                      <p className="font-medium text-body">{row.label}</p>
+                      <p className="truncate text-secondary text-text-secondary">{member?.name ?? "No eligible reviewer"}</p>
+                      {member?.email ? <p className="truncate text-secondary text-text-muted">{member.email}</p> : null}
+                    </div>
+                  </div>
+                );
+                })}
+              </div>
+            </div>
+          </div>
+        ))}
+        {executive ? (
+          <div className="grid grid-cols-[32px_minmax(0,1fr)] gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-warning text-text font-semibold tnum">3</span>
+            <div className="min-w-0 border-l-2 border-warning pl-3">
+              <p className="font-medium text-body">Stage 3 · CEO exception</p>
+              <p className="text-secondary text-text-secondary">{executiveMember?.name ?? "No eligible CEO or delegate"}</p>
+              {executiveMember?.email ? <p className="text-secondary text-text-muted">{executiveMember.email}</p> : null}
+              <p className="text-secondary text-text-secondary">Added because the saved GM is below a configured floor.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[32px_minmax(0,1fr)] gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-success-surface text-success"><CheckCircle2 className="h-4 w-4" aria-hidden /></span>
+            <div className="min-w-0 border-l-2 border-success pl-3">
+              <p className="font-medium text-body">CEO approval is not required</p>
+              <p className="text-secondary text-text-secondary">The saved GM meets the configured margin floors.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }

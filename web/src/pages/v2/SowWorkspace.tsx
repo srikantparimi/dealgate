@@ -293,7 +293,17 @@ export function SowWorkspacePage() {
     activeTab,
     commercial: commercialStatus,
   });
-  const canSubmit = !!viewer && (viewer.id === snap.deal?.owner_id || viewer.groups.includes("SystemAdmin"));
+  // Invited users retain the DB identity already referenced by deals, while
+  // Cognito supplies a different `sub`. The API canonicalizes that pair by
+  // email; mirror the same identity rule when deciding whether to reveal the
+  // submission plan. Server authorization remains authoritative.
+  const viewerEmail = viewer?.email.trim().toLowerCase();
+  const ownerEmail = snap.deal?.owner?.email?.trim().toLowerCase();
+  const canSubmit = !!viewer && (
+    viewer.id === snap.deal?.owner_id
+    || (!!viewerEmail && viewerEmail === ownerEmail)
+    || viewer.groups.includes("SystemAdmin")
+  );
   const termStart = snap.sow?.extracted_fields?.term_start?.value;
   const termEnd = snap.sow?.extracted_fields?.term_end?.value;
   // S21 item 4: single display format with explicit year on both sides.

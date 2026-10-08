@@ -473,6 +473,7 @@ export function listProjects(): Promise<{ items: ProjectRow[] }> {
 export interface OwnerRef {
   id: UUID;
   name: string;
+  email?: string;
 }
 
 export interface ClientListRow {
@@ -1537,6 +1538,7 @@ export interface SowConfirmationFloors {
 
 export type SowConfirmationApproverFunction =
   | "delivery"
+  | "sales"
   | "hr"
   | "finance"
   | "legal";

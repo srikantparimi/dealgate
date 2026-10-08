@@ -1,7 +1,7 @@
 /**
  * Section 6 — Approvers.
  *
- * `GateSteps` rendered with the four function approvers (D/H/F/L) +
+ * `GateSteps` rendered with the five function approvers (D/S/H/F/L) +
  * an optional CEO gate. When `payload.ceo_gate.will_trigger` is true
  * the CEO step comes in as `hold` with the "Will trigger" microcopy
  * from the v2.1 addendum (agent-brief rule "hold state").
@@ -22,6 +22,7 @@ export interface ApproversSectionProps {
 
 const FUNCTION_ORDER: SowConfirmationApproverFunction[] = [
   "delivery",
+  "sales",
   "hr",
   "finance",
   "legal",
