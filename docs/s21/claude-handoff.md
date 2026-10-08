@@ -2,6 +2,52 @@
 
 ## RESUME HERE
 
+**2026-10-07 22:35 PDT — CANONICAL SESSION-IDENTITY FIX COMMITTED/PUSHED;
+IMMUTABLE ARTIFACT AND REVIEWED TERRAFORM PLAN READY FOR HUMAN APPROVAL.**
+Authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
+branch `fix/s22-gm-cta`, application commit
+`b86bcf049a08b54c54b745e7e271918d8ba36538`. The application tree was clean
+after commit/push; only this incremental handoff entry is dirty before its docs
+checkpoint. No build, browser, test, Terraform, migration, or deployment
+process is active. Main remains untouched and no merge is authorized.
+
+Commit `b86bcf0` fixes the user-visible disabled approval action by making
+`GET /me` resolve the Cognito principal through the existing `ensure_user`
+identity authority and return the canonical invited DealGate user. The focused
+regression reproduces a Cognito access-token subject that differs from the
+already invited owner row, proves the pre-fix endpoint returned the raw subject,
+and now proves canonical id/email/name/groups are returned without creating a
+duplicate. Verification: identity/Cognito/approval backend scope **23 passed**;
+Ruff passed; frontend workspace/approval scope **16 passed**; TypeScript and
+production build passed. The exact SPA remains `assets/index-CTxg0uij.js` and
+`assets/index-BLyNqDZt.css` because no frontend source changed.
+
+Immutable API image `s22identity-b86bcf0` is in ECR at digest
+`sha256:9ba08cf3f3d1fecbd6b71a64747a6a6d18c7f8207a133654bb5ad15d65b2551f`.
+The fresh whole-root plan is `/tmp/s22-identity-b86bcf0.tfplan`, with text and
+JSON at `/tmp/s22-identity-b86bcf0.plan.txt` and
+`/tmp/s22-identity-b86bcf0.plan.json`. Saved-plan SHA-256 is
+`d708bf70686f69adcceeb934abdf46513fc32c078dbd48827e9c04e7199cb19a`.
+Plan result is **11 add / 13 change / 11 destroy**: only API/migration/eight
+worker task-definition revisions plus the migration trigger are replaced; the
+API service, eight EventBridge targets, and four RunTask policies follow those
+new revisions. No RDS, Cognito, S3, CloudFront, DNS, secret, KMS, network,
+security-group, approver-roster, schedule-state, or business-data resource
+changes exist. Task definitions differ substantively only by the immutable
+image; the API provider rendering also drops redundant `hostPort: 8000` while
+retaining container port 8000 and `awsvpc` mapping. Reviewed inputs preserve
+LA/USD, S21 jobs enabled, trusted cleanup/continuous HubSpot/operational
+hardening disabled, and production approver identities enabled.
+
+Required human action: approve this exact saved Terraform plan. After approval,
+run:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-identity-b86bcf0.tfplan`.
+Then require successful migration and stable API digest, publish the exact SPA,
+invalidate CloudFront, run deploy smoke, prove non-SystemAdmin `/me`
+canonicalization and the connected approval submission in an isolated fixture,
+and ask the product owner to reload Caesars. Do not mutate Caesars and do not
+merge main before acceptance.
+
 **2026-10-07 22:30 PDT — USER CLICK-THROUGH REPRODUCED A SECOND IDENTITY
 BOUNDARY; CANONICAL `/me` FIX IMPLEMENTED AND LOCALLY VERIFIED, NOT YET
 DEPLOYED.** Authoritative tree is
