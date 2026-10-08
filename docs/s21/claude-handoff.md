@@ -2,6 +2,42 @@
 
 ## RESUME HERE
 
+**2026-10-07 17:24 PDT — APPROVAL PIPELINE CANDIDATE AND REVIEWED TERRAFORM
+PLAN READY; HUMAN APPLY APPROVAL REQUIRED.** Authoritative tree:
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`; branch
+`fix/s22-gm-cta`; application commit
+`220e2ea45bd60db0ea4898ac98e71703206525ab`; preceding handoff checkpoint
+`35e7fbc8a9d76de9896e624722f6a2a77b5094b4`. No test, build, browser,
+deployment, migration or Terraform operation is active. Only this handoff
+update is dirty before its docs checkpoint. Main remains untouched.
+
+Immutable API image `s22approvals-220e2ea` is in ECR at digest
+`sha256:02a5869649672d486f970930cc5d8c5ffb637697899a83dae7d1bbe086961af2`.
+The exact production SPA build is `assets/index-CTxg0uij.js` and
+`assets/index-BLyNqDZt.css`. The fresh whole-root plan is saved as
+`/tmp/s22-approvals-220e2ea-v2.tfplan`, with reviewed text and JSON at
+`/tmp/s22-approvals-220e2ea-v2.plan.txt` and
+`/tmp/s22-approvals-220e2ea-v2.plan.json`.
+
+Plan result: **11 add / 13 change / 11 destroy**. The 11 delete/create pairs
+are the API and migration task definitions, eight worker task definitions and
+the migration trigger. The 13 in-place changes repoint the API service, eight
+EventBridge targets and four RunTask policies to the new revisions. Normalized
+task-definition comparison found no non-image container change. No RDS, S3,
+Cognito, production-approver, SES, secret, KMS, network, security-group,
+Route53, CloudFront or schedule-rule change exists. Reviewed inputs are image
+tag `s22approvals-220e2ea`, timezone `America/Los_Angeles`, currency `USD`,
+S21 jobs enabled, trusted cleanup/continuous HubSpot/operational hardening
+disabled, and `production_approver_identities_enabled=true`.
+
+Required human action: approve this exact saved Terraform plan. After approval,
+run:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-approvals-220e2ea-v2.tfplan`.
+Then require the migration gate and stable API digest, publish only the exact
+SPA above, invalidate CloudFront, run deploy smoke and the isolated approval
+pipeline proofs, and leave Caesars business data read-only. No merge to main
+before product-owner acceptance.
+
 **2026-10-07 17:20 PDT — APPROVAL PIPELINE IDENTITY/ROUTING FIX COMMITTED;
 STAGING ARTIFACT/PLAN PREPARATION NEXT.** The authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
