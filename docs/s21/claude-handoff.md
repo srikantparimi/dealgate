@@ -2,6 +2,54 @@
 
 ## RESUME HERE
 
+**2026-10-08 10:54 PDT — FALSE SIGNATORY APPROVAL GATE FIXED LOCALLY;
+APPLICATION COMMIT READY FOR STAGING ARTIFACT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`2a5dbdf95869702537f0c9a35d448e1cf9f7c866`. This handoff update is the only
+expected dirty file. Main remains untouched and no merge is authorized. No
+server, worker, browser, test, migration, Terraform, or deployment operation is
+active.
+
+Root cause is confirmed in `app.services.sow_confirmation._ESSENTIAL_FIELDS`:
+the legacy contractual `signatories` extraction field was still mandatory for
+scope confirmation. `ScopeSection` rendered its picker once and
+`NeedsYouSection` rendered the same picker again as a blocker. Approval routing
+was already populated independently from configured ApprovalGroups, but the
+unrelated empty signer field disabled `Complete scope`; the prior staging proof
+worked only because its fixture injected a fake client signer. That workaround
+is why the visible owner path remained broken across iterations.
+
+Commit `2a5dbdf` removes missing signers from confirmation prerequisites and
+removes the duplicate signer UI from Confirm SOW. It does **not** turn approval
+reviewers into legal signing parties. Delivery, Sales, HR, Finance, and Legal
+continue to come from the configured approval roster; below-floor GM continues
+to add the configured CEO. Signed-document verification remains strict when a
+source SOW names approved signers. When it names none, verification records the
+executed signers but does not invent an identity set or fail against an empty
+one.
+
+Focused verification on `2a5dbdf`: both complete affected backend files
+`test_sow_confirmation.py` and `test_signed_sow.py` passed; all three existing
+named-signer mismatch/match regressions passed; frontend Confirm SOW plus
+blocker-registry tests passed **20/20**; TypeScript, Ruff, diff check, and the
+production build passed. The built local SPA is
+`web/dist/assets/index-BV0ywWPM.js` plus
+`web/dist/assets/index-BLyNqDZt.css`; it is not deployed evidence. Staging still
+runs API revision 94/image `s22reviewers-5909b7e` and SPA
+`assets/index-o8IHvr-q.js`, so it does not contain this fix yet.
+
+Exact resume:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git show --stat --oneline 2a5dbdf`.
+Next: commit/push this handoff checkpoint, build immutable API image from
+`2a5dbdf`, create and review a fresh whole-root Terraform plan while preserving
+production approver identities, then stop for the required human apply
+approval. After apply, publish the matching SPA, run deploy smoke, and prove in
+a fresh disposable SOW with no extracted signers that Confirm SOW shows the
+five named approval functions, adds CEO only below floor, enables `Complete
+scope`, submits, and displays pending/queued pipeline state. Do not merge main
+before product-owner staging acceptance.
+
 **2026-10-07 23:47 PDT — DEPLOYED REVIEWER PROOF CHECKPOINT COMMITTED AND
 PUSHED.** Evidence/test checkpoint is
 `d59de907bf830c04542bf1d0061741e349b7673e` on `fix/s22-gm-cta` in
