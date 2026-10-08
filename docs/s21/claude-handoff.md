@@ -2,6 +2,22 @@
 
 ## RESUME HERE
 
+**2026-10-07 21:50 PDT — DEPLOYED APPROVAL PIPELINE EVIDENCE COMMITTED AND
+PUSHED; WAITING FOR PRODUCT-OWNER ACCEPTANCE.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`220e2ea45bd60db0ea4898ac98e71703206525ab`, deployed-evidence commit
+`575c9f2e6bd22f109ae2087d417fce35d7a58383`. The branch was clean and matched
+origin immediately after that checkpoint; only this resume-pointer update is
+dirty before its documentation commit. No local or cloud operation is active.
+Staging remains healthy on API revision 92 / image `s22approvals-220e2ea` /
+digest `sha256:02a5869649672d486f970930cc5d8c5ffb637697899a83dae7d1bbe086961af2`
+and SPA `assets/index-CTxg0uij.js`. Exact resume command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git show --stat --oneline 575c9f2`.
+Review `docs/s21/evidence/staging/s22-gm-cta/report.md` and the `03b`/`04`
+screenshots. Await the product owner's staging click-through; do not merge main
+without explicit approval.
+
 **2026-10-07 21:48 PDT — APPROVAL PIPELINE FIX DEPLOYED AND CONNECTED GREEN;
 PRODUCT-OWNER STAGING CLICK-THROUGH NEXT.** Authoritative tree:
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`; branch
