@@ -2,6 +2,32 @@
 
 ## RESUME HERE
 
+**2026-10-07 23:00 PDT — POST-DEPLOY OAUTH STATE ERROR REPRODUCED; FRESH
+LOGIN AND BUILT-IN RECOVERY BOTH VERIFIED, NO APPLICATION CHANGE MADE.**
+Authoritative tree remains
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, deployed-evidence commit
+`92e808c787fd1b8317285afcd13e8ccdb2ac44c7`. Only this handoff update is
+dirty before its docs checkpoint. No test, browser, deployment, migration, or
+Terraform operation is active; main is untouched.
+
+The product owner reported `/auth/callback` showing `OAuth state mismatch`
+after the requested re-login. This error means the callback URL's one-time
+state no longer matches the initiating tab's `sessionStorage`; the precise
+event that removed or replaced state in the owner's tab is not remotely
+observable. A new headless browser with empty storage completed the real
+Cognito hosted-UI + PKCE flow on the deployed bundle and reached
+`https://app.dealgateapp.com/command`; state/verifier were present before the
+callback, removed after exchange, and access tokens were stored. A second
+focused proof deliberately opened a stale callback, reproduced the exact
+error, clicked the existing `Return to home` link, and recovered through a new
+OAuth transaction to `/command` authenticated. No password reset, bundle
+change, API rollback, or business-data mutation is indicated. Exact owner
+action: click `Return to home` in the same tab or directly open
+`https://app.dealgateapp.com/`, then continue the Caesars approval
+click-through. If a newly initiated flow fails again, capture the authorize
+and callback URLs with query values redacted before changing auth code.
+
 **2026-10-07 22:52 PDT — CANONICAL SESSION-IDENTITY FIX DEPLOYED; SMOKE AND
 CONNECTED APPROVAL JOURNEY GREEN; PRODUCT-OWNER CAESARS RELOAD NEXT.**
 Authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
