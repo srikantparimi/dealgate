@@ -265,6 +265,21 @@ def _diff_signatories(approved: Any, extracted: Any) -> dict[str, Any]:
 
     approved_names = _signatory_names(approved)
     extracted_names = _signatory_names(extracted)
+    # A source SOW does not always name its eventual signing parties. In that
+    # case there is no approved identity set to compare against, so do not
+    # invent one from approval reviewers or reject the executed document for
+    # containing real signatures. When the source does name signers, the
+    # equality check below remains strict.
+    if not approved_names:
+        return {
+            "field": "signatories",
+            "approved": [],
+            "extracted": extracted_names,
+            "missing": [],
+            "unexpected": [],
+            "enforced": False,
+            "match": True,
+        }
     approved_set = set(approved_names)
     extracted_set = set(extracted_names)
     missing = sorted(approved_set - extracted_set)
@@ -275,6 +290,7 @@ def _diff_signatories(approved: Any, extracted: Any) -> dict[str, Any]:
         "extracted": extracted_names,
         "missing": missing,
         "unexpected": unexpected,
+        "enforced": True,
         "match": not missing and not unexpected,
     }
 

@@ -216,6 +216,37 @@ async def test_missing_scope_cannot_stamp_confirmation(seeded_sow, session):
     assert row.confirmed_at is None
 
 
+@pytest.mark.asyncio
+async def test_missing_signatories_do_not_block_approval_confirmation(
+    seeded_sow, session
+):
+    """Approval reviewers and contractual signers are different concepts.
+
+    A source SOW that does not name its eventual signers must still be able to
+    enter the function-review pipeline. Reviewer routing is derived from the
+    approval groups and the GM result, never from this extraction field.
+    """
+
+    from app.models.sow import SowVersion
+
+    row = await session.get(SowVersion, seeded_sow["sow_version_id"])
+    row.extracted_fields = {
+        **row.extracted_fields,
+        "signatories": wrap(None, provenance="manual", status="unconfirmed"),
+    }
+    await session.commit()
+
+    payload = await build_confirmation(
+        session, opportunity_id=seeded_sow["opp"].id, actor_id=OWNER
+    )
+    assert "signatories" not in [gap.field for gap in payload.needs_you]
+
+    submitted = await submit_confirmation(
+        session, opportunity_id=seeded_sow["opp"].id, actor_id=OWNER
+    )
+    assert submitted.sow_version.id == seeded_sow["sow_version_id"]
+
+
 # --- what actually blocks submit (S10-11) --------------------------------
 
 

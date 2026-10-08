@@ -437,7 +437,6 @@ _ESSENTIAL_FIELDS: tuple[str, ...] = (
     "term_start",
     "term_end",
     "deliverables",
-    "signatories",
 )
 
 def scope_blockers(payload: ConfirmationPayload) -> list[NeedsYou]:

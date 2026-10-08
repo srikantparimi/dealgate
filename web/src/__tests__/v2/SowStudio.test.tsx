@@ -353,11 +353,12 @@ describe("SowStudioPage — confirmation screen", () => {
     expect(screen.getByTestId("needs-you-empty")).toBeInTheDocument();
     unmount();
 
-    // A needs_you entry disables the button.
+    // A genuinely required scope field disables the button. Contractual
+    // signers are separate from approval reviewers and are not a scope gate.
     vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValueOnce(
       makePayload({
         needs_you: [
-          { field: "signatories", reason: "extracted value missing" },
+          { field: "term_end", reason: "extracted value missing" },
         ],
       }),
     );
@@ -367,8 +368,32 @@ describe("SowStudioPage — confirmation screen", () => {
     });
     expect(screen.getByTestId("confirmation-submit")).toBeDisabled();
     expect(
-      screen.getByTestId("needs-you-item-signatories"),
+      screen.getByTestId("needs-you-item-term_end"),
     ).toBeInTheDocument();
+  });
+
+  it("does not confuse missing contract signers with the approval roster", async () => {
+    const payload = makePayload();
+    payload.sow_version.extracted_fields = {
+      ...(payload.sow_version.extracted_fields ?? {}),
+      signatories: {
+        value: null,
+        provenance: "manual",
+        status: "unconfirmed",
+      },
+    };
+    vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValue(payload);
+    renderStudio();
+
+    await screen.findByRole("heading", { name: /Confirm SOW/i });
+    expect(screen.queryByTestId("field-row-signatories")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No signatories yet/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("confirmation-submit")).not.toBeDisabled();
+
+    const approvals = document.getElementById("section-approvers");
+    for (const label of ["Delivery", "Sales", "HR", "Finance", "Legal"]) {
+      expect(approvals).toHaveTextContent(label);
+    }
   });
 
   it("submits via submitSowConfirmation and navigates on success", async () => {

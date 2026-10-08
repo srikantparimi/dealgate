@@ -28,7 +28,6 @@ export const SCOPE_FIELDS: Array<{ key: string; label: string }> = [
   { key: "deliverables", label: "Deliverables" },
   { key: "milestones", label: "Milestones" },
   { key: "acceptance_criteria", label: "Acceptance" },
-  { key: "signatories", label: "Signatories" },
 ];
 
 /** The four Source & type rows in section 1. */

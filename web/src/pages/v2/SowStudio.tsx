@@ -668,7 +668,6 @@ function ConfirmationFlow({
       <ScopeSection
         payload={payload}
         onOverrideField={handleOverride}
-        onSignatoriesChange={handleSignatoriesChange}
       />
       <RateCardSection payload={payload} />
       <StaffingGmSection payload={payload} opportunityId={opportunityId} onSaved={load} onDirtyChange={setCostsDirty} />
