@@ -2,6 +2,53 @@
 
 ## RESUME HERE
 
+**2026-10-08 11:35 PDT — SIGNATORY-GATE IMAGE AND REVIEWED TERRAFORM PLAN
+READY; HUMAN APPLY APPROVAL REQUIRED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current pushed HEAD
+`c6e2fefa64dfee0fda8d08bafa9659d05faacf19`, application commit
+`2a5dbdf95869702537f0c9a35d448e1cf9f7c866`. This handoff update is the only
+expected dirty file. Main is untouched. No build, test, browser, migration,
+deployment, or Terraform operation is active.
+
+Immutable image `s22signers-2a5dbdf` is in ECR at digest
+`sha256:74e2b594732bc145da77286d085e42a635706869e5b239353f65df8eac1adc1c`.
+It is an exact successor layer over deployed image digest
+`sha256:3017ead9bbe4fa895a46c85efb45f7fa6477ff957b595f8bc087601d645bcc5a`,
+replacing only the two tested backend service files changed since
+`5909b7e`: `sow_confirmation.py` and `signed_sow.py`. ECR and ECS were checked
+directly: the running task is `X86_64` and the image is AMD64.
+
+Fresh reviewed plan `/tmp/s22-signers-2a5dbdf.tfplan` has SHA-256
+`5c87a18f9d083607b2ad48b1ce74d96fecdfb5d7b3ee8a2210fcc30e38b765c0`;
+text and JSON renderings are `/tmp/s22-signers-2a5dbdf.plan.txt` and
+`/tmp/s22-signers-2a5dbdf.plan.json`, with checksums recorded beside the plan.
+It is exactly **11 add / 13 change / 11 destroy**: API, migration, eight
+scheduled-worker task definitions, and the migration trigger are replaced;
+the API service, eight EventBridge targets, and four RunTask policies follow
+the new revisions. All ten container images move only from
+`s22reviewers-5909b7e` to `s22signers-2a5dbdf`. There are zero RDS, S3,
+Cognito, production-approver, SES, secret, KMS, network, security-group,
+CloudFront, DNS, schedule-rule, or business-data changes. Inputs preserve
+America/Los_Angeles, USD, S21 jobs enabled, trusted cleanup/continuous
+HubSpot/operational hardening disabled, and production approver identities
+enabled.
+
+Build history to avoid repeating: `docker buildx ... ./api` failed because
+the Dockerfile expects repository-root context. A root-context ARM64 build was
+stopped after direct ECS/ECR inspection proved the actual runtime and deployed
+manifest are X86_64/AMD64; no image was pushed by either attempt. The final
+AMD64 successor build completed and its digest above is authoritative.
+
+Required human action: approve only the saved Terraform plan identified above.
+After approval, exact resume command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-signers-2a5dbdf.tfplan`.
+Then require the migration gate, stable API on the recorded image digest,
+publish the already-built matching SPA `assets/index-BV0ywWPM.js`, run deploy
+smoke, and execute a disposable fresh-session no-source-signers proof through
+Confirm SOW -> Approvals -> pending/queued pipeline. Do not merge main before
+product-owner staging acceptance.
+
 **2026-10-08 10:54 PDT — FALSE SIGNATORY APPROVAL GATE FIXED LOCALLY;
 APPLICATION COMMIT READY FOR STAGING ARTIFACT.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
