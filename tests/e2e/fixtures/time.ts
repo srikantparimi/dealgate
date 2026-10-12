@@ -4,7 +4,7 @@
  * Several API paths (renewals scheduler, SLA escalation, forecast
  * grouping) honour the `DEALGATE_NOW` env var when computing "now". The
  * FastAPI process reads the var lazily per request via `os.environ.get`
- * (see `api/app/services/forecast.py`, alerts scheduler), so a spec can
+ * (see `api/app/services/weekly_forecast.py`, alerts scheduler), so a spec can
  * mutate it before triggering a scheduler tick and restore it after.
  *
  * The var is set on the *server* process, which means specs need a way

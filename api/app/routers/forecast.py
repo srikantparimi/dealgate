@@ -1,6 +1,6 @@
 """S6 E9 — weekly forecast update router.
 
-Thin router. Role-gate + delegate to :mod:`app.services.forecast`. Every
+Thin router. Role-gate + delegate to :mod:`app.services.weekly_forecast`. Every
 state change flows through the service so the audit + notification chain
 lives in one place (CLAUDE.md rule 5).
 
@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
-from app.services.forecast import (
+from app.services.weekly_forecast import (
     ForecastError,
     forecast_history,
     latest_forecast,

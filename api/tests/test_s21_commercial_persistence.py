@@ -281,7 +281,7 @@ async def test_persisted_policy_does_not_change_after_finance_publishes(session)
 async def test_weekly_forecast_cannot_turn_commercial_cost_into_zero(session):
     from app.auth import AuthUser
     from app.models.approval import ApprovalPackage
-    from app.services.forecast import update_forecast
+    from app.services.weekly_forecast import update_forecast
     owner, opp, sow, old, _ = await fixture(session)
     model = await save_commercial_model(session, opportunity_id=opp.id, actor_id=owner.id,
                                         sow_version_id=sow.id, expected_gm_model_id=old.id,
