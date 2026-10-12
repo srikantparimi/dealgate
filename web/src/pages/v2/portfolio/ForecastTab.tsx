@@ -90,7 +90,7 @@ export function ForecastTab({ data }: { data: EngagementData }) {
                 <section key={assignment} aria-label={`${assignment} by month`}>
                   <h2 className="mb-2 mt-2 text-section font-semibold">{assignment}</h2>
                   <div className={tableWrap}>
-                    <table className={table}>
+                    <table className={table} aria-label={`${assignment} by month`}>
                       {head("Assignment")}
                       <tbody>
                         {line("People", get("people").map((v) => v ?? 0), totals?.people ?? "")}
@@ -119,7 +119,7 @@ export function ForecastTab({ data }: { data: EngagementData }) {
       <section aria-label="Per person by month">
         <h2 className="mb-2 mt-2 text-section font-semibold">Per person · {hourly ? "revenue" : "hours"} by month</h2>
         <div className={tableWrap}>
-          <table className={table}>
+          <table className={table} aria-label="Per person by month">
             {head("Person")}
             <tbody>
               {allocations.map((row) => {

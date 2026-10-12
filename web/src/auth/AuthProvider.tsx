@@ -71,11 +71,32 @@ function claimsToUser(claims: IdTokenClaims | null): AuthUser | null {
   };
 }
 
+/**
+ * Local-dev identity. Only when Cognito is NOT configured (so never in a
+ * deployed build): the `X-Test-User` fallback already decides identity on
+ * the API side, and `VITE_TEST_GROUPS` lets the SPA render the same
+ * role-gated controls the API will accept (e.g. the Playwright harness).
+ */
+function devUser(): AuthUser | null {
+  if (isCognitoConfigured()) return null;
+  const email = import.meta.env.VITE_TEST_USER as string | undefined;
+  if (!email) return null;
+  const groups = ((import.meta.env.VITE_TEST_GROUPS as string | undefined) ?? "")
+    .split(",")
+    .map((g) => g.trim())
+    .filter(Boolean);
+  return { sub: `local:${email}`, email, name: email.split("@")[0], groups, role: pickPrimaryRole(groups) };
+}
+
+function resolveUser(): AuthUser | null {
+  return claimsToUser(getIdTokenClaims()) ?? devUser();
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() =>
-    claimsToUser(getIdTokenClaims()),
+    resolveUser(),
   );
   const [tokenReady, setTokenReady] = useState<boolean>(() => hasStoredTokens());
 
@@ -83,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // during the callback flow after this provider has already mounted.
   useEffect(() => {
     function refresh() {
-      setUser(claimsToUser(getIdTokenClaims()));
+      setUser(resolveUser());
       setTokenReady(hasStoredTokens());
     }
     window.addEventListener("storage", refresh);

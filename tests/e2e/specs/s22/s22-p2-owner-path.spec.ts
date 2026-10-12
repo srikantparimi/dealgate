@@ -58,6 +58,8 @@ let api: APIRequestContext;
 let originalSettings: unknown = null;
 
 test.describe.configure({ mode: "serial" });
+// Six screens and ten server round-trips: longer than the 30 s local default.
+test.setTimeout(300_000);
 
 test.beforeAll(async () => {
   api = await pwRequest.newContext({ baseURL: API_BASE, extraHTTPHeaders: authHeaders(), timeout: 90_000 });
@@ -94,14 +96,14 @@ async function addPerson(page: Page, person: (typeof PEOPLE)[number]) {
   await page.getByRole("button", { name: "Add person" }).click();
   const draft = page.getByTestId("draft-row");
   await expect(draft).toBeVisible();
-  await draft.getByLabel("Person").selectOption("");
-  await draft.getByLabel("New person name").fill(person.name);
-  await draft.getByLabel("Role").fill(person.role);
-  await draft.getByLabel("Location").selectOption(person.location);
-  await draft.getByLabel("Employment type").selectOption(person.employment);
-  await draft.getByLabel("Assignment").fill(person.assignment);
-  await draft.getByLabel("Bill rate").fill(person.bill);
-  await draft.getByLabel("Our cost per hour").fill(person.cost);
+  await draft.getByLabel("Person", { exact: true }).selectOption("");
+  await draft.getByLabel("New person name", { exact: true }).fill(person.name);
+  await draft.getByLabel("Role", { exact: true }).fill(person.role);
+  await draft.getByLabel("Location", { exact: true }).selectOption(person.location);
+  await draft.getByLabel("Employment type", { exact: true }).selectOption(person.employment);
+  await draft.getByLabel("Assignment", { exact: true }).fill(person.assignment);
+  await draft.getByLabel("Bill rate", { exact: true }).fill(person.bill);
+  await draft.getByLabel("Our cost per hour", { exact: true }).fill(person.cost);
   await draft.getByRole("button", { name: "Add" }).click();
   await expect(page.getByTestId("allocation-row").filter({ hasText: person.name })).toBeVisible({ timeout: 60_000 });
 }
@@ -134,22 +136,22 @@ test("S22 P2-6 · owner path: new engagement → five people → leaves → re-h
   const tester = page.getByTestId("allocation-row").filter({ hasText: PEOPLE[1].name });
   await tester.getByRole("button", { name: "Leaves" }).click();
   const thisMonthEnd = iso(utc(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
-  await expect(tester.getByLabel(`${PEOPLE[1].name} end`)).toHaveValue(thisMonthEnd, { timeout: 60_000 });
+  await expect(tester.getByLabel(`${PEOPLE[1].name} end`, { exact: true })).toHaveValue(thisMonthEnd, { timeout: 60_000 });
 
   // 4 · Re-hire (new row from the day after), then push its start two months out → a gap month
   await tester.getByRole("button", { name: "Re-hire" }).click();
   await expect(page.getByTestId("allocation-row").filter({ hasText: PEOPLE[1].name })).toHaveCount(2, { timeout: 60_000 });
   const rehired = page.getByTestId("allocation-row").filter({ hasText: PEOPLE[1].name }).nth(1);
-  await rehired.getByLabel(`${PEOPLE[1].name} start`).fill(iso(REHIRE_START));
-  await rehired.getByLabel(`${PEOPLE[1].name} start`).blur();
-  await expect(rehired.getByLabel(`${PEOPLE[1].name} start`)).toHaveValue(iso(REHIRE_START), { timeout: 60_000 });
+  await rehired.getByLabel(`${PEOPLE[1].name} start`, { exact: true }).fill(iso(REHIRE_START));
+  await rehired.getByLabel(`${PEOPLE[1].name} start`, { exact: true }).blur();
+  await expect(rehired.getByLabel(`${PEOPLE[1].name} start`, { exact: true })).toHaveValue(iso(REHIRE_START), { timeout: 60_000 });
 
   // 5 · Forecast shows the gap month at zero for that person (blank cell = nobody billing)
   await page.getByRole("tab", { name: "Forecast" }).click();
   await expect(page.getByTestId("monthly-required")).toContainText("Monthly view required");
   const perPerson = page.getByRole("table", { name: /Per person/ }).first();
   const headers = await perPerson.locator("thead th").allInnerTexts();
-  const gapIndex = headers.findIndex((h) => h.trim() === monthLabel(GAP_MONTH));
+  const gapIndex = headers.findIndex((h) => h.trim().toLowerCase() === monthLabel(GAP_MONTH).toLowerCase()); // headers render uppercase via CSS
   expect(gapIndex, `month ${GAP_MONTH} is a column`).toBeGreaterThan(0);
   const testerRows = perPerson.locator("tbody tr").filter({ hasText: PEOPLE[1].name });
   await expect(testerRows).toHaveCount(2);
@@ -162,7 +164,7 @@ test("S22 P2-6 · owner path: new engagement → five people → leaves → re-h
   // 6 · Settings change to burden moves the numbers
   await page.goto(`${BASE}/settings/forecast`);
   await expect(page.getByRole("heading", { name: "Forecast calendar" })).toBeVisible();
-  const usBurden = page.getByLabel("US burden W-2 %");
+  const usBurden = page.getByLabel("US burden W-2 %", { exact: true });
   const before = await usBurden.inputValue();
   await usBurden.fill(String(Number(before) + 10));
   await page.getByRole("button", { name: "Save calendar" }).click();
