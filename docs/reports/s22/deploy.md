@@ -52,6 +52,15 @@ cd tests/e2e && E2E_BASE_URL=https://app.dealgateapp.com npx playwright test spe
 AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 scripts/check-test-data-clean.sh
 ```
 
-## Local full-stack rehearsal (same image contents, local Postgres)
+## Local full-stack rehearsal (same API code as the image, local Postgres)
 
-Recorded below as phase 2 progresses.
+Stack: pgvector/pg16 container (`dealgate_e2e`, `alembic upgrade head` → `20261012_0065_portfolio_forecast`, seeds present), uvicorn `DEALGATE_ENV=local` with every role granted, Vite dev server same-origin through its `/api` proxy, `VITE_TEST_GROUPS` identity (bug #3).
+
+| Spec | Result |
+| --- | --- |
+| `specs/s22/s22-p1-contract.spec.ts` | passed (4.7 s) — Client A golden equals the goldens to the cent; teardown left 0 tagged rows |
+| `specs/s22/s22-p2-owner-path.spec.ts` | passed (36–38 s) — new engagement → five people → leaves → re-hire → gap month blank → burden +10 pts moves the cost; breadcrumb names client + engagement; calendar restored to 0.36 afterwards |
+
+Bugs found and fixed during the rehearsal: `docs/bugs/s22.md` #1 (breadcrumb UUID, 28b6c3f), #2 (unnamed Forecast tables), #3 (role-less local identity). The API image needs no rebuild: `git diff --stat 520f5174..HEAD -- api worker` is empty. The SPA was rebuilt from the final HEAD (`8f644b2`) for publishing.
+
+Not yet done, blocked on the apply approval above: migration on staging, API roll, SPA publish, CloudFront invalidation, `scripts/deploy-smoke.sh`, the two specs on staging, `scripts/check-test-data-clean.sh`, product-owner click-through.

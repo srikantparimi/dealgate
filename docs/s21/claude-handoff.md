@@ -2,6 +2,35 @@
 
 ## RESUME HERE
 
+**2026-10-12 — S22 PORTFOLIO & FORECAST: CODE COMPLETE, LOCALLY REHEARSED,
+STAGING APPLY AWAITS HUMAN APPROVAL.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22`, branch `feat/s22` (off
+`origin/main` @ 7a19dbd). Every item P1-1 … P3-6 of
+`docs/directives/s22-portfolio-forecast.md` is built, tested locally and
+committed by number; reports: `docs/reports/s22/phase1-report.md`,
+`docs/reports/s22/phase2-report.md`, `docs/reports/s22/deploy.md`,
+`docs/bugs/s22.md`. The engine in `api/app/services/forecast/` is unmodified;
+the S21 weekly forecast module moved to `app/services/weekly_forecast.py`.
+
+Immutable AMD64 image `officeapp-dev-api:s22-520f5174` is in ECR at digest
+`sha256:5d35069925329ca4fe1480eee6f123c97c98bb5dd34adee3d1e026ac0a6e941f`
+(no api/worker change since). Reviewed whole-root plan
+`/tmp/s22-520f5174.tfplan` (SHA-256
+`c9ffd82001d56a3401659ce1e24efcf61ec8aee6e41cca19979a454b72b339eb`) is
+**14 add / 13 change / 11 destroy**: the prior sanctioned shape plus the new
+`officeapp-dev-portfolio-scheduler` task definition, EventBridge rule and
+target; zero RDS/S3/Cognito/SES/secret/network/CloudFront/DNS/approver
+changes. Nothing on AWS was mutated.
+
+Required human action: approve only that saved plan. Exact resume:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22 && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-520f5174.tfplan`
+then migration gate (head `20261012_0065_portfolio_forecast`), API stable on
+the digest, publish the rebuilt `web/dist` (index no-cache, assets
+immutable) + CloudFront invalidation, `scripts/deploy-smoke.sh`,
+`tests/e2e/specs/s22/*` with `E2E_BASE_URL=https://app.dealgateapp.com`,
+`scripts/check-test-data-clean.sh`, scoreboard flips, product-owner
+click-through. No merge to main before that click.
+
 **2026-10-11 22:18 PDT — PRODUCT OWNER ACCEPTED; S22 SQUASHED TO MAIN AND
 MAIN IMAGE VERIFIED.** Authoritative release tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-main-release`, branch

@@ -23,6 +23,7 @@ it("S16 exposes only the current navigation destinations", () => {
     "Signed handoff",
     "Reporting",
     "Forecast",
+    "Portfolio forecast",
     "People planning",
     "Settings",
   ]);
