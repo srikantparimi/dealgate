@@ -380,6 +380,69 @@ export function rehireAllocation(
   return request<Allocation>(`/allocations/${id}/rehire`, { method: "POST", body: JSON.stringify(body) });
 }
 
+export interface HoursCheckRow {
+  role: string;
+  sheet_hours: number | null;
+  engine_hours: number;
+  note: string;
+}
+
+export interface WorkbookImportResult {
+  engagement: Engagement;
+  forecast: Forecast;
+  warnings: string[];
+  hours_check: HoursCheckRow[];
+}
+
+/** POST /engagements/import-workbook — the DealGate cost-margin sheet (.xlsx) becomes an engagement. */
+export function importWorkbook(file: File): Promise<WorkbookImportResult> {
+  const form = new FormData();
+  form.set("file", file);
+  return request<WorkbookImportResult>("/engagements/import-workbook", { method: "POST", body: form });
+}
+
+/** The 422 body of the workbook import: every problem in the sheet's own words. */
+export function errorsFrom(error: unknown): string[] | null {
+  if (error && typeof error === "object" && "body" in error) {
+    const body = (error as { body: unknown }).body;
+    if (body && typeof body === "object" && "detail" in body) {
+      const detail = (body as { detail: unknown }).detail;
+      if (detail && typeof detail === "object" && Array.isArray((detail as { errors?: unknown }).errors)) {
+        return (detail as { errors: string[] }).errors;
+      }
+    }
+  }
+  return null;
+}
+
+const IMPORT_NOTE_KEY = "dealgate.s22.import-note";
+
+/** Remember an import's warnings + hours check for the engagement header to show once. */
+export function rememberImportNote(engagementId: UUID, result: WorkbookImportResult): void {
+  try {
+    sessionStorage.setItem(`${IMPORT_NOTE_KEY}:${engagementId}`, JSON.stringify({ warnings: result.warnings, hours_check: result.hours_check }));
+  } catch {
+    /* storage unavailable: the note is simply not shown */
+  }
+}
+
+export function takeImportNote(engagementId: UUID): { warnings: string[]; hours_check: HoursCheckRow[] } | null {
+  try {
+    const raw = sessionStorage.getItem(`${IMPORT_NOTE_KEY}:${engagementId}`);
+    return raw ? (JSON.parse(raw) as { warnings: string[]; hours_check: HoursCheckRow[] }) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function dismissImportNote(engagementId: UUID): void {
+  try {
+    sessionStorage.removeItem(`${IMPORT_NOTE_KEY}:${engagementId}`);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function importAllocations(engagementId: UUID, file: File): Promise<{ created: number; allocation_ids: UUID[] }> {
   const form = new FormData();
   form.set("engagement_id", engagementId);

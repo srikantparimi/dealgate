@@ -293,6 +293,27 @@ async def create_engagement(
     return payload
 
 
+@router.post("/engagements/import-workbook", status_code=201)
+async def import_workbook(
+    file: UploadFile = File(...),
+    user: AuthUser = Depends(require_write),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Create an engagement from a DealGate cost-margin workbook (.xlsx) — nothing else to type."""
+
+    actor = await _actor(session, user)
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail={"errors": ["The upload was empty."]})
+    try:
+        result = await svc.import_workbook(session, actor=actor, data=data)
+    except svc.WorkbookImportError:
+        await session.rollback()
+        raise
+    await session.commit()
+    return {**result, "forecast": _for_user(result["forecast"], user)}
+
+
 @router.get("/engagements/{engagement_id}")
 async def get_engagement(
     engagement_id: uuid.UUID,

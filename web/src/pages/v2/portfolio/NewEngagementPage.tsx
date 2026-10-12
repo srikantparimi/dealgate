@@ -5,7 +5,7 @@
  * or the picker). Pick the type first — it decides which money field applies.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getPipelineFacets, getPipelineOpportunity, listPipelineOpportunities, type PipelineOpportunityRow, type PipelineOwnerFacet } from "../../../api/client";
 import {
@@ -14,8 +14,11 @@ import {
   FIXED_TYPES,
   createClient,
   createEngagement,
+  errorsFrom,
+  importWorkbook,
   listClientOptions,
   missingFrom,
+  rememberImportNote,
   type ClientOption,
   type EngagementType,
 } from "../../../api/engagements";
@@ -101,6 +104,30 @@ export function NewEngagementPage() {
   const [problems, setProblems] = useState<string[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sheetErrors, setSheetErrors] = useState<string[] | null>(null);
+  const [sheetMessage, setSheetMessage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+
+  async function uploadSheet(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setSheetErrors(null);
+    setSheetMessage(`Reading ${file.name}…`);
+    try {
+      const result = await importWorkbook(file);
+      rememberImportNote(result.engagement.id, result);
+      navigate(`/engagements/${result.engagement.id}/allocations`);
+    } catch (cause) {
+      const errors = errorsFrom(cause);
+      if (errors) setSheetErrors(errors);
+      else setSheetMessage(errorText(cause, "Could not read that file."));
+      if (errors) setSheetMessage(null);
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -183,7 +210,34 @@ export function NewEngagementPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="New engagement" subtitle="Same fields as the cost margin sheet's project block. Pick the type first — it decides which money field applies." />
-      <Panel className="max-w-3xl">
+      <Panel
+        className="max-w-3xl"
+        title="Upload the DealGate cost-margin sheet"
+        hint="The sheet has everything: project block, people, costs. Nothing else to type. Columns are read by their headers, so older copies work."
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            aria-label="Cost-margin sheet (.xlsx)"
+            className={cn(field, "max-w-md")}
+            disabled={uploading}
+            onChange={(event) => void uploadSheet(event.target.files?.[0])}
+          />
+          {sheetMessage ? (
+            <span role="status" className="text-secondary text-text-secondary">
+              {sheetMessage}
+            </span>
+          ) : null}
+        </div>
+        {sheetErrors ? (
+          <p role="alert" className="mt-2 text-secondary text-danger" data-testid="sheet-errors">
+            {sheetErrors.join(" · ")}
+          </p>
+        ) : null}
+      </Panel>
+      <Panel className="max-w-3xl" title="…or fill it in">
         <form
           className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-3"
           onSubmit={(event) => {
