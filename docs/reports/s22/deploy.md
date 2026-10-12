@@ -143,6 +143,23 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | SPA | `assets/index-CwMcUryo.js` synced (immutable) + `index.html` (no-cache); CloudFront invalidation `I9X52BCW2B0D0RAKPWRWEPC643` COMPLETED; served bundle contains the import-workbook call |
 | S22 specs on staging | `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `4 passed (1.6m)`; owner path re-run with the P4-3 label assertions: passed; gate clean after every run: 0 clients / 0 approvers / 0 people / 0 engagements |
 
+## S22-P4 main image (post-merge, 2026-10-12, Kanna: "approved")
+
+| Step | Result |
+| --- | --- |
+| Merge | `feat/s22-p4` @ 7e11726 squashed → `origin/main` = `ef50ef9` (release worktree `dealgate-s22-release`, branch `release/s22-p4`); squash tree `c03c5dc7…` identical to the accepted staging build |
+| Image | `officeapp-dev-api:s22p4main-ef50ef9f` · digest `sha256:83ebf055a86f4b95d2eebab5784039546db896ecb95bcb6662f0b582914de0cd` · 101,649,730 bytes · linux/amd64 (same code as `s22p4-68ff809d`; builds are not byte-reproducible) |
+| Plan | `/tmp/s22p4main-ef50ef9f.tfplan` SHA-256 `301b332f406bc731b666633d7a79e30531a8de14da9c76ffe3cf36a65779f81b` (plan.txt `cb2f5d54…44ea`, plan.json `61bdb3d0…03f8`) — 12 to add / 14 to change / 12 to destroy, image-only (11 task definitions + migration trigger replaced; service, 9 event targets, 4 role policies updated; every image → the new tag), same inputs; applied by the session under this round's image-only rule |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed** |
+| Migration task | `0af8dae2da5f41d993a19e7540cc07a3` on `officeapp-dev-api-migrate:39` succeeded (no-op at head `20261012_0065_portfolio_forecast`) |
+| API service | `officeapp-dev-api:101`, `services-stable`, 1/1 PRIMARY; running task `2afff925…8006` on the digest above |
+| Worker families | alert-scheduler 53, notification-sender 53, renewals-scheduler 53, portfolio-scheduler 5, audit-export 53, hubspot-intake 52, hubspot-reconcile 52, forecast-plans 30, deletion-cleanup 30, api-migrate 39 — all `s22p4main-ef50ef9f` |
+| SPA | built from `ef50ef9` → the identical `assets/index-CwMcUryo.js`; synced with cache headers + `index.html` no-cache; CloudFront invalidation `I9J9UV21RVOVK14JAMJ8O1Z97G` COMPLETED; served bundle confirmed |
+| Smoke | `smoke 20261012T234505Z` GREEN; gate clean (0 clients / 0 approvers / 0 people / 0 engagements) |
+| S22 specs on the main image | `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `4 passed (1.5m)`; gate clean after: 0 clients / 0 approvers / 0 people / 0 engagements |
+
+Staging now runs the main image with S22-P4. Still owner-unverified: P2-4 from-deal pre-fill on a real Closed-Won deal; the first real nightly portfolio tick (06:00 UTC).
+
 ## Local full-stack rehearsal (same API code as the image, local Postgres)
 
 Stack: pgvector/pg16 container (`dealgate_e2e`, `alembic upgrade head` → `20261012_0065_portfolio_forecast`, seeds present), uvicorn `DEALGATE_ENV=local` with every role granted, Vite dev server same-origin through its `/api` proxy, `VITE_TEST_GROUPS` identity (bug #3).

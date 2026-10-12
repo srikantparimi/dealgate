@@ -2,6 +2,20 @@
 
 ## RESUME HERE
 
+**2026-10-12 — S22-P4 MERGED TO MAIN AND ROLLED.** Kanna accepted the
+staging click-through; `feat/s22-p4` @ 7e11726 squashed → `origin/main`
+= `ef50ef9` (release worktree `dealgate-s22-release`, branch
+`release/s22-p4`; squash tree identical to the accepted build). Main image
+`s22p4main-ef50ef9f`
+(`sha256:83ebf055a86f4b95d2eebab5784039546db896ecb95bcb6662f0b582914de0cd`)
+applied from an image-only plan (12/14/12), API `officeapp-dev-api:101`,
+all ten worker families + `api-migrate:39` on it, SPA the identical
+`index-CwMcUryo.js`, smoke `20261012T234505Z` GREEN, gate clean; S22 spec
+results on the main image in `docs/reports/s22/deploy.md` §"S22-P4 main
+image". Nothing in flight. Owner-only checks still open: the from-deal
+button on a real Closed-Won deal; the first real nightly portfolio tick
+(06:00 UTC). Next slice starts from main `ef50ef9`.
+
 **2026-10-12 — S22-P4 (CLICK-THROUGH FIXES + UPLOAD THE SHEET) DEPLOYED TO
 STAGING; AWAITING PRODUCT-OWNER CLICK.** Tree
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-p4`, branch `feat/s22-p4` (off
