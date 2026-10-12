@@ -159,8 +159,8 @@ export function PortfolioPage() {
         title="Portfolio forecast"
         subtitle={
           view
-            ? `${view.rows.length} engagements · ${monthLabel(month)} · every number is computed by the forecast engine from the allocations ledger`
-            : "Every number is computed by the forecast engine from the allocations ledger"
+            ? `${view.rows.length} engagements · the month columns show only ${monthLabel(month)}'s slice of each engagement (partial months prorated by days); "whole term" is the engagement's full GM`
+            : "The month columns show only the selected month's slice of each engagement; \"whole term\" is the engagement's full GM"
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -278,10 +278,10 @@ export function PortfolioPage() {
                     <th className={headCell}>Type</th>
                     <th className={headCell}>Term</th>
                     <th className={headCellNum}>People</th>
-                    <th className={headCellNum}>Revenue · month</th>
-                    <th className={headCellNum}>Cost · month</th>
-                    <th className={headCellNum}>GM % · month</th>
-                    <th className={headCellNum}>GM % · term</th>
+                    <th className={headCellNum}>Revenue · {monthLabel(month)}</th>
+                    <th className={headCellNum}>Cost · {monthLabel(month)}</th>
+                    <th className={headCellNum}>GM % · {monthLabel(month)}</th>
+                    <th className={headCellNum}>GM % · whole term</th>
                     <th className={headCell}>Status</th>
                   </tr>
                 </thead>
