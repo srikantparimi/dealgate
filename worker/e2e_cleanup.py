@@ -21,7 +21,7 @@ log = logging.getLogger("dealgate.worker.e2e_cleanup")
 # Legacy diagnostic compatibility only. Names NEVER select cleanup targets.
 _PREFIX_RE = re.compile(
     r"^(?:s1[2-9]-|s17-|S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S20 e2e |S21 e2e |"
+    r"S20 e2e |S21 e2e |S22 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|S17 delete-everywhere|"
     r"S17 e2e |Peppermill Casino's, LLC)",
     re.IGNORECASE,

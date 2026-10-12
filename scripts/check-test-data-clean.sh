@@ -40,7 +40,7 @@ import json, re, sys
 prefix_re = re.compile(
     r"^(?:s1[2-9]-|s17-|s18-|"
     r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|"
     r"S17 delete-everywhere)",
     re.IGNORECASE,
@@ -70,7 +70,7 @@ import json, re, sys
 prefix_re = re.compile(
     r"^(?:s1[2-9]-|s17-|s18-|"
     r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|"
     r"S17 delete-everywhere)",
     re.IGNORECASE,
