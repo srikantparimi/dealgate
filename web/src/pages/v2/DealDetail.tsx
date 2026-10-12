@@ -288,6 +288,15 @@ export function DealDetailPage() {
               <ArrowLeft className="mr-1 h-4 w-4" aria-hidden />
               Pipeline
             </Button>
+            {deal.is_closed_won ? (
+              <Button
+                variant="primary"
+                data-testid="create-engagement-from-deal"
+                onClick={() => navigate(`/engagements/new?deal=${deal.opportunity_id}`)}
+              >
+                Create engagement from deal
+              </Button>
+            ) : null}
             {deal.hubspot_deal_id ? (
               <a
                 href={`${HUBSPOT_DEAL_URL}${deal.hubspot_deal_id}`}
