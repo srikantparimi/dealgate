@@ -29,6 +29,8 @@ from app.integrations.bedrock_classifier import (
     BedrockClassifier,
 )
 from app.integrations.bedrock_embeddings import Embedder
+from app.gm.calendar import monthly_staffing_schedule
+from app.gm.commercial import HybridPricing, PricingComponent
 from app.models.ceo_exception import CeoException
 from app.models.gm_model import GmModel
 from app.models.opportunity import Opportunity
@@ -39,7 +41,8 @@ from app.services.auto_staffing import (
     lines_to_payload_dicts,
     staff as auto_staff,
 )
-from app.services.approvers import ResolvedApprover, resolve_all
+from app.services.approvers import ResolvedApprover
+from app.services.commercial_models import CommercialInputError, parse_component
 from app.services.delivery_model import (
     GmModelPayload,
     create_gm_model_version,
@@ -72,6 +75,7 @@ class ConfirmationPayload:
     gm_model: GmModel | None
     floors: dict[str, Any]
     approvers: dict[str, ResolvedApprover]
+    ceo_approver: ResolvedApprover | None
     projected_tasks: list[dict[str, Any]]
     needs_you: list[NeedsYou] = field(default_factory=list)
     ceo_exception: CeoException | None = None
@@ -304,6 +308,81 @@ def _staffing_from_gm(model: GmModel) -> AutoStaffingResult:
 
     lines: list[StaffingLine] = []
     warnings: list[str] = []
+
+    # S21/S22 commercial versions keep their authoritative staffing inside
+    # the immutable typed input document. They intentionally do not duplicate
+    # those rows into the legacy resource_line table. Reading only the legacy
+    # relationship made Confirm SOW say "No staffing lines yet" next to a GM
+    # summary calculated from those very same commercial inputs.
+    if model.commercial_inputs is not None:
+        try:
+            component = parse_component(model.commercial_inputs)
+        except CommercialInputError as exc:
+            return AutoStaffingResult(
+                lines=[],
+                notes=[f"staffing read failed for saved GM model {model.id}"],
+                warnings=[f"Saved commercial staffing could not be read: {exc}"],
+                sources=[str(model.id)],
+            )
+
+        def visit(source: PricingComponent) -> None:
+            for assignment in source.staffing:
+                hours = assignment.hours_billable
+                if (
+                    hours is None
+                    and source.service_start is not None
+                    and source.service_end is not None
+                ):
+                    schedule = monthly_staffing_schedule(
+                        assignment,
+                        term_start=source.service_start,
+                        term_end=source.service_end,
+                    )
+                    if schedule and all(row.billable_hours is not None for row in schedule):
+                        hours = sum(
+                            (row.billable_hours for row in schedule if row.billable_hours is not None),
+                            Decimal("0"),
+                        )
+                cost_warning = (
+                    None
+                    if assignment.cost_rate is not None
+                    else "no cost rate resolved"
+                )
+                lines.append(
+                    StaffingLine(
+                        role=assignment.role,
+                        seniority=assignment.seniority or "Unspecified",
+                        location=assignment.location or "Unconfirmed",
+                        quantity=assignment.quantity,
+                        allocation_pct=assignment.allocation,
+                        hours_billable=hours or Decimal("0"),
+                        hourly_bill_rate=assignment.bill_rate or Decimal("0"),
+                        hourly_cost=assignment.cost_rate,
+                        provenance="manual",
+                        start_date=assignment.start or source.service_start,
+                        end_date=assignment.end or source.service_end,
+                        source_id=str(model.id),
+                        warning=cost_warning,
+                    )
+                )
+                if cost_warning:
+                    warnings.append(
+                        f"{assignment.role} ({assignment.seniority or 'Unspecified'}, "
+                        f"{assignment.location or 'Unconfirmed'}): no cost rate — "
+                        "publish a cost band or enter the loaded cost on the line"
+                    )
+            if isinstance(source.pricing, HybridPricing):
+                for child in source.pricing.components:
+                    visit(child)
+
+        visit(component)
+        return AutoStaffingResult(
+            lines=lines,
+            notes=[f"staffing read from saved commercial GM model {model.id}"],
+            warnings=warnings,
+            sources=[str(model.id)],
+        )
+
     for r in getattr(model, "resource_lines", []) or []:
         # ORM columns are `hourly_loaded_cost` / `billable_hours`; the GM
         # payload shape calls them `hourly_cost` / `hours_billable`. Read
@@ -358,7 +437,6 @@ _ESSENTIAL_FIELDS: tuple[str, ...] = (
     "term_start",
     "term_end",
     "deliverables",
-    "signatories",
 )
 
 def scope_blockers(payload: ConfirmationPayload) -> list[NeedsYou]:
@@ -632,6 +710,53 @@ async def _predraft_ceo_exception(
     return row
 
 
+async def _resolve_approval_team(
+    session: AsyncSession,
+    *,
+    sow_version: SowVersion,
+    actor_id: uuid.UUID | None,
+) -> tuple[dict[str, ResolvedApprover], ResolvedApprover]:
+    """Preview the scoped roster and default selection used at submission."""
+
+    from app.services.approval_routing import groups
+
+    selected_by_function: dict[str, ResolvedApprover] = {}
+    used: set[str] = set()
+    actor = str(actor_id) if actor_id else None
+
+    for group in await groups(session, sow_version=sow_version):
+        function = group["function"]
+        eligible = [member for member in group["members"] if member["id"] != actor]
+        selected = next(
+            (
+                member
+                for member in eligible
+                if member["id"] == group["default_approver_id"]
+                and (function == "executive" or member["id"] not in used)
+            ),
+            next(
+                (
+                    member
+                    for member in eligible
+                    if function == "executive" or member["id"] not in used
+                ),
+                None,
+            ),
+        )
+        if selected and function != "executive":
+            used.add(selected["id"])
+        selected_by_function[function] = ResolvedApprover(
+            function=function,
+            user_id=uuid.UUID(selected["id"]) if selected else None,
+            source="approval_group_default" if selected else "approval_group_empty",
+            name=selected["name"] if selected else None,
+            email=selected["email"] if selected else None,
+        )
+
+    executive = selected_by_function.pop("executive")
+    return selected_by_function, executive
+
+
 # --- public API ----------------------------------------------------------
 
 
@@ -722,7 +847,10 @@ async def build_confirmation(
 
     # 5. Floors + approvers + tasks + CEO pre-draft.
     floors = _compute_floors(gm_model)
-    approvers = await resolve_all(session)
+    approvers, configured_ceo = await _resolve_approval_team(
+        session, sow_version=version, actor_id=actor_id
+    )
+    ceo_approver = configured_ceo if floors.get("requires_ceo") else None
     tasks = _projected_tasks(version)
     ceo_draft = await _predraft_ceo_exception(
         session, sow_version=version, gm_model=gm_model, floors=floors
@@ -738,6 +866,7 @@ async def build_confirmation(
         gm_model=gm_model,
         floors=floors,
         approvers=approvers,
+        ceo_approver=ceo_approver,
         projected_tasks=tasks,
         needs_you=needs,
         ceo_exception=ceo_draft,
@@ -884,6 +1013,8 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
         "approvers": {
             fn: {
                 "user_id": str(r.user_id) if r.user_id else None,
+                "name": r.name,
+                "email": r.email,
                 "source": r.source,
                 "business_unit": r.business_unit,
             }
@@ -896,6 +1027,23 @@ def serialize_confirmation(payload: ConfirmationPayload) -> dict[str, Any]:
             {
                 "will_trigger": True,
                 "brief": payload.ceo_exception.brief_json,
+                "approver": (
+                    {
+                        "user_id": str(payload.ceo_approver.user_id)
+                        if payload.ceo_approver and payload.ceo_approver.user_id
+                        else None,
+                        "name": payload.ceo_approver.name
+                        if payload.ceo_approver
+                        else None,
+                        "email": payload.ceo_approver.email
+                        if payload.ceo_approver
+                        else None,
+                        "source": payload.ceo_approver.source
+                        if payload.ceo_approver
+                        else "approval_group_empty",
+                        "business_unit": None,
+                    }
+                ),
             }
             if payload.ceo_exception
             else {"will_trigger": False}

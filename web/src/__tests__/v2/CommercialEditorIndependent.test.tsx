@@ -64,9 +64,7 @@ function snapshot(inputs: api.CommercialComponent): WorkspaceSnapshot {
 }
 
 async function preview() {
-  await waitFor(() => expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-  await waitFor(() => expect(api.previewCommercial).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(api.previewCommercial).toHaveBeenCalled(), { timeout: 3000 });
 }
 
 beforeEach(() => {
@@ -87,87 +85,33 @@ beforeEach(() => {
 });
 
 describe("Independent commercial editor boundary checks", () => {
-  it("keeps monthly cost allocation distinct from billing and clears a reinterpreted hourly rate", async () => {
+  it("replaces a legacy calendar only when the user enters explicit total hours", async () => {
     const inputs = component("calendar_staff_aug");
-    inputs.staffing[0].cost_rate = "60";
-    inputs.staffing[0].cost_version = "hourly-loaded-v1";
     render(<CommercialModelEditor snap={snapshot(inputs)} />);
-    const basis = await screen.findByRole("combobox", { name: "Cost rate basis" });
-    expect(basis).toHaveValue("hourly");
-    fireEvent.change(basis, { target: { value: "monthly" } });
-    expect(screen.getByLabelText("Delivery cost — monthly per person")).toHaveValue("");
-    expect(screen.getByLabelText("Cost rate source/version")).toHaveValue("");
-    expect(screen.getByRole("combobox", { name: "Partial-month cost policy" })).toHaveValue("");
-    fireEvent.change(screen.getByLabelText("Delivery cost — monthly per person"), { target: { value: "4800" } });
-    fireEvent.change(screen.getByLabelText("Cost rate source/version"), { target: { value: "fixture-monthly-allocation-v1" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Partial-month cost policy" }), { target: { value: "full_month" } });
+    expect(await screen.findByLabelText("Hours 1")).toHaveValue("");
+    expect(screen.queryByRole("region", { name: "Calendar calculation details" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Hours 1"), { target: { value: "120" } });
     await preview();
-    const saved = vi.mocked(api.previewCommercial).mock.calls[0][0];
-    expect(saved.staffing[0]).toMatchObject({ cost_rate_basis: "monthly", cost_rate: "4800",
-      cost_version: "fixture-monthly-allocation-v1", cost_proration: "full_month" });
-    expect(saved.pricing?.rates).toEqual(inputs.pricing?.rates);
-    fireEvent.change(basis, { target: { value: "hourly" } });
-    expect(screen.getByLabelText("Delivery cost rate ($/paid hour)")).toHaveValue("");
-    expect(screen.getByLabelText("Cost rate source/version")).toHaveValue("");
-    expect(screen.queryByRole("combobox", { name: "Partial-month cost policy" })).not.toBeInTheDocument();
-  });
-  it("preserves monthly cost unknown policy and distinguishes an explicitly unconfirmed cost basis", async () => {
-    const inputs = component("calendar_staff_aug");
-    Object.assign(inputs.staffing[0], { cost_rate_basis: "monthly", cost_rate: "4800", cost_version: "monthly-v1", cost_proration: null });
-    render(<CommercialModelEditor snap={snapshot(inputs)} />);
-    expect(await screen.findByRole("combobox", { name: "Cost rate basis" })).toHaveValue("monthly");
-    expect(screen.getByRole("combobox", { name: "Partial-month cost policy" })).toHaveValue("");
-    expect(screen.getByLabelText("Delivery cost — monthly per person")).toHaveValue("4800");
-    fireEvent.change(screen.getByRole("combobox", { name: "Cost rate basis" }), { target: { value: "" } });
-    await preview();
-    expect(vi.mocked(api.previewCommercial).mock.calls[0][0].staffing[0]).toMatchObject({
-      cost_rate_basis: null, cost_rate: null, cost_version: null, cost_proration: null,
+    expect(vi.mocked(api.previewCommercial).mock.calls.at(-1)![0].staffing[0]).toMatchObject({
+      hours_billable: "120",
+      calendar: null,
     });
   });
-  it("shows the frozen monthly cost source and independent partial-month policy in calculation details", async () => {
-    const snap = snapshot(component("calendar_staff_aug"));
-    const row = Object.assign(assignment(), { cost_rate_basis: "monthly", cost_rate: "4800", cost_version: "budget-v7", cost_proration: null });
-    snap.gmModel!.commercial_snapshot = { schedule: { status: "ok", missing: [], rows: [],
-      calendar_rows: [{ month: "2026-10-01", assignment: row, period_start: "2026-10-01", period_end: "2026-10-31",
-        scheduled_hours: "100", billable_hours: "90", paid_hours: "110", days: [] }],
-    } };
-    render(<CommercialModelEditor snap={snap} />);
-    const details = await screen.findByRole("region", { name: "Calendar calculation details" });
-    expect(within(details).getByText("Monthly cost per person: USD 4800 / budget-v7")).toBeVisible();
-    expect(within(details).getByText("Partial-month cost policy: Unconfirmed")).toBeVisible();
-    expect(api.previewCommercial).not.toHaveBeenCalled();
-  });
-  it("shows saved calendar quantities and holiday details without recomputing them", async () => {
-    const snap = snapshot(component("calendar_staff_aug"));
-    snap.gmModel!.commercial_snapshot = { schedule: {
-      status: "ok", missing: [], rows: [],
-      calendar_rows: [{ month: "2026-10-01", assignment: assignment(),
-        period_start: "2026-10-12", period_end: "2026-10-13",
-        scheduled_hours: "6", billable_hours: "5.625", paid_hours: "12",
-        days: [{ day: "2026-10-12", scheduled_hours: "0", billable_hours: "0", paid_hours: "6", reason: "Paid holiday; no client billing" }],
-      }],
-    } };
-    render(<CommercialModelEditor snap={snap} />);
-    const details = await screen.findByRole("region", { name: "Calendar calculation details" });
-    expect(within(details).getByText("5.625")).toBeVisible();
-    expect(within(details).getByText("12")).toBeVisible();
-    fireEvent.click(within(details).getByText("Daily hours and exceptions"));
-    expect(within(details).getByText("Paid holiday; no client billing")).toBeVisible();
-    expect(within(details).getByText("2026-10-12")).toBeVisible();
-    expect(api.previewCommercial).not.toHaveBeenCalled();
-  });
-  it.each(profiles)("preserves exact canonical %s inputs during a workstream edit", async (profile) => {
+
+  it.each(profiles)("preserves exact canonical %s inputs during a contract edit", async (profile) => {
     const inputs = component(profile);
     const original = structuredClone(inputs);
     render(<CommercialModelEditor snap={snapshot(inputs)} />);
-    fireEvent.change(screen.getByLabelText("Workstream", { exact: true }), { target: { value: "Confirmed service A" } });
+    fireEvent.change(screen.getByLabelText("Contract currency", { exact: true }), { target: { value: "EUR" } });
     await preview();
     const expected = structuredClone(original);
-    expected.workstream_id = "Confirmed service A";
+    expected.currency = "EUR";
     expected.policy_version = "policy-active";
+    expected.cost_basis = null;
+    expected.costs_confirmed = true;
     for (const row of expected.staffing) row.policy_version = "policy-active";
     for (const child of expected.pricing?.components ?? []) child.policy_version = "policy-active";
-    expect(api.previewCommercial).toHaveBeenCalledWith(expected);
+    expect(api.previewCommercial).toHaveBeenLastCalledWith(expected);
     expect(inputs).toEqual(original);
   });
 
@@ -180,7 +124,7 @@ describe("Independent commercial editor boundary checks", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove component 1" }));
     expect(screen.queryByRole("button", { name: "Replace component pricing" })).not.toBeInTheDocument();
     await preview();
-    expect(vi.mocked(api.previewCommercial).mock.calls[0][0].pricing!.components![0].pricing).toEqual(component("unit").pricing);
+    expect(vi.mocked(api.previewCommercial).mock.calls.at(-1)![0].pricing!.components![0].pricing).toEqual(component("unit").pricing);
   });
 
   it("never relabels unsaved preview values as a saved calculation after another edit", async () => {
@@ -189,9 +133,8 @@ describe("Independent commercial editor boundary checks", () => {
     vi.mocked(api.previewCommercial).mockResolvedValue({ commercial_snapshot: { schedule: { status: "ok", missing: [], rows: [{ month: "2026-10-01", location: "US", revenue: "999.99", cost: "88.88" }] } } });
     render(<CommercialModelEditor snap={snap} />);
     await preview();
-    await screen.findByText("999.99");
-    expect(screen.getByText("Unsaved preview")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Workstream", { exact: true }), { target: { value: "Another draft edit" } });
+    expect(await screen.findByText("Unsaved preview")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Contract fee", { exact: true }), { target: { value: "12346" } });
     expect(screen.queryByText("Saved calculation; edits not calculated")).not.toBeInTheDocument();
     expect(api.saveCommercialVersion).not.toHaveBeenCalled();
   });
@@ -200,8 +143,8 @@ describe("Independent commercial editor boundary checks", () => {
     render(<CommercialModelEditor snap={snapshot(component(profile))} />);
     await waitFor(() => expect(screen.getByLabelText("Pricing profile", { exact: true })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Add role" }));
-    expect(screen.getByLabelText("Delivery cost rate ($/paid hour)")).toHaveValue("");
-    expect(screen.getByLabelText("Number of people")).toHaveValue(null);
+    expect(screen.getByLabelText("Cost per hour 1")).toHaveValue("");
+    expect(screen.getByLabelText("People 1")).toHaveValue(1);
   });
 
   it.each(["credit", "usage"])("exposes an existing MSP %s value for correction", async (kind) => {
@@ -212,7 +155,7 @@ describe("Independent commercial editor boundary checks", () => {
     expect(input).toBeEnabled();
     fireEvent.change(input, { target: { value: "17.000001" } });
     await preview();
-    const pricing = vi.mocked(api.previewCommercial).mock.calls[0][0].pricing!;
+    const pricing = vi.mocked(api.previewCommercial).mock.calls.at(-1)![0].pricing!;
     if (kind === "credit") expect(pricing.adjustments).toEqual([{ source_id: "credit-source", month: "2026-10-01", location: "US", kind: "credit", amount: "17.000001" }]);
     else expect(pricing.usage).toEqual([{ ...quantity, unit: "ticket", included_quantity: "2.5", unit_rate: "17.000001" }]);
   });
@@ -228,8 +171,7 @@ describe("Independent commercial editor boundary checks", () => {
     vi.mocked(client.getMe).mockResolvedValue({ groups: ["Finance"] } as client.MeResponse);
     await act(async () => { render(<CommercialModelEditor snap={snapshot(component(profile))} />); });
     expect(screen.getByLabelText("Pricing profile", { exact: true })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save version" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(screen.getByRole("button", { name: profile === "hybrid" ? "Add component" : "Add role" })).toBeDisabled();
   });
 
@@ -239,13 +181,13 @@ describe("Independent commercial editor boundary checks", () => {
     snap.signedSow = { verify_status: "verified" } as WorkspaceSnapshot["signedSow"];
     await act(async () => { render(<CommercialModelEditor snap={snap} />); });
     expect(screen.getByLabelText("Pricing profile", { exact: true })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save version" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
-  it("resets draft evidence through the actual tab when the selected SOW changes", async () => {
+  it("resets the commercial source through the actual tab when the selected SOW changes", async () => {
     const first = snapshot(component("unit"));
     const view = render(<StaffingGmTab snap={first} />);
-    fireEvent.change(screen.getByLabelText("Source evidence", { exact: true }), { target: { value: "Unsaved old-source edit" } });
+    fireEvent.change(await screen.findByLabelText("Contract currency", { exact: true }), { target: { value: "EUR" } });
     const next = snapshot(component("unit"));
     next.sow!.id = "version-b";
     next.sow!.sow_id = "sow-b";
@@ -254,8 +196,10 @@ describe("Independent commercial editor boundary checks", () => {
     next.gmModel!.commercial_inputs!.source_version = "version-b";
     next.gmModel!.commercial_inputs!.source_evidence = ["New SOW page 9"];
     view.rerender(<StaffingGmTab snap={next} />);
-    expect(screen.getByLabelText("Source evidence", { exact: true })).toHaveValue("New SOW page 9");
+    expect(screen.getByLabelText("Contract currency", { exact: true })).toHaveValue("USD");
+    vi.mocked(api.previewCommercial).mockClear();
+    fireEvent.change(screen.getByLabelText("Contract currency", { exact: true }), { target: { value: "GBP" } });
     await preview();
-    expect(api.previewCommercial).toHaveBeenCalledWith(expect.objectContaining({ source_id: "sow-b", source_version: "version-b", source_evidence: ["New SOW page 9"] }));
+    expect(api.previewCommercial).toHaveBeenLastCalledWith(expect.objectContaining({ source_id: "sow-b", source_version: "version-b", source_evidence: ["New SOW page 9"] }));
   });
 });

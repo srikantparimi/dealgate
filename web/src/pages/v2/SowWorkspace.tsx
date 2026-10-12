@@ -15,6 +15,7 @@ import { ProgressRail } from "./sow-workspace/ProgressRail";
 import { ScopeTab } from "./sow-workspace/ScopeTab";
 import { SignatureTab } from "./sow-workspace/SignatureTab";
 import { StaffingGmTab } from "./sow-workspace/StaffingGmTab";
+import type { CommercialEditorStatus } from "./sow-workspace/CommercialModelEditor";
 import { loadWorkspace } from "./sow-workspace/dataLoader";
 import {
   buildRail,
@@ -103,6 +104,8 @@ export function SowWorkspacePage() {
   const [deleteAssessment, setDeleteAssessment] = useState<DeletionAssessmentResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [commercialStatus, setCommercialStatus] = useState<CommercialEditorStatus | null>(null);
+  const commercialPrimaryAction = useRef<(() => void) | null>(null);
   const requestNo = useRef(0);
   const currentRoute = useRef(id);
   currentRoute.current = id;
@@ -174,6 +177,19 @@ export function SowWorkspacePage() {
     if (!snap) return "overview";
     return defaultTabFor(snap) as TabKey;
   }, [tab, snap]);
+
+  const registerCommercialAction = useCallback((run: (() => void) | null) => {
+    commercialPrimaryAction.current = run;
+  }, []);
+  const commercialSaved = useCallback(() => {
+    if (id) nav(`/sows/new?opportunityId=${id}`);
+  }, [id, nav]);
+
+  useEffect(() => {
+    if (activeTab === "staffing") return;
+    setCommercialStatus(null);
+    commercialPrimaryAction.current = null;
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== "approvals") return;
@@ -273,8 +289,21 @@ export function SowWorkspacePage() {
     );
   }
 
-  const step = nextValidStep(snap);
-  const canSubmit = !!viewer && (viewer.id === snap.deal?.owner_id || viewer.groups.includes("SystemAdmin"));
+  const step = nextValidStep(snap, {
+    activeTab,
+    commercial: commercialStatus,
+  });
+  // Invited users retain the DB identity already referenced by deals, while
+  // Cognito supplies a different `sub`. The API canonicalizes that pair by
+  // email; mirror the same identity rule when deciding whether to reveal the
+  // submission plan. Server authorization remains authoritative.
+  const viewerEmail = viewer?.email.trim().toLowerCase();
+  const ownerEmail = snap.deal?.owner?.email?.trim().toLowerCase();
+  const canSubmit = !!viewer && (
+    viewer.id === snap.deal?.owner_id
+    || (!!viewerEmail && viewerEmail === ownerEmail)
+    || viewer.groups.includes("SystemAdmin")
+  );
   const termStart = snap.sow?.extracted_fields?.term_start?.value;
   const termEnd = snap.sow?.extracted_fields?.term_end?.value;
   // S21 item 4: single display format with explicit year on both sides.
@@ -293,7 +322,15 @@ export function SowWorkspacePage() {
     value: key,
     label: TAB_LABELS[key],
     href: `/sows/${id}/${key}`,
-    content: key === "approvals" ? <ApprovalsTab snap={snap} refresh={refresh} updatedAt={updatedAt} canSubmit={canSubmit} /> : renderTab(key, snap, viewer, refresh),
+    content: key === "approvals" ? <ApprovalsTab snap={snap} refresh={refresh} updatedAt={updatedAt} canSubmit={canSubmit} /> : renderTab(
+      key,
+      snap,
+      viewer,
+      refresh,
+      setCommercialStatus,
+      registerCommercialAction,
+      commercialSaved,
+    ),
   }));
 
   return (
@@ -366,6 +403,7 @@ export function SowWorkspacePage() {
                 disabled={step.disabled || (step.action === "submit" && !canSubmit)}
                 onClick={() => {
                   if (step.action === "submit") setSubmitOpen(true);
+                  else if (step.action === "commercial") commercialPrimaryAction.current?.();
                   else if (step.label === "Complete scope") nav(`/sows/new?opportunityId=${id}`);
                   else if (step.href) nav(`/sows/${id}/${step.href}`);
                 }}
@@ -530,14 +568,27 @@ export function SowWorkspacePage() {
   );
 }
 
-function renderTab(key: TabKey, snap: WorkspaceSnapshot, viewer?: MeResponse | null, refresh?: () => Promise<void>) {
+function renderTab(
+  key: TabKey,
+  snap: WorkspaceSnapshot,
+  viewer?: MeResponse | null,
+  refresh?: () => Promise<void>,
+  onCommercialStatusChange?: (status: CommercialEditorStatus | null) => void,
+  onCommercialPrimaryAction?: (run: (() => void) | null) => void,
+  onCommercialSaved?: () => void | Promise<void>,
+) {
   switch (key) {
     case "overview":
       return <OverviewTab snap={snap} />;
     case "scope":
       return <ScopeTab snap={snap} />;
     case "staffing":
-      return <StaffingGmTab snap={snap} />;
+      return <StaffingGmTab
+        snap={snap}
+        onCommercialStatusChange={onCommercialStatusChange}
+        onCommercialPrimaryAction={onCommercialPrimaryAction}
+        onCommercialSaved={onCommercialSaved}
+      />;
     case "approvals":
       return <ApprovalsTab snap={snap} />;
     case "documents":

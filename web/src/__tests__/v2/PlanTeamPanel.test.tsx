@@ -95,6 +95,40 @@ function Harness({
 beforeEach(() => vi.restoreAllMocks());
 
 describe("PlanTeamPanel", () => {
+  it("realigns only provisional fixed-fee geography to the applied team's delivery location", async () => {
+    const onApply = vi.fn();
+    vi.spyOn(api, "getStaffingAdvice").mockResolvedValue(advice({
+      suggested: {
+        onshore_fte: "0",
+        offshore_fte: "1.5",
+        cost: "12000",
+        gm: "0.5",
+      },
+    }));
+    render(<Harness
+      onApply={onApply}
+      inputs={{
+        ...baseInputs,
+        pricing: {
+          ...baseInputs.pricing,
+          allocation_basis: "even service months (proposed)",
+          allocations: [
+            { month: "2026-10-01", location: "US", weight: "1" },
+          ],
+        },
+      }}
+    />);
+    await screen.findByTestId("plan-team-review");
+    fireEvent.click(screen.getByTestId("plan-team-review"));
+    fireEvent.click(await screen.findByTestId("plan-team-apply"));
+    await waitFor(() => expect(onApply).toHaveBeenCalled());
+    const applied = onApply.mock.calls.at(-1)?.[0] as api.CommercialComponent;
+    expect(applied.staffing).toHaveLength(2);
+    expect(applied.staffing.every((row) => row.location === "India")).toBe(true);
+    expect(applied.pricing?.allocations).toEqual([
+      { month: "2026-10-01", location: "India", weight: "1" },
+    ]);
+  });
   it("shows the demand estimate with role shapes, quotes and the feasible mix", async () => {
     vi.spyOn(api, "getStaffingAdvice").mockResolvedValue(advice());
     render(<Harness />);

@@ -4,7 +4,9 @@ Pure Decimal arithmetic over an assessed ``GmOutcome`` and its source
 component: contract revenue, labor vs other delivery cost, gross profit
 and the percentage views the Confirm page's GM summary renders. Lives
 in ``app.gm`` because it is margin math (CLAUDE.md rule 2). Returns
-``{}`` for anything not fully assessed — no invented numbers.
+For an incomplete fixed-fee plan it preserves the confirmed contract
+revenue while leaving every cost-derived value unknown. This is not an
+estimate: it is the typed fixed-fee term already supplied by the SOW.
 """
 
 from __future__ import annotations
@@ -25,9 +27,28 @@ def _pct(part: Decimal, whole: Decimal) -> str | None:
 
 
 def commercial_finance_summary(outcome: GmOutcome, component: Any) -> dict[str, Any]:
-    """Build the FinanceSummary dict the UI renders, or ``{}``."""
+    """Build the FinanceSummary dict the UI renders, preserving known facts."""
     if outcome.status != "ok":
-        return {}
+        pricing = getattr(component, "pricing", None)
+        revenue = (
+            getattr(pricing, "total_fee", None)
+            if getattr(component, "profile", None) == "fixed_assignment"
+            else None
+        )
+        if not isinstance(revenue, Decimal) or not revenue.is_finite():
+            return {}
+        money = Decimal("0.01")
+        return {
+            "revenue": str(revenue.quantize(money)),
+            "labor_cost": None,
+            "direct_cost": None,
+            "total_delivery_cost": None,
+            "gross_profit": None,
+            "labor_pct": None,
+            "direct_pct": None,
+            "total_cost_pct": None,
+            "pass_through": "0",
+        }
     revenue = sum(outcome.revenue_by_location.values(), _ZERO)
     total_cost = sum(outcome.cost_by_location.values(), _ZERO)
     # "Other delivery expenses" are the component's explicit period

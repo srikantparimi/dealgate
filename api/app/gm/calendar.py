@@ -7,7 +7,7 @@ There is no assumed workweek, holiday source, monthly hours or FX conversion.
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, timedelta
-from decimal import Context, Decimal, Inexact, localcontext
+from decimal import Context, Decimal, Inexact, ROUND_DOWN, localcontext
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.gm.engine import GM_PRECISION, Location, MissingInput, ResourceInput
@@ -112,6 +112,11 @@ class StaffingAssignment:
     end: date | None = None
     cost_rate_basis: str | None = "hourly"  # Missing legacy JSON fields remain hourly.
     cost_proration: str | None = None
+    seniority: str | None = None
+    # Simple staffing plans state the total per-person hours directly. The
+    # monthly schedule is derived server-side; users do not maintain a second
+    # weekday/holiday calendar merely to calculate GM.
+    hours_billable: Decimal | None = None
 
     def __post_init__(self) -> None:
         for field in ("assignment_id", "source_id", "source_version", "component_id",
@@ -129,6 +134,8 @@ class StaffingAssignment:
         for field in ("bill_rate", "cost_rate"):
             if getattr(self, field) is not None:
                 _decimal(getattr(self, field), field)
+        if self.hours_billable is not None:
+            _decimal(self.hours_billable, "hours_billable")
         for bound in (self.start, self.end):
             if bound is not None:
                 _period(bound, bound)
@@ -196,6 +203,10 @@ def monthly_staffing_schedule(
     _period(term_start, term_end)
     start = max(term_start, assignment.start or term_start)
     end = min(term_end, assignment.end or term_end)
+    if start > end:
+        return ()
+    if assignment.calendar is None and assignment.hours_billable is not None:
+        return _explicit_hours_schedule(assignment, term_start, term_end, start, end)
     rows: list[MonthlyStaffing] = []
     with localcontext(Context(prec=GM_PRECISION)) as ctx:
         ctx.traps[Inexact] = True
@@ -217,6 +228,88 @@ def monthly_staffing_schedule(
             if period_end == end:
                 break
             start = period_end + timedelta(days=1)
+    return tuple(rows)
+
+
+def _explicit_hours_schedule(
+    item: StaffingAssignment,
+    term_start: date,
+    term_end: date,
+    start: date,
+    end: date,
+) -> tuple[MonthlyStaffing, ...]:
+    """Allocate an entered total across service months without a calendar UI.
+
+    The total is preserved exactly at the precision the user entered. Month
+    shares use inclusive calendar days; the final month receives the remainder.
+    Quantity and allocation are applied once, after the per-person split.
+    """
+
+    periods: list[tuple[date, date]] = []
+    cursor = start
+    while cursor <= end:
+        period_end = min(
+            end, date(cursor.year, cursor.month, monthrange(cursor.year, cursor.month)[1])
+        )
+        periods.append((cursor, period_end))
+        cursor = period_end + timedelta(days=1)
+
+    decimal_places = max(0, -item.hours_billable.as_tuple().exponent)
+    quantum = Decimal(1).scaleb(-decimal_places)
+    total_units = int(item.hours_billable / quantum)
+    weights = [(period_end - period_start).days + 1 for period_start, period_end in periods]
+    total_weight = sum(weights)
+    units: list[int] = []
+    assigned = 0
+    for index, weight in enumerate(weights):
+        if index == len(weights) - 1:
+            share = total_units - assigned
+        else:
+            # The monthly split is a presentation/forecast allocation. It may
+            # repeat (for example, 31/62), so round down in the input's own
+            # precision and put the exact remainder in the final month. The
+            # outer GM context deliberately traps inexact money arithmetic.
+            with localcontext(Context(prec=GM_PRECISION)) as split_context:
+                split_context.traps[Inexact] = False
+                share = int(
+                    (
+                        Decimal(total_units)
+                        * Decimal(weight)
+                        / Decimal(total_weight)
+                    ).to_integral_value(rounding=ROUND_DOWN)
+                )
+            assigned += share
+        units.append(share)
+
+    rows: list[MonthlyStaffing] = []
+    multiplier = Decimal(item.quantity) * item.allocation
+    for (period_start, period_end), unit_share in zip(periods, units):
+        per_person = Decimal(unit_share) * quantum
+        hours = per_person * multiplier
+        missing: list[MissingInput] = []
+        for field in ("location", "currency", "cost_rate", "cost_version", "cost_rate_basis"):
+            value = getattr(item, field)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                missing.append(MissingInput(field, f"no confirmed {field}", role=item.role))
+        revenue = hours * item.bill_rate if item.bill_rate is not None else None
+        cost = hours * item.cost_rate if item.cost_rate is not None else None
+        rows.append(
+            MonthlyStaffing(
+                assignment=item,
+                term_start=term_start,
+                term_end=term_end,
+                month=period_start.replace(day=1),
+                period_start=period_start,
+                period_end=period_end,
+                scheduled_hours=hours,
+                billable_hours=hours,
+                paid_hours=hours,
+                revenue=revenue,
+                cost=cost,
+                days=(),
+                missing=tuple(missing),
+            )
+        )
     return tuple(rows)
 
 

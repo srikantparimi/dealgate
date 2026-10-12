@@ -9,6 +9,7 @@ export interface PeriodCost {
   month: string;
   location: string;
   amount: string | null;
+  description?: string | null;
 }
 export interface Allocation {
   month: string;
@@ -118,6 +119,9 @@ export interface CommercialStaffing {
   cost_proration?: "full_month" | null;
   start?: string | null;
   end?: string | null;
+  seniority?: string | null;
+  /** Total per-person hours across the role dates. */
+  hours_billable?: string | null;
 }
 export interface CommercialStaffingRate {
   assignment_id: string;
@@ -168,7 +172,7 @@ export interface CommercialSchedule {
   }[];
   children?: CommercialSchedule[];
   status: string;
-  missing: { field?: string; key?: string; reason?: string }[];
+  missing: { field?: string; key?: string; reason?: string; line?: number | null; role?: string | null }[];
 }
 export interface CommercialSnapshot {
   schedule: CommercialSchedule;

@@ -185,6 +185,7 @@ describe("SowStudio — upload path", () => {
       approvers: {
         delivery: { user_id: null, source: "unset", business_unit: null },
         hr: { user_id: null, source: "unset", business_unit: null },
+        sales: { user_id: null, source: "unset", business_unit: null },
         finance: { user_id: null, source: "unset", business_unit: null },
         legal: { user_id: null, source: "unset", business_unit: null },
       },

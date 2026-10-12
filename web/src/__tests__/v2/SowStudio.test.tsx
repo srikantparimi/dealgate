@@ -145,21 +145,36 @@ function makePayload(
     approvers: {
       delivery: {
         user_id: "00000000-0000-0000-0000-0000000000d1",
+        name: "Shawnna DelHierro",
+        email: "shawnnad@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
       hr: {
         user_id: "00000000-0000-0000-0000-0000000000h1",
+        name: "Sangeeth Mohanan",
+        email: "sangeeth@smartek21.com",
+        source: "owner_row",
+        business_unit: null,
+      },
+      sales: {
+        user_id: "00000000-0000-0000-0000-0000000000s1",
+        name: "Janice Krpan",
+        email: "janicek@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
       finance: {
         user_id: "00000000-0000-0000-0000-0000000000f1",
+        name: "Scott Pfeiffer",
+        email: "scottpf@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
       legal: {
         user_id: "00000000-0000-0000-0000-0000000000l1",
+        name: "Seema Anil",
+        email: "seema@smartek21.com",
         source: "owner_row",
         business_unit: null,
       },
@@ -185,6 +200,13 @@ function belowFloorPayload(): SowConfirmationPayload {
     ceo_gate: {
       will_trigger: true,
       brief: { rationale: null },
+      approver: {
+        user_id: "00000000-0000-0000-0000-0000000000c1",
+        name: "Al Lalji",
+        email: "al@smartek21.com",
+        source: "approval_group_default",
+        business_unit: null,
+      },
     },
   });
 }
@@ -263,6 +285,32 @@ describe("SowStudioPage — confirmation screen", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows contract dates, saved GM and the functional approval path before continuing", async () => {
+    vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValue(makePayload());
+    renderStudio();
+
+    await screen.findByRole("heading", { name: /Confirm SOW/i });
+    expect(screen.getByTestId("field-row-term_start")).toHaveTextContent("2026-10-01");
+    expect(screen.getByTestId("field-row-term_end")).toHaveTextContent("2027-03-31");
+    expect(document.getElementById("section-staffing")).toHaveTextContent("42.0%");
+
+    const approvals = document.getElementById("section-approvers");
+    expect(approvals).not.toBeNull();
+    for (const label of ["Delivery", "Sales", "HR", "Finance", "Legal"]) {
+      expect(approvals).toHaveTextContent(label);
+    }
+    for (const name of [
+      "Shawnna DelHierro",
+      "Janice Krpan",
+      "Sangeeth Mohanan",
+      "Scott Pfeiffer",
+      "Seema Anil",
+    ]) {
+      expect(approvals).toHaveTextContent(name);
+    }
+    expect(approvals).toHaveTextContent("Not required");
+  });
+
   it("every field row carries a provenance chip", async () => {
     vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValue(makePayload());
     renderStudio();
@@ -305,11 +353,12 @@ describe("SowStudioPage — confirmation screen", () => {
     expect(screen.getByTestId("needs-you-empty")).toBeInTheDocument();
     unmount();
 
-    // A needs_you entry disables the button.
+    // A genuinely required scope field disables the button. Contractual
+    // signers are separate from approval reviewers and are not a scope gate.
     vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValueOnce(
       makePayload({
         needs_you: [
-          { field: "signatories", reason: "extracted value missing" },
+          { field: "term_end", reason: "extracted value missing" },
         ],
       }),
     );
@@ -319,8 +368,32 @@ describe("SowStudioPage — confirmation screen", () => {
     });
     expect(screen.getByTestId("confirmation-submit")).toBeDisabled();
     expect(
-      screen.getByTestId("needs-you-item-signatories"),
+      screen.getByTestId("needs-you-item-term_end"),
     ).toBeInTheDocument();
+  });
+
+  it("does not confuse missing contract signers with the approval roster", async () => {
+    const payload = makePayload();
+    payload.sow_version.extracted_fields = {
+      ...(payload.sow_version.extracted_fields ?? {}),
+      signatories: {
+        value: null,
+        provenance: "manual",
+        status: "unconfirmed",
+      },
+    };
+    vi.spyOn(apiClient, "getSowConfirmation").mockResolvedValue(payload);
+    renderStudio();
+
+    await screen.findByRole("heading", { name: /Confirm SOW/i });
+    expect(screen.queryByTestId("field-row-signatories")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No signatories yet/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("confirmation-submit")).not.toBeDisabled();
+
+    const approvals = document.getElementById("section-approvers");
+    for (const label of ["Delivery", "Sales", "HR", "Finance", "Legal"]) {
+      expect(approvals).toHaveTextContent(label);
+    }
   });
 
   it("submits via submitSowConfirmation and navigates on success", async () => {
@@ -374,6 +447,7 @@ describe("SowStudioPage — confirmation screen", () => {
     const gate = screen.getByTestId("gate-step-ceo");
     expect(gate.getAttribute("data-state")).toBe("hold");
     expect(gate.textContent).toMatch(/Will trigger/i);
+    expect(gate).toHaveTextContent("Al Lalji");
     expect(screen.getByTestId("ceo-will-trigger")).toBeInTheDocument();
   });
 

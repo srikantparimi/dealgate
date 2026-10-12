@@ -28,6 +28,7 @@ from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.models.opportunity import Opportunity
 from app.services.redact import redact_costs
+from app.services.user_provisioning import ensure_user
 from app.services.approvals import (
     ApprovalError,
     ListFilters,
@@ -69,6 +70,14 @@ def _has_any(user: AuthUser, roles: frozenset[str]) -> bool:
     return any(g in roles for g in user.groups)
 
 
+async def _canonical_user(session: AsyncSession, user: AuthUser) -> AuthUser:
+    """Resolve an invited user row when Cognito's sub differs from its DB id."""
+    actor = await ensure_user(session, user)
+    canonical = AuthUser(actor.id, actor.email, actor.name, tuple(actor.groups))
+    await session.commit()
+    return canonical
+
+
 async def _require_read(user: AuthUser = Depends(current_user)) -> AuthUser:
     if not _has_any(user, _READ_ROLES):
         raise HTTPException(status_code=403, detail="insufficient role")
@@ -77,18 +86,19 @@ async def _require_read(user: AuthUser = Depends(current_user)) -> AuthUser:
 
 async def _require_submit(
     session: AsyncSession, user: AuthUser, opportunity_id: uuid.UUID
-) -> None:
+) -> AuthUser:
     """SystemAdmin or the deal's account owner may submit."""
 
+    user = await _canonical_user(session, user)
     if "SystemAdmin" in user.groups:
-        return
+        return user
     opp = (
         await session.execute(select(Opportunity).where(Opportunity.id == opportunity_id))
     ).scalar_one_or_none()
     if opp is None:
         raise HTTPException(status_code=404, detail="opportunity not found")
     if opp.owner_id is not None and opp.owner_id == user.id:
-        return
+        return user
     raise HTTPException(
         status_code=403,
         detail="only the account owner or SystemAdmin may submit an approval package",
@@ -188,7 +198,7 @@ async def submit_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    await _require_submit(session, user, opportunity_id)
+    user = await _require_submit(session, user, opportunity_id)
     try:
         body = body or SubmitBody()
         plan = await routing.submission_plan(session, actor_id=user.id, opportunity_id=opportunity_id,
@@ -208,6 +218,7 @@ async def get_endpoint(
     _user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    _user = await _canonical_user(session, _user)
     try:
         pkg = await load_package(session, package_id)
         await _read_package(session, _user, pkg)
@@ -224,6 +235,7 @@ async def decide_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    user = await _canonical_user(session, user)
     if not body.reason.strip():
         raise HTTPException(422, "A reason is required")
     try:
@@ -248,6 +260,7 @@ async def void_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    user = await _canonical_user(session, user)
     if "SystemAdmin" not in user.groups:
         raise HTTPException(
             status_code=403, detail="only SystemAdmin may manually void a package"
@@ -271,6 +284,7 @@ async def list_endpoint(
     _user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> PackageListResponse:
+    _user = await _canonical_user(session, _user)
     filters = ListFilters(
         status=status_, opportunity_id=opportunity_id, page=page, size=size,
         reader_id=None if _has_any(_user, _READ_ROLES) else _user.id,
@@ -294,11 +308,13 @@ async def list_endpoint(
 
 @router.get("/groups")
 async def list_groups(user: AuthUser = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    user = await _canonical_user(session, user)
     return {"items": await routing.groups(session), "can_edit": "SystemAdmin" in user.groups}
 
 
 @router.put("/groups/{function}")
 async def update_group(function: str, body: GroupBody, user: AuthUser = Depends(current_user), session: AsyncSession = Depends(get_session)):
+    user = await _canonical_user(session, user)
     if "SystemAdmin" not in user.groups:
         raise HTTPException(403, "Only SystemAdmin may configure approval groups")
     return await routing.save_group(session, actor_id=user.id, function=function, **body.model_dump())
@@ -306,14 +322,14 @@ async def update_group(function: str, body: GroupBody, user: AuthUser = Depends(
 
 @router.get("/plan/{opportunity_id}")
 async def plan_endpoint(opportunity_id: uuid.UUID, user: AuthUser = Depends(current_user), session: AsyncSession = Depends(get_session)):
-    await _require_submit(session, user, opportunity_id)
+    user = await _require_submit(session, user, opportunity_id)
     return redact_costs(await routing.submission_plan(session, actor_id=user.id, opportunity_id=opportunity_id), set(user.groups))
 
 
 @router.post("/packages/{package_id}/route")
 async def route_endpoint(package_id: uuid.UUID, user: AuthUser = Depends(current_user), session: AsyncSession = Depends(get_session)):
     pkg = await load_package(session, package_id)
-    await _require_submit(session, user, pkg.opportunity_id)
+    user = await _require_submit(session, user, pkg.opportunity_id)
     await routing.route_missing(session, actor_id=user.id, package_id=package_id)
     return await _detail(session, pkg, user)
 
@@ -323,7 +339,7 @@ async def condition_evidence(package_id: uuid.UUID, body: EvidenceBody, user: Au
     from app.audit import append_audit
     from app.models.ceo_exception import CeoException
     pkg = await load_package(session, package_id)
-    await _require_submit(session, user, pkg.opportunity_id)
+    user = await _require_submit(session, user, pkg.opportunity_id)
     exception = await session.scalar(select(CeoException).where(CeoException.package_id == pkg.id))
     if pkg.status != 'ready_to_sign' or not exception or not exception.conditions_text or not body.evidence.strip():
         raise HTTPException(409, "No approved conditions awaiting evidence")

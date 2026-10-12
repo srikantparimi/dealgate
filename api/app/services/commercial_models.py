@@ -114,6 +114,27 @@ async def save_commercial_model(
     _bind_source(component, sow, policy_version)
     result = compute_commercial(component, us_floor=policy.us_floor, india_floor=policy.india_floor)
     outcome, schedule = result.gm_outcome, result.commercial_schedule
+
+    # Saving the staffing plan is the user's confirmation of its contract
+    # window. Keep the still-draft SOW terms aligned so the following Confirm
+    # SOW screen opens with the same dates instead of asking for them again.
+    # Submitted SOW versions remain immutable and are never rewritten here.
+    if sow.confirmed_at is None:
+        from app.services.sow_extract import confirm_field
+
+        for field_name, value in (
+            ("term_start", component.service_start),
+            ("term_end", component.service_end),
+        ):
+            if value is not None:
+                await confirm_field(
+                    session,
+                    actor_id=actor_id,
+                    sow_version_id=sow.id,
+                    field_name=field_name,
+                    value=value.isoformat(),
+                )
+
     snapshot = {
         "schema_version": "commercial-model-v1",
         "tenant_id": os.environ.get("DEALGATE_TENANT_ID"),

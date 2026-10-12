@@ -53,7 +53,17 @@ def test_assessed_outcome_yields_exact_summary_rows():
     assert summary["total_cost_pct"] == "0.5000"
 
 
-def test_unassessed_outcome_returns_empty_summary_never_invented_numbers():
+def test_incomplete_staffing_preserves_known_fixed_fee_revenue_only():
     incomplete = calculate_component(component(costs_confirmed=False))
     summary = commercial_finance_summary(incomplete.assess(), incomplete.component)
-    assert summary == {}
+    assert summary == {
+        "revenue": "420000.00",
+        "labor_cost": None,
+        "direct_cost": None,
+        "total_delivery_cost": None,
+        "gross_profit": None,
+        "labor_pct": None,
+        "direct_pct": None,
+        "total_cost_pct": None,
+        "pass_through": "0",
+    }

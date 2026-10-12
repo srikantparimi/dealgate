@@ -12,7 +12,9 @@ import pytest
 import pytest_asyncio
 
 from app.integrations.bedrock_sow_extract import StubBedrock
+from app.models.approval_routing import ApprovalGroup
 from app.models.opportunity import Opportunity
+from app.models.user import User
 from app.services.provenance import wrap
 from app.services.sow_confirmation import (
     build_confirmation,
@@ -115,6 +117,33 @@ async def test_build_confirmation_derives_full_package(seeded_sow, session):
 
 @pytest.mark.asyncio
 async def test_build_confirmation_serialises_cleanly(seeded_sow, session):
+    expected = {}
+    for function, name in (
+        ("delivery", "Delivery Reviewer"),
+        ("sales", "Sales Reviewer"),
+        ("hr", "HR Reviewer"),
+        ("finance", "Finance Reviewer"),
+        ("legal", "Legal Reviewer"),
+    ):
+        user = User(
+            id=uuid.uuid4(),
+            email=f"{function}@review.example",
+            name=name,
+            groups=[],
+        )
+        session.add(user)
+        await session.flush()
+        session.add(
+            ApprovalGroup(
+                function=function,
+                member_ids=[str(user.id)],
+                backup_ids=[],
+                default_approver_id=user.id,
+            )
+        )
+        expected[function] = name
+    await session.flush()
+
     payload = await build_confirmation(
         session, opportunity_id=seeded_sow["opp"].id, actor_id=OWNER
     )
@@ -122,6 +151,10 @@ async def test_build_confirmation_serialises_cleanly(seeded_sow, session):
     assert dumped["engagement"]["primary"]["type"] == payload.engagement.primary.type
     assert "approvers" in dumped
     assert set(dumped["approvers"].keys()) == {"delivery", "hr", "sales", "finance", "legal"}
+    assert {
+        function: reviewer["name"]
+        for function, reviewer in dumped["approvers"].items()
+    } == expected
     assert "needs_you" in dumped
     assert "ceo_gate" in dumped
 
@@ -183,7 +216,116 @@ async def test_missing_scope_cannot_stamp_confirmation(seeded_sow, session):
     assert row.confirmed_at is None
 
 
+@pytest.mark.asyncio
+async def test_missing_signatories_do_not_block_approval_confirmation(
+    seeded_sow, session
+):
+    """Approval reviewers and contractual signers are different concepts.
+
+    A source SOW that does not name its eventual signers must still be able to
+    enter the function-review pipeline. Reviewer routing is derived from the
+    approval groups and the GM result, never from this extraction field.
+    """
+
+    from app.models.sow import SowVersion
+
+    row = await session.get(SowVersion, seeded_sow["sow_version_id"])
+    row.extracted_fields = {
+        **row.extracted_fields,
+        "signatories": wrap(None, provenance="manual", status="unconfirmed"),
+    }
+    await session.commit()
+
+    payload = await build_confirmation(
+        session, opportunity_id=seeded_sow["opp"].id, actor_id=OWNER
+    )
+    assert "signatories" not in [gap.field for gap in payload.needs_you]
+
+    submitted = await submit_confirmation(
+        session, opportunity_id=seeded_sow["opp"].id, actor_id=OWNER
+    )
+    assert submitted.sow_version.id == seeded_sow["sow_version_id"]
+
+
 # --- what actually blocks submit (S10-11) --------------------------------
+
+
+def test_saved_commercial_staffing_is_rendered_on_confirmation():
+    """S22 stores staffing inside the immutable commercial input document.
+
+    Confirm SOW must read the same rows that produced its GM summary instead
+    of consulting only the legacy ``resource_line`` relationship.
+    """
+
+    from datetime import date
+    from decimal import Decimal
+
+    from pydantic import TypeAdapter
+
+    from app.gm.calendar import StaffingAssignment
+    from app.gm.commercial import PricingComponent
+    from app.models.gm_model import GmModel
+    from app.services.sow_confirmation import _staffing_from_gm
+    from tests.test_s21_commercial_profiles import component
+
+    assignment = StaffingAssignment(
+        assignment_id="consultant-1",
+        source_id="sow-x",
+        source_version="2",
+        component_id="build",
+        profile_version="1",
+        policy_version="gm-1",
+        role="Intune Consultant",
+        seniority="Senior",
+        location="India",
+        timezone="America/New_York",
+        currency="USD",
+        quantity=2,
+        allocation=Decimal("0.5"),
+        calendar=None,
+        hours_billable=Decimal("960"),
+        bill_rate=None,
+        cost_rate=Decimal("70"),
+        rate_version=None,
+        cost_version="loaded-cost-2026",
+        start=date(2026, 10, 12),
+        end=date(2027, 4, 12),
+    )
+    inputs = TypeAdapter(PricingComponent).dump_python(
+        component(
+            service_start=date(2026, 10, 12),
+            service_end=date(2027, 4, 12),
+            staffing=(assignment,),
+        ),
+        mode="json",
+    )
+    model = GmModel(
+        id=uuid.uuid4(),
+        engagement_type="fixed_assignment",
+        currency="USD",
+        version=3,
+        commercial_inputs=inputs,
+    )
+
+    result = _staffing_from_gm(model)
+
+    assert len(result.lines) == 1
+    line = result.lines[0]
+    assert (line.role, line.seniority, line.location) == (
+        "Intune Consultant",
+        "Senior",
+        "India",
+    )
+    assert line.hours_billable == Decimal("960")
+    assert line.quantity == 2
+    assert line.to_dict()["quantity"] == 2
+    assert line.allocation_pct == Decimal("0.5")
+    assert line.hourly_bill_rate == Decimal("0")
+    assert line.hourly_cost == Decimal("70")
+    assert (line.start_date, line.end_date) == (
+        date(2026, 10, 12),
+        date(2027, 4, 12),
+    )
 
 
 def test_fixed_fee_blocks_on_cost_not_bill_rate():

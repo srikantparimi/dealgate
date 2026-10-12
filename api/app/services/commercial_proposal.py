@@ -222,7 +222,7 @@ async def propose_component(
     staffing = tuple(
         StaffingAssignment(
             assignment_id=f"proposed-{index + 1}",
-            role=f"{line.seniority} {line.role}".strip(),
+            role=line.role,
             location=line.location if line.location in ("US", "India") else None,
             timezone=_DEFAULT_TIMEZONE,
             currency=currency,
@@ -236,6 +236,8 @@ async def propose_component(
             start=max(line.start_date, term_start),
             end=min(line.end_date, term_end),
             cost_rate_basis="hourly",
+            seniority=line.seniority,
+            hours_billable=Decimal(line.billable_hours),
             **binding,
         )
         for index, line in enumerate(lines)

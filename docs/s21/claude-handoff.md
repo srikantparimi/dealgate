@@ -2,6 +2,1292 @@
 
 ## RESUME HERE
 
+**2026-10-08 11:35 PDT — SIGNATORY-GATE IMAGE AND REVIEWED TERRAFORM PLAN
+READY; HUMAN APPLY APPROVAL REQUIRED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current pushed HEAD
+`c6e2fefa64dfee0fda8d08bafa9659d05faacf19`, application commit
+`2a5dbdf95869702537f0c9a35d448e1cf9f7c866`. This handoff update is the only
+expected dirty file. Main is untouched. No build, test, browser, migration,
+deployment, or Terraform operation is active.
+
+Immutable image `s22signers-2a5dbdf` is in ECR at digest
+`sha256:74e2b594732bc145da77286d085e42a635706869e5b239353f65df8eac1adc1c`.
+It is an exact successor layer over deployed image digest
+`sha256:3017ead9bbe4fa895a46c85efb45f7fa6477ff957b595f8bc087601d645bcc5a`,
+replacing only the two tested backend service files changed since
+`5909b7e`: `sow_confirmation.py` and `signed_sow.py`. ECR and ECS were checked
+directly: the running task is `X86_64` and the image is AMD64.
+
+Fresh reviewed plan `/tmp/s22-signers-2a5dbdf.tfplan` has SHA-256
+`5c87a18f9d083607b2ad48b1ce74d96fecdfb5d7b3ee8a2210fcc30e38b765c0`;
+text and JSON renderings are `/tmp/s22-signers-2a5dbdf.plan.txt` and
+`/tmp/s22-signers-2a5dbdf.plan.json`, with checksums recorded beside the plan.
+It is exactly **11 add / 13 change / 11 destroy**: API, migration, eight
+scheduled-worker task definitions, and the migration trigger are replaced;
+the API service, eight EventBridge targets, and four RunTask policies follow
+the new revisions. All ten container images move only from
+`s22reviewers-5909b7e` to `s22signers-2a5dbdf`. There are zero RDS, S3,
+Cognito, production-approver, SES, secret, KMS, network, security-group,
+CloudFront, DNS, schedule-rule, or business-data changes. Inputs preserve
+America/Los_Angeles, USD, S21 jobs enabled, trusted cleanup/continuous
+HubSpot/operational hardening disabled, and production approver identities
+enabled.
+
+Build history to avoid repeating: `docker buildx ... ./api` failed because
+the Dockerfile expects repository-root context. A root-context ARM64 build was
+stopped after direct ECS/ECR inspection proved the actual runtime and deployed
+manifest are X86_64/AMD64; no image was pushed by either attempt. The final
+AMD64 successor build completed and its digest above is authoritative.
+
+Required human action: approve only the saved Terraform plan identified above.
+After approval, exact resume command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-signers-2a5dbdf.tfplan`.
+Then require the migration gate, stable API on the recorded image digest,
+publish the already-built matching SPA `assets/index-BV0ywWPM.js`, run deploy
+smoke, and execute a disposable fresh-session no-source-signers proof through
+Confirm SOW -> Approvals -> pending/queued pipeline. Do not merge main before
+product-owner staging acceptance.
+
+**2026-10-08 10:54 PDT — FALSE SIGNATORY APPROVAL GATE FIXED LOCALLY;
+APPLICATION COMMIT READY FOR STAGING ARTIFACT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`2a5dbdf95869702537f0c9a35d448e1cf9f7c866`. This handoff update is the only
+expected dirty file. Main remains untouched and no merge is authorized. No
+server, worker, browser, test, migration, Terraform, or deployment operation is
+active.
+
+Root cause is confirmed in `app.services.sow_confirmation._ESSENTIAL_FIELDS`:
+the legacy contractual `signatories` extraction field was still mandatory for
+scope confirmation. `ScopeSection` rendered its picker once and
+`NeedsYouSection` rendered the same picker again as a blocker. Approval routing
+was already populated independently from configured ApprovalGroups, but the
+unrelated empty signer field disabled `Complete scope`; the prior staging proof
+worked only because its fixture injected a fake client signer. That workaround
+is why the visible owner path remained broken across iterations.
+
+Commit `2a5dbdf` removes missing signers from confirmation prerequisites and
+removes the duplicate signer UI from Confirm SOW. It does **not** turn approval
+reviewers into legal signing parties. Delivery, Sales, HR, Finance, and Legal
+continue to come from the configured approval roster; below-floor GM continues
+to add the configured CEO. Signed-document verification remains strict when a
+source SOW names approved signers. When it names none, verification records the
+executed signers but does not invent an identity set or fail against an empty
+one.
+
+Focused verification on `2a5dbdf`: both complete affected backend files
+`test_sow_confirmation.py` and `test_signed_sow.py` passed; all three existing
+named-signer mismatch/match regressions passed; frontend Confirm SOW plus
+blocker-registry tests passed **20/20**; TypeScript, Ruff, diff check, and the
+production build passed. The built local SPA is
+`web/dist/assets/index-BV0ywWPM.js` plus
+`web/dist/assets/index-BLyNqDZt.css`; it is not deployed evidence. Staging still
+runs API revision 94/image `s22reviewers-5909b7e` and SPA
+`assets/index-o8IHvr-q.js`, so it does not contain this fix yet.
+
+Exact resume:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git show --stat --oneline 2a5dbdf`.
+Next: commit/push this handoff checkpoint, build immutable API image from
+`2a5dbdf`, create and review a fresh whole-root Terraform plan while preserving
+production approver identities, then stop for the required human apply
+approval. After apply, publish the matching SPA, run deploy smoke, and prove in
+a fresh disposable SOW with no extracted signers that Confirm SOW shows the
+five named approval functions, adds CEO only below floor, enables `Complete
+scope`, submits, and displays pending/queued pipeline state. Do not merge main
+before product-owner staging acceptance.
+
+**2026-10-07 23:47 PDT — DEPLOYED REVIEWER PROOF CHECKPOINT COMMITTED AND
+PUSHED.** Evidence/test checkpoint is
+`d59de907bf830c04542bf1d0061741e349b7673e` on `fix/s22-gm-cta` in
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`; this handoff-only pointer
+is the sole subsequent change. The application remains commit `5909b7e`, API
+revision 94 and SPA `assets/index-o8IHvr-q.js`. No operation is active. Exact
+next command: `cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git log -3 --oneline`.
+Next gate is the product-owner staging click-through described immediately
+below. Main is untouched; do not merge without explicit acceptance.
+
+**2026-10-07 23:45 PDT — CONFIGURED REVIEWER DISPLAY DEPLOYED; GREEN AND
+BELOW-FLOOR ROUTING PROOFS PASSED; PRODUCT-OWNER CLICK-THROUGH NEXT.**
+Authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
+branch `fix/s22-gm-cta`, application commit
+`5909b7e8c4a46edbc3ab86bc47c8206279ec7675`, pre-deploy docs HEAD
+`0488f8536cda8d865d4e076f402605e669336b4e`. Refreshed screenshots, deployed
+proof spec/report, and this entry are intentionally dirty before the evidence
+checkpoint. Main remains `3ef55e576508af70e5c34d8593eec09db1d01560` and is
+untouched. No server, worker, test, browser, migration, deployment, or
+Terraform operation is active.
+
+The owner approved saved plan `/tmp/s22-reviewers-5909b7e.tfplan` (SHA-256
+`5639eddb47fa1cc43bb96ab37951258f572f9ddc0ccb65ad158160c39852f7b6`).
+Terraform applied exactly **11 add / 13 change / 11 destroy**. Migration task
+`9504037f52e24092b995ed1defb67c36` exited 0. ECS is stable 1/1 on API task
+definition revision 94, task `714d7e28c4484ec4b87b7773666cd514`, image
+`s22reviewers-5909b7e`, digest
+`sha256:3017ead9bbe4fa895a46c85efb45f7fa6477ff957b595f8bc087601d645bcc5a`.
+Health is green. Matching SPA `assets/index-o8IHvr-q.js` and
+`assets/index-BLyNqDZt.css` is live; CloudFront invalidation
+`I7PHN3TPJGSQCP10J5I4ILFY9M` completed.
+
+Deploy smoke `smoke 20261008T062723Z` passed on the exact service-bound image,
+including extraction, and cleaned its fixture. The strengthened connected
+green-GM browser journey passed in 1.5 minutes: Confirm SOW displayed real
+configured names/emails for Delivery, Sales, HR, Finance, and Legal, no raw
+UUID/group-fallback or unassigned label, CEO not required, five populated
+submission selectors, and persisted pending/queued pipeline status. A separate
+isolated below-floor run passed in 1.7 minutes: USD 50,000 fixed fee versus USD
+70,400 staffing cost returned `requires_ceo=true`, `will_trigger=true`, and a
+configured CEO id/name. Both fixtures were deleted; final leakage gate is clean
+at zero test clients and zero e2e approvers on real SOWs. Evidence and exact
+diagnostic history are in
+`docs/s21/evidence/staging/s22-gm-cta/report.md`; reviewer screenshot is
+`03c-confirm-sow-configured-reviewers.png`.
+
+The repository-wide E2E TypeScript command still reports four inherited errors
+in unrelated numeric-prefix S14/S17 specs; the changed deployed proof compiled
+and passed through Playwright. Two unsuccessful CEO proof setups are recorded
+in the report: the initial fixture omitted CEO scope, and the unavailable CEO
+secret role fell back to the submitter/fixture owner and was correctly excluded.
+No product assertion was weakened; the successful proof used another authorized
+fixture participant and did not mutate global delegation or customer data.
+
+Exact resume:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git rev-parse HEAD`.
+Next: commit/push the proof checkpoint, then the product owner hard-reloads
+`https://app.dealgateapp.com`, opens the new SOW's Confirm SOW page, verifies
+the five named reviewers (and CEO only on a below-floor SOW), completes scope,
+and confirms the same populated plan in Approvals. Do not merge main before
+explicit product-owner acceptance.
+
+**2026-10-07 23:22 PDT — CONFIRM SOW REVIEWER FIX AND IMMUTABLE ARTIFACT
+READY; REVIEWED TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative
+tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`5909b7e8c4a46edbc3ab86bc47c8206279ec7675`; handoff checkpoint/push before
+this update is `2ccd643`. This handoff entry is the only expected dirty file
+before its next docs checkpoint. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; it is untouched and no merge is
+authorized. No server, worker, test, browser, migration, deployment, or
+Terraform operation is active.
+
+Root cause: the real submission path
+`app.services.approval_routing.submission_plan()` already enforced the required
+Delivery, Sales, HR, Finance, and Legal functions plus conditional Executive
+review when GM fails a floor. Confirm SOW instead called the legacy
+`app.services.approvers.resolve_all()` path and the SPA intentionally rendered
+only UUID prefixes and fallback sources. The live configured roster was
+read-only verified as populated, so the failure boundary was confirmation
+preview/serialization, not missing people or absent routing policy.
+
+Commit `5909b7e` makes confirmation select from the same scoped ApprovalGroup
+roster as submission, exclude the submitter, avoid reusing a reviewer across
+functions, serialize names/emails, and display those identities in the five
+pipeline stages. A below-floor model additionally displays the configured CEO;
+a passing model explicitly says CEO is not required. The GET confirmation
+route now supplies the canonical actor id so preview and submission apply the
+same exclusion. Legacy FunctionOwner resolution remains only as a compatibility
+fallback outside this scoped preview. The current SOW's missing signatories
+remain an independent submit blocker and were not bypassed.
+
+Verification on `5909b7e`: focused backend confirmation/staffing/routing/
+approval scope **45 passed**; frontend Confirm SOW and review-pipeline scope
+**21 passed**; TypeScript, Ruff, diff check, and production build passed. New
+regressions prove configured names for all five functions and the named CEO on
+the below-floor branch. Production bundle built locally as
+`web/dist/assets/index-o8IHvr-q.js` plus existing
+`web/dist/assets/index-BLyNqDZt.css`; it is not deployed evidence. Latest
+deployed environment is still API revision 93/image `s22identity-b86bcf0` and
+SPA `assets/index-CTxg0uij.js`, so staging does **not** contain this fix yet.
+
+Immutable API image `s22reviewers-5909b7e` is in ECR at digest
+`sha256:3017ead9bbe4fa895a46c85efb45f7fa6477ff957b595f8bc087601d645bcc5a`.
+Fresh whole-root plan `/tmp/s22-reviewers-5909b7e.tfplan` has text/JSON at
+`/tmp/s22-reviewers-5909b7e.plan.txt` and
+`/tmp/s22-reviewers-5909b7e.plan.json`; saved-plan SHA-256 is
+`5639eddb47fa1cc43bb96ab37951258f572f9ddc0ccb65ad158160c39852f7b6`.
+It contains **11 add / 13 change / 11 destroy**: API, migration, eight worker
+task definitions and the migration trigger are replaced; the API service,
+eight EventBridge targets, and four RunTask policies follow the new revisions.
+Normalized comparison proves all ten container definitions are equal after
+removing only the image tag and provider-rendered empty arrays/API hostPort.
+There are no RDS, S3, Cognito, production-approver, SES, secret, KMS, network,
+security-group, CloudFront, DNS, schedule-state, or business-data changes.
+Inputs preserve LA/USD, S21 jobs enabled, trusted cleanup/continuous HubSpot/
+operational hardening disabled, and production approver identities enabled.
+
+Exact resume:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git show --stat --oneline 5909b7e`.
+Required human action: approve this exact saved Terraform plan. After approval,
+run `cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-reviewers-5909b7e.tfplan`.
+Then migrate/deploy the paired API+SPA, verify exact
+identifiers, and run a fresh isolated connected proof for green five-function
+routing, below-floor CEO routing, save/submit, and visible pipeline status.
+
+**2026-10-07 23:00 PDT — POST-DEPLOY OAUTH STATE ERROR REPRODUCED; FRESH
+LOGIN AND BUILT-IN RECOVERY BOTH VERIFIED, NO APPLICATION CHANGE MADE.**
+Authoritative tree remains
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, deployed-evidence commit
+`92e808c787fd1b8317285afcd13e8ccdb2ac44c7`. Only this handoff update is
+dirty before its docs checkpoint. No test, browser, deployment, migration, or
+Terraform operation is active; main is untouched.
+
+The product owner reported `/auth/callback` showing `OAuth state mismatch`
+after the requested re-login. This error means the callback URL's one-time
+state no longer matches the initiating tab's `sessionStorage`; the precise
+event that removed or replaced state in the owner's tab is not remotely
+observable. A new headless browser with empty storage completed the real
+Cognito hosted-UI + PKCE flow on the deployed bundle and reached
+`https://app.dealgateapp.com/command`; state/verifier were present before the
+callback, removed after exchange, and access tokens were stored. A second
+focused proof deliberately opened a stale callback, reproduced the exact
+error, clicked the existing `Return to home` link, and recovered through a new
+OAuth transaction to `/command` authenticated. No password reset, bundle
+change, API rollback, or business-data mutation is indicated. Exact owner
+action: click `Return to home` in the same tab or directly open
+`https://app.dealgateapp.com/`, then continue the Caesars approval
+click-through. If a newly initiated flow fails again, capture the authorize
+and callback URLs with query values redacted before changing auth code.
+
+**2026-10-07 22:52 PDT — CANONICAL SESSION-IDENTITY FIX DEPLOYED; SMOKE AND
+CONNECTED APPROVAL JOURNEY GREEN; PRODUCT-OWNER CAESARS RELOAD NEXT.**
+Authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
+branch `fix/s22-gm-cta`, application commit
+`b86bcf049a08b54c54b745e7e271918d8ba36538`, pre-deploy docs checkpoint
+`a1763e92623a1eac2819478380db752c4c997432`. Refreshed screenshots, report,
+and this handoff entry are dirty before the evidence checkpoint. No build,
+browser, test, Terraform, migration, or deployment process is active. Main is
+untouched and no merge is authorized.
+
+The owner approved the exact saved plan
+`/tmp/s22-identity-b86bcf0.tfplan` (SHA-256
+`d708bf70686f69adcceeb934abdf46513fc32c078dbd48827e9c04e7199cb19a`).
+Terraform applied exactly **11 add / 13 change / 11 destroy**. Migration task
+`3faa84910d2145cd9119f75b92717de2` exited 0. ECS is stable 1/1 on API task
+definition revision 93, task `6a53bc4bbc4f4e8e8170479ecefc58cb`, image
+`s22identity-b86bcf0`, digest
+`sha256:9ba08cf3f3d1fecbd6b71a64747a6a6d18c7f8207a133654bb5ad15d65b2551f`.
+`/api/healthz` is green. The matching SPA is `assets/index-CTxg0uij.js` plus
+`assets/index-BLyNqDZt.css`; CloudFront invalidation
+`I7W0CPG6HP0HC88IP8O3PDJQU6` completed.
+
+Deploy smoke `smoke 20261008T054729Z` passed on the exact service-bound image,
+including extraction; its cleanup and the final leakage gate are clean at zero
+test clients and zero e2e approvers on real SOWs. A deployed non-SystemAdmin
+Delivery access token now receives a real canonical email and groups from
+`GET /me`. The fresh connected browser proof passed **1/1 in 2.0 minutes** on
+revision 93: fixed-fee revenue/cost/GM, grouped staffing, save/reload, Confirm
+SOW, all five green-GM reviewer functions, submission, and pending/queued
+pipeline status all passed. Its isolated fixture was deleted; Caesars remained
+read-only. Refreshed evidence is under
+`docs/s21/evidence/staging/s22-gm-cta/`.
+
+Exact next action: commit/push this refreshed evidence, then the product owner
+must hard-reload or sign out/in so the SPA fetches canonical `/me`, open the
+existing Caesars Approvals page, and verify the button is enabled and the
+five-function plan opens. If an old tab remains disabled, capture the `/api/me`
+and opportunity-owner response from that same session before changing code.
+Do not merge main before explicit product-owner acceptance. Resume with:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git rev-parse HEAD`.
+
+**2026-10-07 22:35 PDT — CANONICAL SESSION-IDENTITY FIX COMMITTED/PUSHED;
+IMMUTABLE ARTIFACT AND REVIEWED TERRAFORM PLAN READY FOR HUMAN APPROVAL.**
+Authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
+branch `fix/s22-gm-cta`, application commit
+`b86bcf049a08b54c54b745e7e271918d8ba36538`. The application tree was clean
+after commit/push; only this incremental handoff entry is dirty before its docs
+checkpoint. No build, browser, test, Terraform, migration, or deployment
+process is active. Main remains untouched and no merge is authorized.
+
+Commit `b86bcf0` fixes the user-visible disabled approval action by making
+`GET /me` resolve the Cognito principal through the existing `ensure_user`
+identity authority and return the canonical invited DealGate user. The focused
+regression reproduces a Cognito access-token subject that differs from the
+already invited owner row, proves the pre-fix endpoint returned the raw subject,
+and now proves canonical id/email/name/groups are returned without creating a
+duplicate. Verification: identity/Cognito/approval backend scope **23 passed**;
+Ruff passed; frontend workspace/approval scope **16 passed**; TypeScript and
+production build passed. The exact SPA remains `assets/index-CTxg0uij.js` and
+`assets/index-BLyNqDZt.css` because no frontend source changed.
+
+Immutable API image `s22identity-b86bcf0` is in ECR at digest
+`sha256:9ba08cf3f3d1fecbd6b71a64747a6a6d18c7f8207a133654bb5ad15d65b2551f`.
+The fresh whole-root plan is `/tmp/s22-identity-b86bcf0.tfplan`, with text and
+JSON at `/tmp/s22-identity-b86bcf0.plan.txt` and
+`/tmp/s22-identity-b86bcf0.plan.json`. Saved-plan SHA-256 is
+`d708bf70686f69adcceeb934abdf46513fc32c078dbd48827e9c04e7199cb19a`.
+Plan result is **11 add / 13 change / 11 destroy**: only API/migration/eight
+worker task-definition revisions plus the migration trigger are replaced; the
+API service, eight EventBridge targets, and four RunTask policies follow those
+new revisions. No RDS, Cognito, S3, CloudFront, DNS, secret, KMS, network,
+security-group, approver-roster, schedule-state, or business-data resource
+changes exist. Task definitions differ substantively only by the immutable
+image; the API provider rendering also drops redundant `hostPort: 8000` while
+retaining container port 8000 and `awsvpc` mapping. Reviewed inputs preserve
+LA/USD, S21 jobs enabled, trusted cleanup/continuous HubSpot/operational
+hardening disabled, and production approver identities enabled.
+
+Required human action: approve this exact saved Terraform plan. After approval,
+run:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-identity-b86bcf0.tfplan`.
+Then require successful migration and stable API digest, publish the exact SPA,
+invalidate CloudFront, run deploy smoke, prove non-SystemAdmin `/me`
+canonicalization and the connected approval submission in an isolated fixture,
+and ask the product owner to reload Caesars. Do not mutate Caesars and do not
+merge main before acceptance.
+
+**2026-10-07 22:30 PDT — USER CLICK-THROUGH REPRODUCED A SECOND IDENTITY
+BOUNDARY; CANONICAL `/me` FIX IMPLEMENTED AND LOCALLY VERIFIED, NOT YET
+DEPLOYED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current committed HEAD
+`d67d0e2e13311190b5250056dad1dcddc28a8be9`. Dirty work is intentionally
+limited to `api/app/routers/me.py`, `api/tests/test_cognito_auth.py`, and new
+`api/tests/test_me.py`; it must be reviewed and committed next. No build,
+browser, test, Terraform, migration, or deployment process is active.
+
+The owner's Caesars screenshot shows the deployed approval-plan UI and Sales
+readiness row, but the pre-submit editor is absent and the header submit button
+is disabled even though readiness says there are no blockers. The first lost
+boundary is now identified: `web/src/pages/v2/SowWorkspace.tsx` derives
+`canSubmit` from `/me`; `api/app/routers/me.py::get_me` returned the raw
+Cognito access-token principal, whose UUID/email fields are the Cognito
+subject, instead of the existing invited DealGate user that owns Caesars. The
+browser therefore disabled submission before calling the approval endpoint.
+The preceding `220e2ea` fix canonicalized actors *inside* the approval router,
+so its deployed isolated SystemAdmin proof passed, but it did not repair the
+earlier `/me` gate exercised by the product owner's non-SystemAdmin session.
+
+Read-only cloud evidence: Cognito subject
+`b18bd590-0091-70b4-5ab6-376d9998f196` resolves to
+`srikanthp@smartek21.com` / `Srikanth Parimi`; staging is still ECS API
+revision 92 on image `s22approvals-220e2ea`. No Caesars business data was
+changed. The new regression constructs an access-token-shaped principal whose
+subject differs from an already invited deal-owner row and proves `/me`
+returns the invited row without creating a duplicate. It failed before the
+application edit and now passes. `get_me` now resolves through the existing
+`ensure_user` authority and returns the canonical id/email/name/groups.
+
+Focused verification on the dirty fix: backend identity/Cognito/approval
+scope **23 passed**, Ruff passed; frontend workspace/approval scope **16
+passed** and TypeScript passed. Exact next command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git diff -- api/app/routers/me.py api/tests/test_me.py api/tests/test_cognito_auth.py`.
+Then commit/push, build immutable API and exact SPA artifacts, create and
+inspect a fresh whole-root Terraform plan with the preserved S22 variables,
+and stop for explicit approval of that exact plan before apply. After apply,
+verify a non-SystemAdmin `/me` identity against the configured owner and repeat
+the connected approval submission proof. Do not merge main before product-owner
+acceptance.
+
+**2026-10-07 21:50 PDT — DEPLOYED APPROVAL PIPELINE EVIDENCE COMMITTED AND
+PUSHED; WAITING FOR PRODUCT-OWNER ACCEPTANCE.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`220e2ea45bd60db0ea4898ac98e71703206525ab`, deployed-evidence commit
+`575c9f2e6bd22f109ae2087d417fce35d7a58383`. The branch was clean and matched
+origin immediately after that checkpoint; only this resume-pointer update is
+dirty before its documentation commit. No local or cloud operation is active.
+Staging remains healthy on API revision 92 / image `s22approvals-220e2ea` /
+digest `sha256:02a5869649672d486f970930cc5d8c5ffb637697899a83dae7d1bbe086961af2`
+and SPA `assets/index-CTxg0uij.js`. Exact resume command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git show --stat --oneline 575c9f2`.
+Review `docs/s21/evidence/staging/s22-gm-cta/report.md` and the `03b`/`04`
+screenshots. Await the product owner's staging click-through; do not merge main
+without explicit approval.
+
+**2026-10-07 21:48 PDT — APPROVAL PIPELINE FIX DEPLOYED AND CONNECTED GREEN;
+PRODUCT-OWNER STAGING CLICK-THROUGH NEXT.** Authoritative tree:
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`; branch
+`fix/s22-gm-cta`; application commit
+`220e2ea45bd60db0ea4898ac98e71703206525ab`; pre-deploy docs checkpoint
+`2efc8d0a47de93e001fc39ab6ce95b3561ee3fe2`. The updated browser proof,
+screenshots, report and this handoff are dirty before the evidence checkpoint.
+No test, browser, build, Terraform, migration or deployment process remains
+active. Main remains untouched and no merge is authorized.
+
+The owner approved `/tmp/s22-approvals-220e2ea-v2.tfplan`; Terraform applied
+exactly **11 add / 13 change / 11 destroy**. Migration task
+`ba8b342f4c514ab89ba0cce66bd3f132` exited 0. ECS is stable 1/1 on API task
+definition revision 92 and running task `090713936a064026a5a1749f768f40a4`,
+image `s22approvals-220e2ea`, digest
+`sha256:02a5869649672d486f970930cc5d8c5ffb637697899a83dae7d1bbe086961af2`.
+`/api/healthz` is green. The live SPA is `assets/index-CTxg0uij.js` and
+`assets/index-BLyNqDZt.css`; CloudFront invalidation
+`IBZBRLMZFKFDDSRPB00J836GWM` completed.
+
+Deploy smoke `smoke 20261008T044244Z` passed on the exact service-bound digest;
+its fixture cleanup and the final leakage gate reported zero test-tagged
+clients and zero e2e approvers on real SOWs. The fresh connected browser proof
+passed **1/1 in 3.0 minutes** against the deployed SPA/API/RDS. It independently
+reproved fixed-fee revenue, quantity/allocation weighted costs, GM persistence,
+Confirm SOW dates/staffing/Sales, save/reload and submission. The new screenshot
+`docs/s21/evidence/staging/s22-gm-cta/03b-approval-plan-green-gm.png` shows the
+configured real pipeline: Stage 1 Delivery/Sales/HR, Stage 2 Finance/Legal,
+and CEO not required for the saved green GM. After submit,
+`04-approvals-pipeline-status.png` shows Delivery/HR/Sales pending and
+Finance/Legal queued. The isolated fixture was deleted; Caesars remained
+read-only.
+
+Local focused verification on the application commit remains 34 backend
+approval tests, 25 frontend confirmation/approval tests, TypeScript, Ruff and
+production build green. Conditional below-floor CEO routing is covered by the
+same authoritative backend state-machine tests and frontend Stage 3 regression;
+the deployed green branch confirms CEO is omitted when policy passes. The full
+E2E TypeScript command is still blocked by four inherited unrelated errors in
+the S14/S17 specs recorded in the evidence report; the affected deployed spec
+compiled and passed through Playwright.
+
+Exact next action: product owner opens the existing Caesars SOW on
+`https://app.dealgateapp.com`, completes Confirm SOW if needed, opens Approvals,
+and verifies the five configured real reviewers and conditional CEO summary.
+Do not merge main before explicit acceptance. Resume with
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short --branch && git rev-parse HEAD`;
+then inspect the evidence checkpoint and only address a reproduced click-through
+defect. No infrastructure action is pending.
+
+**2026-10-07 17:24 PDT — APPROVAL PIPELINE CANDIDATE AND REVIEWED TERRAFORM
+PLAN READY; HUMAN APPLY APPROVAL REQUIRED.** Authoritative tree:
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`; branch
+`fix/s22-gm-cta`; application commit
+`220e2ea45bd60db0ea4898ac98e71703206525ab`; preceding handoff checkpoint
+`35e7fbc8a9d76de9896e624722f6a2a77b5094b4`. No test, build, browser,
+deployment, migration or Terraform operation is active. Only this handoff
+update is dirty before its docs checkpoint. Main remains untouched.
+
+Immutable API image `s22approvals-220e2ea` is in ECR at digest
+`sha256:02a5869649672d486f970930cc5d8c5ffb637697899a83dae7d1bbe086961af2`.
+The exact production SPA build is `assets/index-CTxg0uij.js` and
+`assets/index-BLyNqDZt.css`. The fresh whole-root plan is saved as
+`/tmp/s22-approvals-220e2ea-v2.tfplan`, with reviewed text and JSON at
+`/tmp/s22-approvals-220e2ea-v2.plan.txt` and
+`/tmp/s22-approvals-220e2ea-v2.plan.json`.
+
+Plan result: **11 add / 13 change / 11 destroy**. The 11 delete/create pairs
+are the API and migration task definitions, eight worker task definitions and
+the migration trigger. The 13 in-place changes repoint the API service, eight
+EventBridge targets and four RunTask policies to the new revisions. Normalized
+task-definition comparison found no non-image container change. No RDS, S3,
+Cognito, production-approver, SES, secret, KMS, network, security-group,
+Route53, CloudFront or schedule-rule change exists. Reviewed inputs are image
+tag `s22approvals-220e2ea`, timezone `America/Los_Angeles`, currency `USD`,
+S21 jobs enabled, trusted cleanup/continuous HubSpot/operational hardening
+disabled, and `production_approver_identities_enabled=true`.
+
+Required human action: approve this exact saved Terraform plan. After approval,
+run:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-approvals-220e2ea-v2.tfplan`.
+Then require the migration gate and stable API digest, publish only the exact
+SPA above, invalidate CloudFront, run deploy smoke and the isolated approval
+pipeline proofs, and leave Caesars business data read-only. No merge to main
+before product-owner acceptance.
+
+**2026-10-07 17:20 PDT — APPROVAL PIPELINE IDENTITY/ROUTING FIX COMMITTED;
+STAGING ARTIFACT/PLAN PREPARATION NEXT.** The authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`220e2ea45bd60db0ea4898ac98e71703206525ab`. The application tree was clean
+immediately after that commit; only this incremental handoff update is dirty.
+No test, build, browser, deployment, migration or Terraform operation is
+active. Main remains `3ef55e576508af70e5c34d8593eec09db1d01560` in its
+separate worktree and was not changed.
+
+The approvals screen defect is reproduced and fixed locally. Root cause was an
+identity-boundary mismatch: deal APIs canonicalized the authenticated Cognito
+`sub` to the existing invited `users.id` by normalized email, while
+`api/app/routers/approvals.py::_require_submit` compared the raw Cognito UUID
+directly with `opportunity.owner_id`. The Caesars owner is the current invited
+row, but the Cognito subject is different; the API therefore returned 403 and
+`SowWorkspacePage` hid the pre-submit editor. This is why Confirm SOW could
+show configured functions while Approvals was empty. The deployed roster was
+inspected read-only and already contains defaults for Delivery, HR, Sales,
+Finance, Legal and CEO; no customer business record or roster was mutated.
+
+Commit `220e2ea` canonicalizes approval actors through the existing
+`ensure_user` path, uses that canonical identity for plan, submit, read,
+decision, route, group and condition endpoints, and mirrors normalized-email
+ownership in the UI while keeping server authorization authoritative. Confirm
+SOW now includes Sales. The Approvals editor renders the actual state machine:
+Stage 1 Delivery/Sales/HR, Stage 2 Finance/Legal, and Stage 3 CEO only when the
+saved GM is below a configured floor. It displays the configured reviewer
+names/emails and refuses submission when a function has no eligible reviewer.
+
+Verification on `220e2ea`: backend approval/routing scope **34 passed**;
+frontend confirmation/approval scope **25 passed**; the final staged-pipeline
+test **10 passed**; TypeScript passed; Ruff passed; `git diff --check` passed;
+the production SPA build succeeded before the final label-only stage alignment
+and must be rebuilt from the exact commit for deployment. The first broad
+container run produced 15 non-product failures because the mounted tests did
+not receive `api/pyproject.toml`'s `asyncio_mode=auto`; rerunning the identical
+scope with `--asyncio-mode=auto` produced 34/34. An earlier focused container
+also mounted source under `/app/api` while the image imported `/app/app`; that
+tested the old image and was discarded. Do not repeat either harness mistake.
+
+Staging is still the prior accepted quantity candidate: API task definition
+revision 91, image `s22quantity-60a8901`, digest
+`sha256:3ac0c6771f56c6b71f7bf348f1bedd3ed269a9fd64702197043d612b6e9ea868`,
+frontend `assets/index-D4d4XS3r.js` / `assets/index-DcoHFPrW.css`. The approval
+fix is **not deployed yet**. Exact next commands: from the authoritative tree,
+run `git status --short --branch && git show --stat --oneline 220e2ea`; rebuild
+the SPA from `220e2ea`, build/push an immutable API image tagged from that
+commit, then create and inspect a fresh whole-root Terraform plan using the
+same S22 variables, including
+`production_approver_identities_enabled=true`. Stop for explicit approval of
+that exact saved plan before apply. After apply, verify API image/digest and
+SPA asset identifiers, run the isolated connected green-GM and below-floor
+pipeline proofs, preserve Caesars read-only, and request product-owner staging
+acceptance. No merge to main before that acceptance.
+
+**2026-10-07 15:31 PDT — GENERIC STAFFING QUANTITY FIX DEPLOYED; CONNECTED
+PROOF AND RELEASE GATES GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** The
+authoritative tree is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`,
+branch `fix/s22-gm-cta`, application commit
+`60a8901a307d1c9ff06fcf640eb25258df7fd6d1`, deployed-evidence commit
+`2dc136f7a57210c4f8218627759f127c4cd31c4a`. Only this handoff update is dirty
+before its checkpoint commit. No server, worker, test, browser, build,
+deployment, migration or other owned process is active. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; its six pre-existing modified
+S19 screenshots remain untouched.
+
+The approved Terraform plan applied exactly **11 add / 13 change / 11
+destroy**. Migration task `3ba05ec61e9540b19f7c4fc675951b7f` succeeded.
+ECS is stable 1/1 on `officeapp-dev-api:91`, image
+`s22quantity-60a8901`, digest
+`sha256:3ac0c6771f56c6b71f7bf348f1bedd3ed269a9fd64702197043d612b6e9ea868`.
+The live SPA is `assets/index-D4d4XS3r.js` plus
+`assets/index-DcoHFPrW.css`; CloudFront invalidation
+`ICL06VS5744E62NGEHRHAQ7F3E` completed. `/api/healthz` is green. Deploy smoke
+`smoke 20261007T222706Z` passed on the same task/digest, and the cleanup gate
+reported zero test-tagged clients and zero e2e approvers on real SOWs.
+
+The fresh connected staging proof passed twice, latest **1/1 in 1.6
+minutes**, with no retries. It independently proved a fixed-fee plan with two
+people at 100% and one at 50%: `176 x USD 30 x (2 + 0.5) = USD 13,200` labor;
+USD 2,500 additional cost; USD 15,700 total cost; USD 59,700 gross profit;
+79.2% GM on USD 75,400 revenue. Confirm SOW displayed the actual saved People
+values `2` and `1`, preserved them and GM after reload, completed scope, and
+entered the real approvals pipeline. Evidence is in
+`docs/s21/evidence/staging/s22-gm-cta/report.md`, especially
+`03a-confirm-sow-quantity-weighted-staffing.png`. The owner's Caesars record
+was inspected read-only and never mutated.
+
+Root cause: the authoritative engine already multiplied per-person hours by
+saved `quantity * allocation` exactly once, but `_staffing_from_gm` converted
+the typed assignment to a `StaffingLine`/JSON contract that omitted quantity.
+The generic fix preserves every saved quantity and defaults legacy per-person
+rows to one. There is no contract-specific hardcoding. One separate visual
+discrepancy remains: the Confirm SOW GM summary includes commercial additional
+costs correctly, while the legacy editable Direct costs list can still say
+`No direct costs`; it does not alter calculated total cost or GM and is not
+silently claimed fixed.
+
+Exact next action: product-owner staging click-through at
+`https://app.dealgateapp.com`. Open the existing Caesars Confirm SOW page and
+verify People `2` / `1`, allocations `100%` / `50%`, labor USD 21,000 and GM
+72.1% after a fresh reload. Do not merge main before explicit acceptance.
+Resume with:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git rev-parse HEAD`.
+If further work is requested, first fix the commercial-cost-to-confirmation
+list projection with a focused regression; do not change the calculation
+formula or the owner's business data.
+
+**2026-10-07 15:01 PDT — GENERIC STAFFING QUANTITY FIX COMMITTED/PUSHED;
+REVIEWED TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`60a8901a307d1c9ff06fcf640eb25258df7fd6d1`. The tree was clean before this
+handoff-only update; no build, test, browser, deployment or migration process
+is active.
+
+Immutable API image `s22quantity-60a8901` exists at digest
+`sha256:3ac0c6771f56c6b71f7bf348f1bedd3ed269a9fd64702197043d612b6e9ea868`.
+The production frontend build succeeded as `assets/index-D4d4XS3r.js` and
+`assets/index-DcoHFPrW.css`. The authoritative saved Terraform plan is
+`/tmp/s22-quantity-60a8901.tfplan`, with text and JSON renderings at
+`/tmp/s22-quantity-60a8901.plan.txt` and
+`/tmp/s22-quantity-60a8901.plan.json`: exactly **11 add, 13 change, 11
+destroy**. The delete/create pairs are only the API/migration and eight worker
+task definitions plus the migration trigger; in-place changes repoint the API
+service, eight EventBridge targets and four RunTask policies. No RDS, S3,
+Cognito, approver, secret, network, schedule-state or business-data resource
+changes are planned.
+
+Required human action: approve only this saved S22 staffing-quantity plan.
+Exact next command after approval:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-quantity-60a8901.tfplan`.
+Require the migration gate and stable API digest, publish the already-built SPA
+through the established S3/CloudFront path, then run deploy smoke and the
+focused grouped-headcount connected proof. Keep the owner's Caesars record
+read-only and do not merge main before acceptance.
+
+**2026-10-07 14:58 PDT — GENERIC STAFFING QUANTITY DISPLAY FIX VERIFIED
+LOCALLY; COMMIT AND DEPLOY NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, clean starting checkpoint
+`c55ececc1dd453cdc0159e7d7249bfd3e5c25c11`. Six owned application/test files
+plus this handoff are dirty. No build, test, browser, migration or deployment
+operation is active.
+
+The owner's Caesars GM v7 was inspected read-only through the deployed API. Its
+saved typed inputs are two Offshore consultants at 100% plus one at 50%, each
+with 280 per-person hours and USD 30/hour. The authoritative engine correctly
+stored USD 75,400 revenue, USD 21,000 labor cost, USD 54,400 gross profit and
+72.1485411% GM. The engine already applies `hours x quantity x allocation x
+cost_rate` exactly once; the defect is visual/API-contract only:
+`StaffingLine` and Confirm SOW serialization discarded the saved commercial
+assignment's `quantity`, so two people appeared as one line without headcount.
+
+The generic fix adds headcount to the shared confirmation DTO/JSON contract,
+copies every typed assignment's actual saved quantity, retains quantity 1 for
+legacy per-person resource rows, and adds a People column to the reusable
+Confirm SOW staffing table. It contains no customer, amount, dates, role,
+geography or pricing-profile special case. Regression tests failed first on
+the missing People field. After the fix: confirmation UI suites **21/21
+passed**, TypeScript passed, the full focused confirmation/commercial/calendar/
+persistence backend set passed, Ruff passed and `git diff --check` passed.
+
+Exact next commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git status --short`,
+then commit the six application/test files and this handoff, push the feature
+branch, build immutable API and SPA artifacts, and generate/review a fresh
+whole-root Terraform plan. Stop for its required human approval before apply.
+After rollout, prove arbitrary grouped headcount/allocation on an isolated
+fixture and then ask the product owner to check Caesars. Do not merge main
+without explicit acceptance.
+
+**2026-10-07 14:40 PDT — DEPLOYED STAFFING PROOF COMMITTED/PUSHED; STOP FOR
+PRODUCT-OWNER ACCEPTANCE.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, pushed evidence checkpoint
+`fcc5e34ff6d870e4b4d8b990cbc34a48e4992bcb`; use `git rev-parse HEAD` for the
+handoff-only commit containing this entry. Application fix is
+`75f0dd0e2399e0ca734bca1bb03a24cc2fd3a36c`. No process or operation is
+active, and the tree was clean before this entry. Staging is stable on API
+revision 90 and the exact digest recorded below. Exact next action is the
+product owner's fresh-session click-through of the existing Caesars SOW:
+verify its saved roles appear under Confirm SOW after reload, then continue to
+Approvals. Do not merge main without explicit acceptance.
+
+**2026-10-07 14:39 PDT — CONFIRM SOW STAFFING FIX DEPLOYED; CONNECTED PROOF
+AND RELEASE GATES GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** Authoritative tree
+is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current pre-evidence head
+`76d9059cebaa982a0e4d1b4a42632bf4a0c0c913`, with application fix
+`75f0dd0e2399e0ca734bca1bb03a24cc2fd3a36c`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched. The focused
+proof spec, evidence report, four refreshed screenshots and this handoff are
+the only owned dirty files. No build, test, browser, deployment or migration
+process is active.
+
+Terraform applied exactly the approved **11 add / 13 change / 11 destroy**
+plan. Migration task `d0d2bc55620c416596512f8f627b34d4` succeeded. ECS is
+stable 1/1 on task definition `officeapp-dev-api:90`, image
+`s22staffing-75f0dd0`, digest
+`sha256:9e94acdea2271094dd1637a796e32c3cf1e89d092aa489c9b50ca11365d37afe`.
+`/api/healthz` returned `ok`. The existing matching frontend remains
+`assets/index-NGaZkXeJ.js`; no SPA change was required for this backend
+serializer fix.
+
+The fresh-session connected proof is **1 passed in 1.7 minutes**. It used an
+isolated server-issued fixture and the deployed SPA/API/RDS/Cognito identities.
+Confirm SOW displayed both saved commercial staffing roles (`Senior
+consultant` and `Consultant`), rejected the exact `No staffing lines yet`
+regression, preserved those rows and 79.2% GM after reload, then completed
+scope and persisted the real pending/queued approval pipeline. Deploy smoke
+`smoke 20261007T213844Z` passed on the same task/digest. Final cleanup reported
+zero test-tagged clients and zero e2e approvers on real SOWs. The owner's
+Caesars record remained read-only.
+
+Exact next action is product-owner staging click-through at
+`https://app.dealgateapp.com`: open the Caesars SOW, confirm both staffing rows
+under Confirm SOW, reload once, and continue to Approvals. Do not merge main
+without explicit acceptance. Before any subsequent work run
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git rev-parse HEAD`;
+commit/push only the proof spec, evidence report, four refreshed screenshots
+and this handoff if this checkpoint has not yet been committed.
+
+**2026-10-07 14:12 PDT — CONFIRM SOW STAFFING FIX COMMITTED/PUSHED; REVIEWED
+TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`75f0dd0e2399e0ca734bca1bb03a24cc2fd3a36c`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; its six unrelated modified S19
+screenshots are preserved. No build, test, browser, deployment or migration is
+active. Only this handoff update is dirty.
+
+The fix makes Confirm SOW serialize staffing from the authoritative saved
+`gm_model.commercial_inputs.staffing` component (including hybrid children),
+while retaining the legacy `resource_lines` path for historical GM versions.
+The regression failed before the implementation and the focused confirmation,
+commercial-persistence and commercial-profile suites are **98/98 passed**;
+Ruff and `git diff --check` passed. The owner's Caesars record was inspected
+read-only and was not mutated.
+
+Immutable ECR image `s22staffing-75f0dd0` exists at digest
+`sha256:9e94acdea2271094dd1637a796e32c3cf1e89d092aa489c9b50ca11365d37afe`.
+The authoritative saved plan is `/tmp/s22-staffing-75f0dd0.tfplan`, with text
+and JSON renderings at `/tmp/s22-staffing-75f0dd0.plan.txt` and
+`/tmp/s22-staffing-75f0dd0.plan.json`: exactly **11 add, 13 change, 11
+destroy**. The 11 delete/create pairs are the API and migration task
+definitions, eight scheduled-worker task definitions and the migration
+trigger. The 13 in-place changes repoint the API service, eight EventBridge
+targets and four RunTask policies. There are no RDS, S3, Cognito, approver,
+secret, network, schedule-state or business-data changes.
+
+Required human action: approve only the saved plan described above. Exact next
+command after approval:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-staffing-75f0dd0.tfplan`.
+Then require the migration gate and stable API rollout, add the staffing-row
+assertion to the existing disposable connected proof, run that focused proof
+and cleanup gate, and capture deployed evidence. Do not mutate the owner's
+Caesars record and do not merge main before product-owner acceptance.
+
+**2026-10-07 11:12 PDT — CONFIRM SOW STAFFING-ROW ROOT CAUSE FIXED LOCALLY;
+DEPLOYMENT PLAN NOT YET CREATED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, starting checkpoint
+`451bd0a1285a6ec37372409f2bc6854ccae48457`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; its six unrelated modified S19
+screenshots are preserved. Owned dirty files are
+`api/app/services/sow_confirmation.py`,
+`api/tests/test_sow_confirmation.py`, and this handoff. No process, test,
+browser, deployment or migration is active.
+
+The owner's Confirm SOW screenshot showed a saved GM v4 with USD 51,000 labor
+cost and 72.1% GM, but `No staffing lines yet`. The first lost boundary is
+confirmed: S21/S22 commercial saves persist the authoritative team under
+`gm_model.commercial_inputs.staffing` and intentionally leave the legacy
+`gm_model.resource_lines` relationship empty. `_staffing_from_gm` read only
+that legacy relationship, while `_compute_floors` read the commercial snapshot.
+The same immutable GM version therefore calculated correctly but serialized
+zero staffing rows. This was neither missing user data nor a browser cache
+issue; the owner's record remained read-only.
+
+A new regression first failed with one valid typed commercial staffing
+assignment producing zero confirmation rows. `_staffing_from_gm` now treats
+typed `commercial_inputs` as authoritative when present, recursively includes
+hybrid child components, and maps the saved role, seniority, location, explicit
+or calendar-derived hours, allocation, rates, cost and effective dates into
+the confirmation payload. Legacy GM versions still use `resource_lines`.
+Malformed historical typed inputs surface a precise warning rather than a
+fabricated row. Focused confirmation, commercial persistence and all seven
+commercial-profile suites are **98/98 passed**; Ruff and `git diff --check`
+pass.
+
+Exact next commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git status --short`,
+then commit the three owned files as
+`fix(s22): show saved commercial staffing on confirmation` and push. Build an
+immutable API image from that commit, generate/review a fresh whole-root
+Terraform plan while preserving production approver identities, and stop for
+the required human plan approval. After deployment, open an isolated saved
+commercial fixture in a fresh browser and prove Confirm SOW displays its rows
+beside the same GM version; do not mutate the owner's Caesars record and do not
+merge main before acceptance.
+
+**2026-10-07 11:02 PDT — STAGING EVIDENCE COMMITTED/PUSHED; WAITING ONLY FOR
+PRODUCT-OWNER CLICK-THROUGH.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, deployed proof checkpoint
+`26c075eb92859b8a698ca3680054a1bf7935ac89`; use `git rev-parse HEAD` for the
+handoff-only commit containing this entry. The source/evidence tree was clean
+before this entry, all operations are complete, and no process is active.
+Staging is `https://app.dealgateapp.com` on API revision 89, image/digest and
+frontend bundle recorded immediately below. Exact next action is the product
+owner's click-through: open an existing draft, save Staffing & GM, confirm the
+dates/GM/approval path on Confirm SOW, click Complete scope, submit on
+Approvals, and inspect the pending/queued stream. After explicit acceptance,
+follow branch policy for the main merge; until then do not merge or redeploy.
+
+**2026-10-07 11:00 PDT — RESTORED CONFIRM SOW FLOW DEPLOYED AND CONNECTED
+PROOF GREEN; PRODUCT-OWNER CLICK-THROUGH NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, current committed head
+`0b5a04620b29c9339d65a0a62029bb8d5efd937c`, with application fix
+`5cd52ea490729227b380988288455273e9282684`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched. The deployed-
+proof spec, report, four refreshed screenshots and this handoff are the only
+owned dirty/untracked files; no test, browser, deployment or migration process
+is active.
+
+Terraform applied exactly the approved **11 add / 13 change / 11 destroy**
+plan. Migration task `c7b7207dc72d435ca1c67b3e5eabbd3b` succeeded. The API
+is rollout-complete 1/1 on ECS task definition `officeapp-dev-api:89`, image
+`s22confirm-5cd52ea`, digest
+`sha256:a037c926b3b0691ed5209e6f96c6b9bde7cf3b8c6c4ee428caff772d3338d111`.
+The matching SPA is live as `assets/index-NGaZkXeJ.js` with CSS
+`assets/index-CGMBFthR.css`; CloudFront invalidation
+`I4P250ECLXKHD7DMFHW619SM02` completed. Deploy smoke
+`smoke 20261007T175159Z` passed on that exact task/digest and cleaned its
+fixture.
+
+Fresh-session connected proof is **1 passed in 2.0 minutes**. It used a
+server-issued disposable client, real Cognito roles, deployed SPA/API/RDS and
+the authoritative Decimal GM service. Two staffing rows (two people at 100%,
+one at 50%, 176 hours each at USD 30/hour) plus USD 2,500 Travel independently
+expected USD 75,400 revenue, USD 13,200 labor, USD 15,700 total cost, USD
+59,700 gross profit and 79.2% GM. The UI matched. Save then opened Confirm SOW
+with `2026-10-01` to `2026-10-31`, 79.2% GM, Delivery/HR/Finance/Legal and
+`CEO exception — Not required`; reload preserved them. `Complete scope`
+navigated to Approvals, real reviewer submission succeeded, and the page showed
+the persisted pending/queued review pipeline. Final cleanup gate reported zero
+test-tagged clients and zero e2e approvers on real SOWs.
+
+The first refreshed proof attempt stopped at disabled `Complete scope`. Trace
+evidence isolated it to the proof fixture confirming a null extracted
+signatory; dates, GM and staffing were intact. The fixture was deleted, an
+explicit client signatory was supplied, and the one relevant rerun passed. The
+green conditional-CEO path is proven deployed. The below-floor `CEO will
+trigger` branch remains covered by focused UI and backend routing tests from
+the same application commit, not by a second staging fixture in this
+checkpoint.
+
+Evidence is `docs/s21/evidence/staging/s22-gm-cta/report.md` and the four
+current PNGs linked there. Exact next commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git status --short`,
+then commit/push only the proof spec, report, four refreshed screenshots and
+this handoff. Stop for product-owner staging click-through at
+`https://app.dealgateapp.com`; do not merge main without explicit acceptance.
+
+**2026-10-07 01:09 PDT — CONFIRM SOW FIX COMMITTED/PUSHED; REVIEWED
+TERRAFORM PLAN AWAITS HUMAN APPROVAL.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`5cd52ea490729227b380988288455273e9282684`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560`; its six unrelated modified S19
+screenshots are preserved. No test, browser, deployment or migration process is
+active. Only this handoff update is dirty and should be committed after the
+checkpoint is reviewed.
+
+Immutable ECR image `s22confirm-5cd52ea` exists at digest
+`sha256:a037c926b3b0691ed5209e6f96c6b9bde7cf3b8c6c4ee428caff772d3338d111`.
+The authoritative saved plan is `/tmp/s22-confirm-5cd52ea-v2.tfplan`, with
+text rendering `/tmp/s22-confirm-5cd52ea-v2.plan.txt`: exactly **11 add, 13
+change, 11 destroy**. The 11 delete/create pairs are the API and migration task
+definitions, eight scheduled-worker task definitions, and the migration
+trigger. The 13 in-place changes repoint the API service, eight EventBridge
+targets and four RunTask policies to those new revisions. There are no RDS,
+S3, Cognito, approver-identity, network, secret, schedule-state or business-
+data changes. The first plan was rejected and renamed
+`/tmp/s22-confirm-5cd52ea.UNSAFE-29-destroys.stale` because a false production-
+approver flag would have removed 18 live identities; it must never be applied.
+
+Required human action: approve only the v2 plan described above. Exact apply
+command after approval:
+`env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-confirm-5cd52ea-v2.tfplan`.
+After apply, require a successful migration gate and stable API rollout on the
+recorded digest; publish the matching SPA from commit `5cd52ea` using only the
+checked-in `web/.env.production`; run deploy smoke; then execute the disposable
+fresh-session connected proof recorded in the next checkpoint. Do not mutate
+the owner's existing SOW and do not merge main before product-owner staging
+acceptance.
+
+**2026-10-07 01:04 PDT — CONFIRM SOW FLOW RESTORED LOCALLY; FOCUSED
+CONNECTED CONTRACTS GREEN, DEPLOYMENT NOT YET STARTED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, committed base
+`a2b11227418a0768dc02d930a1ee821763ca5ec2`. The six owned application/test
+files listed below plus this handoff are dirty; no other worktree was changed.
+Main remains `3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six unrelated
+S19 screenshot modifications preserved. No test, browser, deployment or
+migration process is active.
+
+The S22 simplification had disconnected the still-existing Confirm SOW screen:
+the workspace commercial-save callback refreshed Staffing & GM and exposed
+Submit directly, while the historical `StaffingGate` navigation to
+`/sows/new?opportunityId=<id>` became unreachable when that dedicated route was
+removed. The workspace callback now navigates to Confirm SOW only after the
+authoritative commercial save succeeds. Invalid inputs still remain in the
+editor and focus their named blocker. Saving an unconfirmed draft also stamps
+the commercial model's service start/end into the SOW's existing audited
+`term_start`/`term_end` provenance fields, so confirmation opens with the same
+dates. Submitted/immutable SOW versions are never rewritten.
+
+The existing Confirm SOW implementation remains the single review page: it
+shows extracted scope, contract dates, saved server GM, Delivery/HR/Finance/
+Legal approvers, and a conditional CEO exception. Green GM shows CEO as not
+required; below-floor GM shows that CEO will trigger. `Complete scope` persists
+confirmation and navigates to Approvals. The existing approval stream displays
+package status plus approved, active and queued reviewers. Submission still
+retains the previously approved Sales lane in routing policy v2; this change did
+not silently remove it.
+
+Focused evidence on the dirty tree: frontend confirmation/workspace/reviewer
+tests **21/21 passed**; backend commercial persistence, SOW confirmation,
+approval routing and Sales review tests **34/34 passed**; `npm run typecheck`
+passed; `git diff --check` passed before this handoff edit. New regressions
+prove Save → Confirm SOW (and no direct Submit), populated start/end and GM,
+four functional lanes plus green CEO-not-required, persisted draft terms, and
+approved/pending/queued status after submission. Owned dirty files:
+`api/app/services/commercial_models.py`,
+`api/tests/test_s21_commercial_persistence.py`,
+`web/src/pages/v2/SowWorkspace.tsx`, and the three focused web test files
+`WorkspaceCommercialAction.test.tsx`, `SowStudio.test.tsx`, and
+`S21ReviewerPlan.test.tsx`.
+
+Exact resume commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git diff --check && git status --short`,
+then review and commit the seven owned files as
+`fix(s22): restore confirm SOW before approvals`. Push the feature branch,
+build an immutable API image from that committed revision, create a fresh
+whole-root Terraform plan, and stop for the required human plan approval.
+After apply, publish the matching SPA using checked-in `web/.env.production`,
+verify API/task/image and frontend bundle identifiers, then prove in a fresh
+session with a disposable fixture: Staffing & GM Save → populated Confirm SOW
+→ green four-function path without CEO (plus a below-floor conditional-CEO
+fixture) → Complete scope → Approvals → Submit → visible pipeline statuses.
+Do not mutate the owner's existing SOW and do not merge main before product-
+owner staging acceptance.
+
+**2026-10-07 00:32 PDT — POST-DEPLOY LOGIN OUTAGE DIAGNOSED AND RESTORED;
+FRESH HOSTED-UI LOGIN GREEN.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, pushed proof checkpoint
+`b476de4896bd9134239a1da5cc7b122433acaec4`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched. The only current
+owned source-tree changes are this handoff, the deployment report and the
+manual deploy runbook correction; no application code, API, schema or business
+data changed in the recovery.
+
+Confirmed incident cause: the first manual SPA build supplied
+`VITE_COGNITO_DOMAIN=officeapp-dev-405473.auth.us-east-2.amazoncognito.com`
+without `https://`. `auth/cognito.ts` passed it to `window.location.assign`, so
+the browser treated it as a relative app path, repeatedly prefixed the Cognito
+path under `app.dealgateapp.com`, and eventually CloudFront returned HTTP 414.
+Root, the affected SOW route and `/api/healthz` remained HTTP 200; this was an
+SPA OAuth configuration outage, not an origin, API or database outage.
+
+The first emergency rebuild added HTTPS and eliminated the 414, but its manual
+`VITE_COGNITO_REDIRECT_URI=https://app.dealgateapp.com/` override correctly
+failed the fresh-session check with Cognito `redirect_mismatch`. AWS inspection
+confirmed the registered callback is
+`https://app.dealgateapp.com/auth/callback` and logout is the site root. The
+final build removed all interactive overrides and used the checked-in
+host-agnostic `web/.env.production`. It is live as
+`assets/index-dqUPUe4H.js` (CSS `assets/index-CGMBFthR.css`), CloudFront
+invalidation `ICQ1QCRL5JXEXS6V5DJFFZTIQ4` completed. A fresh unauthenticated
+browser received app HTTP 200, one 302 to the absolute Cognito authorize URL,
+then Cognito login HTTP 200 with a 329-character URL and the correct encoded
+`/auth/callback`. A real hosted-UI sign-in using the isolated staging identity
+returned to `https://app.dealgateapp.com/command`, title `DealGate`, with the
+DealGate shell visible. The earlier connected GM proof remains valid because
+the application source and API did not change.
+
+`docs/runbooks/deploy.md` now requires the checked-in production environment,
+explicitly unsets interactive Vite overrides, and makes fresh Cognito redirect
+plus real login a post-invalidation gate. No process is active. Exact next
+commands: `git diff --check && git diff -- docs/runbooks/deploy.md docs/s21/evidence/staging/s22-gm-cta/report.md docs/s21/claude-handoff.md`,
+then commit and push those three documentation updates. Stop for product-owner
+acceptance; do not merge main.
+
+**2026-10-07 00:24 PDT — SIMPLIFIED STAFFING & GM DEPLOYED PROOF GREEN;
+PRODUCT-OWNER ACCEPTANCE NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, pushed pre-proof head
+`60fde64f55e89ff924196fb64ca8afe9a4a5fcbb`, with deployed application
+checkpoint `e92b4ddfef82d0bc808f3fe524773f8dc874b5f7`. The refreshed proof spec,
+report and four screenshots listed below are the only owned changes awaiting
+the final evidence commit. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched.
+
+The approved Terraform plan applied exactly **11 add, 13 change, 11 destroy**.
+Migration task `e2518e23e4794eeeafb7aea0d051e255` succeeded. Staging API is
+rollout-complete on ECS task definition `officeapp-dev-api:88`, image
+`s22simple-e92b4dd`, running digest
+`sha256:34dc726a5e1e4fd034d74c7513bb3d9d812459a2f1ecce3388880f3bff16a455`.
+Deploy smoke `smoke 20261007T071522Z` passed on that exact task/digest and its
+cleanup gate was clean. The matching SPA is live as
+`assets/index-BPgaqF0W.js` and `assets/index-CGMBFthR.css`; CloudFront
+invalidation `I23X1YLBST202823ESU3DXJ0F5` completed and `/api/healthz`
+returned 200.
+
+Fresh-session connected proof is **1 passed in 2.6 minutes**. Its disposable
+draft deliberately carried the user's failing legacy shape: 21 empty decimal
+strings in the seven-day calendar. The deployed page discarded the unusable
+calendar shell, displayed one `Fix row 1 hours` action, focused Hours 1, and
+never exposed a Pydantic validation dump. Two compact staffing rows (two people
+at 100%, one at 50%, 176 hours each, USD 30/hour) plus a USD 2,500 Travel cost
+produced the independent expectation: USD 75,400 revenue, USD 13,200 labor,
+USD 2,500 direct costs, USD 15,700 total cost, USD 59,700 gross profit and
+79.2% displayed GM. Save persisted GM v1 across a full reload; the workspace
+action became Submit for approval, the real reviewer plan submitted, and the
+action became View review status. Final teardown gate: zero test clients and
+zero e2e approvers on real SOWs.
+
+Current evidence is
+`docs/s21/evidence/staging/s22-gm-cta/report.md` and its four linked PNGs.
+Opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remained read-only. The
+full e2e typecheck still reports only four historical errors in numeric specs
+22/23/24; the updated deployed-proof spec has no type error. No deployment,
+migration, test, browser or server process is active. Exact next command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git diff --check`,
+then validate and commit only the proof spec/report/screenshots plus this
+handoff. Stop for product-owner staging acceptance; do not merge main.
+
+**2026-10-07 00:06 PDT — LIVE/LOCAL MISMATCH CONFIRMED; LEGACY EMPTY-CALENDAR
+COMPATIBILITY FIX GREEN, NEW DEPLOYMENT ARTIFACT REQUIRED.** Authoritative tree
+is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`. The pushed application checkpoint is
+`e92b4ddfef82d0bc808f3fe524773f8dc874b5f7`. Main remains
+`3ef55e576508af70e5c34d8593eec09db1d01560` and is untouched.
+
+The user screenshot was taken against the preceding deployment, not the
+simplified candidate. Direct inspection confirms staging still runs API ECS
+task definition revision 87 and SPA `assets/index-DYV1BgxV.js`. That explains
+why the page still shows Workstream, timezone, revenue allocation, the full
+seven-day calendar and other controls removed in application commit
+`1cded57bb1d5b6a77f1f63791bc68db9453a195c`: the prepared Terraform plan had
+not received human approval and was not applied.
+
+The screenshot also exposed a real candidate compatibility defect. Historical
+auto-saved drafts can contain a legacy calendar object whose 21 weekday hour
+values are empty strings. `CommercialModelEditor.inheritMissingRoleDates`
+previously preserved that invalid shell, so auto-preview sent it to
+`PricingComponent` and surfaced 21 Pydantic decimal errors before the new
+simple Hours control could resolve the row. The editor now recursively discards
+only legacy calendars containing blank hour values; valid historical calendars
+remain intact. The authoritative calculation service consequently sees
+`calendar:null` and can return its existing exact row/role `enter total hours`
+blocker rather than an internal validation dump.
+
+Focused evidence: the new regression first failed because preview received
+`calendar.week[0..6]` with blank scheduled/billable/paid strings, then passed
+after the normalization change. The full
+`web/src/__tests__/v2/CommercialModelEditor.test.tsx` file is **7/7 passed** and
+`npm run typecheck` passed. No deployment, migration, browser run or server is
+active. The first replacement image command failed before build because it used
+`api/` as the Docker context while the Dockerfile copies root-relative `api/`
+and `worker/` paths; no artifact was pushed by that attempt. The corrected
+root-context build succeeded. ECR image `s22simple-e92b4dd` has digest
+`sha256:34dc726a5e1e4fd034d74c7513bb3d9d812459a2f1ecce3388880f3bff16a455`.
+The prior `s22simple-1cded57` plan was renamed with a `.stale` suffix and must
+not be applied.
+
+The fresh whole-root plan is `/tmp/s22-simple-e92b4dd.tfplan`, with text at
+`/tmp/s22-simple-e92b4dd.plan.txt`: **11 add, 13 change, 11 destroy**. As in
+the reviewed predecessor, replacements are only revisioned API/migration/eight
+scheduled-worker task definitions plus the migration trigger; in-place changes
+are the API service, eight EventBridge targets and four run-task policies that
+follow those revisions. There is no RDS, S3, Cognito, network, secret or other
+persistent-resource change. Human approval is required before apply. Exact
+apply command after approval:
+`env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-simple-e92b4dd.tfplan`.
+After apply, publish the matching SPA, then prove the affected SOW in a fresh
+session without mutating its business data.
+
+**2026-10-06 23:56 PDT — SIMPLIFIED STAFFING & GM DEPLOYMENT PLAN READY;
+HUMAN TERRAFORM APPROVAL REQUIRED.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application commit
+`1cded57bb1d5b6a77f1f63791bc68db9453a195c` and pre-plan documentation
+checkpoint `2acab1e3abb830107d81d573a586dd1808718f2a`. The branch is based on
+deployed-proof checkpoint
+`c475286e060df25c006d1d158e07ddb0c36ad5df`, and is not merged to main. Main
+remains `3ef55e576508af70e5c34d8593eec09db1d01560` in
+`/Users/srikanthparimi/OfficeApp/dealgate`. No worker or other worktree owns
+files in this checkpoint, no unmerged worker commit exists, and no test,
+browser, server, migration or deployment is active.
+
+User-visible behavior on this commit: Contract & pricing no longer shows Cost
+basis, workstream, timezone, monthly allocation or source-evidence controls.
+Billing schedule is one dropdown with Weekly, Bi-weekly, Monthly and Fixed
+after project delivery. Team & additional costs is one compact resource grid
+(role, seniority, location, people, utilization, total hours, applicable bill
+rate, cost/hour and dates), one added-cost table and the live server GM panel.
+The separate Monthly plan & expenses and Review & save sections were deleted;
+the only checkpoint action is Save. The workspace header follows the same
+state machine: a named incomplete field is focused, a valid preview offers
+Save, save reloads the authoritative version, and the next action becomes
+Submit for approval instead of looping back to Staffing & GM.
+
+The authoritative backend now accepts explicit per-person total hours when no
+calendar is supplied, distributes them over service months without losing the
+entered total, applies headcount and partial allocation once, and keeps the
+monthly rows needed by Forecast. Fixed-fee revenue does not require a bill
+rate. Resource cost plus additional cost feeds the same server Decimal GM
+calculation. Cost basis is no longer a completeness gate. SOW/auto-staffing
+proposals preserve separate role and seniority plus total hours, so an applied
+proposal appears directly in the compact table. Legacy stored calendars are
+preserved until a user deliberately enters total hours; then the explicit
+hours replace that row's calendar basis.
+
+Evidence on exact application HEAD `1cded57`: web affected suites **74/74
+passed** (commercial editor, all seven profiles, proposal prefill, plan team,
+draft recovery, direct cost and connected workspace action); readiness/CTA
+follow-up **22/22 passed**; `npm run typecheck` passed. API focused calendar,
+commercial-profile and proposal suites **118/118 passed**, including an
+independently asserted fixed-fee example with one full and one 50%-allocated
+row: USD 75,400 revenue, USD 43,200 resource cost, USD 2,500 additional cost,
+USD 45,700 total cost and USD 29,700 gross profit. The production build passed
+as `assets/index-D4fqjjS9.js` and `assets/index-CGMBFthR.css`; only the existing
+Vite chunk/dynamic-import warnings remain. The earlier failed broad frontend
+run was caused by tests that required the deliberately removed calendar,
+monthly, Cost basis and Preview controls; those tests were updated to retain
+their payload, persistence and model-isolation assertions, and the resulting
+affected run is green.
+
+The immutable API candidate is present in ECR as
+`officeapp-dev-api:s22simple-1cded57`, digest
+`sha256:3d9a1472c4bbc687411387618489df32ff0835eb66efa3c7ac3a6e2205f498e5`.
+A whole-root Terraform plan is saved at `/tmp/s22-simple-1cded57.tfplan` and
+its text rendering at `/tmp/s22-simple-1cded57.plan.txt`: **11 add, 13 change,
+11 destroy**. All 11 delete/create pairs are revisioned ECS task definitions
+(API, migration and eight scheduled jobs) plus the migration trigger; all
+replacements are caused by the immutable container image or migration trigger.
+The 13 in-place changes are the API service, eight EventBridge targets and four
+run-task policies following the new task revisions. The plan contains no RDS,
+S3, Cognito, network, secret or other persistent-resource change. This is a
+required human infrastructure gate and has not been applied.
+
+Deployed state is still the preceding candidate: API ECS revision 87, image
+`s22gm-23001678`, digest
+`sha256:265feaa8a18192e40dceba21fbf46096515f5abb44c4e7246d70676365f3c243`,
+and SPA `assets/index-DYV1BgxV.js`. Therefore none of the simplification above
+is claimed on staging yet. No schema migration is introduced by this commit.
+The owner's real opportunity
+`bbefb2b0-90fc-4a7c-8995-bbe637b44654` remains read-only; use a disposable
+fixture for mutations and cleanup it through the established smoke gate.
+
+Exact resume commands:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git rev-parse HEAD`,
+then, only after explicit approval of the plan above,
+`env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-simple-1cded57.tfplan`.
+If `/tmp` was cleared, regenerate the whole-root plan with image tag
+`s22simple-1cded57` and the recorded staging variables before asking for a new
+approval; never reconstruct or partially apply it. After apply, verify the
+migration task and API service stability, publish the SPA from application
+commit `1cded57`, run the focused deploy smoke and fresh-session fixed-fee
+Staffing → GM → Save → Submit proof, capture before/after screenshots, and
+update this entry with image/task/bundle identifiers. Do not mutate the owner
+record and do not merge main before product-owner acceptance.
+
+**2026-10-06 22:48 PDT — S22 GM/CTA CANDIDATE DEPLOYED AND CONNECTED
+PROOF GREEN; OWNER ACCEPTANCE NEXT.** Authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, committed HEAD
+`a85918430a591f08292d43ec88843d7d4a7d7c03` (connected proof/evidence), with
+application fix checkpoint `9b46d9db0a06f18ea8cac3e1b018512680a6579d`;
+none of this branch is merged to main. The tested API image `s22gm-23001678`
+was built from deploy checkpoint `23001678fd65ec0a9e8ba01e06f0a32fbb9fbf38`
+and is live as ECS task definition
+revision 87 with running digest
+`sha256:265feaa8a18192e40dceba21fbf46096515f5abb44c4e7246d70676365f3c243`.
+Migration task `f159f3a9db6e4f55a5f7ef6d898e3747` succeeded. The matching SPA is live as
+`assets/index-DYV1BgxV.js`; CloudFront invalidation
+`I9N87XU7RDHU5RX0IG2DPS79L6` completed. Deploy smoke
+`smoke 20261007T053037Z` passed on the exact task/digest and its teardown gate
+reported zero fixture residue.
+
+Fresh-session proof is green: **1 passed in 2.7 minutes**. It created a
+server-issued SOW fixture, restored two India staffing rows totaling 2.5 FTE,
+focused the exact missing calendar, calculated through the deployed service,
+saved GM v1, fully reloaded the page, submitted the five-reviewer plan and
+observed persisted `pending_delivery_hr` plus `View review status`. Independent
+expectation and deployed result agree: USD 75,400 revenue, USD 13,200 labor
+cost, USD 62,200 gross profit and 82.5% displayed GM. Fixed-fee revenue
+calculated with null hourly client billing rates. Four screenshots and the
+exact command are in `docs/s21/evidence/staging/s22-gm-cta/report.md`.
+Teardown completed and `scripts/check-test-data-clean.sh` reports zero fixture
+clients and zero e2e approvers on real SOWs.
+
+The owner's opportunity `bbefb2b0-90fc-4a7c-8995-bbe637b44654` remains
+read-only. Its post-deploy preview now returns revenue `75400.00` with all
+cost-derived fields null, plus explicit current blockers for
+`billing_cadence`, `cost_basis` and `costs_confirmed`; nothing was silently
+zeroed or guessed.
+
+Two unsuccessful proof runs are retained as diagnostic history, not product failures:
+
+1. Run 1 stopped before fixture creation because
+   `tests/e2e/fixtures/multi-role-auth.ts` expected the old flat approver-secret
+   shape; the deployed secret stores shared metadata plus a nested `roles`
+   object. All role slots therefore fell back to one SystemAdmin identity.
+   The harness fix accepts both shapes without logging secret values.
+2. Run 2 reached the real deployed workspace and proved the application
+   boundary works: header `Fix row 1 calendar`; reason `Row 1 · Senior
+   consultant: no confirmed calendar. Correction: add a working calendar.`;
+   term Oct 1–31, three people / 2.5 FTE, fixed fee USD 75,400, restored server
+   draft. The run failed only because the test expected the longer accessible
+   name `Fix row 1 working calendar`. Playwright cleared the transient failed-run
+   trace when the green run started; the same observed state is preserved as
+   `docs/s21/evidence/staging/s22-gm-cta/01-before-known-revenue-and-row-blocker.png`.
+
+This checkpoint adds the auth-shape repair, connected deployed proof spec,
+four evidence PNGs, this handoff and its concise report. Existing full e2e
+typecheck has four unrelated historical errors in specs 22/23/24; neither new
+file appears in the error output. No test, browser, migration or deployment is
+active. Exact next command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git diff --check`;
+review and commit only the owned harness/evidence/handoff files, validate every
+referenced path, then stop for product-owner staging acceptance. Do not merge
+main.
+
+**2026-10-06 22:19 PDT — S22 STAFFING/GM RECURRENCE FIX, LOCAL CANDIDATE
+COMMITTED; DEPLOYMENT NEXT.** Authoritative integration tree for
+this repair is `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch
+`fix/s22-gm-cta`, application checkpoint
+`9b46d9db0a06f18ea8cac3e1b018512680a6579d`, based on verified deployed main
+baseline `3ef55e576508af70e5c34d8593eec09db1d01560`. The tree is clean before
+this handoff-only update and none of the repair is merged to main. Main
+worktree `/Users/srikanthparimi/OfficeApp/dealgate` remains on the baseline and
+has six pre-existing modified S19 screenshot PNGs; preserve them. No test,
+server, migration, browser or deployment process is active.
+
+Live read-only reproduction used opportunity
+`bbefb2b0-90fc-4a7c-8995-bbe637b44654`. Do not mutate that business record.
+Its persisted commercial draft has fixed fee USD 75,400, service dates
+2026-10-01 through 2026-12-01 and three India staffing assignments totaling
+2.5 FTE, but `billing_cadence`, `cost_basis`, `costs_confirmed` and every
+working calendar are absent. `GET /delivery-model/{id}` returns `gm_model:null`;
+posting the unmodified draft to preview returns incomplete with an empty
+finance summary. This proves the first loss is commercial validation, not the
+SOW dates, browser cache or an undeployed old bundle. The deployed API is ECS
+revision 86, image `s21main-792feaa6`, digest
+`sha256:865c06eacd92d4a3d1110a967e1f16075633ecf11c396449ae5a23ae86dcc53a`;
+the deployed SPA is `assets/index-Dnv1r9ua.js`.
+
+Root causes and fixes in the dirty candidate:
+
+- `api/app/gm/finance_summary.py::commercial_finance_summary` discarded all
+  known fixed-fee revenue whenever staffing was incomplete. It now returns
+  the confirmed fee while every cost-derived value remains null.
+- `api/app/gm/commercial.py::_calendar_rows` dropped the staffing row number
+  from calendar/rate gaps. It now retains 1-based row and role evidence;
+  fixed-fee calculation still correctly ignores hourly bill-rate gaps.
+- `web/.../readiness.ts::nextValidStep` consulted only the last saved model,
+  while `CommercialModelEditor.calculate(true)` never refreshed the parent.
+  The editor now reports its authoritative preview/save state to the workspace,
+  the header focuses the first named correction or runs calculate/save, a save
+  reloads the snapshot, and a complete below-floor model labels the existing
+  CEO-exception submission route. No approval or permission check is bypassed.
+- Preview responses are request-number guarded and draft writes are serialized
+  with optimistic stamps so old responses cannot replace newer state.
+  Provisional fixed-fee geography follows an explicitly applied team only when
+  the allocation basis is marked proposed/defaulted; confirmed allocations are
+  untouched. AI advice remains provisional and its estimated GM is never copied
+  into the saved financial model.
+
+Focused evidence on this exact dirty tree: API **90/90** passed across
+`test_s22_finance_summary.py`, `test_s21_commercial_profiles.py` and
+`test_s21_commercial_persistence.py`, including independently checked
+USD 75,400 revenue, USD 26,400 labor cost, USD 49,000 gross profit and
+save/reload of 2.5 FTE (two full plus one half allocation). Web **42/42** passed
+across ApprovalReadiness, CommercialModelEditor, Finance/GM presentation,
+PlanTeamPanel and the new connected WorkspaceCommercialAction coverage;
+TypeScript is clean and the production Vite build completed as
+`assets/index-DYV1BgxV.js` plus `assets/index-BTGXDqY1.css`. The connected test clicks the real header action,
+prevents save on an incomplete input and focuses Cost basis, then calculates,
+saves, reloads and observes `Submit for approval` without leaving the Staffing
+tab. Historical React Router v7 future warnings are non-failures.
+
+Exact resume command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta && git status --short && git log -2 --oneline`.
+Then build the immutable API image and SPA,
+prepare and inspect a fresh whole-root Terraform plan with the currently
+enabled operational variables, deploy through the migration/API/worker gate,
+run focused smoke and a fresh-session browser proof using an isolated fixture,
+and record screenshots plus deployed identifiers. Do not merge main before the
+owner's staging acceptance.
+
 **2026-10-06 21:25 PDT — MERGED TO MAIN AND MAIN-IMAGE DEPLOY VERIFIED.**
 Owner explicitly directed “merge to main and deploy.” `main` fast-forwarded
 from `3502c9e6c9f2c75d7f79f17fc048c7d5bfa327bc` to application/deployment

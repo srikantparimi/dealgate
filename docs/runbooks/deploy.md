@@ -243,24 +243,33 @@ Do not retry unchanged code until green or relabel the failure as a flake.
 ## 6 · Build + publish the SPA
 
 Same immutable checkout as the API build (`SHORT_SHA` above). The Vite
-build reads Cognito env from repo secrets on CI; for a manual run,
-export them from `officeapp-dev-e2e-user`'s adjacent secret or a saved
-`.env.staging`.
+build reads Cognito env from repo secrets on CI. For a manual staging build,
+use the checked-in host-agnostic `.env.production`; do not override its
+Cognito values from an interactive shell. In particular, a hosted domain
+without `https://` becomes a relative URL and causes an expanding redirect
+path/CloudFront 414, while a redirect URI of `/` does not match Cognito's
+registered `/auth/callback` URL.
 
 ```bash
 (
   cd web
-  # env: use the same values the CI job pulls (see .github/workflows/deploy.yml).
-  export VITE_COGNITO_DOMAIN='officeapp-dev-405473.auth.us-east-2.amazoncognito.com'
-  export VITE_COGNITO_CLIENT_ID='dg2b6dhiu126bq459tthcmso2'
-  export VITE_COGNITO_REDIRECT_URI='https://app.dealgateapp.com/'
-  export VITE_COGNITO_LOGOUT_URI='https://app.dealgateapp.com/signed-out'
   npm ci
-  npm run build
+  env -u VITE_COGNITO_DOMAIN \
+      -u VITE_COGNITO_CLIENT_ID \
+      -u VITE_COGNITO_REDIRECT_URI \
+      -u VITE_COGNITO_LOGOUT_URI \
+      npm run build
 )
 
 aws s3 sync web/dist/ "s3://${S3_BUCKET}" --delete
 ```
+
+After invalidation, use a fresh browser context with no stored tokens. Opening
+`https://app.dealgateapp.com/` must reach the Cognito login URL on
+`https://officeapp-dev-405473.auth.us-east-2.amazoncognito.com`, with
+`redirect_uri=https://app.dealgateapp.com/auth/callback`, then a real login must
+return to `/command`. Treat a relative Cognito path, HTTP 414 or
+`redirect_mismatch` as a failed deployment.
 
 ---
 

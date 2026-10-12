@@ -48,6 +48,7 @@ from app.models.task import Task
 from app.models.user import User
 from app.services.signed_sow import (
     SignedSowError,
+    compute_diff,
     create_upload,
     release,
     verify as verify_document,
@@ -115,6 +116,29 @@ APPROVED_SIGNATORIES: list[dict] = [
     {"name": "Jane Doe", "role": "Client sponsor"},
     {"name": "Alex Roe", "role": "Delivery lead"},
 ]
+
+
+def test_signatory_diff_is_not_enforced_when_source_names_no_signers():
+    """Do not turn approval reviewers into contractual signing parties.
+
+    Missing source signers means there is no approved identity set. The signed
+    document can contain its actual signers; named source signers remain
+    strictly protected by the mismatch tests below.
+    """
+
+    approved = _approved_fields()
+    approved["signatories"]["value"] = None
+    executed = _approved_fields()
+    executed["signatories"]["value"] = [
+        {"name": "Actual Client Signer", "role": "Client sponsor"}
+    ]
+
+    result = compute_diff(approved, executed)
+    signatories = next(
+        field for field in result.fields if field["field"] == "signatories"
+    )
+    assert signatories["match"] is True
+    assert signatories["enforced"] is False
 
 
 def _approved_fields() -> dict:

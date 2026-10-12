@@ -473,6 +473,7 @@ export function listProjects(): Promise<{ items: ProjectRow[] }> {
 export interface OwnerRef {
   id: UUID;
   name: string;
+  email?: string;
 }
 
 export interface ClientListRow {
@@ -1477,6 +1478,8 @@ export interface SowConfirmationStaffingLine {
   role: string;
   seniority: string;
   location: "US" | "India" | string;
+  /** Grouped headcount. Older per-person confirmation rows omit it. */
+  quantity?: number;
   allocation_pct: DecimalStr;
   hours_billable: DecimalStr;
   hourly_bill_rate: DecimalStr;
@@ -1535,12 +1538,15 @@ export interface SowConfirmationFloors {
 
 export type SowConfirmationApproverFunction =
   | "delivery"
+  | "sales"
   | "hr"
   | "finance"
   | "legal";
 
 export interface SowConfirmationApprover {
   user_id: UUID | null;
+  name?: string | null;
+  email?: string | null;
   source: string;
   business_unit: string | null;
 }
@@ -1559,6 +1565,7 @@ export interface SowConfirmationNeedsYou {
 export interface SowConfirmationCeoGate {
   will_trigger: boolean;
   brief?: Record<string, unknown> | null;
+  approver?: SowConfirmationApprover | null;
 }
 
 export interface SowConfirmationSowVersion {
@@ -1801,7 +1808,7 @@ export interface DeliveryPolicyResult {
 export interface FinanceSummary {
   revenue: DecimalStr;
   labor_cost: DecimalStr | null;
-  direct_cost: DecimalStr;
+  direct_cost: DecimalStr | null;
   total_delivery_cost: DecimalStr | null;
   gross_profit: DecimalStr | null;
   labor_pct: DecimalStr | null;
