@@ -37,4 +37,12 @@ Process: branches off `main` (`feat/s22-p1` … `feat/s22-p3`), one 90-minute se
 5. Nightly alert through the notification outbox: roll-offs and below-floor engagements to the account owner.
 6. Reconciliation test: portfolio month total == Σ engagement forecasts == Σ allocation-month rows; CSV export of any portfolio view.
 
+## P4 — fixes from the product owner's first click-through (2026-10-12)
+
+1. Engine update in this pack: one-time additional costs now spread across the term by share of month, like a fixed price (was: all in month 1). Pull the new `api/app/services/forecast/__init__.py`; the 18 goldens still pass; no API change.
+2. Short engagements (duration ≤ 2 months): the Forecast tab shows the whole-term summary first and hides the month split behind "Show month split". The prototype has it.
+3. Portfolio table: month columns are labelled with the month ("Revenue · Oct 2026"), "GM % · whole term" for the term figure; subtitle explains that month columns are that month's slice.
+4. **Upload the sheet.** `POST /engagements/import-workbook` per the contract, using `api/app/services/forecast/workbook_import.py` (finished; `api/tests/forecast/test_workbook_import.py` proves it on the sample, the blank template and the product owner's own older copy in `fixtures/`). New-engagement page gets the upload box above the form, as the prototype. The response's `hours_check` is shown on the engagement header once ("Sheet said 168 h for Vikrin; app computes 160 — Labor Day"). CSV import stays.
+5. Per-person rows on the Forecast tab for fixed-fee types show hours (they do), labelled as such.
+
 Later, not now: what-if scenarios (clone, edit, compare, promote), forecast vs actuals from timesheets/invoices, AI adviser "what rate clears the floor". Each is a short directive against the same engine.
