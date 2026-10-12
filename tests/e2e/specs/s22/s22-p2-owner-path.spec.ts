@@ -228,6 +228,11 @@ test("S22 P2-6 · owner path: new engagement → five people → leaves → re-h
   await page.goto(`${BASE}/portfolio?month=${GAP_MONTH}`);
   await expect(page.getByRole("heading", { name: "Portfolio forecast" })).toBeVisible();
   await page.getByLabel("Client", { exact: true }).selectOption({ label: clientName });
+  // P4-3: month columns carry the month; the term column says "whole term"; the subtitle explains the slice
+  const portfolioTable = page.getByRole("table", { name: "Portfolio forecast" });
+  await expect(portfolioTable).toContainText(`Revenue · ${monthLabel(GAP_MONTH)}`);
+  await expect(portfolioTable).toContainText("GM % · whole term");
+  await expect(page.getByText(/the month columns show only .* slice of each engagement/)).toBeVisible();
   const row = page.getByRole("table", { name: "Portfolio forecast" }).locator("tbody tr").filter({ hasText: clientName });
   await expect(row).toHaveCount(1, { timeout: 60_000 });
   await expect(row).toContainText("Staff augmentation");
