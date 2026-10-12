@@ -67,6 +67,28 @@ AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 scripts/check-test-data-clean.sh
 
 Leak gate + nightly sweep now recognise the `S22 e2e ` tag (b108465; the worker half ships with the next image).
 
+## Round 1 staging result and the leak it exposed
+
+Both S22 specs passed on staging against `s22-520f5174` (`2 passed (55.8s)`), `scripts/check-test-data-clean.sh` read clean — but a token-based count found 2 engagements and 10 tagged people left behind: the e2e bot is a test identity under the S21 runtime isolation and could not delete a client it had created through the new `POST /clients` (bug #4). Staging was cleaned through the app's deletion service (one-off task `b2aeab40279e4238b4a8410e9502c2c5` on `officeapp-dev-api-migrate:35`, exit 0, audited as the bot; both deletion jobs `done`) and `DELETE /resources` × 10; the extended gate now reads `0 test-tagged clients + 0 e2e approvers + 0 tagged people + 0 tagged engagements`.
+
+## Round 2 candidate (bugs #4 #5 #6)
+
+| Item | Value |
+| --- | --- |
+| Commit | `feat/s22` @ `6259cda5` |
+| Image | `officeapp-dev-api:s22-6259cda5` · digest `sha256:226582e71a86c67db607c848804dd11e8eaa1f687822e1a84b0a49e701863bfd` · 104,952,223 bytes · linux/amd64 |
+| SPA | `web/dist` from `6259cda5` → `assets/index-Lv6YxA3F.js` (client options now read `/api/portfolio/clients`) |
+| Migration | none new (head stays `20261012_0065_portfolio_forecast`; the migration task re-runs idempotently) |
+| Plan | `/tmp/s22-6259cda5.tfplan` — **12 to add, 14 to change, 12 to destroy**: the twelve replacements are the image-only task definitions (api, migrate, the migration trigger, and all nine scheduled workers incl. `portfolio_scheduler`); the fourteen updates are the API service, nine EventBridge targets and four RunTask policies; zero creates; every container image moves `s22-520f5174` → `s22-6259cda5`; no other resource changes. Same inputs as round 1. |
+| Checksums | tfplan `42514b9c40b5a6a248a98fd7c0d0044c77c990e3c17f444d3baddc4b6cd15ca6` · plan.txt `16ffbc37a6f62fbe27af6f2ab8678d255ed186a2e097404f7a2901a0299d5be6` · plan.json `1f1be3261844a35ea19700f16a90773bc0b8ff502d0c419237bae57b66303cf4` |
+| Local proof | both specs pass through the fixture path (P2-6 now covers Setup & costs and the Portfolio page); web vitest 89 files / 551 tests; S22 + fixture-access pytest 38 passed |
+
+Required human action: approve the round-2 plan. Exact apply command:
+
+```
+cd /Users/srikanthparimi/OfficeApp/dealgate-s22 && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-6259cda5.tfplan
+```
+
 ## Local full-stack rehearsal (same API code as the image, local Postgres)
 
 Stack: pgvector/pg16 container (`dealgate_e2e`, `alembic upgrade head` → `20261012_0065_portfolio_forecast`, seeds present), uvicorn `DEALGATE_ENV=local` with every role granted, Vite dev server same-origin through its `/api` proxy, `VITE_TEST_GROUPS` identity (bug #3).
