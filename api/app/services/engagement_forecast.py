@@ -1438,7 +1438,7 @@ async def portfolio_month(
             }
         )
 
-    rolloffs = await _rolloffs(session, month_start, engagement_ids={uuid.UUID(r["engagement_id"]) for r in rows})
+    rolloffs = await rolloffs_from(session, month_start, engagement_ids={uuid.UUID(r["engagement_id"]) for r in rows})
     bench = await _bench(session, month_start, month_end)
     portfolio_gm = margin_pct(revenue_total, cost_total)
     return {
@@ -1473,7 +1473,7 @@ async def _current_allocations_with_context(session: AsyncSession) -> list[tuple
     return [tuple(r) for r in (await session.execute(stmt)).all()]
 
 
-async def _rolloffs(session: AsyncSession, month_start: date, *, engagement_ids: set[uuid.UUID]) -> list[dict[str, Any]]:
+async def rolloffs_from(session: AsyncSession, month_start: date, *, engagement_ids: set[uuid.UUID]) -> list[dict[str, Any]]:
     """Allocations ending within 60 days of the month start with no later allocation for the same resource."""
 
     cutoff = month_start + timedelta(days=ROLLOFF_WINDOW_DAYS)
@@ -1492,6 +1492,7 @@ async def _rolloffs(session: AsyncSession, month_start: date, *, engagement_ids:
         out.append(
             {
                 "engagement_id": str(eng.id),
+                "engagement": eng.name,
                 "allocation_id": str(alloc.id),
                 "client": client,
                 "resource": res.name,
