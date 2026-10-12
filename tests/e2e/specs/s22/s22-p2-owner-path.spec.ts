@@ -126,6 +126,12 @@ test("S22 P2-6 · owner path: new engagement → five people → leaves → re-h
   await expect(page.getByTestId("engagement-heading")).toHaveText(`${CLIENT_NAME} · Portal & data platform staffing`, { timeout: 60_000 });
   await expect(page.getByRole("tab", { name: "Allocations" })).toBeVisible();
   const engagementUrl = page.url();
+  // Rule 18 / S21-12: the breadcrumb names the client and the engagement, never the UUID.
+  const breadcrumb = page.getByRole("navigation", { name: /breadcrumb/i });
+  await expect(breadcrumb).toContainText(CLIENT_NAME, { timeout: 60_000 });
+  await expect(breadcrumb).toContainText("Portal & data platform staffing");
+  await expect(breadcrumb).not.toContainText(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i);
+  await expect(breadcrumb).not.toContainText(/\b[0-9a-f]{8}\b [0-9a-f]{4}\b/i);
 
   // 2 · Five people
   for (const person of PEOPLE) await addPerson(page, person);
