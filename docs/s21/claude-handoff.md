@@ -2,16 +2,17 @@
 
 ## RESUME HERE
 
-**2026-10-11 23:54 PDT — MANAGED-SERVICE MONTHLY T&M RATE FIX AND REVIEWED
-STAGING PLAN READY; HUMAN APPLY APPROVAL REQUIRED.** Authoritative feature tree is
+**2026-10-12 00:13 PDT — MANAGED-SERVICE MONTHLY T&M RATE FIX DEPLOYED AND
+FOCUSED STAGING PROOF PASSED; PRODUCT-OWNER ACCEPTANCE PENDING.** Authoritative
+feature tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-monthly-managed-service`, branch
-`fix/s22-monthly-managed-service`, application commit
+`fix/s22-monthly-managed-service`, current pre-handoff HEAD
+`29096ad349a986193d992b1129b854d6047720cc`, application commit
 `c9ed1698cc7bf69476c14701e0175b19ad8f2724`, based on `origin/main` at full
-SHA `7a19dbd4ebaaf8fddcd1899d1437e2175c4f930d`; pushed docs checkpoint before
-this plan is `03e1c2e6b1d11e332f19f80f9557ab03fdab81fe`. This handoff update is
-the only expected dirty file. No server, worker, browser, migration, deployment,
-or Terraform operation is active; deployed API remains
-revision 95 on the older main image and does not contain this fix.
+SHA `7a19dbd4ebaaf8fddcd1899d1437e2175c4f930d`. This handoff update is the only
+expected dirty file until committed. No server, test, browser, migration,
+deployment or Terraform operation is active. Do not merge to main before the
+product owner's staging acceptance.
 
 Root cause: `create_gm_model_version` sent every non-fixed contract through
 `hours * hourly_bill_rate`, so a managed-service SOW with extracted
@@ -36,8 +37,9 @@ build passed. One prior UI run had 29/30
 because changed explanatory copy no longer matched an existing assertion; the
 copy was aligned and the affected 20/20 rerun passed.
 
-Immutable AMD64 image `officeapp-dev-api:s22managed-c9ed169` is in ECR at
-digest `sha256:78e8ca204c10de326aded6a1cb69fe5aa2ba71db0f993c480a3c201f086471f0`.
+The user approved the exact reviewed Terraform plan. Immutable AMD64 image
+`officeapp-dev-api:s22managed-c9ed169` is deployed at digest
+`sha256:78e8ca204c10de326aded6a1cb69fe5aa2ba71db0f993c480a3c201f086471f0`.
 Reviewed saved plan `/tmp/s22-managed-c9ed169.tfplan` has SHA-256
 `b2f6b1288a26a64914648fe2954798b839297047235bcb0329d7f2db2d12e313`;
 text and JSON are `/tmp/s22-managed-c9ed169.plan.txt` and
@@ -50,17 +52,42 @@ new immutable image; the API service, eight EventBridge targets and four
 RunTask policies follow those revisions. Normalized API container comparison
 found only the image plus provider removal of empty arrays. There are no RDS,
 S3, Cognito, secret, KMS, network, security-group, Route53, CloudFront or SES
-changes. Inputs preserve S21 jobs and production approver identities enabled,
-America/Los_Angeles, USD, with trusted cleanup, continuous HubSpot and
-operational hardening disabled.
+changes. Apply completed exactly **11 added / 13 changed / 11 destroyed**.
+Migration task `7029774cc79d44508b05d9fbc96f9c29` succeeded. ECS service
+`officeapp-dev-api` is stable at task definition revision 96 with running task
+`cb06006e114f425ba9adc0877792ba8a`, zero pending tasks and rollout
+`COMPLETED`; the running container reports the exact candidate tag and digest.
+`/api/healthz` returns 200. Matching SPA `assets/index-DKxzqGzs.js` and
+`assets/index-BLyNqDZt.css` is published. CloudFront distribution
+`E1XAQZCROIFYG7` invalidation `IACQSPY6FRXE2RWFHOHVNPOJLJ` completed, and live
+HTML references `assets/index-DKxzqGzs.js`.
 
-Required human action: approve this exact saved Terraform plan. After approval,
-run `cd /Users/srikanthparimi/OfficeApp/dealgate-s22-monthly-managed-service && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-managed-c9ed169.tfplan`. Then verify migration exit, stable API on the
-recorded digest, publish only the already-built matching SPA
-`assets/index-DKxzqGzs.js` / `assets/index-BLyNqDZt.css`, invalidate CloudFront,
-run deploy smoke, and prove the affected managed-service SOW in a fresh session
-without mutating its business data. Do not merge main before product-owner
-acceptance.
+Deploy smoke `smoke 20261012T070652Z` passed image/model binding, health,
+isolated SOW upload, real extraction, confirmation and draft checks on this
+revision, then deleted client `38694a16-48e9-4242-aa56-db6a5204957e` and passed
+the zero-leak gate. One earlier smoke attempt used the obsolete historical
+username override and failed at Cognito before creating a fixture; removing the
+override used the current secret identity and resolved it. Never record the
+secret value.
+
+Focused deployed proof `s22-managed-rate-proof-20261012T071240Z` created an
+isolated equivalent rather than mutating the user's Sound Hound record. Exact
+inputs were managed service, `$17,688/month`, 2025-08-08 through 2025-11-18,
+500 hours and `$70/hour` cost. The staging save returned revenue
+`59682.73548387096774193548387`, cost `35000.000000000000`, and derived bill
+rate `119.3655`; a new GET returned the same three values, `complete=true` and
+an empty missing-input list. The dev-only force-purge endpoint returned HTTP
+500 for this fixture; normal audited client deletion returned 202/done and
+deleted its one opportunity. Final `scripts/check-test-data-clean.sh` result is
+clean: zero test-tagged clients and zero e2e approver leaks.
+
+Exact next action: product owner opens
+`https://app.dealgateapp.com/`, uploads or reopens a monthly time-and-materials
+SOW, and confirms Staffing & GM shows a derived bill rate and available GM.
+After explicit acceptance, merge through the established main release flow,
+deploy the resulting main image, and repeat the digest/smoke proof. If the
+dev-purge 500 is investigated later, reproduce only with a disposable fixture;
+it is a test-cleanup defect, not a user-workflow blocker.
 
 **2026-10-11 22:18 PDT — PRODUCT OWNER ACCEPTED; S22 SQUASHED TO MAIN AND
 MAIN IMAGE VERIFIED.** Authoritative release tree is
