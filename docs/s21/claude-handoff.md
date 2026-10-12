@@ -2,14 +2,15 @@
 
 ## RESUME HERE
 
-**2026-10-11 23:40 PDT — MANAGED-SERVICE MONTHLY T&M RATE FIX UNDER
-VERIFICATION.** Authoritative feature tree is
+**2026-10-11 23:54 PDT — MANAGED-SERVICE MONTHLY T&M RATE FIX AND REVIEWED
+STAGING PLAN READY; HUMAN APPLY APPROVAL REQUIRED.** Authoritative feature tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-monthly-managed-service`, branch
 `fix/s22-monthly-managed-service`, application commit
 `c9ed1698cc7bf69476c14701e0175b19ad8f2724`, based on `origin/main` at full
-SHA `7a19dbd4ebaaf8fddcd1899d1437e2175c4f930d`. This handoff update is the only
-expected dirty file. No server, worker, browser,
-migration, deployment, or Terraform operation is active; deployed API remains
+SHA `7a19dbd4ebaaf8fddcd1899d1437e2175c4f930d`; pushed docs checkpoint before
+this plan is `03e1c2e6b1d11e332f19f80f9557ab03fdab81fe`. This handoff update is
+the only expected dirty file. No server, worker, browser, migration, deployment,
+or Terraform operation is active; deployed API remains
 revision 95 on the older main image and does not contain this fix.
 
 Root cause: `create_gm_model_version` sent every non-fixed contract through
@@ -33,9 +34,33 @@ including a two-row partial-allocation case; impacted backend regression
 SOW UI 20/20 passed; TypeScript, Ruff, Python compile and the production web
 build passed. One prior UI run had 29/30
 because changed explanatory copy no longer matched an existing assertion; the
-copy was aligned and the affected 20/20 rerun passed. Exact next command:
-`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-monthly-managed-service && git push -u origin fix/s22-monthly-managed-service`, then prepare and review the
-staging Terraform plan. Do not merge main before product-owner acceptance.
+copy was aligned and the affected 20/20 rerun passed.
+
+Immutable AMD64 image `officeapp-dev-api:s22managed-c9ed169` is in ECR at
+digest `sha256:78e8ca204c10de326aded6a1cb69fe5aa2ba71db0f993c480a3c201f086471f0`.
+Reviewed saved plan `/tmp/s22-managed-c9ed169.tfplan` has SHA-256
+`b2f6b1288a26a64914648fe2954798b839297047235bcb0329d7f2db2d12e313`;
+text and JSON are `/tmp/s22-managed-c9ed169.plan.txt` and
+`/tmp/s22-managed-c9ed169.plan.json` with SHA-256
+`bca8e1c2d52f61edae62743eed59f1dbea2e0c946ff8c2fccbc0a63a9d5eb3aa` and
+`c2a5f2f6fd9c85dbb00b425881fec47c36dff83573697cd212611a2814ad7557`.
+The plan is exactly **11 add / 13 change / 11 destroy**: API, migration and
+eight worker task definitions plus the migration trigger are replaced for the
+new immutable image; the API service, eight EventBridge targets and four
+RunTask policies follow those revisions. Normalized API container comparison
+found only the image plus provider removal of empty arrays. There are no RDS,
+S3, Cognito, secret, KMS, network, security-group, Route53, CloudFront or SES
+changes. Inputs preserve S21 jobs and production approver identities enabled,
+America/Los_Angeles, USD, with trusted cleanup, continuous HubSpot and
+operational hardening disabled.
+
+Required human action: approve this exact saved Terraform plan. After approval,
+run `cd /Users/srikanthparimi/OfficeApp/dealgate-s22-monthly-managed-service && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-managed-c9ed169.tfplan`. Then verify migration exit, stable API on the
+recorded digest, publish only the already-built matching SPA
+`assets/index-DKxzqGzs.js` / `assets/index-BLyNqDZt.css`, invalidate CloudFront,
+run deploy smoke, and prove the affected managed-service SOW in a fresh session
+without mutating its business data. Do not merge main before product-owner
+acceptance.
 
 **2026-10-11 22:18 PDT — PRODUCT OWNER ACCEPTED; S22 SQUASHED TO MAIN AND
 MAIN IMAGE VERIFIED.** Authoritative release tree is
