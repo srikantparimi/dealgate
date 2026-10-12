@@ -2,6 +2,24 @@
 
 ## RESUME HERE
 
+**2026-10-12 — S22 PORTFOLIO & FORECAST DEPLOYED TO STAGING (ROUND 2);
+AWAITING PRODUCT-OWNER CLICK-THROUGH.** Authoritative tree
+`/Users/srikanthparimi/OfficeApp/dealgate-s22`, branch `feat/s22`, pushed.
+Staging: API `officeapp-dev-api:98` on image `s22-6259cda5`
+(`sha256:226582e71a86c67db607c848804dd11e8eaa1f687822e1a84b0a49e701863bfd`),
+SPA `assets/index-Lv6YxA3F.js`, all worker families on the image, new family
+`officeapp-dev-portfolio-scheduler` rev 2 with EventBridge `cron(0 6 * * ? *)`.
+Both approved plans applied exactly (round 1 `s22-520f5174` 14/13/11, round 2
+12/14/12); migration head `20261012_0065_portfolio_forecast`; smoke GREEN
+both rounds; both S22 specs passed on staging; extended leak gate 0/0/0/0.
+Scoreboard: 15 of 18 `verified working (staging)`; P2-4 (from-deal
+pre-fill), P3-4, P3-5 `fixed and tested` with the exact remaining step in
+`docs/reports/s22/phase2-report.md`. Bugs #1–#6 fixed (`docs/bugs/s22.md`).
+No merge to main. Exact next step: Kanna clicks through
+`https://app.dealgateapp.com/portfolio`, `/engagements/new`,
+`/settings/forecast` and the "Create engagement from deal" button on a real
+Closed-Won deal; on acceptance, squash-merge `feat/s22` → `main`.
+
 **2026-10-12 — S22 PORTFOLIO & FORECAST: CODE COMPLETE, LOCALLY REHEARSED,
 STAGING APPLY AWAITS HUMAN APPROVAL.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22`, branch `feat/s22` (off

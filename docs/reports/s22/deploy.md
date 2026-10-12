@@ -89,6 +89,17 @@ Required human action: approve the round-2 plan. Exact apply command:
 cd /Users/srikanthparimi/OfficeApp/dealgate-s22 && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-6259cda5.tfplan
 ```
 
+## Round 2 apply and roll (2026-10-12, Kanna: "go ahead")
+
+| Step | Result |
+| --- | --- |
+| `terraform -chdir=infra-tf apply /tmp/s22-6259cda5.tfplan` (checksum verified first) | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed** — exactly the plan |
+| Migration task `5e1c79be2c08400cb8cc44e18ac5f2e7` on `officeapp-dev-api-migrate:36` | succeeded, exit 0 (1 m 42 s); head unchanged `20261012_0065_portfolio_forecast` |
+| API service | `officeapp-dev-api:98`, `services-stable`, 1/1, single PRIMARY; running task `b7f2605b…cc8c` on `s22-6259cda5`, digest `sha256:226582e71a86c67db607c848804dd11e8eaa1f687822e1a84b0a49e701863bfd` |
+| Worker families | alert-scheduler 50, notification-sender 50, renewals-scheduler 50, portfolio-scheduler 2, audit-export 50, hubspot-intake 49, hubspot-reconcile 49, forecast-plans 27, deletion-cleanup 27, api-migrate 36 — all `s22-6259cda5` |
+| Deploy smoke | `smoke 20261012T184432Z` GREEN; `[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs + 0 tagged people + 0 tagged engagements` |
+| SPA | `assets/index-Lv6YxA3F.js` synced (immutable) + `index.html` (no-cache); CloudFront invalidation `I5IFA4Y8YXXMFZ4BDPMOST5VW7` COMPLETED; served bundle contains the `/portfolio/clients` call |
+
 ## Local full-stack rehearsal (same API code as the image, local Postgres)
 
 Stack: pgvector/pg16 container (`dealgate_e2e`, `alembic upgrade head` → `20261012_0065_portfolio_forecast`, seeds present), uvicorn `DEALGATE_ENV=local` with every role granted, Vite dev server same-origin through its `/api` proxy, `VITE_TEST_GROUPS` identity (bug #3).

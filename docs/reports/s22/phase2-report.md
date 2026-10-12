@@ -1,65 +1,64 @@
-# S22 · Portfolio & Forecast — Phase 2 report (TEST AND FIX)
+# S22 · Portfolio & Forecast — Phase 2 report (TEST AND FIX) — final
 
-**Session:** S22-1 · **Branch:** `feat/s22` @ `8f644b2` (worktree `/Users/srikanthparimi/OfficeApp/dealgate-s22`) · **Written:** 2026-10-12 ·
-**Candidate image:** `officeapp-dev-api:s22-520f5174` (`sha256:5d35069925329ca4fe1480eee6f123c97c98bb5dd34adee3d1e026ac0a6e941f`) ·
-**Saved plan:** `/tmp/s22-520f5174.tfplan` (`c9ffd820…339eb`, 14 add / 13 change / 11 destroy) — see `docs/reports/s22/deploy.md`.
+**Session:** S22-1 · **Branch:** `feat/s22` (worktree `/Users/srikanthparimi/OfficeApp/dealgate-s22`), pushed ·
+**Staging now:** API `officeapp-dev-api:98` on image `s22-6259cda5` (`sha256:226582e71a86c67db607c848804dd11e8eaa1f687822e1a84b0a49e701863bfd`), SPA `assets/index-Lv6YxA3F.js`, all ten worker families + `api-migrate` on the same image, `officeapp-dev-portfolio-scheduler` rule ENABLED `cron(0 6 * * ? *)` ·
+**Written:** 2026-10-12 · companions: `deploy.md` (every apply, task, digest, checksum), `docs/bugs/s22.md` (bugs #1–#6, all fixed), `phase1-report.md`.
 
-## Where phase 2 stopped
+## Two rounds
 
-The deploy path that the last three S22 releases used (D5 as amended by S21F-02, rule 15) is: immutable image → reviewed whole-root Terraform plan → **human apply approval** → migration gate → API roll → SPA publish → CloudFront → smoke → specs on staging → owner click-through. Everything up to the approval is done and recorded; the apply is Kanna's prompt to answer, not mine. Nothing was mutated on AWS: the only writes were the image push to ECR and reading state for the plan.
-
-While waiting, the two staging specs were run against a local full stack (Postgres + migrations + uvicorn + Vite). Both pass; three bugs were found and fixed (bugs file). No item is `verified working (staging)` yet — every row below is honest about that.
+| Round | Image | What happened |
+| --- | --- | --- |
+| 1 | `s22-520f5174` | Kanna approved the saved plan (14/13/11). Migration task exit 0, API rev 97 stable, smoke `20261012T175338Z` GREEN, SPA published, both S22 specs passed on staging (55.8 s). A token-based count then found **2 engagements + 10 tagged people** left behind while the clients-only gate read clean (bug #4: the e2e bot is a test identity under the S21 runtime isolation and could not delete a client it had created through the new `POST /clients`). Cleaned through the app's deletion service as the bot (one-off task on the deployed image, audited) + `DELETE /resources`. |
+| 2 | `s22-6259cda5` | Fixes for #4 #5 #6. Kanna approved the saved plan (12/14/12, image-only). Migration task exit 0, API rev 98 stable, smoke `20261012T184432Z` GREEN, SPA published, both specs passed on staging (1.4 m) in their fixture-issued form, extended gate `0 clients / 0 approvers / 0 people / 0 engagements`, bot view after: 0 engagements, 0 people, calendar restored. API proofs on staging: importer (P1-6), roll-off + bench names and card==list (P3-2/P3-3), one portfolio-scheduler tick (exit 0). |
 
 ## Every item (rule 16 vocabulary)
 
-| Item | State | Proof |
+| Item | State | Proof (staging unless noted) |
 | --- | --- | --- |
-| P1-1 | fixed and tested | 18 engine goldens pass, also with the Postgres fixture; engine file untouched (71944e3). |
-| P1-2 | fixed and tested | migration 0065 + models; parity 3/3 + audit hardening 1/1 on Postgres; seeds confirmed on the local e2e DB (2 locations, 16 rate-card cells) (145a5af). |
-| P1-3 | fixed and tested | Client A golden to the cent through HTTP (pytest) and through the real local API over Playwright (`s22-p1-contract.spec.ts`, 4.7 s). |
-| P1-4 | fixed and tested | 24 routes; 16/16 pytest; permissions × 7 roles; engine-verbatim 422s; D1–D8 recorded. |
-| P1-5 | fixed and tested | contract spec passes locally with run-tag teardown (0 tagged rows after). **Staging run pending the apply.** |
-| P1-6 | fixed and tested | CSV importer pytest (workbook headers) + grid entry point. |
-| P2-1 | fixed and tested | grid exercised end to end locally: five people added through the draft row, Leaves, Re-hire, start edited in a yellow cell (P2-6 spec); vitest 11/11. |
-| P2-2 | fixed and tested | Forecast tab seen live: 8 months, people 5→4 in the gap month, Labour + burden, GM rows; tables now named (bug #2). |
-| P2-3 | fixed and tested | Setup & costs PATCH per field; costs add/edit/remove; vitest + pytest. |
-| P2-4 | fixed and tested | new engagement created through the real form with "+ New client…" (P2-6 spec); from-deal pre-fill + deal-page button (vitest). |
-| P2-5 | fixed and tested | Settings → Forecast calendar: burden edited and saved through the real page; the engagement's cost moved; calendar restored by teardown (P2-6 spec). |
-| P2-6 | fixed and tested | owner path passes locally end to end (36–38 s), rule-18 assertions incl. the named breadcrumb. **Staging run pending the apply.** |
-| P3-1 | fixed and tested | portfolio page (vitest); server totals; CSV export. |
-| P3-2 | fixed and tested | cards == lists (pytest); Below-floor card filters the table (vitest). |
-| P3-3 | fixed and tested | names only in roll-offs/bench (pytest + vitest); roll-off rows carry the engagement name. |
-| P3-4 | fixed and tested | `worker.portfolio_scheduler.process_renewals` 4 pytests (D8 boundary); Terraform family in the saved plan, **not applied**. |
-| P3-5 | fixed and tested | `process_nightly_digest` 2 pytests; EventBridge rule in the saved plan, **not applied**. |
-| P3-6 | fixed and tested | three-way reconciliation + CSV pytest; Export CSV button. |
+| P1-1 | verified working (staging) | deployed engine reproduces the Client A golden to the cent (`s22-p1-contract.spec.ts`, round 2); 18 goldens pass locally, engine file unmodified |
+| P1-2 | verified working (staging) | migration 0065 applied by the Terraform-owned task (round 1 + idempotent round 2, exit 0); seeds read back from `GET /settings/forecast`; parity + audit hardening green locally |
+| P1-3 | verified working (staging) | contract spec: totals, 12 month×assignment rows, per-row totals to the cent |
+| P1-4 | verified working (staging) | every contract route exercised on staging by the specs and API proofs; 17/17 pytest incl. permissions × 7 roles + runtime isolation; deviations D1–D8 |
+| P1-5 | verified working (staging) | contract spec passed on staging twice; fixture-issued client; teardown clean; gate 0/0/0/0 |
+| P1-6 | verified working (staging) | `POST /allocations/import` with the workbook's headers on staging: created 5; hours 3660 / labour 178984.00 / burden 31528.72 == golden; torn down |
+| P2-1 | verified working (staging) | owner path on staging: five people via the draft row, Leaves, Re-hire, yellow-cell edit, named breadcrumb |
+| P2-2 | verified working (staging) | owner path: Forecast tab, "Monthly view required", gap month blank for the leaver, assignment block |
+| P2-3 | verified working (staging) | owner path: Setup & costs pre-filled, type-driven greying, cost added, totals line |
+| P2-4 | fixed and tested | page + "+ New client…" proven (staging through the fixture client; "+ New client…" locally and in vitest, because test identities must not create unscoped clients). **"Create engagement from deal" pre-fill is proven by vitest only**: staging has no Closed-Won fixture deal and a real deal cannot be torn down — needs Kanna's click on a real Closed-Won deal |
+| P2-5 | verified working (staging) | owner path: burden +10 pts saved on the Settings page moved the engagement's cost; calendar restored afterwards |
+| P2-6 | verified working (staging) | `s22-p2-owner-path.spec.ts` passed on staging in round 2 (full path incl. Setup & costs and Portfolio page) |
+| P3-1 | verified working (staging) | owner path: portfolio row, URL filters, server totals row, Export CSV; CSV via API carries the totals row |
+| P3-2 | verified working (staging) | four cards rendered; API proof: each card equals its list (roll-offs 1/1, bench 1/1, below floor 0/0); pytest equality |
+| P3-3 | verified working (staging) | API proof: roll-off row names person, client and engagement; bench row names the person; no UUID-valued labels |
+| P3-4 | fixed and tested | worker deployed (family rev 2 on the image, rule ENABLED); one-off tick on staging exit 0 with no qualifying engagement; renewal behaviour (D8 boundary, deal vs manual) proven by 4 pytests. A staging renewal needs a fixture engagement ending within two months, which would leave owner tasks behind — left for the first scheduled tick with real data |
+| P3-5 | fixed and tested | same tick exit 0 (`digests=0`); once-per-owner-per-day digest proven by 2 pytests; a staging digest would email the bot owner through the outbox |
+| P3-6 | verified working (staging) | reconciliation pytest green; CSV export fetched on staging with header + totals row |
 
-Nothing is `missing`, `blocked` or `deferred` on the code side. Every row's remaining step is the same one: the staging deploy that needs the apply approval.
+Not `verified working (staging)`: P2-4 (from-deal pre-fill), P3-4, P3-5 — each with the exact remaining step above. No item is missing, blocked or deferred.
 
-## Bugs (docs/bugs/s22.md)
+## Bugs (docs/bugs/s22.md) — all fixed
 
-| # | Status |
-| --- | --- |
-| 1 · breadcrumb showed the engagement UUID | fixed 28b6c3f, spec asserts names only |
-| 2 · Forecast-tab tables unnamed | fixed cf16a79 |
-| 3 · local dev identity had no roles (never affected deployed builds) | fixed cf16a79 |
+| # | Found by | Fix |
+| --- | --- | --- |
+| 1 breadcrumb showed the engagement UUID | local rehearsal | 28b6c3f; spec asserts names only |
+| 2 Forecast-tab tables unnamed | local rehearsal | cf16a79 |
+| 3 role-less local identity (never affected deployed builds) | local rehearsal | cf16a79 |
+| 4 staging leak: test identity outside the S21 runtime scope | staging round 1 | 6259cda5 — scope on every forecast endpoint, test identities refused on `POST /clients`, fixture-issued spec clients, gate counts people + engagements |
+| 5 `/dev/purge-client` 500 (pre-existing ImportError) | staging cleanup | 6259cda5 |
+| 6 `GET /clients/forecast-options` shadowed by `GET /clients/{client_id}` | local curl | 6259cda5 → `GET /portfolio/clients` |
 
-Environment artefacts noted, not bugs: `test_auth` needs the gitignored `api/dev.db`; `test_approval_concurrency` needs a disposable Postgres (both green once the environment matched CI).
-
-## Test evidence (this phase)
+## Test evidence
 
 | Suite | Result |
 | --- | --- |
-| `api/tests/test_s22_portfolio_forecast.py` + `test_s22_portfolio_scheduler.py` | 22 passed (SQLite and fresh Postgres) |
+| full `api` suite from `api/`, fresh Postgres | exit 0, no failures (the earlier two `test_auth` failures were the repo-root working directory resolving an empty stray `dev.db`; CI runs from `api/`) |
+| `api/tests/test_s22_*` + fixture-access + dev-seed | 38 passed |
 | `api/tests/forecast` | 18 passed |
-| full `api` suite | green (see phase-1 report for the two environment artefacts) |
-| `web` tsc | clean |
-| `web` vitest (full) | see `docs/reports/s22/deploy.md` log line |
-| Playwright `specs/s22/*` local | 2 passed |
-| `terraform validate` / `fmt -check` | clean |
+| `web` vitest | 89 files / 551 tests; `tsc --noEmit` clean |
+| Playwright `specs/s22/*` | local 2 passed; staging round 1 2 passed; staging round 2 2 passed |
+| `scripts/deploy-smoke.sh` | GREEN both rounds |
+| `scripts/check-test-data-clean.sh` (extended) | clean after every staging run |
 
-## Exact resume (after Kanna approves the plan)
+## Next
 
-```
-cd /Users/srikanthparimi/OfficeApp/dealgate-s22 && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/s22-520f5174.tfplan
-```
-then the migration gate, API stable on the digest, `aws s3 sync web/dist/` with cache headers + CloudFront invalidation, `scripts/deploy-smoke.sh`, the two S22 specs with `E2E_BASE_URL=https://app.dealgateapp.com`, `scripts/check-test-data-clean.sh`, scoreboard flips to `verified working (staging)`, then Kanna's click-through. No merge to main before that click.
+Kanna's click-through on staging (`https://app.dealgateapp.com/portfolio`, `/engagements/new`, `/settings/forecast`); the from-deal button on a real Closed-Won deal is the one path only a human can safely try. No merge to main before that click. Merge = squash `feat/s22` → `main`, then the post-merge main-image redeploy as usual.
