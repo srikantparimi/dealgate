@@ -133,7 +133,7 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
       term_start: "2026-10-01",
       term_end: "2026-10-31",
       notice_date: "2026-10-15",
-      signatories: [{ name: "E2E Client Signatory", role: "Client" }],
+      signatories: [],
       engagement_type_suggested: "fixed_price",
     };
     for (const field of REQUIRED_FIELDS) {
@@ -304,6 +304,7 @@ test("fixed-fee staffing calculates, persists and advances without a CTA loop", 
     await expect(approvalPath).not.toContainText("unassigned");
     await expect(approvalPath).not.toContainText("group fallback");
     await expect(approvalPath).toContainText("Not required");
+    await expect(page.getByText("No signatories yet", { exact: false })).toHaveCount(0);
     await approvalPath.screenshot({
       path: path.join(EVIDENCE, "03c-confirm-sow-configured-reviewers.png"),
     });
@@ -393,7 +394,7 @@ test("below-floor GM adds the configured CEO to deployed confirmation", async ()
       term_start: "2026-10-01",
       term_end: "2026-10-31",
       notice_date: "2026-10-15",
-      signatories: [{ name: "E2E Client Signatory", role: "Client" }],
+      signatories: [],
       engagement_type_suggested: "fixed_price",
     };
     for (const field of REQUIRED_FIELDS) {

@@ -2,6 +2,39 @@
 
 ## RESUME HERE
 
+**2026-10-11 22:18 PDT — PRODUCT OWNER ACCEPTED; S22 SQUASHED TO MAIN AND
+MAIN IMAGE VERIFIED.** Authoritative release tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-main-release`, branch
+`release/s22-main`, commit
+`47114a7d0e74ce531d4bd400374dddd5eeed5490`; `origin/main` points to the same
+commit. The original main worktree
+`/Users/srikanthparimi/OfficeApp/dealgate` remains intentionally untouched at
+`3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six modified
+`docs/reports/s19-1/*.png` files. Feature branch `fix/s22-gm-cta` remains at
+`1f1cfdde7961d8a2991a3e390527b54943b7d401` and is fully integrated by squash.
+
+Application release commit `47114a7d` passed the focused backend suite, 13
+frontend files / 127 tests, TypeScript, production build and diff check. The
+immutable AMD64 image `s22main-47114a7d` is live at digest
+`sha256:6e53949139cec7e1defc405ae9c39225646bcb413c0c0b475a39692821d1266b`.
+Terraform plan `/tmp/s22-main-47114a7d.tfplan` (SHA-256
+`74d9085ee696620e3f916b8ed0537aaf0b0b0ca61a1d3a4a91cc33848ed02f04`)
+applied exactly 11 add / 13 change / 11 destroy; migration task
+`1044d03ecfbf40b8ab15aa17d2af8dcc` exited 0. API revision 95 is stable on task
+`0833ed718d0e4248a93b20d1dced3c0b` with the exact digest. SPA
+`assets/index-BV0ywWPM.js` is live after completed CloudFront invalidation
+`I9206I0QYKBBWOCHJOTEPNJWJE`.
+
+Deploy smoke `smoke 20261012T051311Z` passed upload, real extraction,
+confirmation, draft visibility and zero-leak cleanup on the exact main image.
+The connected deployed S22 proof then passed both journeys in 2.8 minutes with
+**empty source signatories**: green GM displayed Delivery, Sales, HR, Finance
+and Legal, enabled Complete scope, submitted and persisted the real approval
+pipeline; below-floor GM added the configured CEO. Refreshed evidence is in
+`docs/s21/evidence/staging/s22-gm-cta/`. No Terraform, migration, deployment,
+test or browser operation is active. Exact verification command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-main-release && env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 scripts/check-test-data-clean.sh`.
+
 **2026-10-08 11:35 PDT — SIGNATORY-GATE IMAGE AND REVIEWED TERRAFORM PLAN
 READY; HUMAN APPLY APPROVAL REQUIRED.** Authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta`, branch

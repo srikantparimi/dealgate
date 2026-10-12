@@ -1,35 +1,36 @@
 # S22 simplified Staffing & GM deployed proof
 
-Tested 2026-10-07 PDT against `https://app.dealgateapp.com` from branch
-`fix/s22-gm-cta`, application checkpoint
-`5909b7e8c4a46edbc3ab86bc47c8206279ec7675`. This is a generic confirmation
+Tested 2026-10-11 PDT against `https://app.dealgateapp.com` from deployed
+`main`, application commit
+`47114a7d0e74ce531d4bd400374dddd5eeed5490`. This is a generic confirmation
 and approval-identity fix; it contains no customer, role, geography, date,
 amount or pricing-profile special case.
 
 ## Deployed revisions
 
-- API: ECS task definition `officeapp-dev-api:94`, rollout completed 1/1
-- Image: `s22reviewers-5909b7e`
-- Digest: `sha256:3017ead9bbe4fa895a46c85efb45f7fa6477ff957b595f8bc087601d645bcc5a`
-- Frontend: `assets/index-o8IHvr-q.js`, CSS `assets/index-BLyNqDZt.css`
-- CloudFront invalidation: `I7PHN3TPJGSQCP10J5I4ILFY9M` (completed)
-- Migration task: `9504037f52e24092b995ed1defb67c36` (exit 0)
-- Deploy smoke: `smoke 20261008T062723Z` (green; cleanup gate clean)
+- API: ECS task definition `officeapp-dev-api:95`, rollout completed 1/1
+- Image: `s22main-47114a7d`
+- Digest: `sha256:6e53949139cec7e1defc405ae9c39225646bcb413c0c0b475a39692821d1266b`
+- Frontend: `assets/index-BV0ywWPM.js`, CSS `assets/index-BLyNqDZt.css`
+- CloudFront invalidation: `I9206I0QYKBBWOCHJOTEPNJWJE` (completed)
+- Migration task: `1044d03ecfbf40b8ab15aa17d2af8dcc` (exit 0)
+- Deploy smoke: `smoke 20261012T051311Z` (green; cleanup gate clean)
 
 ## Connected proof
 
 Command:
 
 ```sh
-cd /Users/srikanthparimi/OfficeApp/dealgate-s22-gm-cta/tests/e2e
+cd /Users/srikanthparimi/OfficeApp/dealgate-s22-main-release/tests/e2e
 env AWS_PROFILE=lm-arbiter-poc AWS_PROFILE_STAGING=lm-arbiter-poc \
   AWS_REGION=us-east-2 E2E_BASE_URL=https://app.dealgateapp.com \
   npx playwright test specs/s21/s22-gm-cta-deployed-proof.spec.ts \
   --project=chromium
 ```
 
-Latest focused results: the green-GM journey **passed in 1.5 minutes** and the
-below-floor CEO journey **passed in 1.7 minutes**. The fresh runs used
+Latest focused result: both deployed journeys **passed in 2.8 minutes**. The
+green-GM and below-floor fixtures deliberately supplied an empty source-signer
+list, proving contractual signers no longer block approval routing. The runs used
 server-issued fixtures and real Cognito identities. They exercised the deployed
 SPA, API, RDS draft/version storage, authoritative Decimal calculation and
 approval state machine; no feature response was mocked.
