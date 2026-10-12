@@ -842,6 +842,33 @@ async def create_resource(session: AsyncSession, *, actor: AuthUser, body: dict[
     return row
 
 
+async def load_resource(session: AsyncSession, resource_id: uuid.UUID) -> Resource:
+    row = await session.get(Resource, resource_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="person not found")
+    return row
+
+
+async def delete_resource(session: AsyncSession, *, actor: AuthUser, row: Resource) -> None:
+    allocated = await session.scalar(
+        select(func.count()).select_from(Allocation).where(Allocation.resource_id == row.id)
+    )
+    if allocated:
+        raise HTTPException(status_code=409, detail="person still has allocations — close or remove those first")
+    before = serialize_resource(row)
+    await session.delete(row)
+    await session.flush()
+    await append_audit(
+        session,
+        actor_id=actor.id,
+        action="resource.removed",
+        entity="resource",
+        entity_id=str(row.id),
+        before=before,
+        after=None,
+    )
+
+
 async def create_manual_client(session: AsyncSession, *, actor: AuthUser, name: str) -> Client:
     """POST /clients — a client by name when no HubSpot company matches (never a mirror row)."""
 

@@ -540,6 +540,21 @@ async def create_resource(
     return svc.serialize_resource(row)
 
 
+@router.delete("/resources/{resource_id}", status_code=204, response_class=Response)
+async def delete_resource(
+    resource_id: uuid.UUID,
+    user: AuthUser = Depends(require_write),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Remove a person who was never allocated (409 while any allocation references them)."""
+
+    actor = await _actor(session, user)
+    row = await svc.load_resource(session, resource_id)
+    await svc.delete_resource(session, actor=actor, row=row)
+    await session.commit()
+    return Response(status_code=204)
+
+
 # ---- settings ---------------------------------------------------------------------
 
 
