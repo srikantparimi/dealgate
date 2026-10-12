@@ -487,6 +487,33 @@ def compute_forecast(
     )
 
 
+def _staffing_totals(forecast: engine.Forecast) -> dict[str, Any]:
+    """Footer of the allocations grid — the same sums the golden test performs over AllocationMonth rows."""
+
+    hours = sum((am.hours for am in forecast.allocation_months), engine.ZERO)
+    revenue = sum((am.revenue for am in forecast.allocation_months), engine.ZERO)
+    loaded = sum((am.loaded_cost for am in forecast.allocation_months), engine.ZERO)
+    return {
+        "hours": num(hours),
+        "revenue": money(revenue),
+        "loaded_cost": money(loaded),
+        "gm_pct": pct(margin_pct(revenue, loaded)),
+    }
+
+
+def _assignment_totals(months: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    hours = sum((line["hours"] for line in months.values()), engine.ZERO)
+    revenue = sum((line["revenue"] for line in months.values()), engine.ZERO)
+    loaded = sum((line["loaded_cost"] for line in months.values()), engine.ZERO)
+    return {
+        "people": max((line["people"] for line in months.values()), default=0),
+        "hours": num(hours),
+        "revenue": money(revenue),
+        "loaded_cost": money(loaded),
+        "gm_pct": pct(margin_pct(revenue, loaded)),
+    }
+
+
 def serialize_forecast(forecast: engine.Forecast, resource_names: dict[str, str], project_floor_pct: Decimal) -> dict[str, Any]:
     """The ``Forecast`` schema of the contract — a serialisation of the engine's result and nothing else."""
 
@@ -501,12 +528,18 @@ def serialize_forecast(forecast: engine.Forecast, resource_names: dict[str, str]
             "hours": num(forecast.hours),
             "labour_cost": money(forecast.labour_cost),
             "burden_cost": money(forecast.burden_cost),
+            # loaded cost = labour + burden, the engine's AllocationMonth.loaded_cost definition
+            "loaded_cost": money(forecast.labour_cost + forecast.burden_cost),
             "additional_costs": money(forecast.additional_costs),
             "pass_through_revenue": money(forecast.pass_through_revenue),
             "total_revenue": money(forecast.total_revenue),
             "total_cost": money(forecast.total_cost),
+            # gm $ = total revenue − total cost, the engine's MonthLine.gm definition
+            "gm": money(forecast.total_revenue - forecast.total_cost),
             "gm_pct": pct(forecast.gm_pct),
         },
+        # The allocations grid footer: sums of the engine's AllocationMonth rows (labour revenue, loaded cost).
+        "staffing_totals": _staffing_totals(forecast),
         "months": [
             {
                 "month": line.month,
@@ -516,6 +549,7 @@ def serialize_forecast(forecast: engine.Forecast, resource_names: dict[str, str]
                 "revenue": money(line.revenue),
                 "labour_cost": money(line.labour_cost),
                 "burden_cost": money(line.burden_cost),
+                "loaded_cost": money(line.labour_cost + line.burden_cost),
                 "additional_costs": money(line.additional_costs),
                 "pass_through_revenue": money(line.pass_through_revenue),
                 "total_revenue": money(line.total_revenue),
@@ -525,6 +559,9 @@ def serialize_forecast(forecast: engine.Forecast, resource_names: dict[str, str]
             }
             for line in forecast.months
         ],
+        "by_assignment_totals": {
+            assignment: _assignment_totals(months) for assignment, months in sorted(forecast.by_assignment.items())
+        },
         "by_assignment": {
             assignment: {
                 month: {
@@ -1284,6 +1321,42 @@ async def add_cost(session: AsyncSession, *, actor: AuthUser, eng: Engagement, b
         entity="engagement_cost",
         entity_id=str(row.id),
         before=None,
+        after=serialize_cost(row),
+    )
+    return row
+
+
+async def update_cost(session: AsyncSession, *, actor: AuthUser, row: EngagementCost, body: dict[str, Any]) -> EngagementCost:
+    before = serialize_cost(row)
+    problems: list[str] = []
+    if "description" in body and body["description"] is not None:
+        row.description = body["description"].strip() or row.description
+    for key in ("category", "location"):
+        if key in body:
+            setattr(row, key, body[key] or None)
+    if "amount" in body and body["amount"] is not None:
+        amount = _dec(body["amount"])
+        if amount is None or amount < 0:
+            problems.append(f"{row.description}: amount is required")
+        else:
+            row.amount = amount
+    if body.get("frequency") is not None:
+        if body["frequency"] not in COST_FREQUENCIES:
+            problems.append(f"{row.description}: frequency must be one_time or monthly")
+        else:
+            row.frequency = body["frequency"]
+    if body.get("billed_to_client") is not None:
+        row.billed_to_client = bool(body["billed_to_client"])
+    if problems:
+        raise ForecastInputError(problems)
+    await session.flush()
+    await append_audit(
+        session,
+        actor_id=actor.id,
+        action="engagement_cost.updated",
+        entity="engagement_cost",
+        entity_id=str(row.id),
+        before=before,
         after=serialize_cost(row),
     )
     return row

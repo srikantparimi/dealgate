@@ -92,6 +92,13 @@ def _strip_individual_costs(value: Any) -> Any:
         if key == "allocation_months":
             out[key] = [{k: v for k, v in am.items() if k != "loaded_cost"} for am in item]
             continue
+        if key in ("staffing_totals",) or key == "by_assignment_totals":
+            out[key] = (
+                {k: v for k, v in item.items() if k not in ("loaded_cost", "gm_pct")}
+                if key == "staffing_totals"
+                else {asg: {k: v for k, v in tot.items() if k not in ("loaded_cost", "gm_pct")} for asg, tot in item.items()}
+            )
+            continue
         if key == "by_assignment":
             out[key] = {
                 asg: {m: {k: v for k, v in line.items() if k not in ("loaded_cost", "gm_pct")} for m, line in months.items()}
@@ -439,6 +446,32 @@ async def add_cost(
     actor = await _actor(session, user)
     eng = await svc.load_engagement(session, engagement_id)
     row = await svc.add_cost(session, actor=actor, eng=eng, body=_dump(body))
+    payload = svc.serialize_cost(row)
+    await session.commit()
+    return payload
+
+
+class EngagementCostPatch(BaseModel):
+    description: str | None = Field(default=None, max_length=255)
+    category: str | None = Field(default=None, max_length=64)
+    location: str | None = Field(default=None, max_length=64)
+    amount: Decimal | None = None
+    frequency: Literal["one_time", "monthly"] | None = None
+    billed_to_client: bool | None = None
+
+
+@router.patch("/costs/{cost_id}")
+async def patch_cost(
+    cost_id: uuid.UUID,
+    body: EngagementCostPatch,
+    user: AuthUser = Depends(require_write),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    actor = await _actor(session, user)
+    row = await session.get(EngagementCost, cost_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="cost not found")
+    row = await svc.update_cost(session, actor=actor, row=row, body=_dump(body, patch=True))
     payload = svc.serialize_cost(row)
     await session.commit()
     return payload
