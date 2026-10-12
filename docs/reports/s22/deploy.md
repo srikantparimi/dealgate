@@ -52,6 +52,21 @@ cd tests/e2e && E2E_BASE_URL=https://app.dealgateapp.com npx playwright test spe
 AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 scripts/check-test-data-clean.sh
 ```
 
+## Apply and roll (2026-10-12, Kanna approved the saved plan in chat: "ok approved run")
+
+| Step | Result |
+| --- | --- |
+| `terraform -chdir=infra-tf apply /tmp/s22-520f5174.tfplan` (checksum verified first) | exit 0 · **Apply complete! Resources: 14 added, 13 changed, 11 destroyed** — exactly the plan |
+| Migration (Terraform-owned `run-ecs-migration.sh`, task `0f1d0d3c29a74dcd816c6ea5f86a9455` on `officeapp-dev-api-migrate:35`) | succeeded, exit 0 (1 m 12 s) |
+| API service | task-def `officeapp-dev-api:97`, `services-stable`, 1/1 running, single PRIMARY deployment; running task `74622525…4d5b` image `s22-520f5174`, digest `sha256:5d35069925329ca4fe1480eee6f123c97c98bb5dd34adee3d1e026ac0a6e941f` |
+| New routes on staging | `/api/portfolio/forecast`, `/api/settings/forecast`, `/api/engagements`, `/api/resources`, `/api/portfolio/clients` (was `/api/clients/forecast-options`, shadowed — bug #6) → 401 unauthenticated (present, auth-gated); `/api/healthz` ok |
+| Worker families on the image | alert-scheduler 49, notification-sender 49, renewals-scheduler 49, **portfolio-scheduler 1 (new)**, audit-export 49, hubspot-intake 48, hubspot-reconcile 48, forecast-plans 26, deletion-cleanup 26, api-migrate 35 — all `s22-520f5174` |
+| Portfolio scheduler rule | `officeapp-dev-portfolio-scheduler` ENABLED, `cron(0 6 * * ? *)`, target `officeapp-dev-portfolio-scheduler:1` |
+| Deploy smoke | `smoke 20261012T175338Z` GREEN (upload, extraction, confirmation, cleanup); `[gate] clean · 0 test-tagged clients + 0 e2e approvers` |
+| SPA | `web/dist` from `8f644b2` synced: assets `public, max-age=31536000, immutable`, `index.html` `no-cache, must-revalidate`; CloudFront invalidation `I2LAB8BDPUPE4A1WAETC5F00F6` COMPLETED; served `index.html` → `assets/index-5R06pivF.js` (immutable, contains the Portfolio forecast navigation) |
+
+Leak gate + nightly sweep now recognise the `S22 e2e ` tag (b108465; the worker half ships with the next image).
+
 ## Local full-stack rehearsal (same API code as the image, local Postgres)
 
 Stack: pgvector/pg16 container (`dealgate_e2e`, `alembic upgrade head` → `20261012_0065_portfolio_forecast`, seeds present), uvicorn `DEALGATE_ENV=local` with every role granted, Vite dev server same-origin through its `/api` proxy, `VITE_TEST_GROUPS` identity (bug #3).

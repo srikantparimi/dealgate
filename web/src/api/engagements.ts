@@ -432,7 +432,7 @@ export async function downloadPortfolioCsv(filters: PortfolioFilters): Promise<v
 // ---- clients + people -------------------------------------------------------------
 
 export function listClientOptions(): Promise<ClientOption[]> {
-  return request<ClientOption[]>("/clients/forecast-options");
+  return request<ClientOption[]>("/portfolio/clients");
 }
 
 export function createClient(name: string): Promise<ClientOption> {

@@ -54,8 +54,44 @@ const PEOPLE = [
   { name: `${RUN_TAG} Dev IN 2`, role: "Developer", location: "India", employment: "w2_employee", bill: "48", cost: "22", assignment: "Data platform" },
 ];
 
+/**
+ * S21 runtime isolation: a test identity may only touch accounts the server
+ * issued to it through POST /dev/test-fixtures (and DELETE /clients refuses
+ * anything else). Locally, where the dev-seed endpoint is off, fall back to
+ * POST /clients.
+ */
+async function issueFixtureClient(ctx: APIRequestContext, label: string): Promise<{ id: string; name: string; fixture: boolean }> {
+  const issued = await ctx.post("dev/test-fixtures", { data: { label, reviewer_ids: [] } });
+  if (issued.ok()) {
+    const body = (await issued.json()) as { client_id: string; client_name?: string };
+    const detail = await ctx.get(`clients/${body.client_id}`);
+    const name = detail.ok() ? ((await detail.json()) as { name: string }).name : body.client_name ?? label;
+    return { id: body.client_id, name, fixture: true };
+  }
+  const created = await ctx.post("clients", { data: { name: label } });
+  if (!created.ok()) throw new Error(`${created.status()} creating client: ${await created.text()}`);
+  const body = (await created.json()) as { id: string; name: string };
+  return { id: body.id, name: body.name, fixture: false };
+}
+
+async function deleteClientAndWait(ctx: APIRequestContext, clientId: string, reason: string): Promise<boolean> {
+  const del = await ctx.delete(`clients/${clientId}`, { params: { reason } });
+  if (!del.ok()) {
+    console.warn(`[s22 teardown] DELETE clients/${clientId} -> ${del.status()} ${await del.text()}`);
+    return false;
+  }
+  const body = (await del.json().catch(() => ({}))) as { job_id?: string };
+  for (let attempt = 0; body.job_id && attempt < 60; attempt += 1) {
+    const state = (await (await ctx.get(`deletion-jobs/${body.job_id}`)).json()) as { status: string };
+    if (state.status === "done" || state.status === "failed") break;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  return true;
+}
+
 let api: APIRequestContext;
 let originalSettings: unknown = null;
+let fixtureClient: { id: string; name: string; fixture: boolean } | null = null;
 
 test.describe.configure({ mode: "serial" });
 // Six screens and ten server round-trips: longer than the 30 s local default.
@@ -73,17 +109,11 @@ test.afterAll(async () => {
       // Put the calendar back exactly as it was before the burden change.
       await api.put("settings/forecast", { data: originalSettings }).catch(() => undefined);
     }
+    // Order matters: the client delete cascades the engagement and its allocations; only then can people go.
+    if (fixtureClient) await deleteClientAndWait(api, fixtureClient.id, "S22 P2 owner path teardown");
     const clients = (await (await api.get("clients?size=200")).json()) as { items?: { id: string; name: string }[] };
-    for (const c of (clients.items ?? []).filter((x) => x.name.includes(RUN_TAG))) {
-      const del = await api.delete(`clients/${c.id}`, { params: { reason: "S22 P2 owner path teardown" } });
-      if (del.ok()) {
-        const body = (await del.json().catch(() => ({}))) as { job_id?: string };
-        for (let attempt = 0; body.job_id && attempt < 60; attempt += 1) {
-          const state = (await (await api.get(`deletion-jobs/${body.job_id}`)).json()) as { status: string };
-          if (state.status === "done" || state.status === "failed") break;
-          await new Promise((resolve) => setTimeout(resolve, 2_000));
-        }
-      }
+    for (const c of (clients.items ?? []).filter((x) => x.name.includes(RUN_TAG) && x.id !== fixtureClient?.id)) {
+      await deleteClientAndWait(api, c.id, "S22 P2 owner path sweep");
     }
     const people = (await (await api.get("resources")).json()) as { id: string; name: string }[];
     for (const p of people.filter((r) => r.name.includes(RUN_TAG))) await api.delete(`resources/${p.id}`).catch(() => undefined);
@@ -111,11 +141,19 @@ async function addPerson(page: Page, person: (typeof PEOPLE)[number]) {
 test("S22 P2-6 · owner path: new engagement → five people → leaves → re-hire → gap month at zero → burden moves the numbers", async ({ page }) => {
   if (!LOCAL_USER) await authAsRole(page, "system");
 
-  // 1 · New engagement with a new client
+  // 1 · New engagement. The account is server-issued (S21 runtime isolation) and picked from the Client
+  // list; where the fixture issuer is off (local dev) the "+ New client…" path creates it from the form.
+  fixtureClient = await issueFixtureClient(api, CLIENT_NAME).catch(() => null);
+  const clientName = fixtureClient?.fixture ? fixtureClient.name : CLIENT_NAME;
   await page.goto(`${BASE}/engagements/new`);
   await expect(page.getByRole("heading", { name: "New engagement" })).toBeVisible();
-  await page.getByLabel("Client *").selectOption("__new");
-  await page.getByLabel("New client name").fill(CLIENT_NAME);
+  if (fixtureClient?.fixture) {
+    await expect(page.getByLabel("Client *").locator(`option[value="${fixtureClient.id}"]`)).toHaveCount(1, { timeout: 60_000 });
+    await page.getByLabel("Client *").selectOption(fixtureClient.id);
+  } else {
+    await page.getByLabel("Client *").selectOption("__new");
+    await page.getByLabel("New client name").fill(CLIENT_NAME);
+  }
   await page.getByLabel("Engagement name *").fill("Portal & data platform staffing");
   await page.getByLabel("Engagement type *").selectOption("staff_augmentation");
   await page.getByLabel("Start *").fill(iso(START));
@@ -123,15 +161,17 @@ test("S22 P2-6 · owner path: new engagement → five people → leaves → re-h
   await page.getByLabel("Additional costs? *").selectOption("0");
   await page.getByLabel("Same start/end for everyone? *").selectOption("0");
   await page.getByRole("button", { name: "Create engagement" }).click();
-  await expect(page.getByTestId("engagement-heading")).toHaveText(`${CLIENT_NAME} · Portal & data platform staffing`, { timeout: 60_000 });
+  await expect(page.getByTestId("engagement-heading")).toHaveText(`${clientName} · Portal & data platform staffing`, { timeout: 60_000 });
   await expect(page.getByRole("tab", { name: "Allocations" })).toBeVisible();
   const engagementUrl = page.url();
   // Rule 18 / S21-12: the breadcrumb names the client and the engagement, never the UUID.
   const breadcrumb = page.getByRole("navigation", { name: /breadcrumb/i });
-  await expect(breadcrumb).toContainText(CLIENT_NAME, { timeout: 60_000 });
+  await expect(breadcrumb).toContainText(clientName, { timeout: 60_000 });
   await expect(breadcrumb).toContainText("Portal & data platform staffing");
-  await expect(breadcrumb).not.toContainText(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i);
-  await expect(breadcrumb).not.toContainText(/\b[0-9a-f]{8}\b [0-9a-f]{4}\b/i);
+  // A server-issued fixture client is itself named around a run UUID; the check is on every other segment.
+  const crumbText = (await breadcrumb.evaluate((el) => el.textContent ?? "")).split(clientName).join(""); // textContent: CSS capitalises innerText
+  expect(crumbText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i);
+  expect(crumbText).not.toMatch(/\b[0-9a-f]{8}\b [0-9a-f]{4}\b/i);
 
   // 2 · Five people
   for (const person of PEOPLE) await addPerson(page, person);
@@ -166,6 +206,45 @@ test("S22 P2-6 · owner path: new engagement → five people → leaves → re-h
   }
   const costBefore = (await page.getByTestId("status-line").innerText()).match(/cost (\$[\d,]+)/)?.[1];
   expect(costBefore).toBeTruthy();
+
+  // 5b · Setup & costs: the project block is pre-filled; an additional cost is counted once the flag is Yes
+  await page.getByRole("tab", { name: "Setup & costs" }).click();
+  await expect(page.getByLabel("Engagement name", { exact: true })).toHaveValue("Portal & data platform staffing");
+  await expect(page.getByLabel("Total price", { exact: true })).toBeDisabled(); // staff augmentation: no project price
+  await expect(page.getByLabel("Monthly fee", { exact: true })).toBeDisabled();
+  await page.getByRole("combobox", { name: "Additional costs", exact: true }).selectOption("1");
+  await expect(page.getByRole("combobox", { name: "Additional costs", exact: true })).toHaveValue("1", { timeout: 60_000 });
+  await page.getByRole("button", { name: "Add cost" }).click();
+  const costDraft = page.getByTestId("cost-draft");
+  await costDraft.getByLabel("New cost description", { exact: true }).fill("Kickoff travel");
+  await costDraft.getByLabel("New cost amount", { exact: true }).fill("3200");
+  await costDraft.getByLabel("New cost billed to client", { exact: true }).selectOption("1");
+  await costDraft.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByTestId("cost-row")).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.getByLabel("Kickoff travel description", { exact: true })).toHaveValue("Kickoff travel");
+  await expect(page.getByText(/Totals: \$3,200 cost, \$3,200 billed through/)).toBeVisible({ timeout: 60_000 });
+
+  // 5c · Portfolio page: the engagement's row, the four cards, the totals row, the panels, CSV export
+  await page.goto(`${BASE}/portfolio?month=${GAP_MONTH}`);
+  await expect(page.getByRole("heading", { name: "Portfolio forecast" })).toBeVisible();
+  await page.getByLabel("Client", { exact: true }).selectOption({ label: clientName });
+  const row = page.getByRole("table", { name: "Portfolio forecast" }).locator("tbody tr").filter({ hasText: clientName });
+  await expect(row).toHaveCount(1, { timeout: 60_000 });
+  await expect(row).toContainText("Staff augmentation");
+  await expect(row).toContainText(/PASS|BELOW FLOOR|INCOMPLETE/);
+  for (const id of ["card-gm", "card-below_floor", "card-rolloffs", "card-bench"]) await expect(page.getByTestId(id)).toBeVisible();
+  await expect(page.getByTestId("portfolio-totals")).toContainText(`Portfolio · ${monthLabel(GAP_MONTH)}`);
+  await expect(page.getByRole("region", { name: "Roll-offs in the next 60 days" }).or(page.locator("#rolloffs"))).toBeVisible();
+  await expect(page.locator("#bench")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
+  const csv = await api.get("portfolio/forecast.csv", { params: { month: GAP_MONTH } });
+  expect(csv.ok()).toBe(true);
+  const csvText = await csv.text();
+  expect(csvText.split("\n")[0]).toContain("Client,Engagement,Type");
+  expect(csvText).toContain(clientName);
+  expect(csvText).toContain(`Portfolio · ${GAP_MONTH}`);
+  await page.goto(engagementUrl.replace(/\/allocations$/, "/forecast"));
+  await expect(page.getByTestId("status-line")).toBeVisible();
 
   // 6 · Settings change to burden moves the numbers
   await page.goto(`${BASE}/settings/forecast`);

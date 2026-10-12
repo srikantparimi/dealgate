@@ -45,7 +45,7 @@ Phase 1 is done: every item P1-1 … P3-6 is built end to end and committed with
 
 ## Decisions and deviations
 
-See `docs/bugs/s22.md` D1–D8. Highlights: `GET /clients` keeps its paginated envelope (flat shape at `/clients/forecast-options`); `/resources` and `PATCH/DELETE /costs/{id}` added; Forecast JSON carries loaded-cost / GM-money / staffing and per-assignment totals so the browser never computes; the OpenAPI example's India loaded cost (37912.56) is a typo — engine and goldens say 37912.32; Sales/SalesLeader/Presales get per-person cost keys stripped (blueprint §3); the S21 weekly forecast module moved to `app/services/weekly_forecast.py`.
+See `docs/bugs/s22.md` D1–D8. Highlights: `GET /clients` keeps its paginated envelope (flat shape at `/portfolio/clients`); `/resources` and `PATCH/DELETE /costs/{id}` added; Forecast JSON carries loaded-cost / GM-money / staffing and per-assignment totals so the browser never computes; the OpenAPI example's India loaded cost (37912.56) is a typo — engine and goldens say 37912.32; Sales/SalesLeader/Presales get per-person cost keys stripped (blueprint §3); the S21 weekly forecast module moved to `app/services/weekly_forecast.py`.
 
 ## Phase 2 plan (next)
 

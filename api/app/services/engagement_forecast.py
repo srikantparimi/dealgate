@@ -55,6 +55,7 @@ from app.models.engagement import (
 )
 from app.models.user import User
 from app.services import forecast as engine
+from app.services.test_fixtures import E2E_USER_GROUP, account_scope, user_allowed
 
 HOURLY_TYPES = engine.HOURLY_TYPES
 ROLLOFF_WINDOW_DAYS = 60
@@ -67,6 +68,32 @@ class ForecastInputError(HTTPException):
     def __init__(self, missing: list[str]):
         super().__init__(status_code=422, detail={"missing": list(missing)})
         self.missing = list(missing)
+
+
+# ----------------------------------------------------------------------------- runtime isolation (S21)
+def is_test_identity(actor: AuthUser) -> bool:
+    return E2E_USER_GROUP in (actor.groups or ())
+
+
+async def client_allowed(session: AsyncSession, actor: AuthUser, client_id: uuid.UUID) -> bool:
+    """S21 runtime isolation: test identities only touch fixture-issued accounts; real users never touch fixtures."""
+
+    user = await session.get(User, actor.id)
+    return user_allowed(user, await account_scope(session, client_id))
+
+
+async def authorize_client(session: AsyncSession, actor: AuthUser, client_id: uuid.UUID, *, detail: str = "engagement not found") -> None:
+    if not await client_allowed(session, actor, client_id):
+        raise HTTPException(status_code=404, detail=detail)
+
+
+async def visible_client_ids(session: AsyncSession, actor: AuthUser, client_ids: Iterable[uuid.UUID]) -> set[uuid.UUID]:
+    user = await session.get(User, actor.id)
+    out: set[uuid.UUID] = set()
+    for client_id in set(client_ids):
+        if user_allowed(user, await account_scope(session, client_id)):
+            out.add(client_id)
+    return out
 
 
 # ----------------------------------------------------------------------------- clock
@@ -678,6 +705,7 @@ async def engagement_detail(session: AsyncSession, row: Engagement) -> dict[str,
 async def list_engagements(
     session: AsyncSession,
     *,
+    actor: AuthUser,
     client_id: uuid.UUID | None,
     type_: str | None,
     status: str | None,
@@ -687,7 +715,9 @@ async def list_engagements(
     """Single query service: filters, total before pagination, then the page."""
 
     on = today()
-    conditions = []
+    all_clients = (await session.execute(select(Engagement.client_id).distinct())).scalars().all()
+    visible = await visible_client_ids(session, actor, all_clients)
+    conditions = [Engagement.client_id.in_(visible)] if visible else [Engagement.client_id.is_(None)]
     if client_id is not None:
         conditions.append(Engagement.client_id == client_id)
     if type_:
@@ -1381,6 +1411,7 @@ async def delete_cost(session: AsyncSession, *, actor: AuthUser, row: Engagement
 async def portfolio_month(
     session: AsyncSession,
     *,
+    actor: AuthUser,
     month: str,
     type_: str | None = None,
     client_id: uuid.UUID | None = None,
@@ -1404,7 +1435,9 @@ async def portfolio_month(
         stmt = stmt.where(Engagement.type == type_)
     if client_id is not None:
         stmt = stmt.where(Engagement.client_id == client_id)
-    engagements = (await session.execute(stmt)).all()
+    all_clients = (await session.execute(select(Engagement.client_id).distinct())).scalars().all()
+    visible = await visible_client_ids(session, actor, all_clients)
+    engagements = [row for row in (await session.execute(stmt)).all() if row[0].client_id in visible]
 
     rows: list[dict[str, Any]] = []
     people_total = 0

@@ -70,6 +70,23 @@ async def _actor(session: AsyncSession, user: AuthUser) -> AuthUser:
     return AuthUser(row.id, row.email, row.name, tuple(row.groups))
 
 
+async def _engagement_for(session: AsyncSession, user: AuthUser, engagement_id: uuid.UUID):
+    """Load an engagement the caller may see (S21 runtime isolation); 404 otherwise."""
+
+    actor = await _actor(session, user)
+    row = await svc.load_engagement(session, engagement_id)
+    await svc.authorize_client(session, actor, row.client_id)
+    return actor, row
+
+
+async def _allocation_for(session: AsyncSession, user: AuthUser, allocation_id: uuid.UUID):
+    actor = await _actor(session, user)
+    row = await svc.load_allocation(session, allocation_id)
+    eng = await svc.load_engagement(session, row.engagement_id)
+    await svc.authorize_client(session, actor, eng.client_id, detail="allocation not found")
+    return actor, row
+
+
 # ---- cost redaction for non-cost roles -------------------------------------
 
 _ALLOCATION_ROW_COST_KEYS = ("cost_per_hour", "cost_per_hour_effective", "burden_pct")
@@ -255,8 +272,9 @@ async def list_engagements(
 ) -> dict[str, Any]:
     if page_size not in (25, 50, 100):
         raise HTTPException(status_code=422, detail={"missing": ["page_size must be 25, 50 or 100"]})
+    actor = await _actor(session, user)
     total, items = await svc.list_engagements(
-        session, client_id=client_id, type_=type, status=status_, page=page, page_size=page_size
+        session, actor=actor, client_id=client_id, type_=type, status=status_, page=page, page_size=page_size
     )
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
@@ -268,6 +286,7 @@ async def create_engagement(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     actor = await _actor(session, user)
+    await svc.authorize_client(session, actor, body.client_id, detail="client not found")
     row = await svc.create_engagement(session, actor=actor, body=_dump(body))
     payload = await svc.engagement_detail(session, row)
     await session.commit()
@@ -280,7 +299,7 @@ async def get_engagement(
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    row = await svc.load_engagement(session, engagement_id)
+    _, row = await _engagement_for(session, user, engagement_id)
     return await svc.engagement_detail(session, row)
 
 
@@ -291,8 +310,9 @@ async def patch_engagement(
     user: AuthUser = Depends(require_write),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    actor = await _actor(session, user)
-    row = await svc.load_engagement(session, engagement_id)
+    actor, row = await _engagement_for(session, user, engagement_id)
+    if body.client_id is not None:
+        await svc.authorize_client(session, actor, body.client_id, detail="client not found")
     row = await svc.update_engagement(session, actor=actor, row=row, body=_dump(body, patch=True))
     payload = await svc.engagement_detail(session, row)
     await session.commit()
@@ -305,7 +325,7 @@ async def engagement_forecast(
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    row = await svc.load_engagement(session, engagement_id)
+    _, row = await _engagement_for(session, user, engagement_id)
     payload = await svc.forecast_payload(session, row)
     await session.commit()  # a fresh forecast_run may have been stored
     return _for_user(payload, user)
@@ -320,7 +340,7 @@ async def list_allocations(
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    row = await svc.load_engagement(session, engagement_id)
+    _, row = await _engagement_for(session, user, engagement_id)
     payload = await svc.list_allocations(session, row)
     await session.commit()
     return _for_user(payload, user)
@@ -333,8 +353,7 @@ async def add_allocation(
     user: AuthUser = Depends(require_write),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    actor = await _actor(session, user)
-    eng = await svc.load_engagement(session, engagement_id)
+    actor, eng = await _engagement_for(session, user, engagement_id)
     row = await svc.add_allocation(session, actor=actor, eng=eng, body=_dump(body))
     payload = await svc.allocation_detail(session, row)
     await session.commit()
@@ -348,8 +367,7 @@ async def patch_allocation(
     user: AuthUser = Depends(require_write),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    actor = await _actor(session, user)
-    row = await svc.load_allocation(session, allocation_id)
+    actor, row = await _allocation_for(session, user, allocation_id)
     row = await svc.patch_allocation(session, actor=actor, row=row, body=_dump(body, patch=True))
     payload = await svc.allocation_detail(session, row)
     await session.commit()
@@ -362,8 +380,7 @@ async def delete_allocation(
     user: AuthUser = Depends(require_write),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    actor = await _actor(session, user)
-    row = await svc.load_allocation(session, allocation_id)
+    actor, row = await _allocation_for(session, user, allocation_id)
     await svc.delete_allocation(session, actor=actor, row=row)
     await session.commit()
     return Response(status_code=204)
@@ -376,8 +393,7 @@ async def close_allocation(
     user: AuthUser = Depends(require_write),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    actor = await _actor(session, user)
-    row = await svc.load_allocation(session, allocation_id)
+    actor, row = await _allocation_for(session, user, allocation_id)
     row = await svc.close_allocation(session, actor=actor, row=row, end=body.end if body else None)
     payload = await svc.allocation_detail(session, row)
     await session.commit()
@@ -391,8 +407,7 @@ async def rehire_allocation(
     user: AuthUser = Depends(require_write),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    actor = await _actor(session, user)
-    row = await svc.load_allocation(session, allocation_id)
+    actor, row = await _allocation_for(session, user, allocation_id)
     body = body or RehireIn()
     row = await svc.rehire_allocation(
         session, actor=actor, row=row, start=body.start, bill_rate=body.bill_rate, cost_per_hour=body.cost_per_hour
@@ -411,8 +426,7 @@ async def import_allocations(
 ) -> dict[str, Any]:
     """The workbook's staffing table as CSV (its own column headers)."""
 
-    actor = await _actor(session, user)
-    eng = await svc.load_engagement(session, engagement_id)
+    actor, eng = await _engagement_for(session, user, engagement_id)
     raw = await file.read()
     try:
         text = raw.decode("utf-8-sig")
@@ -432,7 +446,7 @@ async def list_costs(
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    eng = await svc.load_engagement(session, engagement_id)
+    _, eng = await _engagement_for(session, user, engagement_id)
     return [svc.serialize_cost(row) for row in await svc.cost_rows(session, eng.id)]
 
 
@@ -443,8 +457,7 @@ async def add_cost(
     user: AuthUser = Depends(require_write),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    actor = await _actor(session, user)
-    eng = await svc.load_engagement(session, engagement_id)
+    actor, eng = await _engagement_for(session, user, engagement_id)
     row = await svc.add_cost(session, actor=actor, eng=eng, body=_dump(body))
     payload = svc.serialize_cost(row)
     await session.commit()
@@ -471,6 +484,7 @@ async def patch_cost(
     row = await session.get(EngagementCost, cost_id)
     if row is None:
         raise HTTPException(status_code=404, detail="cost not found")
+    await _engagement_for(session, user, row.engagement_id)
     row = await svc.update_cost(session, actor=actor, row=row, body=_dump(body, patch=True))
     payload = svc.serialize_cost(row)
     await session.commit()
@@ -487,6 +501,7 @@ async def delete_cost(
     row = await session.get(EngagementCost, cost_id)
     if row is None:
         raise HTTPException(status_code=404, detail="cost not found")
+    await _engagement_for(session, user, row.engagement_id)
     await svc.delete_cost(session, actor=actor, row=row)
     await session.commit()
     return Response(status_code=204)
@@ -505,7 +520,8 @@ async def portfolio_forecast(
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    view = await svc.portfolio_month(session, month=month, type_=type, client_id=client_id)
+    actor = await _actor(session, user)
+    view = await svc.portfolio_month(session, actor=actor, month=month, type_=type, client_id=client_id)
     await session.commit()
     return view
 
@@ -518,7 +534,8 @@ async def portfolio_forecast_csv(
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> PlainTextResponse:
-    view = await svc.portfolio_month(session, month=month, type_=type, client_id=client_id)
+    actor = await _actor(session, user)
+    view = await svc.portfolio_month(session, actor=actor, month=month, type_=type, client_id=client_id)
     await session.commit()
     return PlainTextResponse(
         svc.portfolio_csv(view),
@@ -537,20 +554,32 @@ async def create_client(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     actor = await _actor(session, user)
+    if svc.is_test_identity(actor):
+        raise HTTPException(
+            status_code=403,
+            detail="Test identities create accounts through POST /dev/test-fixtures (S21 runtime isolation)",
+        )
     row = await svc.create_manual_client(session, actor=actor, name=body.name)
     await session.commit()
     return {"id": str(row.id), "name": row.name, "source": svc.client_source(row)}
 
 
-@router.get("/clients/forecast-options")
+@router.get("/portfolio/clients")
 async def client_options(
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    """Contract shape of ``GET /clients`` (id, name, source) without the legacy list envelope."""
+    """Contract shape of ``GET /clients`` (id, name, source) without the legacy list envelope.
 
+    Lives under /portfolio because the legacy clients router (registered
+    first) owns ``GET /clients/{client_id}`` and would swallow any
+    ``/clients/<word>`` path (bug #6).
+    """
+
+    actor = await _actor(session, user)
     rows = (await session.execute(select(Client).where(Client.archived_at.is_(None)).order_by(Client.name))).scalars().all()
-    return [{"id": str(c.id), "name": c.name, "source": svc.client_source(c)} for c in rows]
+    visible = await svc.visible_client_ids(session, actor, [c.id for c in rows])
+    return [{"id": str(c.id), "name": c.name, "source": svc.client_source(c)} for c in rows if c.id in visible]
 
 
 @router.get("/resources")

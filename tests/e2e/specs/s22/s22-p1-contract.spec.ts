@@ -79,6 +79,41 @@ async function json<T>(response: import("@playwright/test").APIResponse): Promis
   return response.json() as Promise<T>;
 }
 
+/**
+ * S21 runtime isolation: a test identity may only touch accounts the server
+ * issued to it through POST /dev/test-fixtures (and DELETE /clients refuses
+ * anything else). Locally, where the dev-seed endpoint is off, fall back to
+ * POST /clients.
+ */
+async function issueFixtureClient(ctx: APIRequestContext, label: string): Promise<{ id: string; name: string; fixture: boolean }> {
+  const issued = await ctx.post("dev/test-fixtures", { data: { label, reviewer_ids: [] } });
+  if (issued.ok()) {
+    const body = (await issued.json()) as { client_id: string; client_name?: string };
+    const detail = await ctx.get(`clients/${body.client_id}`);
+    const name = detail.ok() ? ((await detail.json()) as { name: string }).name : body.client_name ?? label;
+    return { id: body.client_id, name, fixture: true };
+  }
+  const created = await ctx.post("clients", { data: { name: label } });
+  if (!created.ok()) throw new Error(`${created.status()} creating client: ${await created.text()}`);
+  const body = (await created.json()) as { id: string; name: string };
+  return { id: body.id, name: body.name, fixture: false };
+}
+
+async function deleteClientAndWait(ctx: APIRequestContext, clientId: string, reason: string): Promise<boolean> {
+  const del = await ctx.delete(`clients/${clientId}`, { params: { reason } });
+  if (!del.ok()) {
+    console.warn(`[s22 teardown] DELETE clients/${clientId} -> ${del.status()} ${await del.text()}`);
+    return false;
+  }
+  const body = (await del.json().catch(() => ({}))) as { job_id?: string };
+  for (let attempt = 0; body.job_id && attempt < 60; attempt += 1) {
+    const state = (await (await ctx.get(`deletion-jobs/${body.job_id}`)).json()) as { status: string };
+    if (state.status === "done" || state.status === "failed") break;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  return true;
+}
+
 let api: APIRequestContext;
 let clientId: string | null = null;
 const resourceIds: string[] = [];
@@ -96,20 +131,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   // Teardown always runs — pass, fail or timeout.
   try {
-    if (clientId) {
-      const del = await api.delete(`clients/${clientId}`, { params: { reason: "S22 P1 contract teardown" } });
-      if (del.ok()) {
-        const body = (await del.json()) as { job_id?: string };
-        if (body.job_id) {
-          for (let attempt = 0; attempt < 60; attempt += 1) {
-            const state = (await (await api.get(`deletion-jobs/${body.job_id}`)).json()) as { status: string };
-            if (state.status === "done") break;
-            if (state.status === "failed") break;
-            await new Promise((resolve) => setTimeout(resolve, 2_000));
-          }
-        }
-      }
-    }
+    // Order matters: the client delete cascades the engagement and its allocations; only then can people go.
+    if (clientId) await deleteClientAndWait(api, clientId, "S22 P1 contract teardown");
     for (const id of resourceIds) {
       await api.delete(`resources/${id}`).catch(() => undefined);
     }
@@ -119,6 +142,9 @@ test.afterAll(async () => {
     for (const c of leaked) await api.delete(`clients/${c.id}?reason=S22%20leak%20sweep`).catch(() => undefined);
     const people = (await (await api.get("resources")).json()) as { id: string; name: string }[];
     for (const p of people.filter((r) => r.name.includes(RUN_TAG))) await api.delete(`resources/${p.id}`).catch(() => undefined);
+    const left = (await (await api.get("engagements?page_size=100")).json()) as { items?: { name: string; client_name: string }[] };
+    const leakedEngagements = (left.items ?? []).filter((e) => `${e.name} ${e.client_name}`.includes(RUN_TAG));
+    if (leakedEngagements.length) console.error(`[s22 teardown] ${leakedEngagements.length} engagement(s) still carry ${RUN_TAG}`);
   } finally {
     await api.dispose();
   }
@@ -126,11 +152,8 @@ test.afterAll(async () => {
 
 test("S22 P1-5 · Client A golden through the deployed API equals the goldens to the cent", async () => {
   const sc = CLIENT_A;
-  const client = await json<{ id: string; name: string; source: string }>(
-    await api.post("clients", { data: { name: `${RUN_TAG} Client A` } }),
-  );
+  const client = await issueFixtureClient(api, `${RUN_TAG} Client A`);
   clientId = client.id;
-  expect(client.source).toBe("manual");
 
   const engagement = await json<{ id: string; status: string; duration_months: number }>(
     await api.post("engagements", {

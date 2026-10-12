@@ -449,5 +449,57 @@ async def test_create_client_and_options(session):
         assert created["source"] == "manual"
         again = await post(client, "/clients", {"name": "brand new co"})
         assert again["id"] == created["id"]
-        options = (await client.get("/clients/forecast-options")).json()
+        options = (await client.get("/portfolio/clients")).json()
         assert {"id": created["id"], "name": "Brand New Co", "source": "manual"} in options
+
+
+# ----------------------------------------------------------------------------- S21 runtime isolation (bug #4)
+
+
+async def test_test_identities_only_touch_fixture_issued_accounts(session, monkeypatch):
+    """A test identity cannot create an unscoped client, nor see / edit engagements on real accounts;
+    a real user never sees a fixture-issued account's engagements."""
+
+    from app.models.audit import AuditEvent
+    from app.services.test_fixtures import E2E_USER_GROUP
+
+    monkeypatch.setenv("DEALGATE_ENV", "local")
+    monkeypatch.setenv("DEALGATE_TENANT_ID", "s22-test")
+    monkeypatch.setenv("ALLOW_DEV_SEED_ENDPOINT", "1")
+    await seed_calendar(session)
+    real = await actor_for(session, ("Delivery",))
+    real_client = await seed_client(session, "Real Co")
+    async with client_for(session, real) as client:
+        real_eng = await post(client, "/engagements", {"client_id": str(real_client.id), "name": "Real work", "type": "msp", "start": "2026-11-01",
+                                                      "end": "2027-04-30", "monthly_fee": "1000", "additional_costs_flag": False, "same_dates_for_all": True})
+
+    bot = await actor_for(session, ("SystemAdmin", E2E_USER_GROUP))
+    async with client_for(session, bot) as client:
+        refused = await client.post("/clients", json={"name": "Shadow Co"})
+        assert refused.status_code == 403 and "dev/test-fixtures" in refused.json()["detail"]
+        # the real account is invisible and untouchable
+        assert (await client.get(f"/engagements/{real_eng['id']}")).status_code == 404
+        assert (await client.get(f"/engagements/{real_eng['id']}/forecast")).status_code == 404
+        assert (await client.get("/engagements")).json()["total"] == 0
+        assert (await client.get("/portfolio/forecast?month=2026-11")).json()["rows"] == []
+        assert all(o["id"] != str(real_client.id) for o in (await client.get("/portfolio/clients")).json())
+        assert (await client.post("/engagements", json={"client_id": str(real_client.id), "name": "x", "type": "msp", "start": "2026-11-01",
+                                                        "end": "2027-04-30", "monthly_fee": "1", "additional_costs_flag": False, "same_dates_for_all": True})).status_code == 404
+        # a server-issued fixture account is in scope
+        from app.services.test_fixtures import create_fixture
+        fixture = await create_fixture(session, actor_id=bot.id, label="S22 isolation", reviewer_ids=[])
+        await session.commit()
+        fixture_client = fixture["client_id"]
+        assert any(o["id"] == str(fixture_client) for o in (await client.get("/portfolio/clients")).json())
+        own = await post(client, "/engagements", {"client_id": str(fixture_client), "name": "Fixture work", "type": "msp", "start": "2026-11-01",
+                                                  "end": "2027-04-30", "monthly_fee": "1000", "additional_costs_flag": False, "same_dates_for_all": True})
+        assert (await client.get("/engagements")).json()["total"] == 1
+        assert (await client.get(f"/engagements/{own['id']}/forecast")).status_code == 200
+        assert [r["engagement_id"] for r in (await client.get("/portfolio/forecast?month=2026-11")).json()["rows"]] == [own["id"]]
+
+    # the real user does not see the fixture account's engagement, and still sees their own
+    async with client_for(session, real) as client:
+        listing = (await client.get("/engagements")).json()
+        assert [e["id"] for e in listing["items"]] == [real_eng["id"]]
+        assert (await client.get(f"/engagements/{own['id']}")).status_code == 404
+    assert await session.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "test.fixture_created")) == 1
