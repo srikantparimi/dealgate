@@ -2,6 +2,41 @@
 
 ## RESUME HERE
 
+**2026-10-11 23:40 PDT — MANAGED-SERVICE MONTHLY T&M RATE FIX UNDER
+VERIFICATION.** Authoritative feature tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-monthly-managed-service`, branch
+`fix/s22-monthly-managed-service`, application commit
+`c9ed1698cc7bf69476c14701e0175b19ad8f2724`, based on `origin/main` at full
+SHA `7a19dbd4ebaaf8fddcd1899d1437e2175c4f930d`. This handoff update is the only
+expected dirty file. No server, worker, browser,
+migration, deployment, or Terraform operation is active; deployed API remains
+revision 95 on the older main image and does not contain this fix.
+
+Root cause: `create_gm_model_version` sent every non-fixed contract through
+`hours * hourly_bill_rate`, so a managed-service SOW with extracted
+`$17,688/month` and no rate-card match saved zero revenue. The confirmation
+gate also treated managed service as hourly T&M, while the typed proposal
+incorrectly mapped it to fixed assignment. The fix uses the authoritative
+recurring-MSP calendar-day schedule for contract revenue, derives an
+informational effective bill rate from term revenue and staffed effective
+hours, preserves explicit rates, persists/reloads the same commercial
+version, and maps managed service to `recurring_msp`. For the reported
+2025-08-08 through 2025-11-18 / 500-hour example, independently expected and
+tested revenue is `$59,682.735483...`, staffing cost is `$35,000`, and the
+persisted effective bill rate is `$119.3655/hour`.
+
+Evidence on application commit `c9ed169`: focused backend 5/5 passed,
+including a two-row partial-allocation case; impacted backend regression
+135/135 passed (`test_delivery_model`, `test_sow_confirmation`,
+`test_s22_commercial_proposal`, `test_s21_commercial_profiles`,
+`test_gm_managed_service`, `test_engagement_classifier`); staffing and Confirm
+SOW UI 20/20 passed; TypeScript, Ruff, Python compile and the production web
+build passed. One prior UI run had 29/30
+because changed explanatory copy no longer matched an existing assertion; the
+copy was aligned and the affected 20/20 rerun passed. Exact next command:
+`cd /Users/srikanthparimi/OfficeApp/dealgate-s22-monthly-managed-service && git push -u origin fix/s22-monthly-managed-service`, then prepare and review the
+staging Terraform plan. Do not merge main before product-owner acceptance.
+
 **2026-10-11 22:18 PDT — PRODUCT OWNER ACCEPTED; S22 SQUASHED TO MAIN AND
 MAIN IMAGE VERIFIED.** Authoritative release tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-main-release`, branch
