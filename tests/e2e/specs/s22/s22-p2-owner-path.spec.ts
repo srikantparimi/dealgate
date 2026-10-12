@@ -16,6 +16,11 @@ import { expect, request as pwRequest, test, type APIRequestContext, type Page }
 import { authAsRole, bearerFor } from "../../fixtures/multi-role-auth";
 
 const BASE = process.env.E2E_BASE_URL ?? "https://app.dealgateapp.com";
+// Local full-stack runs (uvicorn + Vite, DEALGATE_ENV=local): identity comes from the
+// X-Test-User header / VITE_TEST_USER instead of Cognito. Unset on staging.
+const LOCAL_USER = process.env.E2E_LOCAL_USER;
+const API_BASE = process.env.E2E_API_BASE ? `${process.env.E2E_API_BASE}/` : `${BASE}/api/`;
+const authHeaders = (): Record<string, string> => (LOCAL_USER ? { "X-Test-User": LOCAL_USER } : bearerFor("system"));
 const RUN_TAG = `S22 e2e ${Date.now()}`;
 const CLIENT_NAME = `${RUN_TAG} Client`;
 
@@ -55,7 +60,7 @@ let originalSettings: unknown = null;
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
-  api = await pwRequest.newContext({ baseURL: `${BASE}/api/`, extraHTTPHeaders: bearerFor("system"), timeout: 90_000 });
+  api = await pwRequest.newContext({ baseURL: API_BASE, extraHTTPHeaders: authHeaders(), timeout: 90_000 });
   const settings = await api.get("settings/forecast");
   if (settings.ok()) originalSettings = await settings.json();
 });
@@ -102,7 +107,7 @@ async function addPerson(page: Page, person: (typeof PEOPLE)[number]) {
 }
 
 test("S22 P2-6 · owner path: new engagement → five people → leaves → re-hire → gap month at zero → burden moves the numbers", async ({ page }) => {
-  await authAsRole(page, "system");
+  if (!LOCAL_USER) await authAsRole(page, "system");
 
   // 1 · New engagement with a new client
   await page.goto(`${BASE}/engagements/new`);

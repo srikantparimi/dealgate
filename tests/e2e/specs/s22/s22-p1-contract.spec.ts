@@ -21,6 +21,11 @@ import path from "node:path";
 import { bearerFor } from "../../fixtures/multi-role-auth";
 
 const BASE = process.env.E2E_BASE_URL ?? "https://app.dealgateapp.com";
+// Local full-stack runs (uvicorn + Vite, DEALGATE_ENV=local): identity comes from the
+// X-Test-User header / VITE_TEST_USER instead of Cognito. Unset on staging.
+const LOCAL_USER = process.env.E2E_LOCAL_USER;
+const API_BASE = process.env.E2E_API_BASE ? `${process.env.E2E_API_BASE}/` : `${BASE}/api/`;
+const authHeaders = (): Record<string, string> => (LOCAL_USER ? { "X-Test-User": LOCAL_USER } : bearerFor("system"));
 const REPO = path.resolve(__dirname, "..", "..", "..", "..");
 const GOLDENS = JSON.parse(fs.readFileSync(path.join(REPO, "docs/reference/forecast-goldens.json"), "utf8"));
 const RUN_TAG = `S22 e2e ${Date.now()}`;
@@ -82,8 +87,8 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
   api = await pwRequest.newContext({
-    baseURL: `${BASE}/api/`,
-    extraHTTPHeaders: bearerFor("system"),
+    baseURL: API_BASE,
+    extraHTTPHeaders: authHeaders(),
     timeout: 90_000,
   });
 });
