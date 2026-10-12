@@ -503,3 +503,87 @@ async def test_test_identities_only_touch_fixture_issued_accounts(session, monke
         assert [e["id"] for e in listing["items"]] == [real_eng["id"]]
         assert (await client.get(f"/engagements/{own['id']}")).status_code == 404
     assert await session.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "test.fixture_created")) == 1
+
+
+# ----------------------------------------------------------------------------- P4-4 · upload the sheet
+
+REF = Path(__file__).resolve().parents[2] / "docs/reference"
+FIXTURES = Path(__file__).resolve().parents[0] / "forecast/fixtures"
+
+
+async def upload_workbook(client: httpx.AsyncClient, path: Path, expect: int = 201) -> dict:
+    response = await client.post("/engagements/import-workbook", files={"file": (path.name, path.read_bytes(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+    assert response.status_code == expect, f"{path.name}: {response.status_code} {response.text[:400]}"
+    return response.json()
+
+
+async def test_import_workbook_creates_the_engagement_from_the_sample_sheet(session):
+    await seed_calendar(session)
+    actor = await actor_for(session, ("Delivery",))
+    async with client_for(session, actor) as client:
+        result = await upload_workbook(client, REF / "DealGate_Cost_Margin_SAMPLE_StaffAug.xlsx")
+        eng, f = result["engagement"], result["forecast"]
+        assert eng["type"] == "staff_augmentation" and eng["client_name"] == "Client A" and eng["additional_costs_flag"] is True
+        assert eng["owner_name"] == actor.name  # the uploader owns it
+        e = CLIENT_A["expected"]  # the engine reproduces the sheet's own numbers — the Client A golden
+        assert close(f["totals"]["total_revenue"], e["total_revenue"]) and close(f["totals"]["total_cost"], e["total_cost"])
+        assert f["status"] == "PASS"
+        rows = (await client.get(f"/engagements/{eng['id']}/allocations")).json()
+        assert len(rows) == 5 and {r["assignment"] for r in rows} == {"Portal rebuild", "Data platform"}
+        costs = (await client.get(f"/engagements/{eng['id']}/costs")).json()
+        assert len(costs) == 2 and sum(c["billed_to_client"] for c in costs) == 1
+        assert len(result["hours_check"]) == 5
+        assert all(h["note"] == "matches the sheet" and h["sheet_hours"] is not None for h in result["hours_check"]), result["hours_check"]
+        assert any("Settings on the sheet" in w for w in result["warnings"])
+        again = await upload_workbook(client, REF / "DealGate_Cost_Margin_SAMPLE_StaffAug.xlsx")
+        assert again["engagement"]["client_id"] == eng["client_id"]  # the client was created once, by name
+        assert (await client.get("/engagements")).json()["total"] == 2
+
+
+async def test_import_workbook_owner_copy_reports_holiday_in_hours_check(session):
+    """Kanna's older copy: no Employment type column, no holidays on the sheet → the app computes 160 h vs 168 h (Labor Day)."""
+
+    src = FIXTURES / "kanna_peppermill_v2.xlsx"
+    if not src.exists():
+        pytest.skip("fixture not present")
+    await seed_calendar(session)
+    actor = await actor_for(session, ("Finance",))
+    async with client_for(session, actor) as client:
+        result = await upload_workbook(client, src)
+        eng = result["engagement"]
+        assert eng["type"] == "assessment" and eng["client_name"] == "Peppermill" and eng["total_price"] == "50000.00"
+        assert eng["start"] == "2026-09-07" and eng["end"] == "2026-10-05"
+        assert any("Employment type" in w for w in result["warnings"])
+        vik = next(h for h in result["hours_check"] if h["role"] == "Vikrin")
+        assert vik["sheet_hours"] == 168 and vik["engine_hours"] == 160 and "2026-09-07" in vik["note"]
+        assert result["forecast"]["status"] in ("PASS", "BELOW FLOOR")
+        months = result["forecast"]["months"]  # P4-1: one-time costs are spread across the term, not dumped in month 1
+        assert len(months) == 2 and all(D(m["additional_costs"]) > 0 for m in months)
+
+
+async def test_import_workbook_rejects_the_blank_template_in_the_sheets_words(session):
+    await seed_calendar(session)
+    actor = await actor_for(session, ("Delivery",))
+    async with client_for(session, actor) as client:
+        body = await upload_workbook(client, REF / "DealGate_Cost_Margin_Sheet.xlsx", expect=422)
+        assert any("Engagement type" in e for e in body["detail"]["errors"]) and any("dates" in e for e in body["detail"]["errors"])
+        assert (await client.get("/engagements")).json()["total"] == 0  # nothing created
+        junk = await client.post("/engagements/import-workbook", files={"file": ("x.xlsx", b"not a workbook", "application/octet-stream")})
+        assert junk.status_code == 422 and junk.json()["detail"]["errors"]
+
+
+async def test_import_workbook_test_identity_needs_a_fixture_account(session, monkeypatch):
+    from app.services.test_fixtures import E2E_USER_GROUP, create_fixture
+
+    monkeypatch.setenv("DEALGATE_ENV", "local")
+    monkeypatch.setenv("DEALGATE_TENANT_ID", "s22-test")
+    monkeypatch.setenv("ALLOW_DEV_SEED_ENDPOINT", "1")
+    await seed_calendar(session)
+    bot = await actor_for(session, ("SystemAdmin", E2E_USER_GROUP))
+    async with client_for(session, bot) as client:
+        refused = await upload_workbook(client, REF / "DealGate_Cost_Margin_SAMPLE_StaffAug.xlsx", expect=422)
+        assert "fixture accounts" in refused["detail"]["errors"][0]
+        fixture = await create_fixture(session, actor_id=bot.id, label="Client A", reviewer_ids=[])
+        await session.commit()
+        ok = await upload_workbook(client, REF / "DealGate_Cost_Margin_SAMPLE_StaffAug.xlsx")
+        assert ok["engagement"]["client_id"] == str(fixture["client_id"])

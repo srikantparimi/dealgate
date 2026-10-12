@@ -78,3 +78,13 @@ target-version = "py312"
 #             requires string construction so money never round-trips a float.
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
+
+# S22: the forecast engine, the workbook importer and their golden tests are
+# the product owner's finished drop-in pack (directive S22 §1: "do not
+# modify"). They use one-line `if x: y` and `a; b` statements. Lint them for
+# real defects (E9, the rest of F) but not for layout.
+[tool.ruff.lint.per-file-ignores]
+"app/services/forecast/__init__.py" = ["E701", "E702"]
+"app/services/forecast/workbook_import.py" = ["E701", "E702", "F401"]
+"tests/forecast/test_forecast_goldens.py" = ["E401", "E701", "E702"]
+"tests/forecast/test_workbook_import.py" = ["E401", "E701", "E702"]

@@ -222,7 +222,7 @@ test("S22 P1-5 · Client A golden through the deployed API equals the goldens to
     missing: string[];
     duration_months: number;
     totals: Record<string, string | number | null>;
-    months: { total_revenue: string; total_cost: string }[];
+    months: { month: string; total_revenue: string; total_cost: string }[];
     by_assignment: Record<string, Record<string, { people: number; hours: number; revenue: string; loaded_cost: string }>>;
     allocation_months: { allocation_id: string; working_days: number; hours: number; revenue: string; loaded_cost: string; resource_name: string }[];
     location_check: Record<string, { ok: boolean; revenue: string }>;
@@ -259,9 +259,10 @@ test("S22 P1-5 · Client A golden through the deployed API equals the goldens to
     expect(mine.every((am) => am.resource_name.includes(RUN_TAG))).toBe(true);
   }
 
-  // the monthly lines reconcile to the totals
-  closeTo(forecast.months.reduce((acc, m) => acc + Number(m.total_revenue), 0), forecast.totals.total_revenue, 0.01);
-  closeTo(forecast.months.reduce((acc, m) => acc + Number(m.total_cost), 0), forecast.totals.total_cost, 0.01);
+  // the monthly lines reconcile to the totals — each month is serialised to the cent, so allow a cent per month
+  const centPerMonth = 0.01 * forecast.months.length;
+  closeTo(forecast.months.reduce((acc, m) => acc + Number(m.total_revenue), 0), forecast.totals.total_revenue, centPerMonth);
+  closeTo(forecast.months.reduce((acc, m) => acc + Number(m.total_cost), 0), forecast.totals.total_cost, centPerMonth);
   expect(forecast.location_check.US.ok).toBe(false);
   expect(forecast.location_check.India.ok).toBe(true);
 
@@ -271,7 +272,11 @@ test("S22 P1-5 · Client A golden through the deployed API equals the goldens to
   );
   const row = portfolio.rows.find((r) => r.engagement_id === engagement.id);
   expect(row?.status).toBe("PASS");
-  const january = sc.expected_monthly_by_assignment.filter((r) => r.month === "2027-01").reduce((acc, r) => acc + r.revenue, 0);
-  // January revenue = Σ assignment revenue + the monthly pass-through share (none in January: the one-time cost lands in month 1)
-  closeTo(row?.revenue_month, january, 0.01);
+  // The portfolio row is the engagement's own January line (P4-1: one-time costs and their pass-through are
+  // spread across the term, so January carries a share of the kickoff travel on top of the assignment revenue).
+  const januaryLine = forecast.months.find((m) => (m as { month?: string }).month === "2027-01") as { total_revenue: string; total_cost: string } | undefined;
+  expect(januaryLine).toBeTruthy();
+  closeTo(row?.revenue_month, januaryLine!.total_revenue, 0.01);
+  const januaryLabour = sc.expected_monthly_by_assignment.filter((r) => r.month === "2027-01").reduce((acc, r) => acc + r.revenue, 0);
+  expect(Number(row?.revenue_month)).toBeGreaterThan(januaryLabour); // the pass-through share is in there
 });

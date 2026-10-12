@@ -200,8 +200,10 @@ def compute(eng: Engagement, allocations: list, costs: list, cal: Calendar) -> F
             revenue = sum((r.revenue for r in rows), ZERO)
         else:
             revenue = (eng.total_price or ZERO) * share / dur if dur else ZERO
-        addl = monthly_costs * share + (onetime_costs if i == 0 else ZERO)
-        pt = monthly_pass * share + (onetime_pass if i == 0 else ZERO)
+        # monthly costs repeat (prorated); one-time costs spread across the term by share of month,
+        # the same way a fixed price does, so a short engagement's first month is not distorted
+        addl = (monthly_costs + (onetime_costs / dur if dur else ZERO)) * share
+        pt = (monthly_pass + (onetime_pass / dur if dur else ZERO)) * share
         months.append(MonthLine(key, share, sum(1 for r in rows if r.hours > 0), hours, revenue, labour, burden, addl, pt))
 
     by_asg: dict = {}

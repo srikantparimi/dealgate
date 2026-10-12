@@ -55,6 +55,7 @@ from app.models.engagement import (
 )
 from app.models.user import User
 from app.services import forecast as engine
+from app.services.forecast.workbook_import import ImportedEngagement, parse_workbook
 from app.services.test_fixtures import E2E_USER_GROUP, account_scope, user_allowed
 
 HOURLY_TYPES = engine.HOURLY_TYPES
@@ -1588,6 +1589,139 @@ def portfolio_csv(view: dict[str, Any]) -> str:
          "" if totals["gm_pct"] is None else totals["gm_pct"], "", ""]
     )
     return buf.getvalue()
+
+
+# ----------------------------------------------------------------------------- workbook import (P4-4)
+class WorkbookImportError(HTTPException):
+    """422 whose body lists each problem in the sheet's own words (contract: ``body.errors``)."""
+
+    def __init__(self, errors: list[str]):
+        super().__init__(status_code=422, detail={"errors": list(errors)})
+        self.errors = list(errors)
+
+
+def parse_workbook_upload(data: bytes) -> ImportedEngagement:
+    try:
+        return parse_workbook(io.BytesIO(data))
+    except ValueError as exc:
+        raise WorkbookImportError([str(exc)]) from exc
+    except Exception as exc:  # a non-xlsx or corrupt file
+        raise WorkbookImportError([f"Could not read that file as a DealGate cost-margin workbook ({exc.__class__.__name__})."]) from exc
+
+
+async def resolve_workbook_client(session: AsyncSession, *, actor: AuthUser, name: str) -> Client:
+    """The sheet's client by name. Real users get it found or created; test identities must name a fixture account."""
+
+    candidates = (
+        await session.execute(select(Client).where(func.lower(Client.name) == name.lower(), Client.archived_at.is_(None)))
+    ).scalars().all()
+    allowed = [c for c in candidates if await client_allowed(session, actor, c.id)]
+    if allowed:
+        return allowed[0]
+    if is_test_identity(actor):
+        scoped = [c for c in (await session.execute(select(Client).where(Client.archived_at.is_(None)))).scalars().all() if name.lower() in c.name.lower() and await client_allowed(session, actor, c.id)]
+        if scoped:
+            return scoped[0]
+        raise WorkbookImportError([f"Client '{name}' is not one of your fixture accounts (test identities import into accounts issued by POST /dev/test-fixtures)."])
+    return await create_manual_client(session, actor=actor, name=name)
+
+
+def hours_check_rows(imported: ImportedEngagement, eng: Engagement, created: list[Allocation], forecast: dict[str, Any], bundle: CalendarBundle) -> list[dict[str, Any]]:
+    """Per row: the sheet's hours beside the engine's, with the weekday holidays in the row's window as the usual reason."""
+
+    out: list[dict[str, Any]] = []
+    for imp, row in zip(imported.allocations, created):
+        engine_hours = sum((Decimal(str(am["hours"])) for am in forecast["allocation_months"] if am["allocation_id"] == str(row.id)), engine.ZERO)
+        start, end = effective_window(eng, row)
+        holidays = [d.isoformat() for d in bundle.holidays.get(row.location, ()) if start <= d <= end and d.weekday() < 5]
+        if imp.sheet_hours is None:
+            note = "the sheet showed no hours for this row"
+        elif abs(imp.sheet_hours - engine_hours) < Decimal("0.5"):
+            note = "matches the sheet"
+        else:
+            where = f" — weekday holiday(s) in the window: {', '.join(holidays)}" if holidays else " — usually holidays or utilization"
+            note = f"the app computes {hours_text(engine_hours)} h{where}"
+        out.append({"role": row.role, "sheet_hours": num(imp.sheet_hours), "engine_hours": num(engine_hours), "note": note})
+    return out
+
+
+def hours_text(value: Decimal) -> str:
+    """Whole hours without a trailing .0; otherwise two places (presentation only)."""
+
+    return str(int(value)) if value == value.to_integral_value() else format(value.quantize(Decimal("0.01")), "f")
+
+
+async def import_workbook(session: AsyncSession, *, actor: AuthUser, data: bytes) -> dict[str, Any]:
+    """POST /engagements/import-workbook: parse → create engagement + people + allocations + costs → forecast."""
+
+    imported = parse_workbook_upload(data)
+    if imported.errors:
+        raise WorkbookImportError(imported.errors)
+    bundle = await load_calendar(session)
+    client = await resolve_workbook_client(session, actor=actor, name=imported.client)
+    eng = Engagement(
+        id=uuid.uuid4(),
+        client_id=client.id,
+        name=imported.name,
+        type=imported.type,
+        start=imported.start,
+        end=imported.end,
+        total_price=imported.total_price,
+        monthly_fee=imported.monthly_fee,
+        currency=(imported.currency or "USD").upper()[:8],
+        additional_costs_flag=imported.additional_costs_flag,
+        same_dates_for_all=imported.same_dates_for_all,
+        owner_user_id=actor.id,
+        created_by=actor.id,
+    )
+    problems = engine.compute(engine_engagement(eng), [], [], bundle.engine_calendar()).missing
+    unknown = sorted({a.location for a in imported.allocations} - set(bundle.location_names()))
+    if unknown:
+        problems.append(f"Location(s) {', '.join(unknown)} on the sheet are not on the Settings page — add them first.")
+    if problems:
+        raise WorkbookImportError(problems)
+    session.add(eng)
+    await session.flush()
+    created: list[Allocation] = []
+    row_problems: list[str] = []
+    for imp in imported.allocations:
+        seniority = imp.seniority if imp.seniority in SENIORITIES else None
+        resource = (
+            await session.execute(
+                select(Resource).where(func.lower(Resource.name) == imp.role.lower(), Resource.location == imp.location,
+                                       Resource.employment_type == imp.employment_type).limit(1)
+            )
+        ).scalar_one_or_none()
+        if resource is None:
+            resource = Resource(id=uuid.uuid4(), name=imp.role, location=imp.location, employment_type=imp.employment_type, seniority=seniority, active=True)
+            session.add(resource)
+            await session.flush()
+        alloc = Allocation(
+            id=uuid.uuid4(), engagement_id=eng.id, resource_id=resource.id, role=imp.role, seniority=seniority,
+            location=imp.location, employment_type=imp.employment_type, assignment=imp.assignment,
+            utilization=imp.utilization, bill_rate=imp.bill_rate, cost_per_hour=imp.cost_per_hour,
+            start=imp.start, end=imp.end, hours_override=imp.hours_override,
+        )
+        row_problems.extend(_own_problems(eng, alloc, resource.name, bundle))
+        session.add(alloc)
+        created.append(alloc)
+    if row_problems:
+        raise WorkbookImportError(row_problems)
+    for c in imported.costs:
+        session.add(EngagementCost(id=uuid.uuid4(), engagement_id=eng.id, description=c.description, category=c.category,
+                                   amount=c.amount, frequency=c.frequency, billed_to_client=c.billed_to_client))
+    await session.flush()
+    await append_audit(
+        session, actor_id=actor.id, action="engagement.imported_workbook", entity="engagement", entity_id=str(eng.id),
+        before=None, after={**_engagement_snapshot(eng), "allocations": len(created), "costs": len(imported.costs), "warnings": list(imported.warnings)},
+    )
+    forecast = await forecast_payload(session, eng, bundle=bundle)
+    return {
+        "engagement": await engagement_detail(session, eng),
+        "forecast": forecast,
+        "warnings": list(imported.warnings),
+        "hours_check": hours_check_rows(imported, eng, created, forecast, bundle),
+    }
 
 
 # ----------------------------------------------------------------------------- importer (workbook staffing table)

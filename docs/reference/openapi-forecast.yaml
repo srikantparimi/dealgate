@@ -71,6 +71,15 @@ paths:
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/EngagementCostIn" } } } }
       responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/EngagementCost" } } } }, "422": { $ref: "#/components/responses/Validation" } }
+  /engagements/import-workbook:
+    post:
+      tags: [engagements]
+      summary: Create an engagement from a DealGate cost-margin workbook (.xlsx). Nothing else to type — the sheet carries the project block, people and costs.
+      description: Parses with app.services.forecast.workbook_import.parse_workbook (header-driven, older copies supported). Creates engagement + allocations + costs, runs the engine, returns the forecast with the importer's warnings and a per-row comparison of the sheet's hours to the engine's (differences are usually holidays or utilization).
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { type: object, properties: { engagement: { $ref: "#/components/schemas/Engagement" }, forecast: { $ref: "#/components/schemas/Forecast" }, warnings: { type: array, items: { type: string } }, hours_check: { type: array, items: { type: object, properties: { role: { type: string }, sheet_hours: { type: number, nullable: true }, engine_hours: { type: number }, note: { type: string } } } } } } } } }
+        "422": { description: The sheet is incomplete. body.errors lists each problem in the sheet's own words (e.g. "Engagement type not picked on the sheet"). Nothing is created. }
   /engagements/{id}/forecast:
     get:
       tags: [forecast]

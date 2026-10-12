@@ -117,6 +117,32 @@ cd /Users/srikanthparimi/OfficeApp/dealgate-s22 && env AWS_PROFILE=lm-arbiter-po
 
 Staging now runs the main image. Still owner-unverified: P2-4 from-deal pre-fill on a real Closed-Won deal; the first real nightly portfolio tick (06:00 UTC).
 
+## S22-P4 candidate (2026-10-12, session S22-2)
+
+Working rule for this round (Kanna): plan for Kanna to apply only if infrastructure changes; an image-only roll is applied by the session.
+
+| Item | Value |
+| --- | --- |
+| Branch / commit | `feat/s22-p4` @ `68ff809d` (off `origin/main` 5124907) |
+| Image | `officeapp-dev-api:s22p4-68ff809d` · digest `sha256:c846036816cf494da55985028a82fdf2a99c907bd46f7462bc73c6dd907cadea` · 104,456,505 bytes · linux/amd64 |
+| SPA | `web/dist` → `assets/index-CwMcUryo.js` |
+| Migration | none new (head `20261012_0065_portfolio_forecast`; migration task re-runs idempotently) |
+| Plan | `/tmp/s22p4-68ff809d.tfplan` — **12 to add, 14 to change, 12 to destroy**, image-only: 11 `aws_ecs_task_definition` + the `terraform_data` migration trigger replaced; `aws_ecs_service` + 9 `aws_cloudwatch_event_target` + 4 `aws_iam_role_policy` updated; no creates or deletes of any other type; every image → `s22p4-68ff809d`; same inputs as every previous plan |
+| Checksums | tfplan `d072a200682a39484e3f969d1d457629241b691f9f9ce2c2dfab0c927f129c2c` · plan.txt `d22cb523b563eac908bf2595cd38a2f453c338abe032512642c667d981ae7fa0` · plan.json `d357e77411fe145aece2733bf008b966b53d68aa4358f89a8781d5195d366a4c` |
+| Local proof | 22 forecast tests; S22 pytest incl. 4 workbook-import tests; web vitest 89 files / 556 tests; Playwright `s22-p4-upload` (2), `s22-p1-contract`, `s22-p2-owner-path` all pass on the local stack, teardown clean |
+
+## S22-P4 apply and roll (2026-10-12, image-only, applied by the session per the round's rule)
+
+| Step | Result |
+| --- | --- |
+| `terraform -chdir=infra-tf apply /tmp/s22p4-68ff809d.tfplan` (checksum verified first) | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed** — exactly the plan |
+| Migration task `ec522dd7478646dea4c5fa9e8e458c78` on `officeapp-dev-api-migrate:38` | succeeded (no-op at head `20261012_0065_portfolio_forecast`) |
+| API service | `officeapp-dev-api:100`, `services-stable`, 1/1 PRIMARY; running task `2b9c1636…6758` on `s22p4-68ff809d`, digest `sha256:c846036816cf494da55985028a82fdf2a99c907bd46f7462bc73c6dd907cadea`; `POST /api/engagements/import-workbook` → 401 unauthenticated (present) |
+| Worker families | alert-scheduler 52, notification-sender 52, renewals-scheduler 52, portfolio-scheduler 4, audit-export 52, hubspot-intake 51, hubspot-reconcile 51, forecast-plans 29, deletion-cleanup 29, api-migrate 38 — all `s22p4-68ff809d` |
+| Smoke | `smoke 20261012T224136Z` GREEN; gate clean |
+| SPA | `assets/index-CwMcUryo.js` synced (immutable) + `index.html` (no-cache); CloudFront invalidation `I9X52BCW2B0D0RAKPWRWEPC643` COMPLETED; served bundle contains the import-workbook call |
+| S22 specs on staging | `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `4 passed (1.6m)`; owner path re-run with the P4-3 label assertions: passed; gate clean after every run: 0 clients / 0 approvers / 0 people / 0 engagements |
+
 ## Local full-stack rehearsal (same API code as the image, local Postgres)
 
 Stack: pgvector/pg16 container (`dealgate_e2e`, `alembic upgrade head` → `20261012_0065_portfolio_forecast`, seeds present), uvicorn `DEALGATE_ENV=local` with every role granted, Vite dev server same-origin through its `/api` proxy, `VITE_TEST_GROUPS` identity (bug #3).

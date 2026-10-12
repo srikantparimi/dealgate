@@ -157,6 +157,17 @@ beforeEach(() => {
   vi.spyOn(api, "rehireAllocation").mockResolvedValue({ ...allocation, id: "a2", start: "2027-01-01" });
   vi.spyOn(api, "createEngagement").mockResolvedValue(engagement);
   vi.spyOn(api, "createClient").mockResolvedValue({ id: "c-new", name: "Brand New Co", source: "manual" });
+  vi.spyOn(api, "importWorkbook").mockResolvedValue({
+    engagement: { ...engagement, id: "e-imported" },
+    forecast,
+    warnings: ["Settings on the sheet were read for comparison only"],
+    hours_check: [{ role: "Vikrin", sheet_hours: 168, engine_hours: 160, note: "the app computes 160 h — weekday holiday(s) in the window: 2026-09-07" }],
+  });
+  try {
+    sessionStorage.clear();
+  } catch {
+    /* jsdom */
+  }
   vi.spyOn(clientApi, "getPipelineFacets").mockResolvedValue({ owners: [], business_units: [] });
   vi.spyOn(clientApi, "listPipelineOpportunities").mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 } as unknown as Awaited<ReturnType<typeof clientApi.listPipelineOpportunities>>);
 });
@@ -317,5 +328,101 @@ describe("S22 · NewEngagementPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create engagement" }));
     await waitFor(() => expect(api.createClient).toHaveBeenCalledWith("Brand New Co"));
     await waitFor(() => expect(api.createEngagement).toHaveBeenCalledWith(expect.objectContaining({ client_id: "c-new", type: "msp", monthly_fee: "42000", same_dates_for_all: true, additional_costs_flag: false })));
+  });
+});
+
+
+describe("S22 P4 · click-through fixes", () => {
+  const shortForecast: api.Forecast = {
+    ...forecast,
+    duration_months: 0.967742,
+    monthly_required: false,
+    months: [month("2026-09"), { ...month("2026-10"), people: 1 }],
+  };
+  const assessment: api.Engagement = { ...engagement, id: "e-short", type: "assessment", start: "2026-09-07", end: "2026-10-05", total_price: "50000.00" };
+
+  function renderEngagement(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/engagements/:id/:tab" element={<EngagementPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("P4-2 · a short engagement shows the whole-term summary first and the month split behind a button", async () => {
+    vi.mocked(api.getEngagement).mockResolvedValue(assessment);
+    vi.mocked(api.getEngagementForecast).mockResolvedValue(shortForecast);
+    renderEngagement("/engagements/e-short/forecast");
+    expect(await screen.findByTestId("monthly-required")).toHaveTextContent("Short engagement (0.97 months, 2026-09-07 → 2026-10-05) — judged on the total.");
+    const summary = screen.getByTestId("term-summary");
+    expect(within(summary).getByText("Total · 2026-09-07 → 2026-10-05")).toBeInTheDocument();
+    expect(within(summary).getByText("Gross margin $")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "All resources by month" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show month split" }));
+    expect(screen.getByRole("table", { name: "All resources by month" })).toBeInTheDocument();
+    expect(screen.queryByTestId("term-summary")).not.toBeInTheDocument();
+    // P4-5 · fixed-fee types: per-person rows are hours, labelled as such
+    expect(screen.getByTestId("per-person-heading")).toHaveTextContent("Per person · hours by month");
+    expect(screen.getByText(/Hours per person \(fixed-fee types carry no per-person revenue\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide month split" }));
+    expect(screen.getByTestId("term-summary")).toBeInTheDocument();
+  });
+
+  it("P4-2 · a long engagement keeps the month split and no toggle", async () => {
+    renderEngagement("/engagements/e1/forecast");
+    expect(await screen.findByTestId("monthly-required")).toHaveTextContent("Monthly view required — 6.0 months.");
+    expect(screen.queryByRole("button", { name: /month split/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("per-person-heading")).toHaveTextContent("Per person · revenue by month");
+  });
+
+  it("P4-3 · portfolio month columns carry the month and the term column says whole term", async () => {
+    render(
+      <MemoryRouter initialEntries={["/portfolio?month=2026-11"]}>
+        <PortfolioPage />
+      </MemoryRouter>,
+    );
+    const table = await screen.findByRole("table", { name: "Portfolio forecast" });
+    expect(within(table).getByText("Revenue · Nov 2026")).toBeInTheDocument();
+    expect(within(table).getByText("Cost · Nov 2026")).toBeInTheDocument();
+    expect(within(table).getByText("GM % · Nov 2026")).toBeInTheDocument();
+    expect(within(table).getByText("GM % · whole term")).toBeInTheDocument();
+    expect(screen.getByText(/the month columns show only Nov 2026's slice of each engagement/)).toBeInTheDocument();
+  });
+
+  it("P4-4 · the sheet upload creates the engagement and the header shows the hours check once", async () => {
+    render(
+      <MemoryRouter initialEntries={["/engagements/new"]}>
+        <Routes>
+          <Route path="/engagements/new" element={<NewEngagementPage />} />
+          <Route path="/engagements/:id/:tab" element={<EngagementPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("heading", { name: "Upload the DealGate cost-margin sheet" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "…or fill it in" })).toBeInTheDocument();
+    const file = new File([new Uint8Array([80, 75, 3, 4])], "DealGate_Cost_Margin_SAMPLE_StaffAug.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    fireEvent.change(screen.getByLabelText("Cost-margin sheet (.xlsx)"), { target: { files: [file] } });
+    await waitFor(() => expect(api.importWorkbook).toHaveBeenCalledWith(file));
+    const note = await screen.findByTestId("import-note");
+    expect(note).toHaveTextContent("Imported from the sheet.");
+    expect(note).toHaveTextContent("Sheet said 168 h for Vikrin; the app computes 160 h — weekday holiday(s) in the window: 2026-09-07");
+    fireEvent.click(within(note).getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByTestId("import-note")).not.toBeInTheDocument();
+  });
+
+  it("P4-4 · a sheet the server rejects shows its errors in the sheet's words and creates nothing", async () => {
+    const error = Object.assign(new Error("422"), { status: 422, body: { detail: { errors: ["Engagement type '(blank)' not recognised — pick one on the sheet first.", "Project start and end dates are required."] } } });
+    vi.mocked(api.importWorkbook).mockRejectedValue(error);
+    render(
+      <MemoryRouter initialEntries={["/engagements/new"]}>
+        <NewEngagementPage />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("heading", { name: "Upload the DealGate cost-margin sheet" });
+    fireEvent.change(screen.getByLabelText("Cost-margin sheet (.xlsx)"), { target: { files: [new File(["x"], "blank.xlsx")] } });
+    expect(await screen.findByTestId("sheet-errors")).toHaveTextContent("Engagement type '(blank)' not recognised — pick one on the sheet first. · Project start and end dates are required.");
+    expect(api.createEngagement).not.toHaveBeenCalled();
   });
 });

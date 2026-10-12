@@ -12,11 +12,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import {
   ENGAGEMENT_TYPE_LABEL,
+  dismissImportNote,
   getEngagement,
   getEngagementForecast,
   getForecastSettings,
   listAllocations,
   listCosts,
+  takeImportNote,
   type Allocation,
   type Engagement,
   type EngagementCost,
@@ -35,6 +37,11 @@ import { ForecastTab } from "./ForecastTab";
 import { SetupTab } from "./SetupTab";
 
 export type EngagementTab = "allocations" | "forecast" | "setup";
+
+/** Whole hours without a trailing .0, otherwise two places — display only. */
+function hoursText(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
 const TABS: { id: EngagementTab; label: string }[] = [
   { id: "allocations", label: "Allocations" },
   { id: "forecast", label: "Forecast" },
@@ -59,6 +66,8 @@ export function EngagementPage() {
   const [data, setData] = useState<EngagementData | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  // P4-4: an engagement created from the sheet shows its import warnings + hours check once.
+  const [importNote, setImportNote] = useState(() => takeImportNote(id));
 
   const reload = useCallback(async () => {
     setError(null);
@@ -112,6 +121,40 @@ export function EngagementPage() {
           </Button>
         }
       />
+
+      {importNote ? (
+        <div className="rounded-card border border-dashed border-primary bg-primary-subtle px-4 py-3 text-body" data-testid="import-note">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-medium">Imported from the sheet.</p>
+              {importNote.warnings.length > 0 ? <p className="mt-1 text-secondary">{importNote.warnings.join(" · ")}</p> : null}
+              {importNote.hours_check.length > 0 ? (
+                <ul className="mt-1 text-secondary">
+                  {importNote.hours_check.map((row) => (
+                    <li key={row.role}>
+                      {row.sheet_hours === null
+                        ? `${row.role}: ${row.note}`
+                        : row.note === "matches the sheet"
+                          ? `${row.role}: ${hours(row.engine_hours)} h — matches the sheet`
+                          : `Sheet said ${hoursText(row.sheet_hours)} h for ${row.role}; ${row.note}`}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                dismissImportNote(id);
+                setImportNote(null);
+              }}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3 rounded-card border border-divider bg-surface px-4 py-3" data-testid="status-line" role="status">
         <StatusPill status={forecast.status} />

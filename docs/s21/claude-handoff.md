@@ -2,6 +2,23 @@
 
 ## RESUME HERE
 
+**2026-10-12 — S22-P4 (CLICK-THROUGH FIXES + UPLOAD THE SHEET) DEPLOYED TO
+STAGING; AWAITING PRODUCT-OWNER CLICK.** Tree
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-p4`, branch `feat/s22-p4` (off
+`origin/main` 5124907), pushed. Staging: API `officeapp-dev-api:100` on
+image `s22p4-68ff809d`
+(`sha256:c846036816cf494da55985028a82fdf2a99c907bd46f7462bc73c6dd907cadea`),
+SPA `assets/index-CwMcUryo.js`, all worker families on the image; no new
+migration. Smoke `smoke 20261012T224136Z` GREEN; `s22-p4-upload` +
+`s22-p1-contract` + `s22-p2-owner-path` pass on staging; extended leak
+gate 0/0/0/0. Scoreboard rows S22-P4-1 … S22-P4-5 all
+`verified working (staging)`; report `docs/reports/s22/p4-report.md`;
+decisions D9–D11 in `docs/bugs/s22.md`. No merge to main before Kanna's
+click. Next: Kanna clicks `/engagements/new` → upload her sheet; the
+Forecast tab of a short engagement; `/portfolio` headers. On acceptance,
+squash-merge `feat/s22-p4` → main (image-only roll of the main image
+afterwards, as for S22).
+
 **2026-10-12 — S22 PORTFOLIO & FORECAST RELEASED: MERGED TO MAIN, MAIN IMAGE
 VERIFIED ON STAGING.** `origin/main` = `576205c` (squash of `feat/s22`,
 product owner accepted the staging click-through). Immutable image
