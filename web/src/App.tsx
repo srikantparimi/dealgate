@@ -47,6 +47,9 @@ import { SourcingPlanningPage } from "./pages/v2/SourcingPlanning";
 import { SettingsShellPage } from "./pages/v2/SettingsShell";
 import { BulkSowImportPage } from "./pages/v2/BulkSowImport";
 import { NeedsReviewQueuePage } from "./pages/v2/NeedsReviewQueue";
+import { PortfolioPage } from "./pages/v2/portfolio/PortfolioPage";
+import { EngagementPage } from "./pages/v2/portfolio/EngagementPage";
+import { NewEngagementPage } from "./pages/v2/portfolio/NewEngagementPage";
 
 const CAPABILITY_WRITE_ROLES = new Set(["Delivery", "SystemAdmin"]);
 const CAPABILITY_DELETE_ROLES = new Set(["SystemAdmin"]);
@@ -170,6 +173,10 @@ export function App() {
                   <Route path="/deletions/:id" element={<DeletionJobPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/forecast" element={<ForecastPage />} />
+                  <Route path="/portfolio" element={<PortfolioPage />} />
+                  <Route path="/engagements/new" element={<NewEngagementPage />} />
+                  <Route path="/engagements/:id" element={<EngagementPage />} />
+                  <Route path="/engagements/:id/:tab" element={<EngagementPage />} />
                   <Route path="/people" element={<PeoplePlanningPage />} />
                   <Route path="/people/demand" element={<PeopleDemandPage />} />
                   <Route path="/people/sourcing" element={<SourcingPlanningPage />} />

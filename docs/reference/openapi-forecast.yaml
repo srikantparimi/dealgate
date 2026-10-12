@@ -1,0 +1,282 @@
+openapi: 3.0.3
+info:
+  title: DealGate — Portfolio & Forecast
+  version: "1.0"
+  description: >
+    Contract for the Portfolio & Forecast module. Every forecast response is a serialisation of
+    api/app/services/forecast.Forecast — nothing is computed elsewhere. Money is a decimal string
+    with two places; percentages are decimal fractions (0.3603 = 36.03%); dates are YYYY-MM-DD;
+    months are YYYY-MM. The approved screens are docs/reference/prototype/dealgate-portfolio.html.
+servers: [{ url: /api }]
+tags: [{ name: engagements }, { name: allocations }, { name: costs }, { name: forecast }, { name: portfolio }, { name: settings }]
+
+paths:
+  /engagements:
+    get:
+      tags: [engagements]
+      summary: List engagements (single query service, totals before pagination)
+      parameters:
+        - { name: client_id, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { $ref: "#/components/schemas/EngagementType" } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, active, ended] } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, enum: [25, 50, 100], default: 25 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { total: { type: integer }, items: { type: array, items: { $ref: "#/components/schemas/Engagement" } } } } } } }
+    post:
+      tags: [engagements]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/EngagementIn" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Engagement" } } } }, "422": { $ref: "#/components/responses/Validation" } }
+  /engagements/{id}:
+    get: { tags: [engagements], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Engagement" } } } } } }
+    patch:
+      tags: [engagements]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/EngagementIn" } } } }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Engagement" } } } }, "422": { $ref: "#/components/responses/Validation" } }
+  /engagements/{id}/allocations:
+    get: { tags: [allocations], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { description: Current (non-superseded) rows, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Allocation" } } } } } } }
+    post:
+      tags: [allocations]
+      summary: Add a person. cost_per_hour defaults from the rate card (seniority × location × employment type); start/end default to the engagement window.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AllocationIn" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Allocation" } } } }, "422": { $ref: "#/components/responses/Validation" } }
+  /allocations/{id}:
+    patch:
+      tags: [allocations]
+      summary: Edit an open row. Changing bill_rate or cost_per_hour after the row has started supersedes it (new row from today) — history is never rewritten.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/AllocationIn" } } } }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Allocation" } } } } }
+    delete: { tags: [allocations], summary: Remove a row that never started; a started row is closed instead., parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "204": { description: Removed }, "409": { description: Row has started — use /close } } }
+  /allocations/{id}/close:
+    post:
+      tags: [allocations]
+      summary: Leaver. Sets the end date (default = last day of the current month).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { end: { type: string, format: date } } } } } }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Allocation" } } } } }
+  /allocations/{id}/rehire:
+    post:
+      tags: [allocations]
+      summary: Re-hire or extension. Copies the row as a new allocation starting the day after the old end (or the given start).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { start: { type: string, format: date }, bill_rate: { $ref: "#/components/schemas/Money" }, cost_per_hour: { $ref: "#/components/schemas/Money" } } } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Allocation" } } } } }
+  /engagements/{id}/costs:
+    get: { tags: [costs], parameters: [{ $ref: "#/components/parameters/Id" }], responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/EngagementCost" } } } } } } }
+    post:
+      tags: [costs]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/EngagementCostIn" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/EngagementCost" } } } }, "422": { $ref: "#/components/responses/Validation" } }
+  /engagements/{id}/forecast:
+    get:
+      tags: [forecast]
+      summary: The engagement's forecast — exactly forecast.compute() serialised.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Forecast" }, example: { $ref: "#/components/examples/ClientAForecast" } } } } }
+  /portfolio/forecast:
+    get:
+      tags: [portfolio]
+      summary: Every engagement for one month plus the four signal cards. Card counts equal the lists they open.
+      parameters:
+        - { name: month, in: query, required: true, schema: { type: string, pattern: "^\\d{4}-\\d{2}$" } }
+        - { name: type, in: query, schema: { $ref: "#/components/schemas/EngagementType" } }
+        - { name: client_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [month, cards, rows, totals]
+                properties:
+                  month: { type: string }
+                  cards:
+                    type: object
+                    properties:
+                      portfolio_gm_pct: { $ref: "#/components/schemas/Pct" }
+                      below_floor: { type: integer, description: engagements whose term GM < project floor }
+                      rolloffs_60d: { type: integer, description: allocations ending within 60 days of the month start with no later allocation for the same resource }
+                      bench: { type: integer, description: active resources with no allocation in the month }
+                  rows: { type: array, items: { $ref: "#/components/schemas/PortfolioRow" } }
+                  totals: { type: object, properties: { people: { type: integer }, revenue: { $ref: "#/components/schemas/Money" }, cost: { $ref: "#/components/schemas/Money" }, gm_pct: { $ref: "#/components/schemas/Pct" } } }
+                  rolloffs: { type: array, items: { type: object, properties: { client: { type: string }, resource: { type: string }, role: { type: string }, assignment: { type: string, nullable: true }, end: { type: string, format: date } } } }
+                  bench_list: { type: array, items: { type: object, properties: { resource: { type: string }, location: { type: string }, employment_type: { $ref: "#/components/schemas/EmploymentType" }, seniority: { type: string }, free_from: { type: string, format: date } } } }
+  /clients:
+    get: { tags: [engagements], summary: Clients (HubSpot mirror companies plus manually created ones), responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, source: { type: string, enum: [hubspot, manual] } } } } } } } } }
+    post:
+      tags: [engagements]
+      summary: Create a client by name when no HubSpot company matches (never a mirror row).
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }
+      responses: { "201": { description: Created } }
+  /settings/forecast:
+    put:
+      tags: [settings]
+      summary: Save the calendar (Settings page). Changing it creates a new forecast_run for every active engagement.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Calendar" } } } }
+      responses: { "200": { description: Saved }, "422": { $ref: "#/components/responses/Validation" } }
+    get:
+      tags: [settings]
+      summary: The calendar the engine runs with (burden matrix, floors, hours/day, rate card, holidays). Edited on the Settings page; never hard-coded.
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Calendar" } } } } }
+
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Validation: { description: Input rejected. body.missing lists each problem in the user's words (e.g. "Developer: bill rate required for hourly engagement types"). }
+  schemas:
+    Money: { type: string, pattern: "^-?\\d+\\.\\d{2}$", example: "339684.00" }
+    Pct: { type: number, nullable: true, example: 0.3603 }
+    EngagementType: { type: string, enum: [fixed_cost, assessment, msp, time_and_materials, staff_augmentation] }
+    EmploymentType: { type: string, enum: [w2_employee, contractor_1099] }
+    EngagementIn:
+      type: object
+      required: [client_id, name, type, start, end, additional_costs_flag, same_dates_for_all]
+      properties:
+        client_id: { type: string }
+        hubspot_deal_id: { type: string, nullable: true }
+        name: { type: string }
+        type: { $ref: "#/components/schemas/EngagementType" }
+        start: { type: string, format: date }
+        end: { type: string, format: date }
+        total_price: { $ref: "#/components/schemas/Money", nullable: true, description: required for fixed_cost / assessment }
+        monthly_fee: { $ref: "#/components/schemas/Money", nullable: true, description: required for msp }
+        currency: { type: string, default: USD }
+        additional_costs_flag: { type: boolean }
+        same_dates_for_all: { type: boolean }
+        owner_user_id: { type: string, nullable: true }
+    Engagement:
+      allOf:
+        - { $ref: "#/components/schemas/EngagementIn" }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            client_name: { type: string }
+            owner_name: { type: string, description: a name, never an id }
+            status: { type: string, enum: [draft, active, ended] }
+            duration_months: { type: number, example: 5.97 }
+    AllocationIn:
+      type: object
+      required: [resource_id, employment_type, utilization]
+      properties:
+        resource_id: { type: string }
+        role: { type: string }
+        seniority: { type: string, enum: [Junior, Mid, Senior, Principal] }
+        location: { type: string, example: US }
+        employment_type: { $ref: "#/components/schemas/EmploymentType" }
+        assignment: { type: string, nullable: true }
+        utilization: { type: number, minimum: 0, maximum: 1 }
+        bill_rate: { $ref: "#/components/schemas/Money", nullable: true, description: required for hourly types }
+        cost_per_hour: { $ref: "#/components/schemas/Money", nullable: true, description: null = rate card }
+        start: { type: string, format: date, nullable: true, description: null = engagement start }
+        end: { type: string, format: date, nullable: true, description: null = engagement end }
+        hours_override: { type: number, nullable: true }
+    Allocation:
+      allOf:
+        - { $ref: "#/components/schemas/AllocationIn" }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            resource_name: { type: string }
+            effective_start: { type: string, format: date }
+            effective_end: { type: string, format: date }
+            cost_per_hour_effective: { $ref: "#/components/schemas/Money", description: the value the engine used (override or rate card) }
+            burden_pct: { $ref: "#/components/schemas/Pct" }
+            superseded_by: { type: string, nullable: true }
+            totals: { type: object, properties: { working_days: { type: integer }, hours: { type: number }, revenue: { $ref: "#/components/schemas/Money" }, loaded_cost: { $ref: "#/components/schemas/Money" }, row_gm_pct: { $ref: "#/components/schemas/Pct" }, under_resource_floor: { type: boolean } } }
+    EngagementCostIn:
+      type: object
+      required: [description, amount, billed_to_client]
+      properties:
+        description: { type: string }
+        category: { type: string }
+        location: { type: string, nullable: true }
+        amount: { $ref: "#/components/schemas/Money" }
+        frequency: { type: string, enum: [one_time, monthly], default: one_time }
+        billed_to_client: { type: boolean }
+    EngagementCost:
+      allOf: [{ $ref: "#/components/schemas/EngagementCostIn" }, { type: object, properties: { id: { type: string, format: uuid } } }]
+    MonthLine:
+      type: object
+      properties:
+        month: { type: string, example: "2026-11" }
+        share_of_month: { type: number }
+        people: { type: integer }
+        hours: { type: number }
+        revenue: { $ref: "#/components/schemas/Money" }
+        labour_cost: { $ref: "#/components/schemas/Money" }
+        burden_cost: { $ref: "#/components/schemas/Money" }
+        additional_costs: { $ref: "#/components/schemas/Money" }
+        pass_through_revenue: { $ref: "#/components/schemas/Money" }
+        total_revenue: { $ref: "#/components/schemas/Money" }
+        total_cost: { $ref: "#/components/schemas/Money" }
+        gm: { $ref: "#/components/schemas/Money" }
+        gm_pct: { $ref: "#/components/schemas/Pct" }
+    Forecast:
+      type: object
+      required: [engagement_id, duration_months, status, months, by_assignment, allocation_months, location_check, totals, missing, monthly_required]
+      properties:
+        engagement_id: { type: string }
+        duration_months: { type: number }
+        status: { type: string, enum: [PASS, "BELOW FLOOR", INCOMPLETE] }
+        project_floor_pct: { $ref: "#/components/schemas/Pct" }
+        monthly_required: { type: boolean }
+        missing: { type: array, items: { type: string } }
+        totals: { type: object, properties: { hours: { type: number }, labour_cost: { $ref: "#/components/schemas/Money" }, burden_cost: { $ref: "#/components/schemas/Money" }, additional_costs: { $ref: "#/components/schemas/Money" }, pass_through_revenue: { $ref: "#/components/schemas/Money" }, total_revenue: { $ref: "#/components/schemas/Money" }, total_cost: { $ref: "#/components/schemas/Money" }, gm_pct: { $ref: "#/components/schemas/Pct" } } }
+        months: { type: array, items: { $ref: "#/components/schemas/MonthLine" } }
+        by_assignment:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: { type: object, properties: { people: { type: integer }, hours: { type: number }, revenue: { $ref: "#/components/schemas/Money" }, loaded_cost: { $ref: "#/components/schemas/Money" }, gm_pct: { $ref: "#/components/schemas/Pct" } } }
+          description: "{assignment: {month: line}} — '(unassigned)' for blank assignments"
+        allocation_months:
+          type: array
+          items: { type: object, properties: { allocation_id: { type: string }, resource_name: { type: string }, assignment: { type: string }, month: { type: string }, working_days: { type: integer }, hours: { type: number }, revenue: { $ref: "#/components/schemas/Money" }, loaded_cost: { $ref: "#/components/schemas/Money" } } }
+        location_check:
+          type: object
+          additionalProperties: { type: object, properties: { revenue: { $ref: "#/components/schemas/Money" }, loaded_cost: { $ref: "#/components/schemas/Money" }, gm_pct: { $ref: "#/components/schemas/Pct" }, floor: { $ref: "#/components/schemas/Pct" }, ok: { type: boolean } } }
+    PortfolioRow:
+      type: object
+      properties:
+        engagement_id: { type: string }
+        client_name: { type: string }
+        name: { type: string }
+        type: { $ref: "#/components/schemas/EngagementType" }
+        start: { type: string, format: date }
+        end: { type: string, format: date }
+        people: { type: integer }
+        revenue_month: { $ref: "#/components/schemas/Money" }
+        cost_month: { $ref: "#/components/schemas/Money" }
+        gm_pct_month: { $ref: "#/components/schemas/Pct" }
+        gm_pct_term: { $ref: "#/components/schemas/Pct" }
+        status: { type: string, enum: [PASS, "BELOW FLOOR", INCOMPLETE] }
+    Calendar:
+      type: object
+      properties:
+        hours_per_day: { type: number, example: 8 }
+        project_floor_pct: { $ref: "#/components/schemas/Pct" }
+        locations: { type: array, items: { type: object, properties: { name: { type: string }, burden_pct_w2: { type: number }, burden_pct_1099: { type: number }, resource_floor_pct: { type: number } } } }
+        rate_card: { type: array, items: { type: object, properties: { seniority: { type: string }, location: { type: string }, employment_type: { $ref: "#/components/schemas/EmploymentType" }, cost_per_hour: { $ref: "#/components/schemas/Money" } } } }
+        holidays: { type: object, additionalProperties: { type: array, items: { type: string, format: date } } }
+  examples:
+    ClientAForecast:
+      summary: STAFF AUG — Client A, 5 resources (golden scenario)
+      value:
+        engagement_id: "e1"
+        duration_months: 5.967742
+        status: PASS
+        project_floor_pct: 0.35
+        monthly_required: true
+        missing: []
+        totals: { hours: 3660, labour_cost: "178984.00", burden_cost: "31528.72", additional_costs: "6780.00", pass_through_revenue: "3200.00", total_revenue: "339684.00", total_cost: "217292.72", gm_pct: 0.360309 }
+        location_check:
+          US: { revenue: "255460.00", loaded_cost: "172600.80", gm_pct: 0.3244, floor: 0.35, ok: false }
+          India: { revenue: "81024.00", loaded_cost: "37912.56", gm_pct: 0.5321, floor: 0.50, ok: true }
+        by_assignment:
+          Data platform: { "2027-01": { people: 3, hours: 380, revenue: "28652.00", loaded_cost: "16471.20", gm_pct: 0.4251 } }

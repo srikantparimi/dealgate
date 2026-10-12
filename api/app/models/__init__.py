@@ -25,6 +25,17 @@ from app.models.delivery_acceptance import DeliveryAcceptance
 from app.models.deletion import DeletionFence, DeletionJob
 from app.models.direct_cost_settings import DirectCostSettings
 from app.models.embedding import SowEmbedding
+from app.models.engagement import (
+    Allocation,
+    CalendarLocation,
+    CostRateCard,
+    Engagement,
+    EngagementCost,
+    ForecastPolicy,
+    ForecastRun,
+    Holiday,
+    Resource,
+)
 from app.models.forecast import ForecastPeriod
 from app.models.function_owner import FunctionOwner
 from app.models.gm_model import CostLine, GmModel, ResourceLine
@@ -62,6 +73,15 @@ from app.models.gm_model_phase import GmModelPhase  # noqa: E402
 from app.models.gm_model_template import GmModelTemplate  # noqa: E402
 
 __all__ = [
+    "Allocation",
+    "CalendarLocation",
+    "CostRateCard",
+    "Engagement",
+    "EngagementCost",
+    "ForecastPolicy",
+    "ForecastRun",
+    "Holiday",
+    "Resource",
     "ActualImportBatch",
     "ActualPeriod",
     "AdviserEstimate",

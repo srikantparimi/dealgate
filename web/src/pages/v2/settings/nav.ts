@@ -10,6 +10,7 @@
 
 import {
   Activity,
+  CalendarRange,
   Cog,
   Database,
   DollarSign,
@@ -23,6 +24,7 @@ import {
 export type SectionId =
   | "general"
   | "rates"
+  | "forecast"
   | "policy"
   | "people"
   | "integrations"
@@ -55,6 +57,13 @@ export const SECTIONS: SectionDef[] = [
     description: "Cost and bill bands. New versions never re-price approved GM.",
     icon: DollarSign,
     requireAny: ["SystemAdmin", "Finance", "Delivery", "HR"],
+  },
+  {
+    id: "forecast",
+    label: "Forecast calendar",
+    description: "Hours/day, GM floors, burden by location, cost rate card, holidays.",
+    icon: CalendarRange,
+    requireAny: ["SystemAdmin", "Finance", "Delivery", "HR", "CEO"],
   },
   {
     id: "policy",

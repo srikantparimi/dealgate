@@ -1,5 +1,10 @@
 """S6 E9 — weekly forecast update service.
 
+Renamed from ``app.services.forecast`` in S22: that import path now
+belongs to the portfolio forecast engine package
+(``api/app/services/forecast/__init__.py``), which Python resolves ahead
+of a same-named module. Behaviour here is unchanged.
+
 Delivery lead updates ``remaining_hours`` per resource line each week; the
 system freezes a ``forecast_period`` snapshot with the resulting forecast
 cost + GM per US / India component. Revenue is the pinned contract

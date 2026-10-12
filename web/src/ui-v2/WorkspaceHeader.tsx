@@ -8,6 +8,7 @@ import { NAV_GROUPS } from "./PrimaryNavigation";
 import { NotificationDrawer } from "./NotificationDrawer";
 import { ProfileMenu } from "./ProfileMenu";
 import { getDeal, getCurrentSowVersion, getSowVersion } from "../api/client";
+import { getEngagement } from "../api/engagements";
 import { workspaceTitle } from "../pages/v2/sow-workspace/readiness";
 
 /**
@@ -30,6 +31,9 @@ function buildCrumbs(pathname: string): Crumb[] {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) {
     return [{ label: "Command center" }];
+  }
+  if (segments[0] === "engagements" && segments[1] === "new") {
+    return [{ label: "Portfolio forecast", to: "/portfolio" }, { label: "New engagement" }];
   }
   if (segments[0] === "deletions") {
     return [{ label: "SOWs", to: "/sows" }, { label: "Deletion status" }];
@@ -60,10 +64,31 @@ function buildCrumbs(pathname: string): Crumb[] {
 
 export function WorkspaceHeader({ user, className }: WorkspaceHeaderProps) {
   const { pathname } = useLocation();
-  const recordId = /^\/sows\/([0-9a-f-]{36})(?:\/|$)/i.exec(pathname)?.[1];
+  const sowId = /^\/sows\/([0-9a-f-]{36})(?:\/|$)/i.exec(pathname)?.[1];
+  // S22: an engagement route shows client → engagement name → tab, never the UUID (bug #1).
+  const engagementMatch = /^\/engagements\/([0-9a-f-]{36})(?:\/([a-z-]+))?\/?$/i.exec(pathname);
+  const engagementId = engagementMatch?.[1];
+  const engagementTab = engagementMatch?.[2];
+  const recordId = sowId ?? engagementId;
   const [record, setRecord] = useState<{ id: string; crumbs: Crumb[] } | null>(null);
   useEffect(() => {
-    if (!recordId) return;
+    if (!engagementId) return;
+    let current = true;
+    void (async () => {
+      const engagement = await getEngagement(engagementId);
+      const tabLabel = engagementTab === "forecast" ? "Forecast" : engagementTab === "setup" ? "Setup & costs" : "Allocations";
+      if (current) setRecord({ id: engagementId, crumbs: [
+        { label: "Portfolio forecast", to: "/portfolio" },
+        { label: engagement.client_name || "Client", to: `/clients/${engagement.client_id}` },
+        { label: engagement.name, to: `/engagements/${engagementId}/allocations` },
+        { label: tabLabel },
+      ] });
+    })().catch(() => { if (current) setRecord(null); });
+    return () => { current = false; };
+  }, [engagementId, engagementTab]);
+  useEffect(() => {
+    if (!sowId) return;
+    const recordId = sowId;
     let current = true;
     void (async () => {
       const deal = await getDeal(recordId);
@@ -76,7 +101,10 @@ export function WorkspaceHeader({ user, className }: WorkspaceHeaderProps) {
     })().catch(() => { if (current) setRecord(null); });
     return () => { current = false; };
   }, [recordId]);
-  const crumbs = useMemo(() => recordId ? record?.id === recordId ? record.crumbs : [{ label: "SOW workspace" }] : buildCrumbs(pathname), [pathname, recordId, record]);
+  const crumbs = useMemo(
+    () => (recordId ? (record?.id === recordId ? record.crumbs : [{ label: engagementId ? "Engagement" : "SOW workspace" }]) : buildCrumbs(pathname)),
+    [pathname, recordId, record, engagementId],
+  );
 
   return (
     <header

@@ -21,7 +21,7 @@ from app.models.approval import ApprovalPackage
 from app.models.client import Client
 from app.models.gm_model import GmModel, ResourceLine
 from app.models.user import User
-from app.services.forecast import update_forecast
+from app.services.weekly_forecast import update_forecast
 from app.services.sow_upload_job_service import _create_opportunity
 from tests.test_coverage_gate import _seed_opp_gm
 

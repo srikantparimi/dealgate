@@ -29,6 +29,7 @@ from app.routers import (
     deal_comments,
     deals,
     deletion,
+    engagements,
     delivery_model,
     dev_seed,
     forecast,
@@ -201,6 +202,7 @@ app.include_router(renewals.router)
 app.include_router(reports.router)
 app.include_router(dashboards.router)
 app.include_router(forecast.router)
+app.include_router(engagements.router)
 app.include_router(people.router)
 app.include_router(actuals.router)
 app.include_router(admin_remediation.router)

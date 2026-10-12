@@ -90,11 +90,22 @@ async def purge_client(
 
     if "SystemAdmin" not in user.groups:
         return {"ok": False, "status": 403, "error": "SystemAdmin required"}
-    from app.services.deletion import _hard_delete_client
+    # S22: the former ``_hard_delete_client`` helper no longer exists (the
+    # endpoint 500'd with an ImportError on staging). Route through the same
+    # deletion service the DELETE /clients endpoint uses, minus the runtime
+    # scope check — this is the e2e sweep's force path.
+    from app.services.deletion import DeletionError
+    from app.services.parent_deletion import request_client_deletion
+    from app.services.user_provisioning import ensure_user
 
-    counts = await _hard_delete_client(session, client_id)
+    db_user = await ensure_user(session, user)
+    try:
+        job = await request_client_deletion(session, actor_id=db_user.id, client_id=client_id)
+    except DeletionError as exc:
+        await session.rollback()
+        return {"ok": False, "status": exc.status_code, "error": str(exc)}
     await session.commit()
-    return {"ok": True, "client_id": str(client_id), "counts": counts}
+    return {"ok": True, "client_id": str(client_id), "job_id": str(job.id), "counts": job.summary.get("counts", {})}
 
 
 @router.post("/seed-approved-package/{opportunity_id}")

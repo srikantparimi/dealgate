@@ -56,11 +56,14 @@ export CLOUDFRONT_ID=E1XAQZCROIFYG7
 export SUBNETS='subnet-0629befd5cf1aea47,subnet-0c3daa3fbe1e5a9cd'
 export SGS='sg-07b42ed263b796c0f'
 
-# Seven worker task-def families (D5: "all worker task-defs on one image")
+# Eight worker task-def families (D5: "all worker task-defs on one image").
+# officeapp-dev-portfolio-scheduler is new in S22 (P3-4 / P3-5): it exists
+# only after `terraform apply` on module.schedulers has created it.
 export WORKER_FAMILIES=(
   officeapp-dev-alert-scheduler
   officeapp-dev-notification-sender
   officeapp-dev-renewals-scheduler
+  officeapp-dev-portfolio-scheduler
   officeapp-dev-audit-export
   officeapp-dev-e2e-cleanup
   officeapp-dev-hubspot-intake

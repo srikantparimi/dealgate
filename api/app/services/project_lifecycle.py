@@ -12,7 +12,7 @@ again — Rule 4 (CLAUDE.md).
 
 Deterioration handling: forecast writes that drop below policy floors
 already file a `forecast.recovery` task in
-:mod:`app.services.forecast`. W7 extends that path (via
+:mod:`app.services.weekly_forecast`. W7 extends that path (via
 :func:`recovery_notification`) to identify the named recovery owner and
 queue an `escalation` notification. See T24.
 """

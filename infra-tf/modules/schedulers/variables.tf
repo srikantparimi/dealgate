@@ -162,6 +162,12 @@ variable "renewals_schedule_expression" {
 # S7: nightly audit-event S3 export (WORM bucket). Runs once a day; the
 # default is 03:00 UTC so the previous UTC day is fully closed and the
 # scheduler + notification-sender tasks (rate(5 minutes)) are quiet.
+variable "portfolio_schedule_expression" {
+  description = "EventBridge schedule for the S22 portfolio scheduler tick (nightly: renewals + roll-off / below-floor alert)."
+  type        = string
+  default     = "cron(0 6 * * ? *)"
+}
+
 variable "audit_export_schedule_expression" {
   description = "EventBridge schedule expression for the nightly audit-export task. Default fires at 03:00 UTC daily."
   type        = string

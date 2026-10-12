@@ -36,6 +36,7 @@ import {
 import { PeopleSection } from "./settings/PeopleSection";
 import { PolicySection } from "./settings/PolicySection";
 import { RateCardsSection } from "./settings/RateCardsSection";
+import { ForecastSettingsSection } from "./settings/ForecastSettingsSection";
 import { SystemHealthSection } from "./settings/SystemHealthSection";
 
 function renderSection(id: SectionId) {
@@ -44,6 +45,8 @@ function renderSection(id: SectionId) {
       return <GeneralSection />;
     case "rates":
       return <RateCardsSection />;
+    case "forecast":
+      return <ForecastSettingsSection />;
     case "policy":
       return <PolicySection />;
     case "people":

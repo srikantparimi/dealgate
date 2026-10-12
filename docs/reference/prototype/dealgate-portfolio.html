@@ -1,0 +1,363 @@
+<title>DealGate Portfolio Forecast</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: app shell — slim plum sidebar, content column; tables carry the work, cards only for the four portfolio signals. */
+:root{
+  --bg:#f7f6fb; --surface:#ffffff; --surface-2:#f0eef7; --line:#dedbea; --fg:#1d1a2e; --muted:#6b6786;
+  --plum:#3f3a64; --plum-ink:#ffffff; --violet:#6d4fd6; --violet-soft:#ece7fb; --lime:#b9e34a; --lime-ink:#1e2a05;
+  --ok:#1f8a4c; --ok-soft:#e3f5ea; --warn:#b26a00; --warn-soft:#fff2d9; --bad:#c0392b; --bad-soft:#fde5e2;
+  --input:#fffbd6; --input-line:#e6d85a;
+  --display:"Inter Tight",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#15131f; --surface:#1e1b2b; --surface-2:#262339; --line:#363254; --fg:#ece9f7; --muted:#a39fbf;
+  --plum:#2a2742; --violet:#a391ec; --violet-soft:#2e2850; --lime:#c6ee5f; --lime-ink:#1e2a05;
+  --ok:#5fcf8a; --ok-soft:#173424; --warn:#f0b24a; --warn-soft:#3a2a0d; --bad:#f07f70; --bad-soft:#431c17;
+  --input:#2d2a1c; --input-line:#7a7030; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#15131f; --surface:#1e1b2b; --surface-2:#262339; --line:#363254; --fg:#ece9f7; --muted:#a39fbf;
+  --plum:#2a2742; --violet:#a391ec; --violet-soft:#2e2850; --lime:#c6ee5f; --lime-ink:#1e2a05;
+  --ok:#5fcf8a; --ok-soft:#173424; --warn:#f0b24a; --warn-soft:#3a2a0d; --bad:#f07f70; --bad-soft:#431c17;
+  --input:#2d2a1c; --input-line:#7a7030; color-scheme:dark }
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:13.5px;line-height:1.45}
+.app{display:flex;min-height:100%}
+nav{width:212px;flex:0 0 212px;background:var(--plum);color:var(--plum-ink);padding:18px 14px;display:flex;flex-direction:column;gap:4px}
+nav .brand{font-family:var(--display);font-weight:700;font-size:17px;letter-spacing:.2px;margin:0 6px 14px}
+nav .brand small{display:block;font-weight:500;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;opacity:.7}
+nav .sec{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;opacity:.6;margin:12px 6px 4px}
+nav button{all:unset;cursor:pointer;display:block;padding:7px 10px;border-radius:8px;opacity:.85;width:100%}
+nav button:hover,nav button:focus-visible{background:rgba(255,255,255,.08);opacity:1;outline:none}
+nav button.on{background:rgba(255,255,255,.14);opacity:1;font-weight:600}
+nav button.eng{font-size:12.5px;padding-left:18px}
+nav button.eng .t{display:block;font-size:10.5px;opacity:.65}
+main{flex:1;min-width:0;padding-block:20px;padding-inline:24px}
+h1{font-family:var(--display);font-size:22px;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-size:15px;margin:0}
+.sub{color:var(--muted);margin-top:2px}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+.proto{background:var(--violet-soft);color:var(--fg);border:1px dashed var(--violet);border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:16px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer}
+.card:hover{border-color:var(--violet)}
+.card .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.card .v{font-family:var(--display);font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.card .d{font-size:12px;color:var(--muted);margin-top:2px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.tabs button{all:unset;cursor:pointer;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted)}
+.tabs button.on{color:var(--fg);border-color:var(--violet);font-weight:600}
+.tabs button:focus-visible{outline:2px solid var(--violet);border-radius:4px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.bar label{font-size:12px;color:var(--muted)}
+textarea{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px}
+select,input{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 7px;min-width:0}
+input.in,select.in{background:var(--input);border-color:var(--input-line)}
+input[type=number]{width:74px;font-family:var(--mono);font-size:12.5px}
+input[type=date]{width:124px;font-family:var(--mono);font-size:12px}
+input[type=text]{width:130px}
+button.btn{font:inherit;cursor:pointer;background:var(--violet);color:#fff;border:0;border-radius:7px;padding:7px 12px;font-weight:600}
+button.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button.btn.sm{padding:4px 9px;font-size:12px}
+button.btn:focus-visible{outline:2px solid var(--lime)}
+.wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;white-space:nowrap}
+th{background:var(--surface-2);text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);position:sticky;top:0}
+td{padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--mono);font-size:12.5px}
+td.calc{color:var(--muted)}
+tr.tot td{font-weight:600;background:var(--surface-2)}
+tr.sec td{background:var(--violet-soft);font-weight:600;font-family:var(--display)}
+tr.quiet td{color:var(--muted);font-size:12.5px}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.mut{background:var(--surface-2);color:var(--muted)}
+.status{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px}
+.status b{font-family:var(--display);font-size:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:center}
+.kv label{color:var(--muted);font-size:12px}
+.neg{color:var(--bad)} .red{color:var(--bad);font-weight:600}
+.mini{font-size:11.5px;color:var(--muted)}
+.rowact{display:flex;gap:4px}
+.rowact button{all:unset;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:5px;background:var(--surface-2);color:var(--fg)}
+.rowact button:hover{background:var(--violet-soft)}
+.hint{font-size:12px;color:var(--muted);margin:8px 0 0}
+@media (max-width:760px){ .app{flex-direction:column} nav{width:auto;flex:none;flex-direction:row;flex-wrap:wrap;padding:10px} nav .brand{width:100%;margin-bottom:6px} nav .sec{display:none} nav button{width:auto} nav button.eng{padding-left:10px} nav button.eng .t{display:none} main{padding-inline:16px} }
+@media (prefers-reduced-motion:no-preference){ .card{transition:border-color .15s} }
+</style>
+
+<div class="app">
+  <nav id="nav"></nav>
+  <main id="main"></main>
+</div>
+
+<script>
+// ---------------------------------------------------------------- engine (mirror of api/app/services/forecast/__init__.py)
+const HOURLY = new Set(["time_and_materials","staff_augmentation"]);
+const TYPE_LABEL = {fixed_cost:"Fixed cost",assessment:"Assessment",msp:"MSP",time_and_materials:"Time & materials",staff_augmentation:"Staff augmentation"};
+const EMP_LABEL = {w2_employee:"W-2 / Employee",contractor_1099:"1099 / Contractor"};
+const CAL0 = {
+  hoursPerDay:8, projectFloor:0.35,
+  burden:{"US|w2_employee":0.36,"US|contractor_1099":0.05,"India|w2_employee":0.08,"India|contractor_1099":0.08},
+  resourceFloor:{US:0.35,India:0.50},
+  rateCard:{"Junior|US|w2_employee":60,"Junior|US|contractor_1099":65,"Junior|India|w2_employee":12,"Junior|India|contractor_1099":14,
+            "Mid|US|w2_employee":80,"Mid|US|contractor_1099":88,"Mid|India|w2_employee":18,"Mid|India|contractor_1099":20,
+            "Senior|US|w2_employee":100,"Senior|US|contractor_1099":110,"Senior|India|w2_employee":25,"Senior|India|contractor_1099":28,
+            "Principal|US|w2_employee":130,"Principal|US|contractor_1099":145,"Principal|India|w2_employee":35,"Principal|India|contractor_1099":40},
+  holidays:{US:["2026-01-01","2026-01-19","2026-02-16","2026-05-25","2026-06-19","2026-07-03","2026-09-07","2026-10-12","2026-11-11","2026-11-26","2026-12-25","2027-01-01","2027-01-18","2027-02-15","2027-05-31","2027-06-18","2027-07-05","2027-09-06","2027-10-11","2027-11-11","2027-11-25","2027-12-24"],
+            India:["2026-01-01","2026-01-26","2026-08-15","2026-10-02","2026-12-25","2027-01-01","2027-01-26","2027-08-15","2027-10-02","2027-12-25"]}
+};
+let CAL; const d = s => { const [y,m,dd]=s.split("-").map(Number); return new Date(Date.UTC(y,m-1,dd)); };
+const iso = t => t.toISOString().slice(0,10);
+const addDays=(t,n)=>new Date(t.getTime()+n*864e5);
+const dim=(y,m)=>new Date(Date.UTC(y,m+1,0)).getUTCDate();
+function workingDays(s,e,hol){ if(e<s) return 0; let n=0; for(let t=s;t<=e;t=addDays(t,1)){ const w=t.getUTCDay(); if(w>0&&w<6&&!hol.has(iso(t))) n++; } return n; }
+function* monthSlices(s,e){ let cur=new Date(Date.UTC(s.getUTCFullYear(),s.getUTCMonth(),1)); while(cur<=e){ const y=cur.getUTCFullYear(),m=cur.getUTCMonth(),n=dim(y,m); const last=new Date(Date.UTC(y,m,n)); const ss=s>cur?s:cur, ee=e<last?e:last; yield {key:`${y}-${String(m+1).padStart(2,"0")}`,s:ss,e:ee,share:((ee-ss)/864e5+1)/n}; cur=addDays(last,1);} }
+function compute(eng, allocs, costs){
+  const S=d(eng.start),E=d(eng.end); const slices=[...monthSlices(S,E)]; const dur=slices.reduce((a,x)=>a+x.share,0);
+  const missing=[]; if(E<S) missing.push("end before start");
+  if(["fixed_cost","assessment"].includes(eng.type)&&eng.totalPrice==null) missing.push("total price");
+  if(eng.type==="msp"&&eng.monthlyFee==null) missing.push("monthly fee");
+  const am=[];
+  for(const a of allocs){ if(!a.role) continue;
+    const as=(eng.sameDates||!a.start)?S:d(a.start), ae=(eng.sameDates||!a.end)?E:d(a.end);
+    const hol=new Set(CAL.holidays[a.location]||[]); const totWd=workingDays(as,ae,hol);
+    const burden=CAL.burden[`${a.location}|${a.emp}`]??0; const cost=a.cost??CAL.rateCard[`${a.seniority}|${a.location}|${a.emp}`]??0;
+    if(HOURLY.has(eng.type)&&a.bill==null) missing.push(`${a.role}: bill rate`);
+    for(const sl of slices){ const s=as>sl.s?as:sl.s, e=ae<sl.e?ae:sl.e; const wd=e>=s?workingDays(s,e,hol):0; if(!wd) continue;
+      const hours=a.override!=null?a.override*wd/totWd:wd*CAL.hoursPerDay*(a.util??1);
+      const rev=HOURLY.has(eng.type)?hours*(a.bill??0):0; const lab=hours*cost;
+      am.push({id:a.id,role:a.role,location:a.location,month:sl.key,asg:a.assignment||"(unassigned)",wd,hours,rev,lab,bur:lab*burden}); } }
+  const on=eng.addlFlag; const mC=on?costs.filter(c=>c.freq==="monthly").reduce((a,c)=>a+c.amount,0):0, oC=on?costs.filter(c=>c.freq!=="monthly").reduce((a,c)=>a+c.amount,0):0;
+  const mP=on?costs.filter(c=>c.freq==="monthly"&&c.billed).reduce((a,c)=>a+c.amount,0):0, oP=on?costs.filter(c=>c.freq!=="monthly"&&c.billed).reduce((a,c)=>a+c.amount,0):0;
+  const months=slices.map((sl,i)=>{ const rows=am.filter(r=>r.month===sl.key); const hours=rows.reduce((a,r)=>a+r.hours,0), lab=rows.reduce((a,r)=>a+r.lab,0), bur=rows.reduce((a,r)=>a+r.bur,0);
+    const rev=eng.type==="msp"?(eng.monthlyFee??0)*sl.share:HOURLY.has(eng.type)?rows.reduce((a,r)=>a+r.rev,0):dur?(eng.totalPrice??0)*sl.share/dur:0;
+    const addl=mC*sl.share+(i===0?oC:0), pt=mP*sl.share+(i===0?oP:0);
+    const m={key:sl.key,share:sl.share,people:rows.filter(r=>r.hours>0).length,hours,rev,lab,bur,addl,pt}; m.cost=lab+bur+addl; m.trev=rev+pt; m.gm=m.trev-m.cost; m.gmp=m.trev?m.gm/m.trev:null; return m; });
+  const byAsg={}; for(const r of am){ const b=(byAsg[r.asg]??={}); const l=(b[r.month]??={people:0,hours:0,rev:0,cost:0}); if(r.hours>0)l.people++; l.hours+=r.hours; l.rev+=r.rev; l.cost+=r.lab+r.bur; }
+  const trev=months.reduce((a,m)=>a+m.trev,0), tcost=months.reduce((a,m)=>a+m.cost,0); const gmp=trev?(trev-tcost)/trev:null;
+  const loc={}; if(HOURLY.has(eng.type)) for(const L of [...new Set(allocs.filter(a=>a.role).map(a=>a.location))]){ const rows=am.filter(r=>r.location===L); const rev=rows.reduce((a,r)=>a+r.rev,0), lc=rows.reduce((a,r)=>a+r.lab+r.bur,0); const floor=CAL.resourceFloor[L]??CAL.projectFloor; const p=rev?(rev-lc)/rev:null; loc[L]={rev,lc,gmp:p,floor,ok:p!=null&&p>=floor}; }
+  const status=missing.length||gmp==null?"INCOMPLETE":gmp>=CAL.projectFloor?"PASS":"BELOW FLOOR";
+  return {dur,months,am,byAsg,trev,tcost,gmp,status,missing,loc,hours:months.reduce((a,m)=>a+m.hours,0),lab:months.reduce((a,m)=>a+m.lab,0),bur:months.reduce((a,m)=>a+m.bur,0),addl:months.reduce((a,m)=>a+m.addl,0),pt:months.reduce((a,m)=>a+m.pt,0)};
+}
+
+// ---------------------------------------------------------------- sample data (marked examples)
+let uid=100; const nid=()=>"a"+(uid++);
+const SEED={engagements:[
+ {id:"e1",client:"Client A",name:"Portal & data platform staffing",type:"staff_augmentation",start:"2026-11-02",end:"2027-04-30",addlFlag:true,sameDates:false,owner:"Adil Lalji",hubspot:"Client A – Staffing FY27",
+  allocs:[{id:nid(),role:"Developer",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"Portal rebuild",util:1,bill:135,cost:70,start:"",end:""},
+          {id:nid(),role:"Tester",seniority:"Mid",location:"US",emp:"contractor_1099",assignment:"Portal rebuild",util:1,bill:95,cost:55,start:"2026-12-01",end:"2027-03-31"},
+          {id:nid(),role:"Architect",seniority:"Principal",location:"US",emp:"contractor_1099",assignment:"Data platform",util:0.5,bill:185,cost:120,start:"",end:"2027-02-26"},
+          {id:nid(),role:"Developer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"Data platform",util:1,bill:48,cost:20,start:"",end:""},
+          {id:nid(),role:"Developer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"Data platform",util:1,bill:48,cost:22,start:"2027-01-04",end:""}],
+  costs:[{desc:"Monitoring licences",amount:600,freq:"monthly",billed:false},{desc:"Kickoff travel",amount:3200,freq:"one_time",billed:true}]},
+ {id:"e2",client:"Example Client",name:"Managed services — L1/L2 support",type:"msp",start:"2026-11-01",end:"2027-04-30",monthlyFee:42000,addlFlag:true,sameDates:true,owner:"Janice Krpan",hubspot:"Example Client – MSP renewal",
+  allocs:[{id:nid(),role:"Service Delivery Manager",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"",util:0.5,bill:null,cost:110,start:"",end:""},
+          {id:nid(),role:"L2 Engineer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"",util:1,bill:null,cost:20,start:"",end:""},
+          {id:nid(),role:"L2 Engineer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"",util:1,bill:null,cost:20,start:"",end:""},
+          {id:nid(),role:"L3 Engineer",seniority:"Senior",location:"India",emp:"contractor_1099",assignment:"",util:0.5,bill:null,cost:32,start:"",end:""}],
+  costs:[{desc:"Monitoring tool licences",amount:1200,freq:"monthly",billed:false}]},
+ {id:"e3",client:"Peppermill",name:"AI assessment",type:"assessment",start:"2026-09-07",end:"2026-10-05",totalPrice:50000,addlFlag:true,sameDates:true,owner:"Srikanth Parimi",hubspot:"Peppermill – AI Assessment",
+  allocs:[{id:nid(),role:"SME",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"",util:1,bill:null,cost:120,start:"",end:""},
+          {id:nid(),role:"SME",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"",util:0.2,bill:null,cost:120,start:"",end:""}],
+  costs:[{desc:"Site visit",amount:3000,freq:"one_time",billed:true}]},
+ {id:"e4",client:"Client B",name:"Integration team (T&M)",type:"time_and_materials",start:"2026-10-01",end:"2027-03-31",addlFlag:false,sameDates:true,owner:"Adil Lalji",hubspot:"Client B – Integrations",
+  allocs:[{id:nid(),role:"Engineer",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"Integrations",util:1,bill:175,cost:95,start:"",end:""},
+          {id:nid(),role:"Engineer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"Integrations",util:1,bill:60,cost:22,start:"",end:""}],
+  costs:[]}],
+ clients:["Client A","Example Client","Peppermill","Client B"], cal:CAL0,
+ resources:[{name:"Priya N.",location:"India",emp:"w2_employee",seniority:"Mid",onAllocUntil:null},{name:"Marcus T.",location:"US",emp:"contractor_1099",seniority:"Senior",onAllocUntil:"2026-12-31"}]};
+let DB; try{ DB=JSON.parse(localStorage.getItem("dg-proto-v1"))||null }catch(e){ DB=null } if(!DB) DB=JSON.parse(JSON.stringify(SEED)); if(!DB.cal) DB.cal=JSON.parse(JSON.stringify(CAL0)); if(!DB.clients) DB.clients=[...new Set(DB.engagements.map(e=>e.client))]; CAL=DB.cal;
+function save(){ try{ localStorage.setItem("dg-proto-v1",JSON.stringify(DB)) }catch(e){} }
+
+// ---------------------------------------------------------------- view state
+let view={page:"portfolio",eng:null,tab:"allocations",month:"2026-11",filterType:"",filterClient:""};
+const $=(s,r=document)=>r.querySelector(s);
+const money=v=>v==null?"—":(v<0?"−":"")+"$"+Math.round(Math.abs(v)).toLocaleString();
+const pct=v=>v==null?"—":(v*100).toFixed(1)+"%";
+const hrs=v=>v==null?"—":Math.round(v).toLocaleString();
+const mlabel=k=>{const [y,m]=k.split("-");return new Date(Date.UTC(+y,+m-1,1)).toLocaleString("en-US",{month:"short",year:"numeric",timeZone:"UTC"})};
+const pill=(s)=>s==="PASS"?`<span class="pill ok">PASS</span>`:s==="BELOW FLOOR"?`<span class="pill bad">BELOW FLOOR</span>`:`<span class="pill warn">INCOMPLETE</span>`;
+
+function renderNav(){
+  const n=$("#nav"); n.innerHTML=`<div class="brand"><small>SmarTek21</small>DealGate</div>
+  <div class="sec">Portfolio</div><button class="${view.page==="portfolio"?"on":""}" data-go="portfolio">Portfolio forecast</button><button class="${view.page==="settings"?"on":""}" data-settings="1">Settings — burden, floors, rate card, holidays</button>
+  <div class="sec">Engagements</div>`+DB.engagements.map(e=>`<button class="eng ${view.page==="eng"&&view.eng===e.id?"on":""}" data-eng="${e.id}">${e.client}<span class="t">${TYPE_LABEL[e.type]} · ${e.name}</span></button>`).join("")+
+  `<button class="${view.page==="new"?"on":""}" data-new="1">+ New engagement</button><div class="sec">Prototype</div><button data-reset="1">Reset sample data</button>`;
+  n.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{view.page=b.dataset.go;render()});
+  n.querySelectorAll("[data-eng]").forEach(b=>b.onclick=()=>{view.page="eng";view.eng=b.dataset.eng;render()});
+  $("[data-reset]",n).onclick=()=>{DB=JSON.parse(JSON.stringify(SEED));CAL=DB.cal;save();render()};
+  $("[data-new]",n).onclick=()=>{view.page="new";render()}; $("[data-settings]",n).onclick=()=>{view.page="settings";render()};
+}
+
+// ---------------------------------------------------------------- portfolio
+function renderPortfolio(){
+  const all=DB.engagements.map(e=>({e,f:compute(e,e.allocs,e.costs)}));
+  const monthsSet=new Set(); all.forEach(x=>x.f.months.forEach(m=>monthsSet.add(m.key))); const months=[...monthsSet].sort(); if(!months.includes(view.month)) view.month=months[0];
+  const rows=all.filter(x=>(!view.filterType||x.e.type===view.filterType)&&(!view.filterClient||x.e.client===view.filterClient));
+  const mo=x=>x.f.months.find(m=>m.key===view.month);
+  const pRev=rows.reduce((a,x)=>a+(mo(x)?.trev||0),0), pCost=rows.reduce((a,x)=>a+(mo(x)?.cost||0),0); const pGm=pRev?(pRev-pCost)/pRev:null;
+  const below=rows.filter(x=>x.f.status==="BELOW FLOOR");
+  const cut=addDays(d(view.month+"-01"),60);
+  const rolloffs=[]; rows.forEach(x=>{ if(!HOURLY.has(x.e.type)) return; x.e.allocs.forEach(a=>{ if(!a.role) return; const end=d(a.end||x.e.end); const later=x.e.allocs.some(b=>b!==a&&b.role===a.role&&b.location===a.location&&d(b.start||x.e.start)>end); if(end>=d(view.month+"-01")&&end<=cut&&!later) rolloffs.push({client:x.e.client,role:a.role,asg:a.assignment,end:a.end||x.e.end}); }); });
+  const bench=DB.resources.filter(r=>!r.onAllocUntil||d(r.onAllocUntil)<d(view.month+"-01"));
+  const clients=[...new Set(DB.engagements.map(e=>e.client))];
+  $("#main").innerHTML=`
+  <div class="top"><div><h1>Portfolio forecast</h1><div class="sub">${rows.length} engagements · ${mlabel(view.month)} · every number is computed by the forecast engine from the allocations ledger</div></div>
+   <div class="bar"><label>Month</label><select id="pm">${months.map(m=>`<option value="${m}" ${m===view.month?"selected":""}>${mlabel(m)}</option>`).join("")}</select>
+   <label>Type</label><select id="pt"><option value="">All</option>${Object.entries(TYPE_LABEL).map(([k,v])=>`<option value="${k}" ${view.filterType===k?"selected":""}>${v}</option>`).join("")}</select>
+   <label>Client</label><select id="pc"><option value="">All</option>${clients.map(c=>`<option ${view.filterClient===c?"selected":""}>${c}</option>`).join("")}</select></div></div>
+  <div class="proto">Prototype with sample data. Edit any engagement's allocations and this page recomputes. Nothing here is your real pipeline yet.</div>
+  <div class="cards">
+    <div class="card"><div class="k">Portfolio GM · ${mlabel(view.month)}</div><div class="v ${pGm!=null&&pGm<CAL.projectFloor?"neg":""}">${pct(pGm)}</div><div class="d">${money(pRev)} revenue · ${money(pCost)} cost</div></div>
+    <div class="card"><div class="k">Below floor</div><div class="v ${below.length?"neg":""}">${below.length}</div><div class="d">engagements under ${pct(CAL.projectFloor)} over their term</div></div>
+    <div class="card"><div class="k">Roll-offs · next 60 days</div><div class="v">${rolloffs.length}</div><div class="d">allocations ending with nothing after</div></div>
+    <div class="card"><div class="k">Bench · ${mlabel(view.month)}</div><div class="v">${bench.length}</div><div class="d">active people with no allocation</div></div>
+  </div>
+  <div class="wrap"><table><thead><tr><th>Client</th><th>Engagement</th><th>Type</th><th>Term</th><th class="n">People</th><th class="n">Revenue · month</th><th class="n">Cost · month</th><th class="n">GM % · month</th><th class="n">GM % · term</th><th>Status</th></tr></thead><tbody>
+  ${rows.map(x=>{const m=mo(x);return `<tr data-open="${x.e.id}" style="cursor:pointer"><td><b>${x.e.client}</b></td><td>${x.e.name}</td><td>${TYPE_LABEL[x.e.type]}</td><td class="mini">${x.e.start} → ${x.e.end}</td><td class="n">${m?m.people:"—"}</td><td class="n">${m?money(m.trev):"—"}</td><td class="n">${m?money(m.cost):"—"}</td><td class="n ${m&&m.gmp!=null&&m.gmp<CAL.projectFloor?"red":""}">${m?pct(m.gmp):"—"}</td><td class="n ${x.f.gmp!=null&&x.f.gmp<CAL.projectFloor?"red":""}">${pct(x.f.gmp)}</td><td>${pill(x.f.status)}</td></tr>`}).join("")}
+  <tr class="tot"><td colspan="4">Portfolio · ${mlabel(view.month)}</td><td class="n">${rows.reduce((a,x)=>a+(mo(x)?.people||0),0)}</td><td class="n">${money(pRev)}</td><td class="n">${money(pCost)}</td><td class="n">${pct(pGm)}</td><td></td><td></td></tr>
+  </tbody></table></div>
+  <div class="grid2" style="margin-top:14px">
+   <div class="panel"><h2>Roll-offs in the next 60 days</h2><p class="mini">An allocation ending with no later allocation for the same role at that client. Extend it, or plan the bench.</p>
+    ${rolloffs.length?`<div class="wrap"><table><thead><tr><th>Client</th><th>Role</th><th>Assignment</th><th>Ends</th></tr></thead><tbody>${rolloffs.map(r=>`<tr><td>${r.client}</td><td>${r.role}</td><td>${r.asg||"—"}</td><td class="mini">${r.end}</td></tr>`).join("")}</tbody></table></div>`:`<p class="mini">None in this window.</p>`}</div>
+   <div class="panel"><h2>Bench · ${mlabel(view.month)}</h2><p class="mini">Resources with no allocation in the month. Sample list for the prototype.</p>
+    <div class="wrap"><table><thead><tr><th>Person</th><th>Location</th><th>Type</th><th>Seniority</th><th>Free from</th></tr></thead><tbody>${bench.map(r=>`<tr><td>${r.name}</td><td>${r.location}</td><td>${EMP_LABEL[r.emp]}</td><td>${r.seniority}</td><td class="mini">${r.onAllocUntil?addDays(d(r.onAllocUntil),1).toISOString().slice(0,10):"now"}</td></tr>`).join("")}</tbody></table></div></div>
+  </div>`;
+  $("#pm").onchange=e=>{view.month=e.target.value;render()}; $("#pt").onchange=e=>{view.filterType=e.target.value;render()}; $("#pc").onchange=e=>{view.filterClient=e.target.value;render()};
+  document.querySelectorAll("[data-open]").forEach(r=>r.onclick=()=>{view.page="eng";view.eng=r.dataset.open;view.tab="forecast";render()});
+}
+
+// ---------------------------------------------------------------- engagement
+function renderEng(){
+  const e=DB.engagements.find(x=>x.id===view.eng); const f=compute(e,e.allocs,e.costs); const hourly=HOURLY.has(e.type);
+  const head=`<div class="top"><div><h1>${e.client} · ${e.name}</h1><div class="sub">${TYPE_LABEL[e.type]} · ${e.start} → ${e.end} · ${f.dur.toFixed(2)} months · owner ${e.owner} · HubSpot: ${e.hubspot}</div></div>
+   <div class="bar"><button class="btn ghost" data-go="portfolio">← Portfolio</button></div></div>
+  <div class="status">${pill(f.status)}<b>GM ${pct(f.gmp)}</b><span class="mini">project floor ${pct(CAL.projectFloor)}</span>
+   <span class="mini">· revenue ${money(f.trev)} · cost ${money(f.tcost)} · hours ${hrs(f.hours)}</span>
+   ${Object.entries(f.loc).map(([L,v])=>`<span class="pill ${v.ok?"ok":"warn"}">${L} resources ${pct(v.gmp)} vs ${pct(v.floor)}${v.ok?"":" · review rates"}</span>`).join("")}
+   ${f.missing.length?`<span class="pill warn">Missing: ${f.missing.join(", ")}</span>`:""}</div>
+  <div class="tabs">${["allocations","forecast","setup"].map(t=>`<button class="${view.tab===t?"on":""}" data-tab="${t}">${t==="allocations"?"Allocations":t==="forecast"?"Forecast":"Setup & costs"}</button>`).join("")}</div>`;
+  let body="";
+  if(view.tab==="allocations"){
+    body=`<div class="bar"><button class="btn sm" id="add">+ Add person</button><span class="mini">Yellow cells are editable. Leave Start/End blank to use the engagement window${e.sameDates?" (Same dates for everyone is ON — row dates are ignored)":""}. A leaver is an End date; a re-hire is a new row.</span></div>
+    <div class="wrap"><table><thead><tr><th>Role</th><th>Seniority</th><th>Location</th><th>Employment</th>${hourly?"<th>Assignment</th>":""}<th class="n">Util %</th>${hourly?'<th class="n">Bill rate</th>':""}<th class="n">Our cost/hr</th><th>Start</th><th>End</th><th class="n">Hours</th><th class="n">Hours override</th><th class="n">Burden</th>${hourly?'<th class="n">Revenue</th>':""}<th class="n">Loaded cost</th>${hourly?'<th class="n">Row GM</th>':""}<th></th></tr></thead><tbody>
+    ${e.allocs.map(a=>{const rows=f.am.filter(r=>r.id===a.id); const h=rows.reduce((x,r)=>x+r.hours,0),rev=rows.reduce((x,r)=>x+r.rev,0),lc=rows.reduce((x,r)=>x+r.lab+r.bur,0); const b=CAL.burden[`${a.location}|${a.emp}`]; const card=CAL.rateCard[`${a.seniority}|${a.location}|${a.emp}`]; const rg=rev?(rev-lc)/rev:null; const under=hourly&&rg!=null&&rg<(CAL.resourceFloor[a.location]??0.35);
+     return `<tr data-id="${a.id}"><td><input class="in" type="text" data-f="role" value="${a.role||""}" placeholder="Role"></td>
+      <td><select class="in" data-f="seniority">${["Junior","Mid","Senior","Principal"].map(s=>`<option ${a.seniority===s?"selected":""}>${s}</option>`).join("")}</select></td>
+      <td><select class="in" data-f="location">${Object.keys(DB.cal.resourceFloor).map(s=>`<option ${a.location===s?"selected":""}>${s}</option>`).join("")}</select></td>
+      <td><select class="in" data-f="emp">${Object.entries(EMP_LABEL).map(([k,v])=>`<option value="${k}" ${a.emp===k?"selected":""}>${v}</option>`).join("")}</select></td>
+      ${hourly?`<td><input class="in" type="text" data-f="assignment" value="${a.assignment||""}" placeholder="(unassigned)"></td>`:""}
+      <td class="n"><input class="in" type="number" min="0" max="100" step="5" data-f="utilpct" value="${Math.round((a.util??1)*100)}"></td>
+      ${hourly?`<td class="n"><input class="in" type="number" min="0" step="1" data-f="bill" value="${a.bill??""}"></td>`:""}
+      <td class="n"><input class="in" type="number" min="0" step="1" data-f="cost" value="${a.cost??""}" placeholder="${card??""}" title="Blank = rate card ${card??"n/a"}"></td>
+      <td><input class="in" type="date" data-f="start" value="${a.start||""}" ${e.sameDates?"disabled":""} placeholder="${e.start}"></td>
+      <td><input class="in" type="date" data-f="end" value="${a.end||""}" ${e.sameDates?"disabled":""}></td>
+      <td class="n calc">${hrs(h)}</td><td class="n"><input class="in" type="number" min="0" data-f="override" value="${a.override??""}"></td>
+      <td class="n calc">${pct(b)}</td>${hourly?`<td class="n calc">${money(rev)}</td>`:""}<td class="n calc">${money(lc)}</td>${hourly?`<td class="n ${under?"red":"calc"}">${pct(rg)}</td>`:""}
+      <td><div class="rowact"><button data-act="leave" title="Set End to today's month end">Leaves</button><button data-act="rehire" title="Copy as a new row starting next month">Re-hire</button><button data-act="del" title="Remove row">✕</button></div></td></tr>`}).join("")}
+    <tr class="tot"><td colspan="${hourly?10:8}">Total</td><td class="n">${hrs(f.hours)}</td><td></td><td></td>${hourly?`<td class="n">${money(f.trev-f.pt)}</td>`:""}<td class="n">${money(f.lab+f.bur)}</td>${hourly?`<td class="n">${pct(f.trev-f.pt?((f.trev-f.pt)-(f.lab+f.bur))/(f.trev-f.pt):null)}</td>`:""}<td></td></tr>
+    </tbody></table></div>`;
+  } else if(view.tab==="forecast"){
+    const months=f.months; const cols=months.map(m=>`<th class="n">${mlabel(m.key)}</th>`).join("")+`<th class="n">Total</th>`;
+    const line=(label,get,fmt,cls="")=>`<tr class="${cls}"><td>${label}</td>${months.map(m=>`<td class="n">${fmt(get(m))}</td>`).join("")}<td class="n"><b>${fmt(months.reduce((a,m)=>a+(get(m)||0),0))}</b></td></tr>`;
+    const gmline=(label,r,c)=>`<tr><td><b>${label}</b></td>${months.map(m=>{const rv=r(m),cc=c(m);const p=rv?(rv-cc)/rv:null;return `<td class="n ${p!=null&&p<CAL.projectFloor?"red":""}">${pct(p)}</td>`}).join("")}<td class="n"><b>${(()=>{const rv=months.reduce((a,m)=>a+r(m),0),cc=months.reduce((a,m)=>a+c(m),0);return pct(rv?(rv-cc)/rv:null)})()}</b></td></tr>`;
+    body=`<p class="mini">${f.dur>2?"Monthly view required — "+f.dur.toFixed(1)+" months.":"Short engagement ("+f.dur.toFixed(1)+" months) — the summary is enough, monthly shown for completeness."} Partial months prorated by days.</p>
+    <div class="wrap"><table><thead><tr><th>All resources</th>${cols}</tr></thead><tbody>
+    ${line("People",m=>m.people,v=>v)}${line("Hours",m=>m.hours,hrs)}${line("Revenue",m=>m.trev,money)}${line("Labour + burden",m=>m.lab+m.bur,money)}${line("Additional costs",m=>m.addl,money)}${line("Total cost",m=>m.cost,money)}${line("Gross margin $",m=>m.gm,money,"tot")}${gmline("Gross margin %",m=>m.trev,m=>m.cost)}
+    </tbody></table></div>
+    ${hourly?Object.keys(f.byAsg).sort().map(asg=>{const g=f.byAsg[asg];const get=(k)=>m=>g[m.key]?.[k]||0;return `<h2 style="margin:16px 0 8px">${asg}</h2><div class="wrap"><table><thead><tr><th>Assignment</th>${cols}</tr></thead><tbody>${line("People",get("people"),v=>v)}${line("Hours",get("hours"),hrs)}${line("Revenue",get("rev"),money)}${line("Loaded cost",get("cost"),money)}${gmline("Gross margin %",get("rev"),get("cost"))}</tbody></table></div>`}).join(""):""}
+    <h2 style="margin:16px 0 8px">Per person · revenue by month</h2><div class="wrap"><table><thead><tr><th>Person</th>${cols}</tr></thead><tbody>
+    ${e.allocs.filter(a=>a.role).map(a=>{const rows=f.am.filter(r=>r.id===a.id);const get=m=>rows.find(r=>r.month===m.key)?.[hourly?"rev":"hours"]||0;return line(`${a.role}${a.assignment?" · "+a.assignment:""} <span class="mini">${a.location} ${EMP_LABEL[a.emp].split(" ")[0]}</span>`,get,hourly?money:hrs)}).join("")}
+    </tbody></table></div><p class="hint">${hourly?"Revenue per person":"Hours per person (fixed-fee types carry no per-person revenue)"}. A blank cell is a month with nobody billing.</p>`;
+  } else {
+    body=`<div class="grid2"><div class="panel"><h2>Engagement — the sheet's project block</h2><div class="kv" style="margin-top:8px">
+      <label>Client</label><select class="in" id="s-client">${DB.clients.map(c=>`<option ${e.client===c?"selected":""}>${c}</option>`).join("")}</select>
+      <label>Engagement name</label><input class="in" type="text" id="s-name" value="${e.name}" style="width:100%">
+      <label>Owner</label><input class="in" type="text" id="s-owner" value="${e.owner||""}">
+      <label>Currency</label><select class="in" id="s-cur">${["USD","INR","GBP","EUR","CAD"].map(c=>`<option ${(e.currency||"USD")===c?"selected":""}>${c}</option>`).join("")}</select>
+      <label>Type</label><select class="in" id="s-type">${Object.entries(TYPE_LABEL).map(([k,v])=>`<option value="${k}" ${e.type===k?"selected":""}>${v}</option>`).join("")}</select>
+      <label>Start</label><input class="in" type="date" id="s-start" value="${e.start}"><label>End</label><input class="in" type="date" id="s-end" value="${e.end}">
+      <label>Total price</label><input class="in" type="number" id="s-price" value="${e.totalPrice??""}" ${["fixed_cost","assessment"].includes(e.type)?"":"disabled"}>
+      <label>Monthly fee</label><input class="in" type="number" id="s-fee" value="${e.monthlyFee??""}" ${e.type==="msp"?"":"disabled"}>
+      <label>Same dates for everyone</label><select class="in" id="s-same"><option value="1" ${e.sameDates?"selected":""}>Yes</option><option value="0" ${!e.sameDates?"selected":""}>No — each person has their own</option></select>
+      <label>Additional costs?</label><select class="in" id="s-addl"><option value="1" ${e.addlFlag?"selected":""}>Yes</option><option value="0" ${!e.addlFlag?"selected":""}>No</option></select></div></div>
+     <div class="panel"><h2>Additional costs</h2><div class="wrap" style="margin-top:8px"><table><thead><tr><th>Description</th><th class="n">Amount</th><th>Frequency</th><th>Billed to client</th><th></th></tr></thead><tbody>
+      ${e.costs.map((c,i)=>`<tr data-ci="${i}"><td><input class="in" type="text" data-cf="desc" value="${c.desc}"></td><td class="n"><input class="in" type="number" data-cf="amount" value="${c.amount}"></td><td><select class="in" data-cf="freq"><option value="one_time" ${c.freq!=="monthly"?"selected":""}>One-time</option><option value="monthly" ${c.freq==="monthly"?"selected":""}>Monthly</option></select></td><td><select class="in" data-cf="billed"><option value="0" ${!c.billed?"selected":""}>No — we absorb</option><option value="1" ${c.billed?"selected":""}>Yes — pass-through</option></select></td><td><div class="rowact"><button data-cdel="${i}">✕</button></div></td></tr>`).join("")}
+      </tbody></table></div><div class="bar" style="margin-top:8px"><button class="btn sm ghost" id="addcost">+ Add cost</button></div><p class="mini">Totals: ${money(f.addl)} cost, ${money(f.pt)} billed through.</p></div></div>`;
+  }
+  $("#main").innerHTML=head+body;
+  $("[data-go]").onclick=()=>{view.page="portfolio";render()};
+  document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{view.tab=b.dataset.tab;render()});
+  // allocation edits
+  document.querySelectorAll("tr[data-id] [data-f]").forEach(el=>el.onchange=()=>{ const a=e.allocs.find(x=>x.id===el.closest("tr").dataset.id); const k=el.dataset.f; let v=el.value;
+    if(k==="utilpct") a.util=Math.max(0,Math.min(100,+v||0))/100; else if(["bill","cost","override"].includes(k)) a[k]=v===""?null:+v; else a[k]=v; save(); render(); });
+  document.querySelectorAll("tr[data-id] [data-act]").forEach(b=>b.onclick=()=>{ const tr=b.closest("tr"); const i=e.allocs.findIndex(x=>x.id===tr.dataset.id); const a=e.allocs[i];
+    if(b.dataset.act==="del") e.allocs.splice(i,1);
+    else if(b.dataset.act==="leave"){ const t=new Date(); const y=t.getUTCFullYear(),m=t.getUTCMonth(); a.end=iso(new Date(Date.UTC(y,m,dim(y,m)))); if(e.sameDates){e.sameDates=false;} }
+    else if(b.dataset.act==="rehire"){ const end=d(a.end||e.end); const ns=new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth()+1,1)); e.allocs.splice(i+1,0,{...a,id:nid(),start:iso(ns),end:"",role:a.role+" (re-hire)"}); if(e.sameDates){e.sameDates=false;} }
+    save(); render(); });
+  const add=$("#add"); if(add) add.onclick=()=>{ e.allocs.push({id:nid(),role:"",seniority:"Mid",location:"US",emp:"w2_employee",assignment:"",util:1,bill:null,cost:null,start:"",end:""}); save(); render(); };
+  // setup edits
+  const S=id=>$("#"+id); if(S("s-type")){ S("s-type").onchange=x=>{e.type=x.target.value;save();render()}; S("s-start").onchange=x=>{e.start=x.target.value;save();render()}; S("s-end").onchange=x=>{e.end=x.target.value;save();render()};
+    S("s-price").onchange=x=>{e.totalPrice=x.target.value===""?null:+x.target.value;save();render()}; S("s-fee").onchange=x=>{e.monthlyFee=x.target.value===""?null:+x.target.value;save();render()};
+    S("s-same").onchange=x=>{e.sameDates=x.target.value==="1";save();render()};
+    S("s-client").onchange=x=>{e.client=x.target.value;save();render()}; S("s-name").onchange=x=>{e.name=x.target.value;save();render()}; S("s-owner").onchange=x=>{e.owner=x.target.value;save();render()}; S("s-cur").onchange=x=>{e.currency=x.target.value;save();render()}; S("s-addl").onchange=x=>{e.addlFlag=x.target.value==="1";save();render()};
+    document.querySelectorAll("tr[data-ci] [data-cf]").forEach(el=>el.onchange=()=>{const c=e.costs[+el.closest("tr").dataset.ci];const k=el.dataset.cf;c[k]=k==="amount"?+el.value:k==="billed"?el.value==="1":el.value;save();render()});
+    document.querySelectorAll("[data-cdel]").forEach(b=>b.onclick=()=>{e.costs.splice(+b.dataset.cdel,1);save();render()});
+    $("#addcost").onclick=()=>{e.costs.push({desc:"",amount:0,freq:"one_time",billed:false});save();render()}; }
+}
+function renderNew(){
+  $("#main").innerHTML=`<div class="top"><div><h1>New engagement</h1><div class="sub">Same fields as the cost margin sheet's project block. Pick the type first — it decides which money field applies.</div></div></div>
+  <div class="panel" style="max-width:720px"><div class="kv">
+   <label>Client *</label><div class="bar"><select class="in" id="n-client"><option value="">— pick —</option>${DB.clients.map(c=>`<option>${c}</option>`).join("")}<option value="__new">+ New client…</option></select><input class="in" type="text" id="n-newclient" placeholder="New client name" hidden></div>
+   <label>Engagement name *</label><input class="in" type="text" id="n-name" placeholder="e.g. Portal rebuild staffing" style="width:100%">
+   <label>Engagement type *</label><select class="in" id="n-type"><option value="">— pick first —</option>${Object.entries(TYPE_LABEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select>
+   <label>Owner</label><input class="in" type="text" id="n-owner" placeholder="Account owner">
+   <label>Currency</label><select class="in" id="n-cur">${["USD","INR","GBP","EUR","CAD"].map(c=>`<option>${c}</option>`).join("")}</select>
+   <label>Start *</label><input class="in" type="date" id="n-start"><label>End *</label><input class="in" type="date" id="n-end">
+   <label>Total project price</label><input class="in" type="number" id="n-price" disabled placeholder="Fixed cost / Assessment only">
+   <label>Monthly fee</label><input class="in" type="number" id="n-fee" disabled placeholder="MSP only">
+   <label>Additional costs? *</label><select class="in" id="n-addl"><option value="">— pick —</option><option value="1">Yes</option><option value="0">No</option></select>
+   <label>Same start/end for everyone? *</label><select class="in" id="n-same"><option value="">— pick —</option><option value="1">Yes — everyone works the full window</option><option value="0">No — each person has their own dates</option></select>
+  </div><div class="bar" style="margin-top:12px"><button class="btn" id="n-create">Create engagement</button><span class="mini red" id="n-err"></span></div></div>`;
+  const g=id=>$("#"+id);
+  g("n-client").onchange=()=>{g("n-newclient").hidden=g("n-client").value!=="__new"};
+  g("n-type").onchange=()=>{const t=g("n-type").value;g("n-price").disabled=!["fixed_cost","assessment"].includes(t);g("n-fee").disabled=t!=="msp"};
+  g("n-create").onclick=()=>{ const t=g("n-type").value; let client=g("n-client").value; if(client==="__new") client=g("n-newclient").value.trim();
+    const miss=[]; if(!client) miss.push("client"); if(!g("n-name").value.trim()) miss.push("name"); if(!t) miss.push("type"); if(!g("n-start").value||!g("n-end").value) miss.push("dates");
+    if(["fixed_cost","assessment"].includes(t)&&!g("n-price").value) miss.push("total price"); if(t==="msp"&&!g("n-fee").value) miss.push("monthly fee"); if(g("n-addl").value==="") miss.push("additional costs Y/N"); if(g("n-same").value==="") miss.push("same dates Y/N");
+    if(miss.length){ g("n-err").textContent="Missing: "+miss.join(", "); return; }
+    if(!DB.clients.includes(client)) DB.clients.push(client);
+    const e={id:"e"+(uid++),client,name:g("n-name").value.trim(),type:t,start:g("n-start").value,end:g("n-end").value,currency:g("n-cur").value,owner:g("n-owner").value,hubspot:"—",
+      totalPrice:g("n-price").value?+g("n-price").value:null,monthlyFee:g("n-fee").value?+g("n-fee").value:null,addlFlag:g("n-addl").value==="1",sameDates:g("n-same").value==="1",allocs:[],costs:[]};
+    DB.engagements.push(e); save(); view.page="eng"; view.eng=e.id; view.tab="allocations"; render(); };
+}
+function renderSettings(){
+  const c=DB.cal; const locs=Object.keys(c.resourceFloor); const sens=["Junior","Mid","Senior","Principal"];
+  $("#main").innerHTML=`<div class="top"><div><h1>Settings</h1><div class="sub">The sheet's Settings tab. Everything the engine runs with is here and nowhere else.</div></div></div>
+  <div class="grid2">
+   <div class="panel"><h2>1 · General</h2><div class="kv" style="margin-top:8px"><label>Hours per working day</label><input class="in" type="number" id="c-hpd" value="${c.hoursPerDay}"><label>Project GM floor %</label><input class="in" type="number" id="c-floor" value="${(c.projectFloor*100).toFixed(1)}"></div>
+    <p class="mini">The project passes at or above the project floor. Each location also has a resource floor below, shown as a check.</p></div>
+   <div class="panel"><h2>2 · Burden % and resource floor by location</h2><div class="wrap" style="margin-top:8px"><table><thead><tr><th>Location</th><th class="n">W-2 / Employee</th><th class="n">1099 / Contractor</th><th class="n">Resource floor</th></tr></thead><tbody>
+    ${locs.map(L=>`<tr data-loc="${L}"><td>${L}</td><td class="n"><input class="in" type="number" data-k="w2" value="${(c.burden[L+"|w2_employee"]*100).toFixed(1)}">%</td><td class="n"><input class="in" type="number" data-k="c99" value="${(c.burden[L+"|contractor_1099"]*100).toFixed(1)}">%</td><td class="n"><input class="in" type="number" data-k="floor" value="${(c.resourceFloor[L]*100).toFixed(1)}">%</td></tr>`).join("")}
+    </tbody></table></div><div class="bar" style="margin-top:8px"><input class="in" type="text" id="c-newloc" placeholder="New location"><button class="btn sm ghost" id="c-addloc">Add location</button></div></div>
+  </div>
+  <div class="panel" style="margin-top:12px"><h2>3 · Cost rate card — our hourly cost before burden</h2><p class="mini">Pre-fills a person's cost/hour by seniority × location × employment type. Typing on the row overrides it. Placeholder values until you set yours.</p>
+   <div class="wrap"><table><thead><tr><th>Seniority</th>${locs.map(L=>`<th class="n">${L} · W-2</th><th class="n">${L} · 1099</th>`).join("")}</tr></thead><tbody>
+   ${sens.map(S=>`<tr><td>${S}</td>${locs.map(L=>`<td class="n"><input class="in" type="number" data-rc="${S}|${L}|w2_employee" value="${c.rateCard[S+"|"+L+"|w2_employee"]??""}"></td><td class="n"><input class="in" type="number" data-rc="${S}|${L}|contractor_1099" value="${c.rateCard[S+"|"+L+"|contractor_1099"]??""}"></td>`).join("")}</tr>`).join("")}
+   </tbody></table></div></div>
+  <div class="panel" style="margin-top:12px"><h2>4 · Holidays by location</h2><p class="mini">One date per line (YYYY-MM-DD). Weekends are removed automatically; list weekday holidays. US = federal observed 2026–27; India = national days — add Holi, Diwali and company days.</p>
+   <div class="grid2">${locs.map(L=>`<div><label class="mini">${L}</label><textarea class="in" data-hol="${L}" rows="8" style="width:100%;font-family:var(--mono);font-size:12px">${(c.holidays[L]||[]).join("\n")}</textarea></div>`).join("")}</div></div>`;
+  $("#c-hpd").onchange=x=>{c.hoursPerDay=+x.target.value||8;save();render()}; $("#c-floor").onchange=x=>{c.projectFloor=(+x.target.value||35)/100;save();render()};
+  document.querySelectorAll("tr[data-loc] [data-k]").forEach(el=>el.onchange=()=>{const L=el.closest("tr").dataset.loc,v=(+el.value||0)/100; if(el.dataset.k==="w2")c.burden[L+"|w2_employee"]=v; else if(el.dataset.k==="c99")c.burden[L+"|contractor_1099"]=v; else c.resourceFloor[L]=v; save();render()});
+  $("#c-addloc").onclick=()=>{const L=$("#c-newloc").value.trim(); if(!L||c.resourceFloor[L]!=null) return; c.resourceFloor[L]=0.35; c.burden[L+"|w2_employee"]=0; c.burden[L+"|contractor_1099"]=0; c.holidays[L]=[]; save(); render();};
+  document.querySelectorAll("[data-rc]").forEach(el=>el.onchange=()=>{c.rateCard[el.dataset.rc]=el.value===""?undefined:+el.value;save();});
+  document.querySelectorAll("[data-hol]").forEach(el=>el.onchange=()=>{c.holidays[el.dataset.hol]=el.value.split(/\s+/).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));save();render()});
+}
+function render(){ renderNav(); if(view.page==="portfolio") renderPortfolio(); else if(view.page==="new") renderNew(); else if(view.page==="settings") renderSettings(); else renderEng(); }
+render();
+</script>

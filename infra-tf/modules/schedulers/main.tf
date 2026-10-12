@@ -24,6 +24,7 @@ locals {
   scheduler_family = "${var.name_prefix}-alert-scheduler"
   sender_family    = "${var.name_prefix}-notification-sender"
   renewals_family  = "${var.name_prefix}-renewals-scheduler"
+  portfolio_family = "${var.name_prefix}-portfolio-scheduler"
   base_env = [
     { name = "DEALGATE_ENV", value = var.env },
     { name = "DEALGATE_TENANT_ID", value = var.tenant_id != "" ? var.tenant_id : var.name_prefix },
@@ -252,6 +253,7 @@ data "aws_iam_policy_document" "events_runtask" {
       aws_ecs_task_definition.alert_scheduler.arn,
       aws_ecs_task_definition.notification_sender.arn,
       aws_ecs_task_definition.renewals_scheduler.arn,
+      aws_ecs_task_definition.portfolio_scheduler.arn,
     ]
   }
 
@@ -319,6 +321,76 @@ resource "aws_cloudwatch_event_target" "renewals_scheduler" {
 
   ecs_target {
     task_definition_arn = aws_ecs_task_definition.renewals_scheduler.arn
+    launch_type         = "FARGATE"
+    task_count          = 1
+    platform_version    = "LATEST"
+
+    network_configuration {
+      subnets          = var.private_subnet_ids
+      security_groups  = var.task_security_group_ids
+      assign_public_ip = false
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# S22 P3-4 / P3-5: nightly portfolio scheduler (`worker.portfolio_scheduler`).
+# One-shot tick: MSP / staff-aug engagements ending within two calendar months
+# raise the renewal item (D8); roll-offs within 60 days and below-floor
+# engagements go to each account owner through the notification outbox.
+# -----------------------------------------------------------------------------
+
+resource "aws_ecs_task_definition" "portfolio_scheduler" {
+  family                   = local.portfolio_family
+  cpu                      = tostring(var.cpu)
+  memory                   = tostring(var.memory)
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  execution_role_arn       = var.task_execution_role_arn
+  task_role_arn            = aws_iam_role.task.arn
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name        = "portfolio-scheduler"
+      image       = "${var.ecr_repository_url}:${var.image_tag}"
+      essential   = true
+      command     = ["python", "-m", "worker.portfolio_scheduler"]
+      environment = local.base_env
+      secrets = [
+        { name = "POSTGRES_URL", valueFrom = var.db_url_secret_arn },
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.schedulers.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "portfolio-scheduler"
+        }
+      }
+    }
+  ])
+}
+
+resource "aws_cloudwatch_event_rule" "portfolio_scheduler" {
+  name                = "${var.name_prefix}-portfolio-scheduler"
+  description         = "Run the DealGate portfolio scheduler tick (renewals + nightly roll-off / below-floor alert)."
+  schedule_expression = var.portfolio_schedule_expression
+  state               = "ENABLED"
+}
+
+resource "aws_cloudwatch_event_target" "portfolio_scheduler" {
+  rule      = aws_cloudwatch_event_rule.portfolio_scheduler.name
+  target_id = "portfolio-scheduler"
+  arn       = var.ecs_cluster_arn
+  role_arn  = aws_iam_role.events.arn
+
+  ecs_target {
+    task_definition_arn = aws_ecs_task_definition.portfolio_scheduler.arn
     launch_type         = "FARGATE"
     task_count          = 1
     platform_version    = "LATEST"

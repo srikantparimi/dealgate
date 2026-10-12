@@ -40,7 +40,7 @@ import json, re, sys
 prefix_re = re.compile(
     r"^(?:s1[2-9]-|s17-|s18-|"
     r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|"
     r"S17 delete-everywhere)",
     re.IGNORECASE,
@@ -70,7 +70,7 @@ import json, re, sys
 prefix_re = re.compile(
     r"^(?:s1[2-9]-|s17-|s18-|"
     r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|"
     r"S17 delete-everywhere)",
     re.IGNORECASE,
@@ -107,13 +107,55 @@ APPROVER_OUT=$(printf '%s' "$APPROVER_RESP" | python3 -c "$APPROVER_PYTHON" 2>/d
 APPROVER_COUNT=$(printf '%s\n' "$APPROVER_OUT" | head -1)
 APPROVER_LEAKS=$(printf '%s\n' "$APPROVER_OUT" | tail -n +2)
 
-TOTAL=$((COUNT + APPROVER_COUNT))
+# S22: the portfolio ledger has its own rows. People are a global roster
+# (not client-scoped), so a leaked test person would sit on every bench list;
+# engagements cascade from their client but are listed here as a belt-and-braces
+# check. Both endpoints are new in S22; a 404 (older image) counts as 0.
+S22_PYTHON=$(cat <<'PY'
+import json, re, sys
+prefix_re = re.compile(
+    r"^(?:s1[2-9]-|s17-|s18-|"
+    r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |"
+    r"smoke |Peppermill Casino \(smoke fixture\)|"
+    r"S17 delete-everywhere)",
+    re.IGNORECASE,
+)
+tag_re = re.compile(r"S22 e2e \d+", re.IGNORECASE)
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print(0); sys.exit(0)
+rows = data if isinstance(data, list) else data.get("items", [])
+leaky = []
+for r in rows:
+    label = r.get("name") or ""
+    client = r.get("client_name") or ""
+    if prefix_re.match(label) or prefix_re.match(client) or tag_re.search(label) or tag_re.search(client):
+        leaky.append(r)
+print(len(leaky))
+for r in leaky:
+    print(f"S22-LEAK\t{r.get('id')}\t{(r.get('client_name') + ' · ') if r.get('client_name') else ''}{r.get('name')}")
+PY
+)
+PEOPLE_RESP=$(curl -sS -H "Authorization: Bearer $ID_TOKEN" "$BASE_URL/api/resources" 2>/dev/null || echo '[]')
+PEOPLE_OUT=$(printf '%s' "$PEOPLE_RESP" | python3 -c "$S22_PYTHON" 2>/dev/null || echo "0")
+PEOPLE_COUNT=$(printf '%s\n' "$PEOPLE_OUT" | head -1)
+PEOPLE_LEAKS=$(printf '%s\n' "$PEOPLE_OUT" | tail -n +2)
+ENG_RESP=$(curl -sS -H "Authorization: Bearer $ID_TOKEN" "$BASE_URL/api/engagements?page_size=100" 2>/dev/null || echo '{"items":[]}')
+ENG_OUT=$(printf '%s' "$ENG_RESP" | python3 -c "$S22_PYTHON" 2>/dev/null || echo "0")
+ENG_COUNT=$(printf '%s\n' "$ENG_OUT" | head -1)
+ENG_LEAKS=$(printf '%s\n' "$ENG_OUT" | tail -n +2)
+
+TOTAL=$((COUNT + APPROVER_COUNT + PEOPLE_COUNT + ENG_COUNT))
 if [ "$TOTAL" = "0" ]; then
-  echo "[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs on $BASE_URL"
+  echo "[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs + 0 tagged people + 0 tagged engagements on $BASE_URL"
   exit 0
 fi
 
-echo "[gate] FAIL · $COUNT test-tagged clients + $APPROVER_COUNT e2e-approver leaks on $BASE_URL" >&2
+echo "[gate] FAIL · $COUNT test-tagged clients + $APPROVER_COUNT e2e-approver leaks + $PEOPLE_COUNT tagged people + $ENG_COUNT tagged engagements on $BASE_URL" >&2
 printf '%s\n' "$LEAKS" >&2
 printf '%s\n' "$APPROVER_LEAKS" >&2
+printf '%s\n' "$PEOPLE_LEAKS" >&2
+printf '%s\n' "$ENG_LEAKS" >&2
 exit 1

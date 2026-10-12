@@ -1,0 +1,1487 @@
+{
+ "generated": "2026-10-11",
+ "hours_per_day": 8,
+ "project_floor": 0.35,
+ "burden": {
+  "US|W-2 / Employee": 0.36,
+  "US|1099 / Contractor": 0.05,
+  "India|W-2 / Employee": 0.08,
+  "India|1099 / Contractor": 0.08
+ },
+ "resource_floor": {
+  "US": 0.35,
+  "India": 0.5
+ },
+ "rate_card_mid": {
+  "US|W-2 / Employee": 80,
+  "US|1099 / Contractor": 88,
+  "India|W-2 / Employee": 18,
+  "India|1099 / Contractor": 20
+ },
+ "holidays": {
+  "US": [
+   "2026-01-01",
+   "2026-01-19",
+   "2026-02-16",
+   "2026-05-25",
+   "2026-06-19",
+   "2026-07-03",
+   "2026-09-07",
+   "2026-10-12",
+   "2026-11-11",
+   "2026-11-26",
+   "2026-12-25",
+   "2027-01-01",
+   "2027-01-18",
+   "2027-02-15",
+   "2027-05-31",
+   "2027-06-18",
+   "2027-07-05",
+   "2027-09-06",
+   "2027-10-11",
+   "2027-11-11",
+   "2027-11-25",
+   "2027-12-24"
+  ],
+  "India": [
+   "2026-01-01",
+   "2026-01-26",
+   "2026-08-15",
+   "2026-10-02",
+   "2026-12-25",
+   "2027-01-01",
+   "2027-01-26",
+   "2027-08-15",
+   "2027-10-02",
+   "2027-12-25"
+  ]
+ },
+ "scenarios": [
+  {
+   "name": "Assessment Sep 7 \u2013 Oct 5, 1 US W-2",
+   "engagement_type": "Assessment",
+   "start": "2026-09-07",
+   "end": "2026-10-05",
+   "total_price": 50000,
+   "monthly_fee": null,
+   "additional_costs_flag": "N",
+   "same_dates_for_all": false,
+   "additional_costs": [],
+   "allocations": [
+    {
+     "role": "SME",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 120,
+     "start": "2026-09-07",
+     "end": "2026-10-05",
+     "hours_override": null,
+     "expected": {
+      "working_days": 20,
+      "hours": 160.0,
+      "labour_cost": 19200.0,
+      "burden_cost": 6912.0,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 0.96129,
+    "hours": 160.0,
+    "labour_cost": 19200.0,
+    "burden_cost": 6912.0,
+    "additional_costs": 0,
+    "pass_through_revenue": 0,
+    "total_revenue": 50000,
+    "total_cost": 26112.0,
+    "gm_pct": 0.47776,
+    "status": "PASS",
+    "monthly_required": false
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "Fixed 2 months, US 1099 + India",
+   "engagement_type": "Fixed cost",
+   "start": "2026-11-02",
+   "end": "2026-12-31",
+   "total_price": 90000,
+   "monthly_fee": null,
+   "additional_costs_flag": "N",
+   "same_dates_for_all": false,
+   "additional_costs": [],
+   "allocations": [
+    {
+     "role": "A",
+     "location": "US",
+     "employment_type": "1099 / Contractor",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 110,
+     "start": "2026-11-02",
+     "end": "2026-12-31",
+     "hours_override": null,
+     "expected": {
+      "working_days": 41,
+      "hours": 328.0,
+      "labour_cost": 36080.0,
+      "burden_cost": 1804.0,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "B",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 25,
+     "start": "2026-11-02",
+     "end": "2026-12-31",
+     "hours_override": null,
+     "expected": {
+      "working_days": 43,
+      "hours": 344.0,
+      "labour_cost": 8600.0,
+      "burden_cost": 688.0,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 1.966667,
+    "hours": 672.0,
+    "labour_cost": 44680.0,
+    "burden_cost": 2492.0,
+    "additional_costs": 0,
+    "pass_through_revenue": 0,
+    "total_revenue": 90000,
+    "total_cost": 47172.0,
+    "gm_pct": 0.475867,
+    "status": "PASS",
+    "monthly_required": false
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "Fixed 3 months, late joiner, costs",
+   "engagement_type": "Fixed cost",
+   "start": "2027-01-04",
+   "end": "2027-03-31",
+   "total_price": 150000,
+   "monthly_fee": null,
+   "additional_costs_flag": "Y",
+   "same_dates_for_all": false,
+   "additional_costs": [
+    {
+     "amount": 2000,
+     "frequency": "Monthly",
+     "billed_to_client": "N"
+    },
+    {
+     "amount": 5000,
+     "frequency": "One-time",
+     "billed_to_client": "Y"
+    }
+   ],
+   "allocations": [
+    {
+     "role": "A",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 0.5,
+     "bill_rate": null,
+     "cost_per_hour": 150,
+     "start": "2027-01-04",
+     "end": "2027-03-31",
+     "hours_override": null,
+     "expected": {
+      "working_days": 61,
+      "hours": 244.0,
+      "labour_cost": 36600.0,
+      "burden_cost": 13176.0,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "B",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 30,
+     "start": "2027-02-01",
+     "end": "2027-03-31",
+     "hours_override": null,
+     "expected": {
+      "working_days": 43,
+      "hours": 344.0,
+      "labour_cost": 10320.0,
+      "burden_cost": 825.6,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 2.903226,
+    "hours": 588.0,
+    "labour_cost": 46920.0,
+    "burden_cost": 14001.6,
+    "additional_costs": 10806.45,
+    "pass_through_revenue": 5000,
+    "total_revenue": 155000,
+    "total_cost": 71728.05,
+    "gm_pct": 0.537238,
+    "status": "PASS",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "MSP 12 months, 5 people, override",
+   "engagement_type": "MSP",
+   "start": "2026-10-01",
+   "end": "2027-09-30",
+   "total_price": null,
+   "monthly_fee": 60000,
+   "additional_costs_flag": "Y",
+   "same_dates_for_all": false,
+   "additional_costs": [
+    {
+     "amount": 3500,
+     "frequency": "Monthly",
+     "billed_to_client": "Y"
+    },
+    {
+     "amount": 12000,
+     "frequency": "One-time",
+     "billed_to_client": "N"
+    }
+   ],
+   "allocations": [
+    {
+     "role": "SDM",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 0.3,
+     "bill_rate": null,
+     "cost_per_hour": 190,
+     "start": "2026-10-01",
+     "end": "2027-09-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 250,
+      "hours": 600.0,
+      "labour_cost": 114000.0,
+      "burden_cost": 41040.0,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "L1",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 18,
+     "start": "2026-10-01",
+     "end": "2027-09-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 257,
+      "hours": 2056.0,
+      "labour_cost": 37008.0,
+      "burden_cost": 2960.64,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "L1",
+     "location": "India",
+     "employment_type": "1099 / Contractor",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 18,
+     "start": "2026-10-01",
+     "end": "2027-09-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 257,
+      "hours": 2056.0,
+      "labour_cost": 37008.0,
+      "burden_cost": 2960.64,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "L2",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 28,
+     "start": "2026-10-01",
+     "end": "2027-09-30",
+     "hours_override": 1500,
+     "expected": {
+      "working_days": 257,
+      "hours": 1500,
+      "labour_cost": 42000,
+      "burden_cost": 3360.0,
+      "revenue": 0
+     }
+    },
+    {
+     "role": "Arch",
+     "location": "US",
+     "employment_type": "1099 / Contractor",
+     "assignment": null,
+     "utilization": 0.1,
+     "bill_rate": null,
+     "cost_per_hour": 220,
+     "start": "2026-10-01",
+     "end": "2026-12-31",
+     "hours_override": null,
+     "expected": {
+      "working_days": 62,
+      "hours": 49.6,
+      "labour_cost": 10912.0,
+      "burden_cost": 545.6,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 12.0,
+    "hours": 6261.6,
+    "labour_cost": 240928.0,
+    "burden_cost": 50866.88,
+    "additional_costs": 54000.0,
+    "pass_through_revenue": 42000.0,
+    "total_revenue": 762000.0,
+    "total_cost": 345794.88,
+    "gm_pct": 0.546201,
+    "status": "PASS",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "T&M 6 months",
+   "engagement_type": "Time & materials",
+   "start": "2026-11-01",
+   "end": "2027-04-30",
+   "total_price": null,
+   "monthly_fee": null,
+   "additional_costs_flag": "Y",
+   "same_dates_for_all": false,
+   "additional_costs": [
+    {
+     "amount": 800,
+     "frequency": "Monthly",
+     "billed_to_client": "N"
+    }
+   ],
+   "allocations": [
+    {
+     "role": "Eng",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": 175,
+     "cost_per_hour": 95,
+     "start": "2026-11-01",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 124,
+      "hours": 992.0,
+      "labour_cost": 94240.0,
+      "burden_cost": 33926.4,
+      "revenue": 173600.0
+     }
+    },
+    {
+     "role": "Eng",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": 60,
+     "cost_per_hour": 22,
+     "start": "2026-11-01",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 127,
+      "hours": 1016.0,
+      "labour_cost": 22352.0,
+      "burden_cost": 1788.16,
+      "revenue": 60960.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 6.0,
+    "hours": 2008.0,
+    "labour_cost": 116592.0,
+    "burden_cost": 35714.56,
+    "additional_costs": 4800.0,
+    "pass_through_revenue": 0,
+    "total_revenue": 234560.0,
+    "total_cost": 157106.56,
+    "gm_pct": 0.330207,
+    "status": "BELOW FLOOR",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": [
+    {
+     "month": "2026-11",
+     "assignment": "(unassigned)",
+     "people": 2,
+     "hours": 320.0,
+     "revenue": 36680.0,
+     "loaded_cost": 23630.08
+    },
+    {
+     "month": "2026-12",
+     "assignment": "(unassigned)",
+     "people": 2,
+     "hours": 352.0,
+     "revenue": 41360.0,
+     "loaded_cost": 26920.96
+    },
+    {
+     "month": "2027-01",
+     "assignment": "(unassigned)",
+     "people": 2,
+     "hours": 304.0,
+     "revenue": 35720.0,
+     "loaded_cost": 23249.92
+    },
+    {
+     "month": "2027-02",
+     "assignment": "(unassigned)",
+     "people": 2,
+     "hours": 312.0,
+     "revenue": 36200.0,
+     "loaded_cost": 23440.0
+    },
+    {
+     "month": "2027-03",
+     "assignment": "(unassigned)",
+     "people": 2,
+     "hours": 368.0,
+     "revenue": 43240.0,
+     "loaded_cost": 28144.64
+    },
+    {
+     "month": "2027-04",
+     "assignment": "(unassigned)",
+     "people": 2,
+     "hours": 352.0,
+     "revenue": 41360.0,
+     "loaded_cost": 26920.96
+    }
+   ]
+  },
+  {
+   "name": "MSP Sep 7 \u2013 Oct 5 prorated",
+   "engagement_type": "MSP",
+   "start": "2026-09-07",
+   "end": "2026-10-05",
+   "total_price": null,
+   "monthly_fee": 30000,
+   "additional_costs_flag": "Y",
+   "same_dates_for_all": false,
+   "additional_costs": [
+    {
+     "amount": 1000,
+     "frequency": "Monthly",
+     "billed_to_client": "N"
+    }
+   ],
+   "allocations": [
+    {
+     "role": "L1",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 18,
+     "start": "2026-09-07",
+     "end": "2026-10-05",
+     "hours_override": null,
+     "expected": {
+      "working_days": 20,
+      "hours": 160.0,
+      "labour_cost": 2880.0,
+      "burden_cost": 230.4,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 0.96129,
+    "hours": 160.0,
+    "labour_cost": 2880.0,
+    "burden_cost": 230.4,
+    "additional_costs": 961.29,
+    "pass_through_revenue": 0,
+    "total_revenue": 28838.71,
+    "total_cost": 4071.69,
+    "gm_pct": 0.858812,
+    "status": "PASS",
+    "monthly_required": false
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "MSP 18 months mid-month",
+   "engagement_type": "MSP",
+   "start": "2026-10-15",
+   "end": "2028-04-14",
+   "total_price": null,
+   "monthly_fee": 25000,
+   "additional_costs_flag": "N",
+   "same_dates_for_all": false,
+   "additional_costs": [],
+   "allocations": [
+    {
+     "role": "L1",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 18,
+     "start": "2026-10-15",
+     "end": "2028-04-14",
+     "hours_override": null,
+     "expected": {
+      "working_days": 389,
+      "hours": 3112.0,
+      "labour_cost": 56016.0,
+      "burden_cost": 4481.28,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "SDM",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 0.25,
+     "bill_rate": null,
+     "cost_per_hour": 180,
+     "start": "2026-10-15",
+     "end": "2028-04-14",
+     "hours_override": null,
+     "expected": {
+      "working_days": 378,
+      "hours": 756.0,
+      "labour_cost": 136080.0,
+      "burden_cost": 48988.8,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 18.015054,
+    "hours": 3868.0,
+    "labour_cost": 192096.0,
+    "burden_cost": 53470.08,
+    "additional_costs": 0,
+    "pass_through_revenue": 0,
+    "total_revenue": 450376.34,
+    "total_cost": 245566.08,
+    "gm_pct": 0.454754,
+    "status": "PASS",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "Rate-card default + blank frequency",
+   "engagement_type": "Fixed cost",
+   "start": "2026-11-02",
+   "end": "2026-12-18",
+   "total_price": 70000,
+   "monthly_fee": null,
+   "additional_costs_flag": "Y",
+   "same_dates_for_all": false,
+   "additional_costs": [
+    {
+     "amount": 1500,
+     "frequency": "One-time",
+     "billed_to_client": "N"
+    },
+    {
+     "amount": 900,
+     "frequency": "Monthly",
+     "billed_to_client": "Y"
+    }
+   ],
+   "allocations": [
+    {
+     "role": "Lead",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 80,
+     "start": "2026-11-02",
+     "end": "2026-12-18",
+     "hours_override": null,
+     "expected": {
+      "working_days": 33,
+      "hours": 264.0,
+      "labour_cost": 21120.0,
+      "burden_cost": 7603.2,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "Dev",
+     "location": "India",
+     "employment_type": "1099 / Contractor",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 20,
+     "start": "2026-11-02",
+     "end": "2026-12-18",
+     "hours_override": null,
+     "expected": {
+      "working_days": 35,
+      "hours": 280.0,
+      "labour_cost": 5600.0,
+      "burden_cost": 448.0,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 1.547312,
+    "hours": 544.0,
+    "labour_cost": 26720.0,
+    "burden_cost": 8051.2,
+    "additional_costs": 2892.58,
+    "pass_through_revenue": 1392.58,
+    "total_revenue": 71392.58,
+    "total_cost": 37663.78,
+    "gm_pct": 0.472441,
+    "status": "PASS",
+    "monthly_required": false
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "MSP 24-month boundary",
+   "engagement_type": "MSP",
+   "start": "2026-10-01",
+   "end": "2028-09-30",
+   "total_price": null,
+   "monthly_fee": 40000,
+   "additional_costs_flag": "N",
+   "same_dates_for_all": false,
+   "additional_costs": [],
+   "allocations": [
+    {
+     "role": "L1",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 18,
+     "start": "2026-10-01",
+     "end": "2028-09-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 518,
+      "hours": 4144.0,
+      "labour_cost": 74592.0,
+      "burden_cost": 5967.36,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 24.0,
+    "hours": 4144.0,
+    "labour_cost": 74592.0,
+    "burden_cost": 5967.36,
+    "additional_costs": 0,
+    "pass_through_revenue": 0,
+    "total_revenue": 960000.0,
+    "total_cost": 80559.36,
+    "gm_pct": 0.916084,
+    "status": "PASS",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "Override hours, leaves early",
+   "engagement_type": "Fixed cost",
+   "start": "2026-10-01",
+   "end": "2027-01-31",
+   "total_price": 80000,
+   "monthly_fee": null,
+   "additional_costs_flag": "N",
+   "same_dates_for_all": false,
+   "additional_costs": [],
+   "allocations": [
+    {
+     "role": "A",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 100,
+     "start": "2026-10-01",
+     "end": "2026-11-30",
+     "hours_override": 300,
+     "expected": {
+      "working_days": 40,
+      "hours": 300,
+      "labour_cost": 30000,
+      "burden_cost": 10800.0,
+      "revenue": 0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 4.0,
+    "hours": 300.0,
+    "labour_cost": 30000.0,
+    "burden_cost": 10800.0,
+    "additional_costs": 0,
+    "pass_through_revenue": 0,
+    "total_revenue": 80000,
+    "total_cost": 40800.0,
+    "gm_pct": 0.49,
+    "status": "PASS",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "STAFF AUG \u2014 Client A, 5 resources, W-2/1099/India, 2 assignments",
+   "engagement_type": "Staff augmentation",
+   "start": "2026-11-02",
+   "end": "2027-04-30",
+   "total_price": null,
+   "monthly_fee": null,
+   "additional_costs_flag": "Y",
+   "same_dates_for_all": false,
+   "additional_costs": [
+    {
+     "amount": 600,
+     "frequency": "Monthly",
+     "billed_to_client": "N"
+    },
+    {
+     "amount": 3200,
+     "frequency": "One-time",
+     "billed_to_client": "Y"
+    }
+   ],
+   "allocations": [
+    {
+     "role": "Developer",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": "Portal rebuild",
+     "utilization": 1.0,
+     "bill_rate": 135,
+     "cost_per_hour": 70,
+     "start": "2026-11-02",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 124,
+      "hours": 992.0,
+      "labour_cost": 69440.0,
+      "burden_cost": 24998.4,
+      "revenue": 133920.0
+     }
+    },
+    {
+     "role": "Tester",
+     "location": "US",
+     "employment_type": "1099 / Contractor",
+     "assignment": "Portal rebuild",
+     "utilization": 1.0,
+     "bill_rate": 95,
+     "cost_per_hour": 55,
+     "start": "2026-12-01",
+     "end": "2027-03-31",
+     "hours_override": null,
+     "expected": {
+      "working_days": 83,
+      "hours": 664.0,
+      "labour_cost": 36520.0,
+      "burden_cost": 1826.0,
+      "revenue": 63080.0
+     }
+    },
+    {
+     "role": "Architect",
+     "location": "US",
+     "employment_type": "1099 / Contractor",
+     "assignment": "Data platform",
+     "utilization": 0.5,
+     "bill_rate": 185,
+     "cost_per_hour": 120,
+     "start": "2026-11-02",
+     "end": "2027-02-26",
+     "hours_override": null,
+     "expected": {
+      "working_days": 79,
+      "hours": 316.0,
+      "labour_cost": 37920.0,
+      "burden_cost": 1896.0,
+      "revenue": 58460.0
+     }
+    },
+    {
+     "role": "Developer",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": "Data platform",
+     "utilization": 1.0,
+     "bill_rate": 48,
+     "cost_per_hour": 20,
+     "start": "2026-11-02",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 127,
+      "hours": 1016.0,
+      "labour_cost": 20320.0,
+      "burden_cost": 1625.6,
+      "revenue": 48768.0
+     }
+    },
+    {
+     "role": "Developer",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": "Data platform",
+     "utilization": 1.0,
+     "bill_rate": 48,
+     "cost_per_hour": 22,
+     "start": "2027-01-04",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 84,
+      "hours": 672.0,
+      "labour_cost": 14784.0,
+      "burden_cost": 1182.72,
+      "revenue": 32256.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 5.966667,
+    "hours": 3660.0,
+    "labour_cost": 178984.0,
+    "burden_cost": 31528.72,
+    "additional_costs": 6780.0,
+    "pass_through_revenue": 3200,
+    "total_revenue": 339684.0,
+    "total_cost": 217292.72,
+    "gm_pct": 0.360309,
+    "status": "PASS",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": [
+    {
+     "month": "2026-11",
+     "assignment": "Data platform",
+     "people": 2,
+     "hours": 244.0,
+     "revenue": 22124.0,
+     "loaded_cost": 13204.8
+    },
+    {
+     "month": "2026-11",
+     "assignment": "Portal rebuild",
+     "people": 1,
+     "hours": 152.0,
+     "revenue": 20520.0,
+     "loaded_cost": 14470.4
+    },
+    {
+     "month": "2026-12",
+     "assignment": "Data platform",
+     "people": 2,
+     "hours": 264.0,
+     "revenue": 24728.0,
+     "loaded_cost": 14889.6
+    },
+    {
+     "month": "2026-12",
+     "assignment": "Portal rebuild",
+     "people": 2,
+     "hours": 352.0,
+     "revenue": 40480.0,
+     "loaded_cost": 26919.2
+    },
+    {
+     "month": "2027-01",
+     "assignment": "Data platform",
+     "people": 3,
+     "hours": 380.0,
+     "revenue": 28652.0,
+     "loaded_cost": 16470.72
+    },
+    {
+     "month": "2027-01",
+     "assignment": "Portal rebuild",
+     "people": 2,
+     "hours": 304.0,
+     "revenue": 34960.0,
+     "loaded_cost": 23248.4
+    },
+    {
+     "month": "2027-02",
+     "assignment": "Data platform",
+     "people": 3,
+     "hours": 396.0,
+     "revenue": 29420.0,
+     "loaded_cost": 16833.6
+    },
+    {
+     "month": "2027-02",
+     "assignment": "Portal rebuild",
+     "people": 2,
+     "hours": 304.0,
+     "revenue": 34960.0,
+     "loaded_cost": 23248.4
+    },
+    {
+     "month": "2027-03",
+     "assignment": "Data platform",
+     "people": 2,
+     "hours": 368.0,
+     "revenue": 17664.0,
+     "loaded_cost": 8346.24
+    },
+    {
+     "month": "2027-03",
+     "assignment": "Portal rebuild",
+     "people": 2,
+     "hours": 368.0,
+     "revenue": 42320.0,
+     "loaded_cost": 28142.8
+    },
+    {
+     "month": "2027-04",
+     "assignment": "Data platform",
+     "people": 2,
+     "hours": 352.0,
+     "revenue": 16896.0,
+     "loaded_cost": 7983.36
+    },
+    {
+     "month": "2027-04",
+     "assignment": "Portal rebuild",
+     "people": 1,
+     "hours": 176.0,
+     "revenue": 23760.0,
+     "loaded_cost": 16755.2
+    }
+   ]
+  },
+  {
+   "name": "SAME DATES = Y ignores typed row dates (MSP, 4 people)",
+   "engagement_type": "MSP",
+   "start": "2026-11-02",
+   "end": "2027-04-30",
+   "total_price": null,
+   "monthly_fee": 30000,
+   "additional_costs_flag": "N",
+   "same_dates_for_all": true,
+   "additional_costs": [],
+   "allocations": [
+    {
+     "role": "A",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 90,
+     "start": "2026-11-02",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 124,
+      "hours": 992.0,
+      "labour_cost": 89280.0,
+      "burden_cost": 32140.8,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "B",
+     "location": "US",
+     "employment_type": "1099 / Contractor",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 80,
+     "start": "2026-11-02",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 124,
+      "hours": 992.0,
+      "labour_cost": 79360.0,
+      "burden_cost": 3968.0,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "C",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 20,
+     "start": "2026-11-02",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 127,
+      "hours": 1016.0,
+      "labour_cost": 20320.0,
+      "burden_cost": 1625.6,
+      "revenue": 0.0
+     }
+    },
+    {
+     "role": "D",
+     "location": "India",
+     "employment_type": "1099 / Contractor",
+     "assignment": null,
+     "utilization": 1.0,
+     "bill_rate": null,
+     "cost_per_hour": 22,
+     "start": "2026-11-02",
+     "end": "2027-04-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 127,
+      "hours": 1016.0,
+      "labour_cost": 22352.0,
+      "burden_cost": 1788.16,
+      "revenue": 0.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 5.966667,
+    "hours": 4016.0,
+    "labour_cost": 211312.0,
+    "burden_cost": 39522.56,
+    "additional_costs": 0,
+    "pass_through_revenue": 0,
+    "total_revenue": 179000.0,
+    "total_cost": 250834.56,
+    "gm_pct": -0.40131,
+    "status": "BELOW FLOOR",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": []
+  },
+  {
+   "name": "STAFF AUG \u2014 leaver, gap month, re-hire, addition after 2 months",
+   "engagement_type": "Staff augmentation",
+   "start": "2026-11-02",
+   "end": "2027-06-30",
+   "total_price": null,
+   "monthly_fee": null,
+   "additional_costs_flag": "N",
+   "same_dates_for_all": false,
+   "additional_costs": [],
+   "allocations": [
+    {
+     "role": "Dev A (leaves)",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": "Team X",
+     "utilization": 1.0,
+     "bill_rate": 130,
+     "cost_per_hour": 68,
+     "start": "2026-11-02",
+     "end": "2026-12-31",
+     "hours_override": null,
+     "expected": {
+      "working_days": 41,
+      "hours": 328.0,
+      "labour_cost": 22304.0,
+      "burden_cost": 8029.44,
+      "revenue": 42640.0
+     }
+    },
+    {
+     "role": "Dev A2 (re-hire)",
+     "location": "US",
+     "employment_type": "1099 / Contractor",
+     "assignment": "Team X",
+     "utilization": 1.0,
+     "bill_rate": 130,
+     "cost_per_hour": 72,
+     "start": "2027-02-01",
+     "end": "2027-06-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 105,
+      "hours": 840.0,
+      "labour_cost": 60480.0,
+      "burden_cost": 3024.0,
+      "revenue": 109200.0
+     }
+    },
+    {
+     "role": "QA (leaves)",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": "Team X",
+     "utilization": 1.0,
+     "bill_rate": 45,
+     "cost_per_hour": 19,
+     "start": "2026-11-02",
+     "end": "2027-01-15",
+     "hours_override": null,
+     "expected": {
+      "working_days": 53,
+      "hours": 424.0,
+      "labour_cost": 8056.0,
+      "burden_cost": 644.48,
+      "revenue": 19080.0
+     }
+    },
+    {
+     "role": "QA2 (re-hire)",
+     "location": "India",
+     "employment_type": "1099 / Contractor",
+     "assignment": "Team X",
+     "utilization": 1.0,
+     "bill_rate": 45,
+     "cost_per_hour": 21,
+     "start": "2027-03-01",
+     "end": "2027-06-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 88,
+      "hours": 704.0,
+      "labour_cost": 14784.0,
+      "burden_cost": 1182.72,
+      "revenue": 31680.0
+     }
+    },
+    {
+     "role": "Added after 2 months",
+     "location": "US",
+     "employment_type": "1099 / Contractor",
+     "assignment": "Team Y",
+     "utilization": 1.0,
+     "bill_rate": 150,
+     "cost_per_hour": 85,
+     "start": "2027-01-04",
+     "end": "2027-06-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 124,
+      "hours": 992.0,
+      "labour_cost": 84320.0,
+      "burden_cost": 4216.0,
+      "revenue": 148800.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 7.966667,
+    "hours": 3288.0,
+    "labour_cost": 189944.0,
+    "burden_cost": 17096.64,
+    "additional_costs": 0,
+    "pass_through_revenue": 0,
+    "total_revenue": 351400.0,
+    "total_cost": 207040.64,
+    "gm_pct": 0.410812,
+    "status": "PASS",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": [
+    {
+     "month": "2026-11",
+     "assignment": "Team X",
+     "people": 2,
+     "hours": 320.0,
+     "revenue": 27320.0,
+     "loaded_cost": 17504.32
+    },
+    {
+     "month": "2026-12",
+     "assignment": "Team X",
+     "people": 2,
+     "hours": 352.0,
+     "revenue": 30800.0,
+     "loaded_cost": 19888.0
+    },
+    {
+     "month": "2027-01",
+     "assignment": "Team X",
+     "people": 1,
+     "hours": 80.0,
+     "revenue": 3600.0,
+     "loaded_cost": 1641.6
+    },
+    {
+     "month": "2027-01",
+     "assignment": "Team Y",
+     "people": 1,
+     "hours": 152.0,
+     "revenue": 22800.0,
+     "loaded_cost": 13566.0
+    },
+    {
+     "month": "2027-02",
+     "assignment": "Team X",
+     "people": 1,
+     "hours": 152.0,
+     "revenue": 19760.0,
+     "loaded_cost": 11491.2
+    },
+    {
+     "month": "2027-02",
+     "assignment": "Team Y",
+     "people": 1,
+     "hours": 152.0,
+     "revenue": 22800.0,
+     "loaded_cost": 13566.0
+    },
+    {
+     "month": "2027-03",
+     "assignment": "Team X",
+     "people": 2,
+     "hours": 368.0,
+     "revenue": 32200.0,
+     "loaded_cost": 18083.52
+    },
+    {
+     "month": "2027-03",
+     "assignment": "Team Y",
+     "people": 1,
+     "hours": 184.0,
+     "revenue": 27600.0,
+     "loaded_cost": 16422.0
+    },
+    {
+     "month": "2027-04",
+     "assignment": "Team X",
+     "people": 2,
+     "hours": 352.0,
+     "revenue": 30800.0,
+     "loaded_cost": 17297.28
+    },
+    {
+     "month": "2027-04",
+     "assignment": "Team Y",
+     "people": 1,
+     "hours": 176.0,
+     "revenue": 26400.0,
+     "loaded_cost": 15708.0
+    },
+    {
+     "month": "2027-05",
+     "assignment": "Team X",
+     "people": 2,
+     "hours": 328.0,
+     "revenue": 28360.0,
+     "loaded_cost": 15906.24
+    },
+    {
+     "month": "2027-05",
+     "assignment": "Team Y",
+     "people": 1,
+     "hours": 160.0,
+     "revenue": 24000.0,
+     "loaded_cost": 14280.0
+    },
+    {
+     "month": "2027-06",
+     "assignment": "Team X",
+     "people": 2,
+     "hours": 344.0,
+     "revenue": 29760.0,
+     "loaded_cost": 16692.48
+    },
+    {
+     "month": "2027-06",
+     "assignment": "Team Y",
+     "people": 1,
+     "hours": 168.0,
+     "revenue": 25200.0,
+     "loaded_cost": 14994.0
+    }
+   ]
+  },
+  {
+   "name": "STAFF AUG \u2014 same project, same dates, 3 people",
+   "engagement_type": "Staff augmentation",
+   "start": "2027-01-04",
+   "end": "2027-06-30",
+   "total_price": null,
+   "monthly_fee": null,
+   "additional_costs_flag": "N",
+   "same_dates_for_all": false,
+   "additional_costs": [],
+   "allocations": [
+    {
+     "role": "Dev",
+     "location": "US",
+     "employment_type": "W-2 / Employee",
+     "assignment": "One team",
+     "utilization": 1.0,
+     "bill_rate": 120,
+     "cost_per_hour": 65,
+     "start": "2027-01-04",
+     "end": "2027-06-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 124,
+      "hours": 992.0,
+      "labour_cost": 64480.0,
+      "burden_cost": 23212.8,
+      "revenue": 119040.0
+     }
+    },
+    {
+     "role": "Dev",
+     "location": "US",
+     "employment_type": "1099 / Contractor",
+     "assignment": "One team",
+     "utilization": 1.0,
+     "bill_rate": 120,
+     "cost_per_hour": 75,
+     "start": "2027-01-04",
+     "end": "2027-06-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 124,
+      "hours": 992.0,
+      "labour_cost": 74400.0,
+      "burden_cost": 3720.0,
+      "revenue": 119040.0
+     }
+    },
+    {
+     "role": "QA",
+     "location": "India",
+     "employment_type": "W-2 / Employee",
+     "assignment": "One team",
+     "utilization": 1.0,
+     "bill_rate": 45,
+     "cost_per_hour": 19,
+     "start": "2027-01-04",
+     "end": "2027-06-30",
+     "hours_override": null,
+     "expected": {
+      "working_days": 127,
+      "hours": 1016.0,
+      "labour_cost": 19304.0,
+      "burden_cost": 1544.32,
+      "revenue": 45720.0
+     }
+    }
+   ],
+   "expected": {
+    "duration_months": 5.903226,
+    "hours": 3000.0,
+    "labour_cost": 158184.0,
+    "burden_cost": 28477.12,
+    "additional_costs": 0,
+    "pass_through_revenue": 0,
+    "total_revenue": 283800.0,
+    "total_cost": 186661.12,
+    "gm_pct": 0.342279,
+    "status": "BELOW FLOOR",
+    "monthly_required": true
+   },
+   "expected_monthly_by_assignment": [
+    {
+     "month": "2027-01",
+     "assignment": "One team",
+     "people": 3,
+     "hours": 456.0,
+     "revenue": 43320.0,
+     "loaded_cost": 28525.84
+    },
+    {
+     "month": "2027-02",
+     "assignment": "One team",
+     "people": 3,
+     "hours": 464.0,
+     "revenue": 43680.0,
+     "loaded_cost": 28690.0
+    },
+    {
+     "month": "2027-03",
+     "assignment": "One team",
+     "people": 3,
+     "hours": 552.0,
+     "revenue": 52440.0,
+     "loaded_cost": 34531.28
+    },
+    {
+     "month": "2027-04",
+     "assignment": "One team",
+     "people": 3,
+     "hours": 528.0,
+     "revenue": 50160.0,
+     "loaded_cost": 33029.92
+    },
+    {
+     "month": "2027-05",
+     "assignment": "One team",
+     "people": 3,
+     "hours": 488.0,
+     "revenue": 45960.0,
+     "loaded_cost": 30191.36
+    },
+    {
+     "month": "2027-06",
+     "assignment": "One team",
+     "people": 3,
+     "hours": 512.0,
+     "revenue": 48240.0,
+     "loaded_cost": 31692.72
+    }
+   ]
+  }
+ ]
+}

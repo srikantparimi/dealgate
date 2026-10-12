@@ -7,7 +7,7 @@ GM computed via the ratified ``app.gm`` library.
 Rule 4 (CLAUDE.md): the row is set-once; the service layer refuses PATCH.
 The UNIQUE (gm_model_id, week_ending) constraint enforces "one snapshot
 per week" at the DB level so a second POST for the same week surfaces as
-a 409 (see ``app.services.forecast.update_forecast``).
+a 409 (see ``app.services.weekly_forecast.update_forecast``).
 
 Money is ``Decimal`` (rule 2): totals are NUMERIC(14,2); GM ratios are
 NUMERIC(6,4). GM columns are nullable — a component with zero revenue

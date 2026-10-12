@@ -14,6 +14,7 @@ import {
   Truck,
   Users,
   type LucideIcon,
+  Briefcase,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { cn } from "../lib/cn";
@@ -74,6 +75,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/reports", label: "Reporting", icon: LineChart },
       { to: "/forecast", label: "Forecast", icon: ChartNoAxesCombined,
         requireAny: ["Delivery", "Finance", "CEO", "SystemAdmin", "Sales", "SalesLeader"] },
+      { to: "/portfolio", label: "Portfolio forecast", icon: Briefcase,
+        requireAny: ["Delivery", "Finance", "CEO", "SystemAdmin", "HR", "Sales", "SalesLeader", "Presales"] },
       { to: "/people", label: "People planning", icon: Users,
         requireAny: ["HR", "SystemAdmin"] },
     ],
