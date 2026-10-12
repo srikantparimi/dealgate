@@ -2,6 +2,23 @@
 
 ## RESUME HERE
 
+**2026-10-12 — S22 PORTFOLIO & FORECAST RELEASED: MERGED TO MAIN, MAIN IMAGE
+VERIFIED ON STAGING.** `origin/main` = `576205c` (squash of `feat/s22`,
+product owner accepted the staging click-through). Immutable image
+`s22main-576205c9` (`sha256:09e5078f8f932efbdf4b3e9c8d8f4cbc43d160892889e334955eff23576fb3a4`)
+is live: API revision 99, every worker family on the image, EventBridge
+`officeapp-dev-portfolio-scheduler` ENABLED `cron(0 6 * * ? *)`; migration
+head `20261012_0065_portfolio_forecast`; smoke `smoke 20261012T201815Z`
+GREEN; both S22 specs passed on the main image; extended leak gate
+0/0/0/0; SPA `assets/index-Lv6YxA3F.js`. Full trail in
+`docs/reports/s22/deploy.md`; item states in
+`docs/reports/s22/phase2-report.md` (15 verified on staging; P2-4
+from-deal pre-fill, P3-4, P3-5 fixed and tested with the remaining step
+named). No operation is active. Next: watch the first real nightly
+portfolio tick (06:00 UTC) in `/officeapp/dev/schedulers`
+(`portfolio-scheduler/…`), and Kanna's click on "Create engagement from
+deal" for a real Closed-Won deal.
+
 **2026-10-12 — S22 PORTFOLIO & FORECAST DEPLOYED TO STAGING (ROUND 2);
 AWAITING PRODUCT-OWNER CLICK-THROUGH.** Authoritative tree
 `/Users/srikanthparimi/OfficeApp/dealgate-s22`, branch `feat/s22`, pushed.

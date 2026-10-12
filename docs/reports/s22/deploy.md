@@ -100,6 +100,23 @@ cd /Users/srikanthparimi/OfficeApp/dealgate-s22 && env AWS_PROFILE=lm-arbiter-po
 | Deploy smoke | `smoke 20261012T184432Z` GREEN; `[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs + 0 tagged people + 0 tagged engagements` |
 | SPA | `assets/index-Lv6YxA3F.js` synced (immutable) + `index.html` (no-cache); CloudFront invalidation `I5IFA4Y8YXXMFZ4BDPMOST5VW7` COMPLETED; served bundle contains the `/portfolio/clients` call |
 
+## Main image (post-merge, 2026-10-12, Kanna: "approved" → "apply")
+
+| Step | Result |
+| --- | --- |
+| Merge | `feat/s22` @ c137ad7 squashed → `origin/main` = `576205c` (release worktree `dealgate-s22-release`, branch `release/s22-portfolio`); tree identical to the accepted staging build |
+| Image | `officeapp-dev-api:s22main-576205c9` · digest `sha256:09e5078f8f932efbdf4b3e9c8d8f4cbc43d160892889e334955eff23576fb3a4` · 101,638,150 bytes · linux/amd64 (same code as `s22-6259cda5`; builds are not byte-reproducible) |
+| Plan | `/tmp/s22main-576205c9.tfplan` SHA-256 `95ec582c1f760851b786d244594f2dadd5166f84e2de9dfb926ab9c16a32d01a` (plan.txt `d484e629…2478`, plan.json `deb3db21…dc74`) — 12 to add / 14 to change / 12 to destroy, image-only, same inputs |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed** |
+| Migration task | `007291ffcf804f85b168e36f5d92b6eb` on `officeapp-dev-api-migrate:37` succeeded (no-op at head `20261012_0065_portfolio_forecast`) |
+| API service | `officeapp-dev-api:99`, `services-stable`, 1/1 PRIMARY; running task `8e301569…e412` on the digest above |
+| Worker families | alert-scheduler 51, notification-sender 51, renewals-scheduler 51, portfolio-scheduler 3, audit-export 51, hubspot-intake 50, hubspot-reconcile 50, forecast-plans 28, deletion-cleanup 28, api-migrate 37 — all `s22main-576205c9` |
+| SPA | built from `576205c` → the identical `assets/index-Lv6YxA3F.js`; synced with cache headers; CloudFront invalidation `ICXZAHO2Q8Q8QW3IJTKH1OL2VO` COMPLETED |
+| Smoke | `smoke 20261012T201815Z` GREEN; gate clean |
+| S22 specs on the main image | `2 passed (1.2m)`; gate clean after: 0 clients / 0 approvers / 0 people / 0 engagements |
+
+Staging now runs the main image. Still owner-unverified: P2-4 from-deal pre-fill on a real Closed-Won deal; the first real nightly portfolio tick (06:00 UTC).
+
 ## Local full-stack rehearsal (same API code as the image, local Postgres)
 
 Stack: pgvector/pg16 container (`dealgate_e2e`, `alembic upgrade head` → `20261012_0065_portfolio_forecast`, seeds present), uvicorn `DEALGATE_ENV=local` with every role granted, Vite dev server same-origin through its `/api` proxy, `VITE_TEST_GROUPS` identity (bug #3).
