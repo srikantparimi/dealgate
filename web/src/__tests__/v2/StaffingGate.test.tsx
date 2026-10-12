@@ -67,6 +67,7 @@ describe("rowIsComplete — what a row needs depends on the engagement", () => {
     };
     expect(isFixedFee("fixed_price")).toBe(true);
     expect(isFixedFee("assessment")).toBe(true);
+    expect(isFixedFee("managed_service")).toBe(true);
     expect(isFixedFee("tm")).toBe(false);
 
     // Bill rate alone is not enough on a fixed fee.
@@ -77,6 +78,9 @@ describe("rowIsComplete — what a row needs depends on the engagement", () => {
     expect(rowIsComplete({ ...base, hourly_cost: "95" }, "fixed_price")).toBe(
       true,
     );
+    expect(
+      rowIsComplete({ ...base, hourly_cost: "95" }, "managed_service"),
+    ).toBe(true);
 
     // T&M is the other way round: revenue IS bill rate x hours.
     expect(rowIsComplete({ ...base, hourly_cost: "95" }, "tm")).toBe(false);

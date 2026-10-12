@@ -116,6 +116,33 @@ async def _latest_gm(
     )
 
 
+async def _contract_amount_for_editor(
+    session: AsyncSession, model: GmModel | None
+) -> Decimal | None:
+    """Return the source contract amount the staffing editor must preserve.
+
+    Legacy managed-service rows store term revenue in ``revenue_*`` so the GM
+    snapshot can reload without hidden term state. The editor, however, must
+    continue to send the SOW's monthly fee; feeding the stored term total back
+    as another monthly fee would multiply revenue on every save.
+    """
+
+    if model is None:
+        return None
+    if model.engagement_type == "managed_service" and model.sow_version_id:
+        from app.models.sow import SowVersion
+        from app.services.sow_confirmation import _extracted_price
+
+        version = await session.get(SowVersion, model.sow_version_id)
+        if version is not None:
+            amount = _extracted_price(version)
+            if amount is not None:
+                return amount
+    return (model.revenue_us or Decimal("0")) + (
+        model.revenue_india or Decimal("0")
+    )
+
+
 def _margin_snapshot(model: GmModel | None) -> dict[str, Any]:
     """The numbers a reader compares before and after a change."""
 
@@ -145,6 +172,7 @@ async def current_resources(
     from app.services.delivery_model import serialize_cost_line, serialize_resource_line
 
     model = await _latest_gm(session, opportunity_id)
+    contract_amount = await _contract_amount_for_editor(session, model)
     signed = await is_signed(session, opportunity_id)
     proposals = []
     if model is not None and not model.direct_costs_reviewed and model.sow_version_id:
@@ -205,7 +233,7 @@ async def current_resources(
         "cost_lines": [serialize_cost_line(c) for c in model.cost_lines] if model else [],
         "direct_cost_proposals": proposals,
         "direct_costs_reviewed": model.direct_costs_reviewed if model else False,
-        "total_price": format(model.revenue_us + model.revenue_india, "f") if model else None,
+        "total_price": format(contract_amount, "f") if contract_amount is not None else None,
         "margin": _margin_snapshot(model),
     }
 
@@ -244,7 +272,9 @@ async def update_resources(
         phase_names = {str(phase.id): phase.name for phase in previous.phases}
         for line in retained["resource_lines"] + retained["cost_lines"]:
             line["phase_name"] = phase_names.get(line.get("phase_id"))
-        retained["total_price"] = format(previous.revenue_us + previous.revenue_india, "f")
+        retained_amount = await _contract_amount_for_editor(session, previous)
+        if retained_amount is not None:
+            retained["total_price"] = format(retained_amount, "f")
         payload = {**retained, **payload}
     if previous is not None and "cost_lines" not in payload:
         from app.services.delivery_model import serialize_cost_line
@@ -292,7 +322,7 @@ async def update_resources(
     # treats missing total_price as 0 on a fixed-fee engagement, which is what
     # produced "GM Unavailable" on a $50,000 SOW.
     engagement_type = payload.get("engagement_type") or ""
-    if engagement_type in ("fixed_price", "assessment") and not payload.get(
+    if engagement_type in ("fixed_price", "assessment", "managed_service") and not payload.get(
         "total_price"
     ):
         if latest_sow_state is None:

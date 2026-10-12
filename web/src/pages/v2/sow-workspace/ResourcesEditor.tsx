@@ -104,6 +104,8 @@ export function ResourcesEditor({
 
   const engagementType = state?.engagement_type ?? undefined;
   const fixedFee = isFixedFee(engagementType);
+  const hidesHourlyRate =
+    engagementType === "fixed_price" || engagementType === "assessment";
   const signed = state?.requires_notice_on_change ?? false;
 
   const complete = useMemo(
@@ -287,7 +289,7 @@ export function ResourcesEditor({
                   <Input value={r.hours_billable} aria-label={`res-hours-${i}`} onChange={(e) => update(i, { hours_billable: e.target.value })} />
                 </td>
                 <td className="px-2 py-1">
-                  {fixedFee ? <span className="whitespace-nowrap text-text-muted">— fixed price</span> : <Input value={r.hourly_bill_rate} aria-label={`res-rate-${i}`} onChange={(e) => update(i, { hourly_bill_rate: e.target.value })} />}
+                  {hidesHourlyRate ? <span className="whitespace-nowrap text-text-muted">— fixed price</span> : <Input value={r.hourly_bill_rate} aria-label={`res-rate-${i}`} onChange={(e) => update(i, { hourly_bill_rate: e.target.value })} />}
                 </td>
                 <td className="px-2 py-1">
                   {state?.cost_lines !== undefined ? <Input value={r.hourly_cost} aria-label={`res-cost-${i}`} onChange={(e) => update(i, { hourly_cost: e.target.value })} /> : <span className="text-text-muted">Restricted</span>}
@@ -324,7 +326,7 @@ export function ResourcesEditor({
         <p className="text-secondary text-text-secondary">
           {complete.length === 0
             ? fixedFee
-              ? "No complete rows — on a fixed fee a row needs hours, a cost rate and dates."
+              ? "No complete rows — contract revenue is stated, so a row needs hours, a cost rate and dates."
               : "No complete rows — a row needs hours, a bill rate and dates."
             : `${complete.length} role(s) costed.`}
         </p>

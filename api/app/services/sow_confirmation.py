@@ -204,7 +204,9 @@ async def _existing_gm_for_sow(
 # --- floors ---------------------------------------------------------------
 
 
-def _compute_floors(model: GmModel | None) -> dict[str, Any]:
+def _compute_floors(
+    model: GmModel | None, sow_version: SowVersion | None = None
+) -> dict[str, Any]:
     if model is None:
         # "Not computed" is not "passed". This previously returned
         # us_pass/india_pass = True, so a SOW with no GM model at all
@@ -231,9 +233,28 @@ def _compute_floors(model: GmModel | None) -> dict[str, Any]:
     from app.services.gm_sandbox import SandboxInputError
 
     try:
-        result = compute_live(
-            _model_to_payload(model), extra_inputs=_extra_inputs_for_model(model)
-        )
+        model_payload = _model_to_payload(model)
+        extra_inputs = _extra_inputs_for_model(model)
+        if (
+            model.engagement_type == "managed_service"
+            and model.commercial_inputs is None
+            and sow_version is not None
+        ):
+            monthly_fee = _extracted_price(sow_version)
+            if monthly_fee is not None and monthly_fee > 0:
+                from app.services.delivery_model import (
+                    allocate_managed_service_revenue,
+                )
+
+                revenue_us, revenue_india, _ = allocate_managed_service_revenue(
+                    model_payload.resource_lines, monthly_fee
+                )
+                extra_inputs = {
+                    "monthly_fee_us": format(revenue_us, "f"),
+                    "monthly_fee_india": format(revenue_india, "f"),
+                    "term_months": "1",
+                }
+        result = compute_live(model_payload, extra_inputs=extra_inputs)
     except (DeliveryModelInputError, SandboxInputError) as exc:
         # A computation that FAILED is not a computation that passed. This
         # returned us_pass/india_pass = True, so a GM sheet the engine could
@@ -423,7 +444,7 @@ def _staffing_from_gm(model: GmModel) -> AutoStaffingResult:
 def _is_fixed_fee(engagement_type: str) -> bool:
     """Engagements whose revenue is settled rather than billed by the hour."""
 
-    return engagement_type in ("fixed_price", "assessment")
+    return engagement_type in ("fixed_price", "assessment", "managed_service")
 
 
 # --- needs_you ------------------------------------------------------------
@@ -846,7 +867,7 @@ async def build_confirmation(
                 )
 
     # 5. Floors + approvers + tasks + CEO pre-draft.
-    floors = _compute_floors(gm_model)
+    floors = _compute_floors(gm_model, version)
     approvers, configured_ceo = await _resolve_approval_team(
         session, sow_version=version, actor_id=actor_id
     )

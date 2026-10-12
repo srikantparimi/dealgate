@@ -160,6 +160,152 @@ async def test_preview_returns_correct_gm_for_discounted_case(app_with_session, 
     assert computed["policy"]["requires_ceo"] is True
 
 
+async def test_managed_service_monthly_fee_calculates_without_hourly_bill_rate(
+    app_with_session, monkeypatch
+):
+    """Aug 8-Nov 18 earns 24/31 + 1 + 1 + 18/30 monthly fees."""
+
+    monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Delivery")
+    inputs = {
+        "resource_lines": [
+            {
+                "role": "SME",
+                "seniority": "Senior",
+                "location": "US",
+                "person_name": None,
+                "allocation_pct": "1",
+                "start_date": "2025-08-08",
+                "end_date": "2025-11-18",
+                "hours_billable": "500",
+                "hourly_bill_rate": "0",
+                "hourly_cost": "70",
+                "validated_by": str(uuid.uuid4()),
+            }
+        ],
+        "cost_lines": [],
+        "total_price": "17688",
+    }
+    async with _client(app_with_session) as c:
+        response = await c.post(
+            "/delivery-model/preview",
+            headers={"X-Test-User": "delivery@smartek21.com"},
+            json={"engagement_type": "managed_service", "inputs": inputs},
+        )
+
+    assert response.status_code == 200, response.text
+    computed = response.json()["computed"]
+    assert Decimal(computed["revenue_us"]) == Decimal(
+        "59682.73548387096774193548387"
+    )
+    assert Decimal(computed["cost_us"]) == Decimal("35000")
+    assert computed["complete"] is True
+    assert "hourly_bill_rate" not in computed["missing"]
+
+
+async def test_managed_service_monthly_fee_survives_save_and_reload(
+    app_with_session, opportunity, monkeypatch
+):
+    monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Delivery")
+    payload = {
+        "engagement_type": "managed_service",
+        "resource_lines": [
+            {
+                "role": "SME",
+                "seniority": "Senior",
+                "location": "US",
+                "person_name": None,
+                "allocation_pct": "1",
+                "start_date": "2025-08-08",
+                "end_date": "2025-11-18",
+                "hours_billable": "500",
+                "hourly_bill_rate": "0",
+                "hourly_cost": "70",
+                "validated_by": str(uuid.uuid4()),
+            }
+        ],
+        "cost_lines": [],
+        "total_price": "17688",
+    }
+    async with _client(app_with_session) as c:
+        saved = await c.post(
+            f"/delivery-model/{opportunity.id}/versions",
+            headers={"X-Test-User": "delivery@smartek21.com"},
+            json=payload,
+        )
+        reloaded = await c.get(
+            f"/delivery-model/{opportunity.id}",
+            headers={"X-Test-User": "delivery@smartek21.com"},
+        )
+
+    assert saved.status_code == 201, saved.text
+    assert reloaded.status_code == 200, reloaded.text
+    expected = Decimal("59682.73548387096774193548387")
+    assert Decimal(saved.json()["gm_model"]["computed"]["revenue_us"]) == expected
+    assert Decimal(reloaded.json()["gm_model"]["computed"]["revenue_us"]).quantize(
+        Decimal("0.01")
+    ) == expected.quantize(Decimal("0.01"))
+    assert Decimal(
+        reloaded.json()["gm_model"]["resource_lines"][0]["hourly_bill_rate"]
+    ) == Decimal("119.3655")
+
+
+async def test_managed_service_effective_rate_uses_all_rows_and_allocation(
+    app_with_session, opportunity, monkeypatch
+):
+    monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Delivery")
+    rows = [
+        {
+            "role": "Lead",
+            "seniority": "Senior",
+            "location": "US",
+            "person_name": None,
+            "allocation_pct": "1",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-31",
+            "hours_billable": "160",
+            "hourly_bill_rate": "0",
+            "hourly_cost": "50",
+            "validated_by": str(uuid.uuid4()),
+        },
+        {
+            "role": "Analyst",
+            "seniority": "Mid",
+            "location": "US",
+            "person_name": None,
+            "allocation_pct": "0.5",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-31",
+            "hours_billable": "160",
+            "hourly_bill_rate": "0",
+            "hourly_cost": "70",
+            "validated_by": str(uuid.uuid4()),
+        },
+    ]
+    async with _client(app_with_session) as client:
+        saved = await client.post(
+            f"/delivery-model/{opportunity.id}/versions",
+            headers={"X-Test-User": "delivery@smartek21.com"},
+            json={
+                "engagement_type": "managed_service",
+                "resource_lines": rows,
+                "cost_lines": [],
+                "total_price": "10000",
+            },
+        )
+
+    assert saved.status_code == 201, saved.text
+    body = saved.json()["gm_model"]
+    assert Decimal(body["computed"]["revenue_us"]) == Decimal("10000")
+    assert Decimal(body["computed"]["cost_us"]) == Decimal("13600")
+    rates = [Decimal(line["hourly_bill_rate"]) for line in body["resource_lines"]]
+    assert rates == [Decimal("41.6667"), Decimal("41.6667")]
+    effective_revenue = (
+        rates[0] * Decimal("160")
+        + rates[1] * Decimal("160") * Decimal("0.5")
+    )
+    assert effective_revenue.quantize(Decimal("0.01")) == Decimal("10000.01")
+
+
 async def test_preview_forbidden_for_sales(app_with_session, monkeypatch):
     monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Sales")
     async with _client(app_with_session) as c:

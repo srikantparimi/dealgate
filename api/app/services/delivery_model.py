@@ -478,6 +478,23 @@ def compute_live(payload: GmModelPayload, *, extra_inputs: Optional[dict] = None
             inputs["deliverable"] = "(delivery plan)"
     if extra_inputs:
         inputs.update(extra_inputs)
+    if (
+        payload.engagement_type == "managed_service"
+        and payload.total_price is not None
+        and "monthly_fee_us" not in inputs
+        and "monthly_fee_india" not in inputs
+    ):
+        revenue_us, revenue_india, _ = allocate_managed_service_revenue(
+            payload.resource_lines, payload.total_price
+        )
+        # The managed-service template multiplies fee by term. The allocator
+        # has already expanded the monthly contract fee across the exact
+        # service dates, so pass the term total as a one-period amount.
+        inputs.update(
+            monthly_fee_us=format(revenue_us, "f"),
+            monthly_fee_india=format(revenue_india, "f"),
+            term_months="1",
+        )
     try:
         labor = gm_compute(engagement, parse_inputs(engagement, {**inputs, "costs": []}))
         costs, _, pass_through = resolve_direct_costs(payload.cost_lines, labor)
@@ -581,6 +598,7 @@ def hr_lead_time_warnings(
 
 def resource_completeness_issues(
     resource_lines: Iterable[ResourceLinePayload],
+    engagement_type: str | None = None,
 ) -> list[str]:
     """Return a list of missing-piece descriptions per resource line.
 
@@ -595,7 +613,9 @@ def resource_completeness_issues(
             issues.append(f"resource_lines[{idx}].location")
         if r.hours_billable is None or r.hours_billable <= 0:
             issues.append(f"resource_lines[{idx}].hours_billable")
-        if r.hourly_bill_rate is None or r.hourly_bill_rate <= 0:
+        if engagement_type not in ("fixed_price", "assessment", "managed_service") and (
+            r.hourly_bill_rate is None or r.hourly_bill_rate <= 0
+        ):
             issues.append(f"resource_lines[{idx}].hourly_bill_rate")
         if r.hourly_cost is None:
             issues.append(f"resource_lines[{idx}].hourly_cost")
@@ -642,7 +662,10 @@ async def create_gm_model_version(
             continue
         # Resolve bill rate when the caller sent zero/None.
         resolved_bill = line.hourly_bill_rate
-        if not resolved_bill or resolved_bill <= 0:
+        if (
+            payload.engagement_type != "managed_service"
+            and (not resolved_bill or resolved_bill <= 0)
+        ):
             r = await _resolve_bill_rate_for(
                 session, client_id=client_id, line=line
             )
@@ -676,6 +699,13 @@ async def create_gm_model_version(
             )
         )
 
+    if payload.engagement_type == "managed_service" and (
+        payload.total_price is not None and payload.total_price > 0
+    ):
+        filled_lines = derive_managed_service_bill_rates(
+            filled_lines, payload.total_price
+        )
+
     filled_payload = GmModelPayload(
         engagement_type=payload.engagement_type,
         sow_version_id=payload.sow_version_id,
@@ -704,6 +734,12 @@ async def create_gm_model_version(
         payload.total_price is not None and payload.total_price > 0
     ):
         revenue_us, revenue_india, _alloc_notes = allocate_fixed_fee_revenue(
+            filled_lines, payload.total_price
+        )
+    elif payload.engagement_type == "managed_service" and (
+        payload.total_price is not None and payload.total_price > 0
+    ):
+        revenue_us, revenue_india, _alloc_notes = allocate_managed_service_revenue(
             filled_lines, payload.total_price
         )
     else:
@@ -1307,7 +1343,8 @@ def serialize_gm_model(
                     validated_by=r.validated_by,
                 )
                 for r in model.resource_lines
-            ]
+            ],
+            model.engagement_type,
         ),
     }
     if result is not None:
@@ -1951,3 +1988,86 @@ def allocate_fixed_fee_revenue(
             revenue_india += drift
 
     return revenue_us, revenue_india, notes
+
+
+def allocate_managed_service_revenue(
+    lines: list[ResourceLinePayload], monthly_fee: Decimal
+) -> tuple[Decimal, Decimal, list[str]]:
+    """Expand a monthly fee across the exact service dates, then allocate it.
+
+    ``monthly_fee`` remains the contract term. It is never treated as an
+    hourly rate. Partial first/last months use the same calendar-day proration
+    as the authoritative recurring-MSP commercial calculator, and the term
+    revenue is attributed by the existing fixed-fee allocation policy.
+    """
+
+    if not lines:
+        return monthly_fee, Decimal("0"), [
+            "no resource lines — one monthly fee allocated to US"
+        ]
+    from app.gm.commercial import recurring_fee_total
+
+    service_start = min(line.start_date for line in lines)
+    service_end = max(line.end_date for line in lines)
+    term_revenue = recurring_fee_total(
+        monthly_fee, service_start, service_end, "calendar_days"
+    )
+    revenue_us, revenue_india, notes = allocate_fixed_fee_revenue(
+        lines, term_revenue
+    )
+    return revenue_us, revenue_india, [
+        "monthly contract fee expanded across service dates using calendar-day proration",
+        *notes,
+    ]
+
+
+def derive_managed_service_bill_rates(
+    lines: list[ResourceLinePayload], monthly_fee: Decimal
+) -> list[ResourceLinePayload]:
+    """Fill missing managed-service rates from contract revenue and hours.
+
+    The recurring fee remains the authoritative revenue input. The derived
+    rate is an effective, informational hourly rate that makes a monthly T&M
+    contract understandable in the staffing grid. Explicit SOW rates are
+    preserved; any remaining contract revenue is spread over only the rows
+    whose rate is absent, weighted by billable hours and allocation.
+    """
+
+    if not lines:
+        return lines
+    revenue_us, revenue_india, _ = allocate_managed_service_revenue(
+        lines, monthly_fee
+    )
+    term_revenue = revenue_us + revenue_india
+    explicit_revenue = sum(
+        (
+            line.hours_billable
+            * line.allocation_pct
+            * line.hourly_bill_rate
+            for line in lines
+            if line.hourly_bill_rate > 0
+        ),
+        Decimal("0"),
+    )
+    missing_hours = sum(
+        (
+            line.hours_billable * line.allocation_pct
+            for line in lines
+            if line.hourly_bill_rate <= 0
+        ),
+        Decimal("0"),
+    )
+    remaining_revenue = term_revenue - explicit_revenue
+    if missing_hours <= 0 or remaining_revenue <= 0:
+        return lines
+
+    from decimal import Context, localcontext
+
+    with localcontext(Context(prec=28)):
+        effective_rate = remaining_revenue / missing_hours
+    return [
+        replace(line, hourly_bill_rate=effective_rate)
+        if line.hourly_bill_rate <= 0
+        else line
+        for line in lines
+    ]

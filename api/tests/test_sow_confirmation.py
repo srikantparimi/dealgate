@@ -386,6 +386,17 @@ def test_fixed_fee_blocks_on_cost_not_bill_rate():
     )
     assert [g.field for g in tm_gaps] == ["staffing[0].hourly_bill_rate"]
 
+    # Managed-service revenue is the stated monthly contract fee. Staffing is
+    # its cost side, so a zero hourly bill rate must not block the margin.
+    managed = ClassifierResult(
+        primary=Candidate(type="managed_service", confidence=1.0),
+        rule_matched="rule.monthly_fee_basis",
+    )
+    managed_gaps = _needs_you_for(
+        _V(), managed, AutoStaffingResult(lines=[_line("0", "95")]), floors
+    )
+    assert [g.field for g in managed_gaps] == []
+
 
 def test_floors_do_not_pass_without_a_computed_margin():
     """Reported: the sheet read "Revenue 0.00, GM Unavailable" and still

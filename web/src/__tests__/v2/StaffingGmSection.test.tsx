@@ -27,6 +27,13 @@ describe("S13b Confirm rates", () => {
     expect(screen.getByText("$120.00")).toBeInTheDocument();
     expect(screen.queryByText("— fixed price")).not.toBeInTheDocument();
   });
+  it("shows the server-derived effective bill rate for managed service", () => {
+    const payload = fixture("managed_service");
+    payload.staffing.lines[0].hourly_bill_rate = "119.3655";
+    render(<StaffingGmSection payload={payload} />);
+    expect(screen.getByText("$119.37")).toBeInTheDocument();
+    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
+  });
 });
 
 /** S22 root-cause fix · the Confirm page reads the server-persisted

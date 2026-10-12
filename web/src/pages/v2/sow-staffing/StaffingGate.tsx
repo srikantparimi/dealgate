@@ -134,7 +134,11 @@ export function utilizationFraction(raw: string): string {
 }
 
 export function isFixedFee(engagementType?: string): boolean {
-  return engagementType === "fixed_price" || engagementType === "assessment";
+  return (
+    engagementType === "fixed_price" ||
+    engagementType === "assessment" ||
+    engagementType === "managed_service"
+  );
 }
 
 export function toResourceLines(
@@ -381,6 +385,8 @@ export function StaffingGatePage(props: StaffingGateProps) {
   }
 
   const fixedFee = isFixedFee(engagementType);
+  const hidesHourlyRate =
+    engagementType === "fixed_price" || engagementType === "assessment";
 
   // Which columns are required depends on how the engagement earns, so the
   // asterisks move with it rather than marking a bill rate mandatory on a
@@ -529,7 +535,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
                   />
                 </td>
                 <td className="px-2 py-1">
-                  {fixedFee ? <span className="whitespace-nowrap text-text-muted">— fixed price</span> : <Input
+                  {hidesHourlyRate ? <span className="whitespace-nowrap text-text-muted">— fixed price</span> : <Input
                     value={r.hourly_bill_rate}
                     placeholder="225"
                     aria-label={`rate-${i}`}
@@ -597,7 +603,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
         <p className="text-secondary text-text-secondary">
           {completeRows.length === 0
             ? fixedFee
-              ? "No complete rows yet — on a fixed fee a row needs a role, seniority, hours, a cost rate and dates. The bill rate does not affect the margin here."
+              ? "No complete rows yet — contract revenue is already stated, so a row needs a role, seniority, hours, a cost rate and dates. The hourly bill rate does not affect the margin."
               : "No complete rows yet — a row needs a role, seniority, hours, a bill rate and dates."
             : `${completeRows.length} role(s) costed.`}
         </p>
@@ -611,7 +617,7 @@ export function StaffingGatePage(props: StaffingGateProps) {
             title="Gross margin will appear here"
             description={
               fixedFee
-                ? "This is a fixed fee, so the revenue is settled and the margin turns on cost. Enter who is doing the work, their hours and their loaded cost — the fee is split across US and India by cost-weighted effort. Nothing was proposed because the SOW listed no resources and no approved past SOW matched."
+                ? "Contract revenue is already stated, so the margin turns on cost. Enter who is doing the work, their hours and their loaded cost. Nothing was proposed because the SOW listed no resources and no approved past SOW matched."
                 : "The SOW did not list resources and no approved past SOW matched this scope, so nothing was proposed. Enter the team above or upload the sheet, and the margin calculates as you go."
             }
           />

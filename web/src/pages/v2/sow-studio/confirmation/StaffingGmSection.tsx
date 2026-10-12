@@ -9,7 +9,6 @@ import { Input } from "../../../../ui-v2/primitives/input";
 import { formatQuantity, formatRate } from "../../sow-workspace/format";
 import { FinanceGmPanel, type FinanceGmResult } from "../../sow-workspace/staffing/FinanceGmPanel";
 import { costsComplete, DirectCostsEditor, proposalCosts } from "../../sow-workspace/staffing/DirectCostsEditor";
-import { isFixedFee } from "../../sow-staffing/StaffingGate";
 import { Section } from "./Section";
 import { ProvenanceChip } from "./provenance";
 
@@ -36,7 +35,9 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
   const [effectiveFrom, setEffectiveFrom] = useState("");
   const [reason, setReason] = useState("");
   const lines = payload.staffing.lines;
-  const fixedFee = isFixedFee(payload.engagement.primary.type);
+  const hidesHourlyRate =
+    payload.engagement.primary.type === "fixed_price" ||
+    payload.engagement.primary.type === "assessment";
   // S22 root-cause fix: the plan built on the Staffing & GM tab is now
   // a server-persisted draft — show it here instead of "No staffing
   // lines yet / GM unavailable". Provisional until a version is saved.
@@ -170,7 +171,7 @@ export function StaffingGmSection({ payload, opportunityId, onSaved, onDirtyChan
       <div className="min-w-0 space-y-5">
         {lines.length ? <div className="overflow-x-auto"><table aria-label="Staffing grid" className="w-full min-w-[800px] text-secondary tnum">
           <thead className="border-b border-divider bg-surface-sunken text-left text-text-secondary"><tr>{["Role · seniority", "Location", "People", "Bill rate", "Cost /hr", "Hours", "Allocation", "Provenance"].map((title) => <th key={title} className="px-3 py-2 font-medium">{title}</th>)}</tr></thead>
-          <tbody>{lines.map((line, i) => <tr key={i} className="border-b border-divider"><td className="px-3 py-2"><span className="font-medium">{line.role}</span><span className="ml-2 text-text-secondary">{line.seniority}</span></td><td className="px-3 py-2">{line.location}</td><td className="px-3 py-2 text-right">{line.quantity ?? 1}</td><td className="whitespace-nowrap px-3 py-2 text-right">{fixedFee ? "— fixed price" : formatRate(line.hourly_bill_rate)}</td><td className="px-3 py-2 text-right">{formatRate(line.hourly_cost)}</td><td className="px-3 py-2 text-right">{formatQuantity(line.hours_billable)}</td><td className="px-3 py-2 text-right">{formatAllocationPct(line.allocation_pct)}%</td><td className="px-3 py-2"><ProvenanceChip entry={{ value: line.role, provenance: line.provenance, source_id: line.source_id ?? undefined, warning: line.warning ?? undefined }} /></td></tr>)}</tbody>
+          <tbody>{lines.map((line, i) => <tr key={i} className="border-b border-divider"><td className="px-3 py-2"><span className="font-medium">{line.role}</span><span className="ml-2 text-text-secondary">{line.seniority}</span></td><td className="px-3 py-2">{line.location}</td><td className="px-3 py-2 text-right">{line.quantity ?? 1}</td><td className="whitespace-nowrap px-3 py-2 text-right">{hidesHourlyRate ? "— fixed price" : formatRate(line.hourly_bill_rate)}</td><td className="px-3 py-2 text-right">{formatRate(line.hourly_cost)}</td><td className="px-3 py-2 text-right">{formatQuantity(line.hours_billable)}</td><td className="px-3 py-2 text-right">{formatAllocationPct(line.allocation_pct)}%</td><td className="px-3 py-2"><ProvenanceChip entry={{ value: line.role, provenance: line.provenance, source_id: line.source_id ?? undefined, warning: line.warning ?? undefined }} /></td></tr>)}</tbody>
         </table></div> : draftGm && draftGm.staffing.length ? <div className="space-y-2" data-testid="draft-staffing">
           <div className="overflow-x-auto"><table aria-label="Draft staffing" className="w-full min-w-[480px] text-secondary tnum">
             <thead className="border-b border-divider bg-surface-sunken text-left text-text-secondary"><tr>{["Role", "Delivery location", "People", "Allocation"].map((title) => <th key={title} className="px-3 py-2 font-medium">{title}</th>)}</tr></thead>

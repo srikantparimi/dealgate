@@ -24,8 +24,9 @@ basis refuses a proposal outright.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import date
-from decimal import Decimal
+from decimal import Context, Decimal, localcontext
 from typing import Any
 
 from fastapi import HTTPException
@@ -33,7 +34,16 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.gm.calendar import StaffingAssignment
-from app.gm.commercial import CalendarPricing, FeeAllocation, FixedFee, PricingComponent, StaffingRate
+from app.gm.commercial import (
+    CalendarPricing,
+    FeeAllocation,
+    FixedFee,
+    PricingComponent,
+    RecurringFee,
+    RecurringMSP,
+    StaffingRate,
+    recurring_fee_total,
+)
 from app.models.approval import ApprovalPackage
 from app.models.gm_model import GmModel, ResourceLine
 from app.models.signed_sow import SignedSowUpload
@@ -51,7 +61,7 @@ _PROFILE_BY_ENGAGEMENT: dict[str, str] = {
     "staff_aug": "calendar_staff_aug",
     "tm": "calendar_staff_aug",
     "time_and_materials": "calendar_staff_aug",
-    "managed_service": "fixed_assignment",
+    "managed_service": "recurring_msp",
     "fixed_price": "fixed_assignment",
     "assessment": "fixed_assignment",
 }
@@ -87,6 +97,45 @@ def _to_date(raw: Any) -> date | None:
         return date.fromisoformat(str(raw)[:10])
     except ValueError:
         return None
+
+
+def _derive_recurring_bill_rates(
+    staffing: tuple[StaffingAssignment, ...], term_revenue: Decimal
+) -> tuple[StaffingAssignment, ...]:
+    """Expose an effective rate for monthly T&M without changing revenue."""
+
+    explicit_revenue = sum(
+        (
+            (line.hours_billable or Decimal("0"))
+            * line.allocation
+            * line.quantity
+            * (line.bill_rate or Decimal("0"))
+            for line in staffing
+            if line.bill_rate is not None and line.bill_rate > 0
+        ),
+        Decimal("0"),
+    )
+    missing_hours = sum(
+        (
+            (line.hours_billable or Decimal("0"))
+            * line.allocation
+            * line.quantity
+            for line in staffing
+            if line.bill_rate is None or line.bill_rate <= 0
+        ),
+        Decimal("0"),
+    )
+    remaining_revenue = term_revenue - explicit_revenue
+    if missing_hours <= 0 or remaining_revenue <= 0:
+        return staffing
+    with localcontext(Context(prec=28)):
+        effective_rate = remaining_revenue / missing_hours
+    return tuple(
+        replace(line, bill_rate=effective_rate)
+        if line.bill_rate is None or line.bill_rate <= 0
+        else line
+        for line in staffing
+    )
 
 
 async def propose_component(
@@ -243,6 +292,7 @@ async def propose_component(
         for index, line in enumerate(lines)
     )
 
+    billing_cadence: str | None = None
     if suggested_profile == "calendar_staff_aug" and staffing:
         pricing: Any = CalendarPricing(
             rates=tuple(
@@ -257,6 +307,30 @@ async def propose_component(
         )
         profile = "calendar_staff_aug"
         provenance["pricing.rates"] = "looked_up"
+    elif suggested_profile == "recurring_msp":
+        scope = value_of(fields.get("scope_summary"))
+        recurring_amount = price if price is not None else Decimal("0")
+        staffing = _derive_recurring_bill_rates(
+            staffing,
+            recurring_fee_total(
+                recurring_amount, term_start, term_end, "calendar_days"
+            ),
+        )
+        pricing = RecurringMSP(
+            fees=(RecurringFee(dominant_location, recurring_amount),),
+            proration="calendar_days",
+            included_scope=str(scope).strip() if scope else None,
+        )
+        profile = "recurring_msp"
+        billing_cadence = "monthly"
+        provenance["pricing.monthly_fee"] = provenance.get(
+            "pricing.amount", "defaulted"
+        )
+        provenance["pricing.proration"] = "defaulted"
+        provenance["billing_cadence"] = "calculated"
+        warnings.append(
+            "Monthly fee uses calendar-day proration for partial first and last months"
+        )
     else:
         months = _months(term_start, term_end)
         fractions = _even_fractions(len(months))
@@ -281,7 +355,7 @@ async def propose_component(
         service_end=term_end,
         timezone=_DEFAULT_TIMEZONE,
         currency=currency,
-        billing_cadence=None,
+        billing_cadence=billing_cadence,
         cost_basis=None,
         costs_confirmed=False,  # the machine never confirms costs
         costs=(),

@@ -19,8 +19,9 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 
-from app.gm.commercial import PricingComponent
+from app.gm.commercial import PricingComponent, RecurringMSP, calculate_component
 from app.models.approval import ApprovalPackage
 from app.models.client import Client
 from app.models.gm_model import GmModel, ResourceLine
@@ -154,6 +155,63 @@ async def test_staff_aug_suggests_calendar_profile(session):
     assert component.profile == "calendar_staff_aug"
     assert len(component.staffing) == 2
     assert {r.basis for r in component.pricing.rates} == {"hourly"}
+
+
+@pytest.mark.asyncio
+async def test_managed_service_proposal_uses_monthly_fee_not_hourly_bill_rates(session):
+    fields = _fields(
+        price={"value": "17688", "status": "confirmed"},
+        billing_basis={
+            "value": "$17,688/month on a time and materials basis",
+            "status": "confirmed",
+        },
+        engagement_type_suggested={"value": "managed_service", "status": "confirmed"},
+    )
+    owner, opp, sow, version = await _seed(session, fields=fields)
+    version.engagement_type_confirmed = "managed_service"
+    gm = await session.scalar(select(GmModel).where(GmModel.sow_version_id == version.id))
+    assert gm is not None
+    resource_lines = (
+        await session.scalars(select(ResourceLine).where(ResourceLine.gm_model_id == gm.id))
+    ).all()
+    for line in resource_lines:
+        line.hourly_bill_rate = Decimal("0")
+    await session.commit()
+
+    proposal = await propose_component(session, opportunity_id=opp.id)
+    component = COMPONENT.validate_python(proposal["component"])
+
+    assert proposal["suggested_profile"] == "recurring_msp"
+    assert component.profile == "recurring_msp"
+    assert component.billing_cadence == "monthly"
+    assert isinstance(component.pricing, RecurringMSP)
+    assert [fee.amount for fee in component.pricing.fees] == [Decimal("17688")]
+    assert component.pricing.proration == "calendar_days"
+    assert all(line.bill_rate > Decimal("0") for line in component.staffing)
+    effective_revenue = sum(
+        line.bill_rate
+        * (line.hours_billable or Decimal("0"))
+        * line.allocation
+        * line.quantity
+        for line in component.staffing
+    )
+    assert effective_revenue == Decimal("106128"), [
+        (
+            line.role,
+            line.hours_billable,
+            line.allocation,
+            line.quantity,
+            line.bill_rate,
+        )
+        for line in component.staffing
+    ]
+
+    schedule = calculate_component(
+        __import__("dataclasses").replace(component, costs_confirmed=True)
+    )
+    assert schedule.complete
+    assert sum(row.revenue for row in schedule.rows) == Decimal("106128")
+    assert not any(gap.field in {"bill_rate", "rate_version"} for gap in schedule.missing)
 
 
 @pytest.mark.asyncio

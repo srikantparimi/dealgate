@@ -559,6 +559,56 @@ def _add_revenue(left: Decimal, right: Decimal, uses_ratio: bool) -> Decimal:
         return _check_ratio_precision(left + right, uses_ratio)
 
 
+def recurring_fee_schedule(
+    amount: Decimal,
+    service_start: date,
+    service_end: date,
+    proration: str = "calendar_days",
+) -> tuple[tuple[date, Decimal, bool], ...]:
+    """Return the authoritative monthly revenue rows for one recurring fee.
+
+    The legacy confirmation model and the typed commercial model both consume
+    this helper. That prevents a monthly contract from falling back to
+    ``hours * hourly_bill_rate`` merely because it entered through the older
+    SOW confirmation path.
+    """
+
+    _number(amount, "monthly fee")
+    _period = type(service_start) is date and type(service_end) is date
+    if not _period or service_start > service_end:
+        raise ValueError("recurring fee requires ordered service dates")
+    if proration not in ("calendar_days", "full_month"):
+        raise ValueError("recurring fee proration must be calendar_days or full_month")
+    rows: list[tuple[date, Decimal, bool]] = []
+    start = service_start
+    while start <= service_end:
+        end = min(service_end, date(start.year, start.month, monthrange(start.year, start.month)[1]))
+        revenue, uses_ratio = _prorate(amount, start, end, proration)
+        rows.append((start.replace(day=1), revenue, uses_ratio))
+        if end == service_end:
+            break
+        start = end + timedelta(days=1)
+    return tuple(rows)
+
+
+def recurring_fee_total(
+    amount: Decimal,
+    service_start: date,
+    service_end: date,
+    proration: str = "calendar_days",
+) -> Decimal:
+    """Sum a recurring fee schedule without changing its precision policy."""
+
+    total = ZERO
+    uses_ratio = False
+    for _month, revenue, row_uses_ratio in recurring_fee_schedule(
+        amount, service_start, service_end, proration
+    ):
+        uses_ratio = uses_ratio or row_uses_ratio
+        total = _add_revenue(total, revenue, uses_ratio)
+    return total
+
+
 def _ratio(numerator: Decimal, denominator: Decimal) -> tuple[Decimal, bool]:
     numerator, denominator = +numerator, +denominator
     with localcontext(Context(prec=GM_PRECISION)) as ctx:
@@ -656,18 +706,15 @@ def _recurring(component: PricingComponent) -> ComponentSchedule:
     assert terms.proration is not None
     revenue = {}
     ratio_keys: set[tuple[date, Location]] = set()
-    start = component.service_start
-    while start <= component.service_end:
-        end = min(component.service_end, date(start.year, start.month, monthrange(start.year, start.month)[1]))
-        for location, amount in fees.items():
-            assert amount is not None
-            key = (start.replace(day=1), location)
-            revenue[key], uses_ratio = _prorate(amount, start, end, terms.proration)
+    for location, amount in fees.items():
+        assert amount is not None
+        for month, value, uses_ratio in recurring_fee_schedule(
+            amount, component.service_start, component.service_end, terms.proration
+        ):
+            key = (month, location)
+            revenue[key] = value
             if uses_ratio:
                 ratio_keys.add(key)
-        if end == component.service_end:
-            break
-        start = end + timedelta(days=1)
     for item in terms.adjustments:
         assert item.amount is not None
         key = (item.month, item.location)
