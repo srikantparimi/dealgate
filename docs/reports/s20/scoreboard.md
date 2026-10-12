@@ -198,6 +198,24 @@ the stop cause).
 | S21-14 | S21-2 | Alerts per deal (deferred — S21-2) | deferred | S21-1 session scope; Session S21-2 directive-split | — | integrate |
 | S21-15 | S21-3 | Hours are computed, not typed, for staff augmentation (deferred — S21-3) | deferred | S21-1 session scope; Session S21-3 directive-split | — | integrate |
 | S21-16 | S21-3 | Contract extension on signed/released SOW (deferred — S21-3) | deferred | S21-1 session scope; Session S21-3 directive-split | — | integrate |
+| S22-P1-1 | S22-P1 | Pack committed; `python -m pytest api/tests/forecast -q` → 18 passed on CI Postgres | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P1-2 | S22-P1 | Migrations: engagement, resource, allocation (superseded_by), engagement_cost, calendar_location, holiday, cost_rate_card, forecast_policy, forecast_run + seeds from the workbook Settings tab | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P1-3 | S22-P1 | Thin mapper DB rows → engine dataclasses → compute() → Forecast → JSON; forecast_run cache keyed by input hash | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P1-4 | S22-P1 | Endpoints exactly per openapi-forecast.yaml (engagements, clients, allocations incl. close/rehire/supersede, costs, engagement forecast, portfolio forecast, settings GET/PUT) | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P1-5 | S22-P1 | Contract test: Client A golden under the e2e run tag, GET /engagements/{id}/forecast == goldens; teardown; leak gate 0 | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P1-6 | S22-P1 | Importer POST /allocations/import (workbook staffing table CSV, its column headers) | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P2-1 | S22-P2 | /engagements/{id} tabs Allocations · Forecast · Setup & costs; allocations grid per prototype (editable cells, rate-card prefill, Leaves / Re-hire / remove, totals, Row GM red under floor) | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P2-2 | S22-P2 | Forecast tab: status line, location pills, all-resources block, per-assignment blocks, per-person revenue by month, monthly-required text | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P2-3 | S22-P2 | Setup & costs: project block with type-driven greying; additional costs with frequency + billed-to-client required | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P2-4 | S22-P2 | New engagement page with "+ New client…"; Closed-Won HubSpot deal offers "Create engagement from deal" pre-filled | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P2-5 | S22-P2 | Settings page: hours/day, project floor, burden + resource floor per location, add location, rate card, holidays — PUT /settings/forecast | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P2-6 | S22-P2 | Playwright owner path: new engagement → five people → one leaves → re-hire → gap month at zero → burden change moves numbers | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P3-1 | S22-P3 | /portfolio page: month picker, type + client filters, table, totals before pagination | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P3-2 | S22-P3 | Four cards via the single query service (portfolio GM, below floor, roll-offs 60d, bench), each deep-linking to a list whose count equals the card | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P3-3 | S22-P3 | Roll-offs and bench panels with names, never ids | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P3-4 | S22-P3 | Renewals: MSP + staff-aug engagements ending within two calendar months raise the existing renewal item (D8) | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P3-5 | S22-P3 | Nightly alert via notification outbox: roll-offs + below-floor engagements to the account owner | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
+| S22-P3-6 | S22-P3 | Reconciliation test: portfolio month total == Σ engagement forecasts == Σ allocation-month rows; CSV export of any portfolio view | missing | S22 phase 1 — not yet attempted | S22-1 | feat/s22 |
 
 ## Totals by state
 
