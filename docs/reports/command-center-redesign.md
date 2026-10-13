@@ -1,10 +1,30 @@
 # Command Center redesign evidence
 
-Status at 2026-10-13 11:44 PDT: **implemented, deployed and operationally
-verified on staging; product-owner real-data acceptance pending**. Authoritative branch
+Status at 2026-10-13 12:14 PDT: **owner-reported population defect fixed and
+focused locally verified; the fix is not yet on staging**. The currently deployed
+candidate still contains the defect described below. Authoritative branch
 `feat/command-center-redesign`, worktree
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`. No merge to
 `main` is permitted before product-owner acceptance.
+
+## Owner-reported closed-won defect
+
+The deployed candidate treated every non-lost Stage-5-or-later HubSpot deal as
+current work forever. That made an October 2025 Closed Won deal with no SOW or
+active delivery appear in Accounts & engagements, Needs attention and the
+Pipeline lifecycle count. The first incorrect boundary was
+`list_command_accounts` / `build_command_overview` forcing
+`include_closed=True, open_closed="any"` without a relevance rule. Weighted
+potential also accumulated all open-deal amounts before checking the selected
+financial period.
+
+Fix `c606d763273ffa40379e4f4d39c8677e390045d5` keeps all open late-stage deals,
+keeps current-period wins actionable, and keeps older wins only when a
+non-closed engagement overlaps the selected period. Historical Closed Won rows
+without that context are excluded from the account population, action queue,
+lifecycle Pipeline count and recent activity. Potential revenue now includes
+only open deals whose close date falls inside the selected financial period;
+missing close dates remain incomplete instead of being assigned to a period.
 
 | # | Acceptance condition | Local evidence | Staging |
 |---|---|---|---|
@@ -18,17 +38,27 @@ verified on staging; product-owner real-data acceptance pending**. Authoritative
 | 8 | Established financial/capacity services; missing data is unknown | Real forecast test independently verifies $90,000 - $26,400; missing-cost test; People allocation integration test; connected 62.5% GM | Correct unknown-source state verified on staging; populated owner financial/capacity values pending click-through |
 | 9 | Independent loading/empty/error behavior | UI tests prove an overview failure keeps the table and a table failure keeps the overview; source gaps render explicitly | Settled empty state and source states verified on staging |
 | 10 | Responsive, keyboard-operable layout and focus-contained drawer | Connected 390px containment, desktop/mobile screenshots, named controls, Radix Sheet Escape test | Desktop/mobile staging browser proof passed; populated drawer remains covered locally |
+| 11 | Historical Closed Won rows do not dominate current work | `test_historical_closed_won_requires_current_delivery_context`; `test_overview_excludes_historical_wins_and_period_scopes_potential`; connected isolated API fixture contains one 2025 win and still returns only current Stage 5/6 rows | Pending deployment and owner re-check on the reported real record |
 
 ## Focused verification
 
 ```text
 Ruff: clean
-Backend: 12 passed
+Changed backend: 11 passed
 Frontend TypeScript: passed
-Frontend related suites: 46 passed
-Connected Playwright: 2 passed (14.9s)
+Changed frontend: 5 passed
 Production web build: passed
 ```
+
+The prior connected Playwright evidence remains valid for the original
+candidate. For this fix, the isolated API assertion passed with an actual 2025
+Closed Won fixture present and excluded. The dev-browser run reached all
+desktop business assertions but exceeded the unchanged 30-second budget during
+the final Escape after a cold Vite transform; mobile passed. A production
+preview attempt was stopped because production bundles correctly disable the
+local test identity. Those unsuccessful approaches are preserved under
+`tests/e2e/test-results/`; no timeout or assertion was weakened. The deployed
+real-session check remains the required proof for this correction.
 
 Connected local data is isolated in `dealgate_command_center`. The guarded
 fixture `scripts/command_center_fixture.py` refuses any other database and
@@ -49,6 +79,9 @@ Artifacts:
 - `tests/e2e/local/command-center-redesign.spec.ts`
 
 ## Staging candidate
+
+The identifiers below describe the **previous candidate and do not contain
+`c606d76`**. They are retained as deployment history, not current-fix evidence.
 
 Application revision: `eac3ee1faec7a55209a37907a6332c29b2d7714b`.
 

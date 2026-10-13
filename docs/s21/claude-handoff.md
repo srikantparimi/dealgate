@@ -2,88 +2,75 @@
 
 ## RESUME HERE
 
-**2026-10-13 11:44 PDT — COMMAND CENTER REDESIGN DEPLOYED AND OPERATIONALLY
-VERIFIED; AWAITING PRODUCT-OWNER CLICK-THROUGH.**
+**2026-10-13 12:14 PDT — COMMAND CENTER HISTORICAL CLOSED-WON DEFECT FIXED
+LOCALLY; STAGING STILL RUNS THE PRE-FIX CANDIDATE.**
 Authoritative tree `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`,
-branch `feat/command-center-redesign`. Application checkpoint is
+branch `feat/command-center-redesign`. Current application checkpoint is
+`c606d763273ffa40379e4f4d39c8677e390045d5`; previous staging application is
 `eac3ee1faec7a55209a37907a6332c29b2d7714b`; staging verification checkpoint is
 `8deaf3f6f195bb41ce0062d55a3d8794b150140a`. Baseline is `origin/main`
-`03b76e62b154eb25fbac8b918112214f4e32543f`; directive checkpoint is
-`21a138a7369455ede9aa8f84664c5a74a72055ab`. Current task: wait for owner
-click-through and explicit acceptance; do not merge `main`.
+`03b76e62b154eb25fbac8b918112214f4e32543f`. Current task: build an immutable
+image for `c606d76`, prepare/review a Terraform staging plan, obtain the required
+human approval, deploy, and repeat the owner's real-data check. Do not merge
+`main`.
 
-Implemented: canonical pipeline-backed overview; per-pipeline ordered Stage-5
-threshold; HubSpot-only qualified table; server search/BU/owner/watch/risk,
-pagination and CSV; real forecast-service revenue/cost/GM; dated staffing FTE;
-People demand/allocation integration with precise unknown states; ranked work,
-lifecycle, revenue scenarios, source health, activity, detail drawer and
-context-preserving links; compact approved navigation hierarchy; responsive
-desktop/mobile UI. The People allocator now exposes account identity on its
-authorized demand rows so this view can scope existing allocation results; it
-does not introduce a second capacity formula. Detailed acceptance evidence is
-`docs/reports/command-center-redesign.md`.
+Owner acceptance found that the deployed page was dominated by old Closed Won
+deals, including an October 2025 win with no SOW. Root cause:
+`list_command_accounts` and `build_command_overview` requested all closed rows
+without a current-work relevance boundary. Lifecycle classified every no-SOW
+row as Pipeline, attention retained `closed_won_not_released` indefinitely,
+and potential totals accumulated outside the selected period. Commit `c606d76`
+keeps open deals, current-period wins and selected-period active delivery;
+removes stale historical wins from table/action/lifecycle/activity populations;
+and period-scopes potential revenue. The mandatory per-pipeline Stage-5 rule,
+permissions, search, paging and CSV remain server-side and unchanged.
 
-Local evidence: Ruff clean; Command Center + People allocation backend 12
-passed; TypeScript clean; related frontend 46 passed; connected Playwright 2
-passed in 14.9s. Populated screenshots:
-`docs/evidence/command-center/command-center-desktop.png` and
-`command-center-mobile.png`. Connected values were $90,000 committed revenue,
-62.5% forecast GM, $224,000 weighted unsigned potential; Stage 5 and 6 were
-present exactly once, Stage 4 absent. Production build passed and produced
-`assets/index-ezj6RfOC.js` plus `assets/index-CZ_B4MrY.css`.
+Latest focused evidence on `c606d76`: Ruff clean; changed backend 11 passed;
+changed frontend 5 passed; TypeScript clean; production build passed with
+`assets/index-BPc0sdEg.js`. The guarded local database contains current Stage
+4/5/6 opportunities plus one 2025 Closed Won opportunity; the connected API
+returns only Stage 5 and 6. The dev-browser desktop run reached every business
+assertion but exceeded the unchanged 30-second limit during final Escape after
+a cold Vite transform; mobile passed. A production-preview attempt correctly
+rejected the dev-only identity. No timeout/assertion was weakened and no blind
+retry remains. Failure traces are under `tests/e2e/test-results/`. Detailed
+status is `docs/reports/command-center-redesign.md`.
 
-Candidate image `officeapp-dev-api:cc-eac3ee1f` exists in ECR at digest
-`sha256:30421cd6b245a98b41de3cf4defe0a1ed52e9c93660e41913b7c3c2dc0f97cdf`.
-The approved saved plan was `/tmp/cc-eac3ee1f.tfplan`, SHA-256
-`18f777d8aa273e454eec783ad504418392f5f28e8479b9528cc3663ac1d1ed49`,
-with `12 add / 14 change / 12 destroy`; it applied exactly. Migration task
-`officeapp-dev-api-migrate:47` succeeded. API service
-`officeapp-dev-api:109` is stable on the candidate digest, and the migration
-plus all nine scheduled worker families point to `cc-eac3ee1f`. SPA assets
-`index-ezj6RfOC.js` and `index-CZ_B4MrY.css` are live; CloudFront invalidation
-`I9MYXPKZC97AFCOKXFVSB7E1XH` completed. Deploy smoke
-`smoke 20261013T183350Z` passed and cleaned its fixture; the leak gate is
-0/0/0/0. Deployed Command Center Playwright passed 2/2, plus a focused desktop
-recapture passed 1/1. Post-apply Terraform reports **No changes**. Exact proof
-and acceptance status are in `docs/reports/command-center-redesign.md`.
+Previous staging still runs API service `officeapp-dev-api:109`, image
+`officeapp-dev-api:cc-eac3ee1f`, digest
+`sha256:30421cd6b245a98b41de3cf4defe0a1ed52e9c93660e41913b7c3c2dc0f97cdf`,
+SPA `index-ezj6RfOC.js`, and migration head
+`20261013_0067_import_key`. That deployment does **not** contain `c606d76` and
+the owner-visible defect remains there until the next approved apply. The prior
+smoke, browser and no-drift results are deployment history only.
 
-Runtime: no local API, Vite, browser test, Terraform, migration, deployment or
-background job is active. The isolated local PostgreSQL container remains
-available on port 55432 with database `dealgate_command_center`; no process is
-using it. Staging migration head remains `20261013_0067_import_key`. No
-subagent/worker owns work in this tree. Credentials come from the established
-AWS profile and secret references; values are not recorded here.
+Runtime: no local API, Vite, preview, browser test, Terraform, migration,
+deployment or background job is active. The isolated PostgreSQL container is
+available on port 55432; `dealgate_command_center` was rebuilt at schema head
+0067 and contains only the four guarded test opportunities. No worker/subagent
+owns this branch. Secrets remain in the established AWS/Terraform references;
+none are recorded here.
 
-All application, tests, staging evidence and deployment records through
-`8deaf3f` are committed. This handoff is the only current incremental edit.
-The separate main worktree remains at
-`3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six pre-existing
-modified `docs/reports/s19-1/*.png` files; they were not touched. Other legacy
-S20/S21 worktrees remain registered but have no ownership or unmerged dependency
-for this slice. Exact resume before owner acceptance:
+Application/test changes are committed at `c606d76`; this handoff/report edit
+is the only current uncommitted work. The separate main tree remains at
+`3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six existing
+modified `docs/reports/s19-1/*.png` files untouched. Exact resume:
 
 ```bash
 cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
 git status --short && git diff --check
+git show --stat --oneline c606d763273ffa40379e4f4d39c8677e390045d5
 curl -fsS https://app.dealgateapp.com/api/healthz
 curl -fsS https://app.dealgateapp.com/ | rg 'assets/index-ezj6RfOC.js'
 ```
 
-Owner click-through: open `https://app.dealgateapp.com/command`, confirm a real
-Stage-5-or-later HubSpot deal appears once, inspect its drawer, exercise one
-filter/reset plus CSV export, and inspect the mobile layout. The automation
-identity is correctly isolated from real business accounts and receives zero
-eligible rows; the fixture contract also forbids adding HubSpot identifiers,
-so this is the only remaining real-data check. On explicit acceptance only,
-merge the feature branch to `main`, build a main-tagged immutable image, apply
-the reviewed main-image rollout and re-run smoke/browser proof. Historical
-failures: the first browser attempt used the wrong API proxy; the second found
-missing ARIA label targets; the third found fixture BU evidence was not
-canonical; the first post-capacity run used an old API process without tenant
-configuration. Each boundary is fixed and the new run passed. The e2e package
-still has four unrelated inherited TypeScript errors in specs 22/23/24; this
-new spec executes successfully and those older files were not weakened.
-Older S21/S22 entries below are historical and do not describe this branch.
+Next release gate: build/push an immutable `c606d76` image, create a whole-root
+Terraform plan, and stop for infrastructure approval. After apply, publish the
+matching SPA, invalidate CloudFront, verify running API/frontend identifiers,
+then ask the owner to confirm the reported 2025 deal is absent while current
+open work/current delivery remain. No main merge before explicit acceptance.
+Do not rerun unchanged local browser paths merely to obtain green. Older
+S21/S22 entries below are historical and do not describe this branch.
 
 **2026-10-13 — S22-P5 MERGED TO MAIN AND ROLLED.** Kanna accepted the staging
 click-through ("push and merge the changes looks good"); `feat/s22-p5` @ 48e46d0

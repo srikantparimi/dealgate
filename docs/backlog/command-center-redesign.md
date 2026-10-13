@@ -23,8 +23,10 @@ ids are opaque identifiers.
 - Archived opportunities and archived mirrored stages are excluded.
 - Closed-lost deals remain excluded from the active Accounts & engagements
   population, matching the Pipeline page's default active treatment.
-- Closed-won deals at or after the threshold remain eligible so their linked
-  engagement or project context can be shown.
+- Closed-won deals at or after the threshold remain eligible only when the win
+  falls inside the selected financial period or a non-closed engagement
+  overlaps that period. Historical wins without current delivery context are
+  excluded; linked current delivery context remains visible.
 - Unknown stages, unlinked local opportunities, and pipelines with fewer than
   five identifiable stages are excluded. The latter are returned as explicit
   configuration gaps.
@@ -53,6 +55,10 @@ ids are opaque identifiers.
    states; one failure does not blank healthy sections.
 10. The desktop and mobile layouts remain readable and operable by keyboard,
     with named controls and a focus-contained detail drawer.
+11. A historical Closed Won deal without current delivery context is absent
+    from the table, attention queue, lifecycle pipeline count and recent
+    activity. A current-period win remains actionable, and an older win with
+    an active in-period engagement remains visible as delivery context.
 
 ## Release boundary
 
