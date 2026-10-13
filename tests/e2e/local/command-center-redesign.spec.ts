@@ -44,10 +44,14 @@ test("Stage 5 scope, financial separation, filters and drawer work together", as
   await expect(page.getByTestId("stage5-scope")).toHaveText(
     "HubSpot deals · Stage 5 and above",
   );
+  await expect(
+    page.getByText("Open late-stage work, current-period wins and active delivery."),
+  ).toBeVisible();
   const table = page.getByRole("table");
   await expect(table).toContainText("Stage Five Account");
   await expect(table).toContainText("Stage Six Account");
   await expect(table).not.toContainText("Stage Four Account");
+  await expect(table).not.toContainText("Historical Won Account");
 
   const outlook = page.getByRole("region", { name: "Revenue outlook" });
   await expect(outlook).toContainText("$90,000");

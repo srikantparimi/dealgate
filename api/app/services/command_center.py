@@ -299,6 +299,8 @@ async def list_command_accounts(
     filters = filters or CommandAccountFilters()
     page = max(1, filters.page)
     page_size = min(100, max(1, filters.page_size))
+    months = _period_months(filters.period)
+    period_start, period_end = _period_bounds(months)
     scoped = replace(scope, include_closed=True, open_closed="any")
     allowed_ids = await matching_opportunity_ids(session, scoped)
     gaps = await _configuration_gaps(session)
@@ -306,6 +308,17 @@ async def list_command_accounts(
         return CommandAccountsPage((), 0, page, page_size, STAGE5_SCOPE_LABEL, gaps)
 
     thresholds = _stage5_thresholds()
+    active_period_engagement = (
+        select(Engagement.id)
+        .where(
+            Engagement.opportunity_id == Opportunity.id,
+            Engagement.closed.is_(False),
+            Engagement.start <= period_end,
+            Engagement.end >= period_start,
+        )
+        .correlate(Opportunity)
+        .exists()
+    )
     stmt = (
         select(Opportunity, Client, User, HubspotStage)
         .join(Client, Client.id == Opportunity.client_id, isouter=True)
@@ -324,6 +337,11 @@ async def list_command_accounts(
             Opportunity.hubspot_deal_id.is_not(None),
             Opportunity.archived_at.is_(None),
             Opportunity.is_closed_lost.is_(False),
+            or_(
+                Opportunity.is_closed_won.is_(False),
+                Opportunity.close_date.between(period_start, period_end),
+                active_period_engagement,
+            ),
             HubspotStage.archived.is_(False),
             HubspotStage.display_order >= thresholds.c.display_order,
         )
@@ -377,6 +395,8 @@ async def list_command_accounts(
                 .where(
                     Engagement.opportunity_id.in_(opportunity_ids),
                     Engagement.closed.is_(False),
+                    Engagement.start <= period_end,
+                    Engagement.end >= period_start,
                 )
                 .order_by(Engagement.created_at.desc(), Engagement.id.desc())
             )
@@ -389,7 +409,6 @@ async def list_command_accounts(
         if engagement.opportunity_id is not None:
             engagement_by_opportunity.setdefault(engagement.opportunity_id, engagement)
 
-    months = _period_months(filters.period)
     financials: dict[uuid.UUID, dict] = {}
     for engagement in engagement_by_opportunity.values():
         financials[engagement.id] = await _engagement_financials(
@@ -670,6 +689,7 @@ async def build_command_overview(
     """Build the non-table sections from canonical pipeline and forecast data."""
 
     months = _period_months(period)
+    period_start, period_end = _period_bounds(months)
     scoped = replace(scope, include_closed=True, open_closed="any")
     opportunities_page = await list_opportunities(
         session, filters=scoped, page=1, page_size=10_000
@@ -684,6 +704,8 @@ async def build_command_overview(
                 .where(
                     Engagement.opportunity_id.in_(opportunity_ids),
                     Engagement.closed.is_(False),
+                    Engagement.start <= period_end,
+                    Engagement.end >= period_start,
                 )
                 .order_by(Engagement.created_at.desc(), Engagement.id.desc())
             )
@@ -772,6 +794,11 @@ async def build_command_overview(
             or row.currency != currency
         ):
             continue
+        if row.close_date is None:
+            potential_complete = False
+            continue
+        if not period_start <= row.close_date <= period_end:
+            continue
         if row.amount is None:
             potential_complete = False
             continue
@@ -781,7 +808,7 @@ async def build_command_overview(
             potential_complete = False
         else:
             potential_expected += row.amount * probability
-        close_month = row.close_date.strftime("%Y-%m") if row.close_date else None
+        close_month = row.close_date.strftime("%Y-%m")
         if close_month in monthly:
             monthly[close_month]["potential_upside"] += row.amount
             if probability is not None:
@@ -805,6 +832,8 @@ async def build_command_overview(
     for row in opportunities:
         if row.opportunity_id in first_engagement_by_opportunity:
             lifecycle["active"] += 1
+            continue
+        if row.is_closed_won or row.is_closed_lost:
             continue
         state = row.sow_approval_state
         if row.sow_count == 0:
@@ -843,6 +872,13 @@ async def build_command_overview(
     }
     actions = []
     for row in opportunities:
+        if row.is_closed_lost:
+            continue
+        if row.is_closed_won:
+            if row.opportunity_id in linked_opportunity_ids:
+                continue
+            if row.close_date is None or not period_start <= row.close_date <= period_end:
+                continue
         flags = [flag for flag in row.attention_flags if not focus_flags or flag in focus_flags]
         if not flags and not row.next_action_open_count:
             continue
@@ -881,6 +917,20 @@ async def build_command_overview(
         (row.hubspot_last_activity_at for row in opportunities if row.hubspot_last_activity_at),
         default=None,
     )
+    recent_opportunity_ids = {
+        row.opportunity_id
+        for row in opportunities
+        if (
+            not row.is_closed_won
+            and not row.is_closed_lost
+            or row.opportunity_id in linked_opportunity_ids
+            or (
+                row.is_closed_won
+                and row.close_date is not None
+                and period_start <= row.close_date <= period_end
+            )
+        )
+    }
     recent = sorted(
         (
             {
@@ -893,7 +943,8 @@ async def build_command_overview(
                 "href": f"/deals/{row.opportunity_id}",
             }
             for row in opportunities
-            if row.latest_comment_at or row.hubspot_last_activity_at
+            if row.opportunity_id in recent_opportunity_ids
+            and (row.latest_comment_at or row.hubspot_last_activity_at)
         ),
         key=lambda item: item["at"] or "",
         reverse=True,

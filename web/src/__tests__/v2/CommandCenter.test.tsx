@@ -57,6 +57,7 @@ describe("Command Center redesign", () => {
     expect(await screen.findByText("Acme", { selector: "button" })).toBeInTheDocument();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
     expect(screen.getByTestId("stage5-scope")).toHaveTextContent("HubSpot deals · Stage 5 and above");
+    expect(screen.getByText("Open late-stage work, current-period wins and active delivery.")).toBeVisible();
   });
 
   it("reset removes user filters but preserves the mandatory Stage 5 scope", async () => {

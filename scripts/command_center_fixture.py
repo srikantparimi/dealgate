@@ -157,11 +157,12 @@ async def seed(url) -> dict[str, object]:
 
             opportunities: list[Opportunity] = []
             definitions = (
-                ("Stage Four Account", 4, "120000", "Discovery review"),
-                ("Stage Five Account", 5, "90000", "Confirm delivery start"),
-                ("Stage Six Account", 6, "200000", "Complete commercial review"),
+                ("Stage Four Account", 4, "120000", "Discovery review", date(2026, 11, 4), False),
+                ("Stage Five Account", 5, "90000", "Confirm delivery start", date(2026, 11, 5), False),
+                ("Stage Six Account", 6, "200000", "Complete commercial review", date(2026, 11, 6), False),
+                ("Historical Won Account", 7, "78736", "Create delivery release", date(2025, 10, 2), True),
             )
-            for label, stage_number, amount, next_action in definitions:
+            for label, stage_number, amount, next_action, close_date, is_closed_won in definitions:
                 key = label.lower().replace(" ", "-")
                 client = Client(
                     id=uuid.uuid5(namespace, f"client:{key}"),
@@ -185,13 +186,13 @@ async def seed(url) -> dict[str, object]:
                     next_client_action=next_action,
                     next_client_date=date(2026, 10, 12 + stage_number),
                     amount=Decimal(amount),
-                    close_date=date(2026, 11, stage_number),
+                    close_date=close_date,
                     stage_label=stages[stage_number - 1].label,
                     name=f"{label} expansion",
                     hubspot_pipeline_id=pipeline.id,
                     hubspot_stage_id=stages[stage_number - 1].id,
                     stage_order=stage_number * 10,
-                    is_closed_won=False,
+                    is_closed_won=is_closed_won,
                     is_closed_lost=False,
                     currency="USD",
                     hubspot_last_seen_at=now,

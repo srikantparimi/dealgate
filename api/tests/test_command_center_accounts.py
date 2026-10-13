@@ -61,6 +61,7 @@ async def _deal(
     source: str = "hubspot",
     won: bool = False,
     lost: bool = False,
+    close_date: date | None = None,
 ) -> Opportunity:
     row = Opportunity(
         source=source,
@@ -75,6 +76,7 @@ async def _deal(
         is_closed_won=won,
         is_closed_lost=lost,
         amount=Decimal("125000"),
+        close_date=close_date,
         currency="USD",
         governance_status="Signature",
         business_unit_value="ST21",
@@ -155,7 +157,16 @@ async def test_stage5_is_resolved_per_pipeline_and_not_from_stage_ids(session):
     b = await _pipeline(session, "beta")
     await _deal(session, client=client, owner=owner, pipeline="alpha", stage=a[3], name="Stage four")
     fifth = await _deal(session, client=client, owner=owner, pipeline="alpha", stage=a[4], name="Stage five")
-    later = await _deal(session, client=client, owner=owner, pipeline="beta", stage=b[5], name="Later won", won=True)
+    later = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="beta",
+        stage=b[5],
+        name="Later won",
+        won=True,
+        close_date=date.today(),
+    )
     await session.commit()
 
     page = await list_command_accounts(session, scope=PipelineFilters(include_closed=True))
@@ -213,7 +224,16 @@ async def test_search_pagination_and_csv_share_the_eligible_population(session):
     await session.flush()
     stages = await _pipeline(session, "search")
     await _deal(session, client=client, owner=owner, pipeline="search", stage=stages[4], name="Alpha engagement")
-    await _deal(session, client=client, owner=owner, pipeline="search", stage=stages[5], name="Beta engagement", won=True)
+    await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="search",
+        stage=stages[5],
+        name="Beta engagement",
+        won=True,
+        close_date=date.today(),
+    )
     await _deal(session, client=client, owner=owner, pipeline="search", stage=stages[3], name="Hidden engagement")
     await session.commit()
 
@@ -231,6 +251,127 @@ async def test_search_pagination_and_csv_share_the_eligible_population(session):
     assert "Beta engagement" in csv_text
     assert "Hidden engagement" not in csv_text
     assert "Period revenue,Forecast GM,Assigned FTE,Required FTE,Financial status" in csv_text
+
+
+@pytest.mark.asyncio
+async def test_historical_closed_won_requires_current_delivery_context(session):
+    owner = User(email="closed@example.test", name="Closed Owner", groups=[])
+    client = Client(name="Closed account", hubspot_company_id="company-closed")
+    session.add_all([owner, client])
+    await session.flush()
+    stages = await _pipeline(session, "closed")
+    historical = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="closed",
+        stage=stages[5],
+        name="Historical win without current work",
+        won=True,
+        close_date=date(2025, 10, 2),
+    )
+    current = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="closed",
+        stage=stages[5],
+        name="Current-period win",
+        won=True,
+        close_date=date.today(),
+    )
+    delivering = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="closed",
+        stage=stages[5],
+        name="Historical win with current delivery",
+        won=True,
+        close_date=date(2025, 9, 1),
+    )
+    engagement = await _fixed_fee_engagement(
+        session,
+        client=client,
+        owner=owner,
+        opportunity=delivering,
+        cost_per_hour=Decimal("50"),
+    )
+    await session.commit()
+
+    page = await list_command_accounts(
+        session, scope=PipelineFilters(include_closed=True)
+    )
+
+    ids = {row.opportunity_id for row in page.items}
+    assert historical.id not in ids
+    assert ids == {current.id, delivering.id}
+    delivered_row = next(row for row in page.items if row.opportunity_id == delivering.id)
+    assert delivered_row.engagement_id == engagement.id
+
+
+@pytest.mark.asyncio
+async def test_overview_excludes_historical_wins_and_period_scopes_potential(session):
+    owner = User(email="period@example.test", name="Period Owner", groups=[])
+    client = Client(name="Period account", hubspot_company_id="company-period")
+    session.add_all([owner, client])
+    await session.flush()
+    stages = await _pipeline(session, "period")
+    historical_win = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="period",
+        stage=stages[5],
+        name="2025 closed win",
+        won=True,
+        close_date=date(2025, 10, 2),
+    )
+    current_win = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="period",
+        stage=stages[5],
+        name="Current closed win",
+        won=True,
+        close_date=date.today(),
+    )
+    current_open = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="period",
+        stage=stages[4],
+        name="Current open deal",
+        close_date=date.today(),
+    )
+    old_open = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="period",
+        stage=stages[4],
+        name="Overdue open deal",
+        close_date=date(2025, 8, 1),
+    )
+    await session.commit()
+
+    overview = await build_command_overview(
+        session,
+        scope=PipelineFilters(include_closed=True),
+        period="this_quarter",
+        currency="USD",
+    )
+
+    assert overview["lifecycle"]["pipeline"] == 2
+    assert Decimal(overview["revenue"]["potential_upside"]) == Decimal("125000")
+    assert Decimal(overview["revenue"]["potential_expected"]) == Decimal("62500.0")
+    action_ids = {row["id"] for row in overview["actions"]}
+    assert str(current_win.id) in action_ids
+    assert str(historical_win.id) not in action_ids
+    assert str(current_open.id) not in action_ids
+    assert str(old_open.id) not in action_ids
 
 
 @pytest.mark.asyncio
