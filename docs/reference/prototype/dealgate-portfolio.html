@@ -46,6 +46,8 @@ h2{font-family:var(--display);font-size:15px;margin:0}
 .card .v{font-family:var(--display);font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
 .card .d{font-size:12px;color:var(--muted);margin-top:2px}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.butabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}.butabs button{all:unset;cursor:pointer;padding:7px 14px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-weight:600}.butabs button.on{background:var(--violet);color:#fff;border-color:var(--violet)}.butabs button:focus-visible{outline:2px solid var(--violet)}
+tr.grp td{background:var(--panel2,#f3f1fb);font-size:13px;padding-top:10px}tr.sub td{font-weight:600;border-top:1px solid var(--line);background:rgba(0,0,0,.02)}
 .tabs button{all:unset;cursor:pointer;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted)}
 .tabs button.on{color:var(--fg);border-color:var(--violet);font-weight:600}
 .tabs button:focus-visible{outline:2px solid var(--violet);border-radius:4px}
@@ -100,6 +102,8 @@ tr.quiet td{color:var(--muted);font-size:12.5px}
 const HOURLY = new Set(["time_and_materials","staff_augmentation"]);
 const TYPE_LABEL = {fixed_cost:"Fixed cost",assessment:"Assessment",msp:"MSP",time_and_materials:"Time & materials",staff_augmentation:"Staff augmentation"};
 const EMP_LABEL = {w2_employee:"W-2 / Employee",contractor_1099:"1099 / Contractor"};
+const BUS = ["ST21","IT Avalon","Retro Rabbit"]; const BU_SLUG = {"ST21":"st21","IT Avalon":"it-avalon","Retro Rabbit":"retro-rabbit"};
+const BASIS_LABEL = {hourly:"per hour",daily:"per day",monthly:"per month"};
 const CAL0 = {
   hoursPerDay:8, projectFloor:0.35,
   burden:{"US|w2_employee":0.36,"US|contractor_1099":0.05,"India|w2_employee":0.08,"India|contractor_1099":0.08},
@@ -121,7 +125,8 @@ function compute(eng, allocs, costs){
   const S=d(eng.start),E=d(eng.end); const slices=[...monthSlices(S,E)]; const dur=slices.reduce((a,x)=>a+x.share,0);
   const missing=[]; if(E<S) missing.push("end before start");
   if(["fixed_cost","assessment"].includes(eng.type)&&eng.totalPrice==null) missing.push("total price");
-  if(eng.type==="msp"&&eng.monthlyFee==null) missing.push("monthly fee");
+  const feeCarries=eng.type==="msp"&&eng.monthlyFee!=null; const rateRev=HOURLY.has(eng.type)||(eng.type==="msp"&&!feeCarries);
+  if(eng.type==="msp"&&eng.monthlyFee==null&&!allocs.some(a=>a.bill!=null)) missing.push("monthly fee (or monthly rates on the people)");
   const am=[];
   for(const a of allocs){ if(!a.role) continue;
     const as=(eng.sameDates||!a.start)?S:d(a.start), ae=(eng.sameDates||!a.end)?E:d(a.end);
@@ -130,52 +135,65 @@ function compute(eng, allocs, costs){
     if(HOURLY.has(eng.type)&&a.bill==null) missing.push(`${a.role}: bill rate`);
     for(const sl of slices){ const s=as>sl.s?as:sl.s, e=ae<sl.e?ae:sl.e; const wd=e>=s?workingDays(s,e,hol):0; if(!wd) continue;
       const hours=a.override!=null?a.override*wd/totWd:wd*CAL.hoursPerDay*(a.util??1);
-      const rev=HOURLY.has(eng.type)?hours*(a.bill??0):0; const lab=hours*cost;
+      const basis=a.basis||"hourly"; let rev=0;
+      if(rateRev&&a.bill!=null){ if(basis==="monthly"){ const mwd=workingDays(sl.s,sl.e,hol); rev=mwd?a.bill*(a.util??1)*wd/mwd:0; } else if(basis==="daily") rev=a.bill*hours/CAL.hoursPerDay; else rev=hours*a.bill; }
+      const lab=hours*cost;
       am.push({id:a.id,role:a.role,location:a.location,month:sl.key,asg:a.assignment||"(unassigned)",wd,hours,rev,lab,bur:lab*burden}); } }
   const on=eng.addlFlag; const mC=on?costs.filter(c=>c.freq==="monthly").reduce((a,c)=>a+c.amount,0):0, oC=on?costs.filter(c=>c.freq!=="monthly").reduce((a,c)=>a+c.amount,0):0;
   const mP=on?costs.filter(c=>c.freq==="monthly"&&c.billed).reduce((a,c)=>a+c.amount,0):0, oP=on?costs.filter(c=>c.freq!=="monthly"&&c.billed).reduce((a,c)=>a+c.amount,0):0;
   const months=slices.map((sl,i)=>{ const rows=am.filter(r=>r.month===sl.key); const hours=rows.reduce((a,r)=>a+r.hours,0), lab=rows.reduce((a,r)=>a+r.lab,0), bur=rows.reduce((a,r)=>a+r.bur,0);
-    const rev=eng.type==="msp"?(eng.monthlyFee??0)*sl.share:HOURLY.has(eng.type)?rows.reduce((a,r)=>a+r.rev,0):dur?(eng.totalPrice??0)*sl.share/dur:0;
+    const rev=feeCarries?(eng.monthlyFee??0)*sl.share:rateRev?rows.reduce((a,r)=>a+r.rev,0):dur?(eng.totalPrice??0)*sl.share/dur:0;
+    const acts=(eng.actuals||[]).filter(x=>x.month===sl.key); const actRev=acts.length?acts.reduce((a,x)=>a+(x.revenue||0),0):null, actHours=acts.length?acts.reduce((a,x)=>a+(x.hours||0),0):null;
     const addl=(mC+(dur?oC/dur:0))*sl.share, pt=(mP+(dur?oP/dur:0))*sl.share;
-    const m={key:sl.key,share:sl.share,people:rows.filter(r=>r.hours>0).length,hours,rev,lab,bur,addl,pt}; m.cost=lab+bur+addl; m.trev=rev+pt; m.gm=m.trev-m.cost; m.gmp=m.trev?m.gm/m.trev:null; return m; });
+    const m={key:sl.key,share:sl.share,people:rows.filter(r=>r.hours>0).length,hours,rev,lab,bur,addl,pt,actRev,actHours,loss:actRev==null?null:rev-actRev}; m.cost=lab+bur+addl; m.trev=rev+pt; m.gm=m.trev-m.cost; m.gmp=m.trev?m.gm/m.trev:null; return m; });
   const byAsg={}; for(const r of am){ const b=(byAsg[r.asg]??={}); const l=(b[r.month]??={people:0,hours:0,rev:0,cost:0}); if(r.hours>0)l.people++; l.hours+=r.hours; l.rev+=r.rev; l.cost+=r.lab+r.bur; }
   const trev=months.reduce((a,m)=>a+m.trev,0), tcost=months.reduce((a,m)=>a+m.cost,0); const gmp=trev?(trev-tcost)/trev:null;
   const loc={}; if(HOURLY.has(eng.type)) for(const L of [...new Set(allocs.filter(a=>a.role).map(a=>a.location))]){ const rows=am.filter(r=>r.location===L); const rev=rows.reduce((a,r)=>a+r.rev,0), lc=rows.reduce((a,r)=>a+r.lab+r.bur,0); const floor=CAL.resourceFloor[L]??CAL.projectFloor; const p=rev?(rev-lc)/rev:null; loc[L]={rev,lc,gmp:p,floor,ok:p!=null&&p>=floor}; }
   const status=missing.length||gmp==null?"INCOMPLETE":gmp>=CAL.projectFloor?"PASS":"BELOW FLOOR";
-  return {dur,months,am,byAsg,trev,tcost,gmp,status,missing,loc,hours:months.reduce((a,m)=>a+m.hours,0),lab:months.reduce((a,m)=>a+m.lab,0),bur:months.reduce((a,m)=>a+m.bur,0),addl:months.reduce((a,m)=>a+m.addl,0),pt:months.reduce((a,m)=>a+m.pt,0)};
+  const actM=months.filter(m=>m.actRev!=null); const actRev=actM.reduce((a,m)=>a+m.actRev,0), fcInAct=actM.reduce((a,m)=>a+m.rev,0);
+  return {dur,months,am,byAsg,trev,tcost,gmp,status,missing,loc,actRev,fcInAct,loss:fcInAct-actRev,actMonths:actM.length,hours:months.reduce((a,m)=>a+m.hours,0),lab:months.reduce((a,m)=>a+m.lab,0),bur:months.reduce((a,m)=>a+m.bur,0),addl:months.reduce((a,m)=>a+m.addl,0),pt:months.reduce((a,m)=>a+m.pt,0)};
 }
 
 // ---------------------------------------------------------------- sample data (marked examples)
 let uid=100; const nid=()=>"a"+(uid++);
 const SEED={engagements:[
- {id:"e1",client:"Client A",name:"Portal & data platform staffing",type:"staff_augmentation",start:"2026-11-02",end:"2027-04-30",addlFlag:true,sameDates:false,owner:"Adil Lalji",hubspot:"Client A – Staffing FY27",
+ {id:"e1",client:"Client A",bu:"IT Avalon",salesOwner:"Adil Lalji",deliveryOwner:"Janice Krpan",name:"Portal & data platform staffing",type:"staff_augmentation",start:"2026-11-02",end:"2027-04-30",addlFlag:true,sameDates:false,owner:"Adil Lalji",hubspot:"Client A – Staffing FY27",
   allocs:[{id:nid(),role:"Developer",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"Portal rebuild",util:1,bill:135,cost:70,start:"",end:""},
           {id:nid(),role:"Tester",seniority:"Mid",location:"US",emp:"contractor_1099",assignment:"Portal rebuild",util:1,bill:95,cost:55,start:"2026-12-01",end:"2027-03-31"},
           {id:nid(),role:"Architect",seniority:"Principal",location:"US",emp:"contractor_1099",assignment:"Data platform",util:0.5,bill:185,cost:120,start:"",end:"2027-02-26"},
           {id:nid(),role:"Developer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"Data platform",util:1,bill:48,cost:20,start:"",end:""},
           {id:nid(),role:"Developer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"Data platform",util:1,bill:48,cost:22,start:"2027-01-04",end:""}],
   costs:[{desc:"Monitoring licences",amount:600,freq:"monthly",billed:false},{desc:"Kickoff travel",amount:3200,freq:"one_time",billed:true}]},
- {id:"e2",client:"Example Client",name:"Managed services — L1/L2 support",type:"msp",start:"2026-11-01",end:"2027-04-30",monthlyFee:42000,addlFlag:true,sameDates:true,owner:"Janice Krpan",hubspot:"Example Client – MSP renewal",
+ {id:"e2",client:"Example Client",bu:"ST21",salesOwner:"Janice Krpan",deliveryOwner:"Srikanth Parimi",name:"Managed services — L1/L2 support",type:"msp",start:"2026-11-01",end:"2027-04-30",monthlyFee:42000,addlFlag:true,sameDates:true,owner:"Janice Krpan",hubspot:"Example Client – MSP renewal",
   allocs:[{id:nid(),role:"Service Delivery Manager",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"",util:0.5,bill:null,cost:110,start:"",end:""},
           {id:nid(),role:"L2 Engineer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"",util:1,bill:null,cost:20,start:"",end:""},
           {id:nid(),role:"L2 Engineer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"",util:1,bill:null,cost:20,start:"",end:""},
           {id:nid(),role:"L3 Engineer",seniority:"Senior",location:"India",emp:"contractor_1099",assignment:"",util:0.5,bill:null,cost:32,start:"",end:""}],
   costs:[{desc:"Monitoring tool licences",amount:1200,freq:"monthly",billed:false}]},
- {id:"e3",client:"Peppermill",name:"AI assessment",type:"assessment",start:"2026-09-07",end:"2026-10-05",totalPrice:50000,addlFlag:true,sameDates:true,owner:"Srikanth Parimi",hubspot:"Peppermill – AI Assessment",
+ {id:"e3",client:"Peppermill",bu:"ST21",salesOwner:"Srikanth Parimi",deliveryOwner:"Srikanth Parimi",name:"AI assessment",type:"assessment",start:"2026-09-07",end:"2026-10-05",totalPrice:50000,addlFlag:true,sameDates:true,owner:"Srikanth Parimi",hubspot:"Peppermill – AI Assessment",
   allocs:[{id:nid(),role:"SME",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"",util:1,bill:null,cost:120,start:"",end:""},
           {id:nid(),role:"SME",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"",util:0.2,bill:null,cost:120,start:"",end:""}],
   costs:[{desc:"Site visit",amount:3000,freq:"one_time",billed:true}]},
- {id:"e4",client:"Client B",name:"Integration team (T&M)",type:"time_and_materials",start:"2026-10-01",end:"2027-03-31",addlFlag:false,sameDates:true,owner:"Adil Lalji",hubspot:"Client B – Integrations",
+ {id:"e4",client:"Client B",bu:"ST21",salesOwner:"Adil Lalji",deliveryOwner:"Srikanth Parimi",name:"Integration team (T&M)",type:"time_and_materials",start:"2026-10-01",end:"2027-03-31",addlFlag:false,sameDates:true,owner:"Adil Lalji",hubspot:"Client B – Integrations",
   allocs:[{id:nid(),role:"Engineer",seniority:"Senior",location:"US",emp:"w2_employee",assignment:"Integrations",util:1,bill:175,cost:95,start:"",end:""},
           {id:nid(),role:"Engineer",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"Integrations",util:1,bill:60,cost:22,start:"",end:""}],
+  costs:[]},
+ {id:"e5",client:"Client C",bu:"ST21",salesOwner:"Janice Krpan",deliveryOwner:"Srikanth Parimi",name:"O365 support — CR #01 (monthly rates)",type:"msp",start:"2026-07-01",end:"2027-06-30",addlFlag:false,sameDates:true,owner:"Janice Krpan",hubspot:"Client C – O365 support",
+  allocs:[{id:nid(),role:"Developer",person:"Person 1",seniority:"Mid",location:"India",emp:"w2_employee",assignment:"",util:1,bill:5151,basis:"monthly",cost:20,start:"",end:""},
+          {id:nid(),role:"Developer",person:"Person 2",seniority:"Senior",location:"India",emp:"w2_employee",assignment:"",util:0.5,bill:6325,basis:"monthly",cost:26,start:"",end:""}],
+  costs:[], actuals:[{month:"2026-07",hours:328,revenue:8213},{month:"2026-08",hours:336,revenue:8213.5},{month:"2026-09",hours:300,revenue:7600}]},
+ {id:"e6",client:"Client D",bu:"Retro Rabbit",salesOwner:"Jo Smith",deliveryOwner:"Jo Smith",name:"Tracker support (T&M, SA)",type:"time_and_materials",start:"2026-10-01",end:"2027-02-28",addlFlag:false,sameDates:true,owner:"Jo Smith",hubspot:"Client D – Tracker",
+  allocs:[{id:nid(),role:"Lead Developer",seniority:"Senior",location:"US",emp:"contractor_1099",assignment:"Support",util:1,bill:69,basis:"hourly",cost:45,start:"",end:""}],
   costs:[]}],
- clients:["Client A","Example Client","Peppermill","Client B"], cal:CAL0,
+ clients:["Client A","Example Client","Peppermill","Client B","Client C","Client D"], cal:CAL0,
  resources:[{name:"Priya N.",location:"India",emp:"w2_employee",seniority:"Mid",onAllocUntil:null},{name:"Marcus T.",location:"US",emp:"contractor_1099",seniority:"Senior",onAllocUntil:"2026-12-31"}]};
 let DB; try{ DB=JSON.parse(localStorage.getItem("dg-proto-v1"))||null }catch(e){ DB=null } if(!DB) DB=JSON.parse(JSON.stringify(SEED)); if(!DB.cal) DB.cal=JSON.parse(JSON.stringify(CAL0)); if(!DB.clients) DB.clients=[...new Set(DB.engagements.map(e=>e.client))]; CAL=DB.cal;
 function save(){ try{ localStorage.setItem("dg-proto-v1",JSON.stringify(DB)) }catch(e){} }
 
 // ---------------------------------------------------------------- view state
-let view={page:"portfolio",eng:null,tab:"allocations",month:"2026-11",filterType:"",filterClient:""};
+let view={page:"portfolio",bu:"",eng:null,tab:"allocations",month:"2026-11",filterType:"",filterClient:""};
+{ const h=(location.hash||"").replace("#",""); if(h.startsWith("portfolio/")){ const slug=h.split("/")[1]; view.bu=Object.keys(BU_SLUG).find(b=>BU_SLUG[b]===slug)||""; } }
+DB.engagements.forEach(e=>{ if(!e.bu) e.bu="ST21"; });
 const $=(s,r=document)=>r.querySelector(s);
 const money=v=>v==null?"—":(v<0?"−":"")+"$"+Math.round(Math.abs(v)).toLocaleString();
 const pct=v=>v==null?"—":(v*100).toFixed(1)+"%";
@@ -185,10 +203,11 @@ const pill=(s)=>s==="PASS"?`<span class="pill ok">PASS</span>`:s==="BELOW FLOOR"
 
 function renderNav(){
   const n=$("#nav"); n.innerHTML=`<div class="brand"><small>SmarTek21</small>DealGate</div>
-  <div class="sec">Portfolio</div><button class="${view.page==="portfolio"?"on":""}" data-go="portfolio">Portfolio forecast</button><button class="${view.page==="settings"?"on":""}" data-settings="1">Settings — burden, floors, rate card, holidays</button>
-  <div class="sec">Engagements</div>`+DB.engagements.map(e=>`<button class="eng ${view.page==="eng"&&view.eng===e.id?"on":""}" data-eng="${e.id}">${e.client}<span class="t">${TYPE_LABEL[e.type]} · ${e.name}</span></button>`).join("")+
+  <div class="sec">Portfolio</div><button class="${view.page==="portfolio"&&!view.bu?"on":""}" data-go="portfolio" data-bu="">Portfolio — all business units</button>${BUS.map(b=>`<button class="${view.page==="portfolio"&&view.bu===b?"on":""}" data-go="portfolio" data-bu="${b}" style="padding-left:22px">${b}</button>`).join("")}<button class="${view.page==="import"?"on":""}" data-import="1">Import the forecast model (.xlsx)</button><button class="${view.page==="settings"?"on":""}" data-settings="1">Settings — burden, floors, rate card, holidays</button>
+  <div class="sec">Engagements</div>`+DB.engagements.map(e=>`<button class="eng ${view.page==="eng"&&view.eng===e.id?"on":""}" data-eng="${e.id}">${e.client}${e.closed?' <span class="mini">(closed)</span>':''}<span class="t">${e.bu} · ${TYPE_LABEL[e.type]} · ${e.name}</span></button>`).join("")+
   `<button class="${view.page==="new"?"on":""}" data-new="1">+ New engagement</button><div class="sec">Prototype</div><button data-reset="1">Reset sample data</button>`;
-  n.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{view.page=b.dataset.go;render()});
+  n.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{view.page=b.dataset.go; if(b.dataset.bu!==undefined) view.bu=b.dataset.bu; render()});
+  $("[data-import]",n).onclick=()=>{view.page="import";render()};
   n.querySelectorAll("[data-eng]").forEach(b=>b.onclick=()=>{view.page="eng";view.eng=b.dataset.eng;render()});
   $("[data-reset]",n).onclick=()=>{DB=JSON.parse(JSON.stringify(SEED));CAL=DB.cal;save();render()};
   $("[data-new]",n).onclick=()=>{view.page="new";render()}; $("[data-settings]",n).onclick=()=>{view.page="settings";render()};
@@ -196,9 +215,10 @@ function renderNav(){
 
 // ---------------------------------------------------------------- portfolio
 function renderPortfolio(){
-  const all=DB.engagements.map(e=>({e,f:compute(e,e.allocs,e.costs)}));
+  const all=DB.engagements.filter(e=>!e.closed).map(e=>({e,f:compute(e,e.allocs,e.costs)}));
   const monthsSet=new Set(); all.forEach(x=>x.f.months.forEach(m=>monthsSet.add(m.key))); const months=[...monthsSet].sort(); if(!months.includes(view.month)) view.month=months[0];
-  const rows=all.filter(x=>(!view.filterType||x.e.type===view.filterType)&&(!view.filterClient||x.e.client===view.filterClient));
+  const rows=all.filter(x=>(!view.bu||x.e.bu===view.bu)&&(!view.filterType||x.e.type===view.filterType)&&(!view.filterClient||x.e.client===view.filterClient));
+  location.hash=view.bu?"portfolio/"+BU_SLUG[view.bu]:"portfolio";
   const mo=x=>x.f.months.find(m=>m.key===view.month);
   const pRev=rows.reduce((a,x)=>a+(mo(x)?.trev||0),0), pCost=rows.reduce((a,x)=>a+(mo(x)?.cost||0),0); const pGm=pRev?(pRev-pCost)/pRev:null;
   const below=rows.filter(x=>x.f.status==="BELOW FLOOR");
@@ -206,21 +226,27 @@ function renderPortfolio(){
   const rolloffs=[]; rows.forEach(x=>{ if(!HOURLY.has(x.e.type)) return; x.e.allocs.forEach(a=>{ if(!a.role) return; const end=d(a.end||x.e.end); const later=x.e.allocs.some(b=>b!==a&&b.role===a.role&&b.location===a.location&&d(b.start||x.e.start)>end); if(end>=d(view.month+"-01")&&end<=cut&&!later) rolloffs.push({client:x.e.client,role:a.role,asg:a.assignment,end:a.end||x.e.end}); }); });
   const bench=DB.resources.filter(r=>!r.onAllocUntil||d(r.onAllocUntil)<d(view.month+"-01"));
   const clients=[...new Set(DB.engagements.map(e=>e.client))];
+  const lossRows=rows.filter(x=>x.f.actMonths); const loss=lossRows.reduce((a,x)=>a+x.f.loss,0), lossFc=lossRows.reduce((a,x)=>a+x.f.fcInAct,0);
+  const rowHtml=x=>{const m=mo(x);return `<tr data-open="${x.e.id}" style="cursor:pointer"><td><b>${x.e.client}</b></td><td>${x.e.name}<div class="mini">${x.e.salesOwner||"—"} · ${x.e.deliveryOwner||"—"}</div></td><td>${TYPE_LABEL[x.e.type]}</td><td class="mini">${x.e.start} → ${x.e.end}</td><td class="n">${m?m.people:"—"}</td><td class="n">${m?money(m.trev):"—"}</td><td class="n">${m?money(m.cost):"—"}</td><td class="n ${m&&m.gmp!=null&&m.gmp<CAL.projectFloor?"red":""}">${m?pct(m.gmp):"—"}</td><td class="n ${x.f.gmp!=null&&x.f.gmp<CAL.projectFloor?"red":""}">${pct(x.f.gmp)}</td><td>${pill(x.f.status)}</td></tr>`};
+  const subRow=(label,rs,cls="tot")=>{const r=rs.reduce((a,x)=>a+(mo(x)?.trev||0),0),c=rs.reduce((a,x)=>a+(mo(x)?.cost||0),0);return `<tr class="${cls}"><td colspan="4">${label}</td><td class="n">${rs.reduce((a,x)=>a+(mo(x)?.people||0),0)}</td><td class="n">${money(r)}</td><td class="n">${money(c)}</td><td class="n ${r&&(r-c)/r<CAL.projectFloor?"red":""}">${pct(r?(r-c)/r:null)}</td><td class="n">${rs.filter(x=>x.f.status==="BELOW FLOOR").length?rs.filter(x=>x.f.status==="BELOW FLOOR").length+" below floor":""}</td><td></td></tr>`};
+  const body=view.bu?rows.map(rowHtml).join("")+subRow(`${view.bu} · ${mlabel(view.month)}`,rows)
+    :BUS.map(b=>{const rs=rows.filter(x=>x.e.bu===b); if(!rs.length) return ""; return `<tr class="grp"><td colspan="10"><b>${b}</b> <span class="mini">${rs.length} engagements</span></td></tr>`+rs.map(rowHtml).join("")+subRow(`${b} subtotal · ${mlabel(view.month)}`,rs,"sub")}).join("")+subRow(`All business units · ${mlabel(view.month)}`,rows);
   $("#main").innerHTML=`
-  <div class="top"><div><h1>Portfolio forecast</h1><div class="sub">${rows.length} engagements · the month columns show only ${mlabel(view.month)}'s slice of each engagement (partial months prorated by days); "whole term" is the engagement's full GM</div></div>
+  <div class="butabs">${[["","All business units"],...BUS.map(b=>[b,b])].map(([v,l])=>`<button class="${view.bu===v?"on":""}" data-butab="${v}">${l}<span class="mini"> ${all.filter(x=>!v||x.e.bu===v).length}</span></button>`).join("")}</div>
+  <div class="top"><div><h1>${view.bu||"Portfolio"} forecast</h1><div class="sub">${rows.length} engagements · the month columns show only ${mlabel(view.month)}'s slice of each engagement (partial months prorated by days); "whole term" is the engagement's full GM</div></div>
    <div class="bar"><label>Month</label><select id="pm">${months.map(m=>`<option value="${m}" ${m===view.month?"selected":""}>${mlabel(m)}</option>`).join("")}</select>
    <label>Type</label><select id="pt"><option value="">All</option>${Object.entries(TYPE_LABEL).map(([k,v])=>`<option value="${k}" ${view.filterType===k?"selected":""}>${v}</option>`).join("")}</select>
    <label>Client</label><select id="pc"><option value="">All</option>${clients.map(c=>`<option ${view.filterClient===c?"selected":""}>${c}</option>`).join("")}</select></div></div>
-  <div class="proto">Prototype with sample data. Edit any engagement's allocations and this page recomputes. Nothing here is your real pipeline yet.</div>
+  <div class="proto">Prototype v4 with sample data (BU tabs, owners, rate basis, actuals, forecast-model import). Edit any engagement's allocations and this page recomputes. Nothing here is your real pipeline yet.</div>
   <div class="cards">
     <div class="card"><div class="k">Portfolio GM · ${mlabel(view.month)}</div><div class="v ${pGm!=null&&pGm<CAL.projectFloor?"neg":""}">${pct(pGm)}</div><div class="d">${money(pRev)} revenue · ${money(pCost)} cost</div></div>
     <div class="card"><div class="k">Below floor</div><div class="v ${below.length?"neg":""}">${below.length}</div><div class="d">engagements under ${pct(CAL.projectFloor)} over their term</div></div>
     <div class="card"><div class="k">Roll-offs · next 60 days</div><div class="v">${rolloffs.length}</div><div class="d">allocations ending with nothing after</div></div>
     <div class="card"><div class="k">Bench · ${mlabel(view.month)}</div><div class="v">${bench.length}</div><div class="d">active people with no allocation</div></div>
+    <div class="card"><div class="k">Billing loss · months with actuals</div><div class="v ${loss>0?"neg":""}">${lossRows.length?money(loss):"—"}</div><div class="d">${lossRows.length?`${money(lossFc)} forecast vs ${money(lossFc-loss)} billed · ${lossRows.length} engagements with actuals`:"no actuals loaded yet"}</div></div>
   </div>
   <div class="wrap"><table><thead><tr><th>Client</th><th>Engagement</th><th>Type</th><th>Term</th><th class="n">People</th><th class="n">Revenue · ${mlabel(view.month)}</th><th class="n">Cost · ${mlabel(view.month)}</th><th class="n">GM % · ${mlabel(view.month)}</th><th class="n">GM % · whole term</th><th>Status</th></tr></thead><tbody>
-  ${rows.map(x=>{const m=mo(x);return `<tr data-open="${x.e.id}" style="cursor:pointer"><td><b>${x.e.client}</b></td><td>${x.e.name}</td><td>${TYPE_LABEL[x.e.type]}</td><td class="mini">${x.e.start} → ${x.e.end}</td><td class="n">${m?m.people:"—"}</td><td class="n">${m?money(m.trev):"—"}</td><td class="n">${m?money(m.cost):"—"}</td><td class="n ${m&&m.gmp!=null&&m.gmp<CAL.projectFloor?"red":""}">${m?pct(m.gmp):"—"}</td><td class="n ${x.f.gmp!=null&&x.f.gmp<CAL.projectFloor?"red":""}">${pct(x.f.gmp)}</td><td>${pill(x.f.status)}</td></tr>`}).join("")}
-  <tr class="tot"><td colspan="4">Portfolio · ${mlabel(view.month)}</td><td class="n">${rows.reduce((a,x)=>a+(mo(x)?.people||0),0)}</td><td class="n">${money(pRev)}</td><td class="n">${money(pCost)}</td><td class="n">${pct(pGm)}</td><td></td><td></td></tr>
+  ${body}
   </tbody></table></div>
   <div class="grid2" style="margin-top:14px">
    <div class="panel"><h2>Roll-offs in the next 60 days</h2><p class="mini">An allocation ending with no later allocation for the same role at that client. Extend it, or plan the bench.</p>
@@ -228,14 +254,15 @@ function renderPortfolio(){
    <div class="panel"><h2>Bench · ${mlabel(view.month)}</h2><p class="mini">Resources with no allocation in the month. Sample list for the prototype.</p>
     <div class="wrap"><table><thead><tr><th>Person</th><th>Location</th><th>Type</th><th>Seniority</th><th>Free from</th></tr></thead><tbody>${bench.map(r=>`<tr><td>${r.name}</td><td>${r.location}</td><td>${EMP_LABEL[r.emp]}</td><td>${r.seniority}</td><td class="mini">${r.onAllocUntil?addDays(d(r.onAllocUntil),1).toISOString().slice(0,10):"now"}</td></tr>`).join("")}</tbody></table></div></div>
   </div>`;
+  document.querySelectorAll("[data-butab]").forEach(b=>b.onclick=()=>{view.bu=b.dataset.butab;render()});
   $("#pm").onchange=e=>{view.month=e.target.value;render()}; $("#pt").onchange=e=>{view.filterType=e.target.value;render()}; $("#pc").onchange=e=>{view.filterClient=e.target.value;render()};
   document.querySelectorAll("[data-open]").forEach(r=>r.onclick=()=>{view.page="eng";view.eng=r.dataset.open;view.tab="forecast";render()});
 }
 
 // ---------------------------------------------------------------- engagement
 function renderEng(){
-  const e=DB.engagements.find(x=>x.id===view.eng); const f=compute(e,e.allocs,e.costs); const hourly=HOURLY.has(e.type);
-  const head=`<div class="top"><div><h1>${e.client} · ${e.name}</h1><div class="sub">${TYPE_LABEL[e.type]} · ${e.start} → ${e.end} · ${f.dur.toFixed(2)} months · owner ${e.owner} · HubSpot: ${e.hubspot}</div></div>
+  const e=DB.engagements.find(x=>x.id===view.eng); const f=compute(e,e.allocs,e.costs); const hourly=HOURLY.has(e.type); const rateRev=hourly||(e.type==="msp"&&e.monthlyFee==null);
+  const head=`<div class="top"><div><h1>${e.client} · ${e.name}</h1><div class="sub">${e.bu} · ${TYPE_LABEL[e.type]} · ${e.start} → ${e.end} · ${f.dur.toFixed(2)} months · sales ${e.salesOwner||"—"} · delivery ${e.deliveryOwner||"—"} · HubSpot: ${e.hubspot}${e.closed?" · <b>CLOSED</b>":""}</div></div>
    <div class="bar"><button class="btn ghost" data-go="portfolio">← Portfolio</button></div></div>
   <div class="status">${pill(f.status)}<b>GM ${pct(f.gmp)}</b><span class="mini">project floor ${pct(CAL.projectFloor)}</span>
    <span class="mini">· revenue ${money(f.trev)} · cost ${money(f.tcost)} · hours ${hrs(f.hours)}</span>
@@ -246,22 +273,22 @@ function renderEng(){
   let body="";
   if(view.tab==="allocations"){
     body=`<div class="bar"><button class="btn sm" id="add">+ Add person</button><span class="mini">Yellow cells are editable. Leave Start/End blank to use the engagement window${e.sameDates?" (Same dates for everyone is ON — row dates are ignored)":""}. A leaver is an End date; a re-hire is a new row.</span></div>
-    <div class="wrap"><table><thead><tr><th>Role</th><th>Seniority</th><th>Location</th><th>Employment</th>${hourly?"<th>Assignment</th>":""}<th class="n">Util %</th>${hourly?'<th class="n">Bill rate</th>':""}<th class="n">Our cost/hr</th><th>Start</th><th>End</th><th class="n">Hours</th><th class="n">Hours override</th><th class="n">Burden</th>${hourly?'<th class="n">Revenue</th>':""}<th class="n">Loaded cost</th>${hourly?'<th class="n">Row GM</th>':""}<th></th></tr></thead><tbody>
+    <div class="wrap"><table><thead><tr><th>Person</th><th>Role</th><th>Seniority</th><th>Location</th><th>Employment</th>${hourly?"<th>Assignment</th>":""}<th class="n">Util %</th>${rateRev?'<th class="n">Bill rate</th><th>per</th>':""}<th class="n">Our cost/hr</th><th>Start</th><th>End</th><th class="n">Hours</th><th class="n">Hours override</th><th class="n">Burden</th>${rateRev?'<th class="n">Revenue</th>':""}<th class="n">Loaded cost</th>${rateRev?'<th class="n">Row GM</th>':""}<th></th></tr></thead><tbody>
     ${e.allocs.map(a=>{const rows=f.am.filter(r=>r.id===a.id); const h=rows.reduce((x,r)=>x+r.hours,0),rev=rows.reduce((x,r)=>x+r.rev,0),lc=rows.reduce((x,r)=>x+r.lab+r.bur,0); const b=CAL.burden[`${a.location}|${a.emp}`]; const card=CAL.rateCard[`${a.seniority}|${a.location}|${a.emp}`]; const rg=rev?(rev-lc)/rev:null; const under=hourly&&rg!=null&&rg<(CAL.resourceFloor[a.location]??0.35);
-     return `<tr data-id="${a.id}"><td><input class="in" type="text" data-f="role" value="${a.role||""}" placeholder="Role"></td>
+     return `<tr data-id="${a.id}"><td><input class="in" type="text" data-f="person" value="${a.person||""}" placeholder="(name)"></td><td><input class="in" type="text" data-f="role" value="${a.role||""}" placeholder="Role"></td>
       <td><select class="in" data-f="seniority">${["Junior","Mid","Senior","Principal"].map(s=>`<option ${a.seniority===s?"selected":""}>${s}</option>`).join("")}</select></td>
       <td><select class="in" data-f="location">${Object.keys(DB.cal.resourceFloor).map(s=>`<option ${a.location===s?"selected":""}>${s}</option>`).join("")}</select></td>
       <td><select class="in" data-f="emp">${Object.entries(EMP_LABEL).map(([k,v])=>`<option value="${k}" ${a.emp===k?"selected":""}>${v}</option>`).join("")}</select></td>
       ${hourly?`<td><input class="in" type="text" data-f="assignment" value="${a.assignment||""}" placeholder="(unassigned)"></td>`:""}
       <td class="n"><input class="in" type="number" min="0" max="100" step="5" data-f="utilpct" value="${Math.round((a.util??1)*100)}"></td>
-      ${hourly?`<td class="n"><input class="in" type="number" min="0" step="1" data-f="bill" value="${a.bill??""}"></td>`:""}
+      ${rateRev?`<td class="n"><input class="in" type="number" min="0" step="1" data-f="bill" value="${a.bill??""}"></td><td><select class="in" data-f="basis">${Object.entries(BASIS_LABEL).map(([k,v])=>`<option value="${k}" ${(a.basis||"hourly")===k?"selected":""}>${v}</option>`).join("")}</select></td>`:""}
       <td class="n"><input class="in" type="number" min="0" step="1" data-f="cost" value="${a.cost??""}" placeholder="${card??""}" title="Blank = rate card ${card??"n/a"}"></td>
       <td><input class="in" type="date" data-f="start" value="${a.start||""}" ${e.sameDates?"disabled":""} placeholder="${e.start}"></td>
       <td><input class="in" type="date" data-f="end" value="${a.end||""}" ${e.sameDates?"disabled":""}></td>
       <td class="n calc">${hrs(h)}</td><td class="n"><input class="in" type="number" min="0" data-f="override" value="${a.override??""}"></td>
-      <td class="n calc">${pct(b)}</td>${hourly?`<td class="n calc">${money(rev)}</td>`:""}<td class="n calc">${money(lc)}</td>${hourly?`<td class="n ${under?"red":"calc"}">${pct(rg)}</td>`:""}
+      <td class="n calc">${pct(b)}</td>${rateRev?`<td class="n calc">${money(rev)}</td>`:""}<td class="n calc">${money(lc)}</td>${rateRev?`<td class="n ${under?"red":"calc"}">${pct(rg)}</td>`:""}
       <td><div class="rowact"><button data-act="leave" title="Set End to today's month end">Leaves</button><button data-act="rehire" title="Copy as a new row starting next month">Re-hire</button><button data-act="del" title="Remove row">✕</button></div></td></tr>`}).join("")}
-    <tr class="tot"><td colspan="${hourly?10:8}">Total</td><td class="n">${hrs(f.hours)}</td><td></td><td></td>${hourly?`<td class="n">${money(f.trev-f.pt)}</td>`:""}<td class="n">${money(f.lab+f.bur)}</td>${hourly?`<td class="n">${pct(f.trev-f.pt?((f.trev-f.pt)-(f.lab+f.bur))/(f.trev-f.pt):null)}</td>`:""}<td></td></tr>
+    <tr class="tot"><td colspan="${(hourly?8:7)+(rateRev?2:0)+1}">Total</td><td class="n">${hrs(f.hours)}</td><td></td><td></td>${rateRev?`<td class="n">${money(f.trev-f.pt)}</td>`:""}<td class="n">${money(f.lab+f.bur)}</td>${rateRev?`<td class="n">${pct(f.trev-f.pt?((f.trev-f.pt)-(f.lab+f.bur))/(f.trev-f.pt):null)}</td>`:""}<td></td></tr>
     </tbody></table></div>`;
   } else if(view.tab==="forecast"){
     const months=f.months; const cols=months.map(m=>`<th class="n">${mlabel(m.key)}</th>`).join("")+`<th class="n">Total</th>`;
@@ -273,6 +300,7 @@ function renderEng(){
       <tr><td>People</td><td class="n">${Math.max(...f.months.map(m=>m.people),0)}</td></tr><tr><td>Hours</td><td class="n">${hrs(f.hours)}</td></tr><tr><td>Revenue</td><td class="n">${money(f.trev)}</td></tr><tr><td>Labour + burden</td><td class="n">${money(f.lab+f.bur)}</td></tr><tr><td>Additional costs</td><td class="n">${money(f.addl)}</td></tr><tr><td>Total cost</td><td class="n">${money(f.tcost)}</td></tr><tr class="tot"><td>Gross margin $</td><td class="n">${money(f.trev-f.tcost)}</td></tr><tr><td><b>Gross margin %</b></td><td class="n"><b>${pct(f.gmp)}</b></td></tr></tbody></table></div>`:""}
     ${showSplit?`<div class="wrap"><table><thead><tr><th>All resources</th>${cols}</tr></thead><tbody>
     ${line("People",m=>m.people,v=>v)}${line("Hours",m=>m.hours,hrs)}${line("Revenue",m=>m.trev,money)}${line("Labour + burden",m=>m.lab+m.bur,money)}${line("Additional costs",m=>m.addl,money)}${line("Total cost",m=>m.cost,money)}${line("Gross margin $",m=>m.gm,money,"tot")}${gmline("Gross margin %",m=>m.trev,m=>m.cost)}
+    ${f.actMonths?`<tr class="grp"><td colspan="${months.length+2}"><b>Actuals</b> <span class="mini">from timesheets / invoices · ${f.actMonths} months loaded</span></td></tr>${line("Billed",m=>m.actRev,v=>v==null?"—":money(v))}${line("Actual hours",m=>m.actHours,v=>v==null?"—":hrs(v))}${line("Billing loss (forecast − billed)",m=>m.loss,v=>v==null?"—":money(v),"tot")}`:""}
     </tbody></table></div>`:""}
     ${hourly?Object.keys(f.byAsg).sort().map(asg=>{const g=f.byAsg[asg];const get=(k)=>m=>g[m.key]?.[k]||0;return `<h2 style="margin:16px 0 8px">${asg}</h2><div class="wrap"><table><thead><tr><th>Assignment</th>${cols}</tr></thead><tbody>${line("People",get("people"),v=>v)}${line("Hours",get("hours"),hrs)}${line("Revenue",get("rev"),money)}${line("Loaded cost",get("cost"),money)}${gmline("Gross margin %",get("rev"),get("cost"))}</tbody></table></div>`}).join(""):""}
     <h2 style="margin:16px 0 8px">Per person · revenue by month</h2><div class="wrap"><table><thead><tr><th>Person</th>${cols}</tr></thead><tbody>
@@ -282,7 +310,9 @@ function renderEng(){
     body=`<div class="grid2"><div class="panel"><h2>Engagement — the sheet's project block</h2><div class="kv" style="margin-top:8px">
       <label>Client</label><select class="in" id="s-client">${DB.clients.map(c=>`<option ${e.client===c?"selected":""}>${c}</option>`).join("")}</select>
       <label>Engagement name</label><input class="in" type="text" id="s-name" value="${e.name}" style="width:100%">
-      <label>Owner</label><input class="in" type="text" id="s-owner" value="${e.owner||""}">
+      <label>Business unit</label><select class="in" id="s-bu">${BUS.map(b=>`<option ${e.bu===b?"selected":""}>${b}</option>`).join("")}</select>
+      <label>Sales owner</label><input class="in" type="text" id="s-sales" value="${e.salesOwner||""}"><label>Delivery owner</label><input class="in" type="text" id="s-deliv" value="${e.deliveryOwner||""}">
+      <label>Status</label><select class="in" id="s-closed"><option value="0" ${!e.closed?"selected":""}>Active</option><option value="1" ${e.closed?"selected":""}>Closed — kept for history, off the portfolio</option></select>
       <label>Currency</label><select class="in" id="s-cur">${["USD","INR","GBP","EUR","CAD"].map(c=>`<option ${(e.currency||"USD")===c?"selected":""}>${c}</option>`).join("")}</select>
       <label>Type</label><select class="in" id="s-type">${Object.entries(TYPE_LABEL).map(([k,v])=>`<option value="${k}" ${e.type===k?"selected":""}>${v}</option>`).join("")}</select>
       <label>Start</label><input class="in" type="date" id="s-start" value="${e.start}"><label>End</label><input class="in" type="date" id="s-end" value="${e.end}">
@@ -307,12 +337,12 @@ function renderEng(){
     else if(b.dataset.act==="leave"){ const t=new Date(); const y=t.getUTCFullYear(),m=t.getUTCMonth(); a.end=iso(new Date(Date.UTC(y,m,dim(y,m)))); if(e.sameDates){e.sameDates=false;} }
     else if(b.dataset.act==="rehire"){ const end=d(a.end||e.end); const ns=new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth()+1,1)); e.allocs.splice(i+1,0,{...a,id:nid(),start:iso(ns),end:"",role:a.role+" (re-hire)"}); if(e.sameDates){e.sameDates=false;} }
     save(); render(); });
-  const add=$("#add"); if(add) add.onclick=()=>{ e.allocs.push({id:nid(),role:"",seniority:"Mid",location:"US",emp:"w2_employee",assignment:"",util:1,bill:null,cost:null,start:"",end:""}); save(); render(); };
+  const add=$("#add"); if(add) add.onclick=()=>{ e.allocs.push({id:nid(),person:"",role:"",seniority:"Mid",location:"US",emp:"w2_employee",assignment:"",util:1,bill:null,basis:"hourly",cost:null,start:"",end:""}); save(); render(); };
   // setup edits
   const S=id=>$("#"+id); if(S("s-type")){ S("s-type").onchange=x=>{e.type=x.target.value;save();render()}; S("s-start").onchange=x=>{e.start=x.target.value;save();render()}; S("s-end").onchange=x=>{e.end=x.target.value;save();render()};
     S("s-price").onchange=x=>{e.totalPrice=x.target.value===""?null:+x.target.value;save();render()}; S("s-fee").onchange=x=>{e.monthlyFee=x.target.value===""?null:+x.target.value;save();render()};
     S("s-same").onchange=x=>{e.sameDates=x.target.value==="1";save();render()};
-    S("s-client").onchange=x=>{e.client=x.target.value;save();render()}; S("s-name").onchange=x=>{e.name=x.target.value;save();render()}; S("s-owner").onchange=x=>{e.owner=x.target.value;save();render()}; S("s-cur").onchange=x=>{e.currency=x.target.value;save();render()}; S("s-addl").onchange=x=>{e.addlFlag=x.target.value==="1";save();render()};
+    S("s-client").onchange=x=>{e.client=x.target.value;save();render()}; S("s-name").onchange=x=>{e.name=x.target.value;save();render()}; S("s-bu").onchange=x=>{e.bu=x.target.value;save();render()}; S("s-sales").onchange=x=>{e.salesOwner=e.owner=x.target.value;save();render()}; S("s-deliv").onchange=x=>{e.deliveryOwner=x.target.value;save();render()}; S("s-closed").onchange=x=>{e.closed=x.target.value==="1";save();render()}; S("s-cur").onchange=x=>{e.currency=x.target.value;save();render()}; S("s-addl").onchange=x=>{e.addlFlag=x.target.value==="1";save();render()};
     document.querySelectorAll("tr[data-ci] [data-cf]").forEach(el=>el.onchange=()=>{const c=e.costs[+el.closest("tr").dataset.ci];const k=el.dataset.cf;c[k]=k==="amount"?+el.value:k==="billed"?el.value==="1":el.value;save();render()});
     document.querySelectorAll("[data-cdel]").forEach(b=>b.onclick=()=>{e.costs.splice(+b.dataset.cdel,1);save();render()});
     $("#addcost").onclick=()=>{e.costs.push({desc:"",amount:0,freq:"one_time",billed:false});save();render()}; }
@@ -325,7 +355,8 @@ function renderNew(){
    <label>Client *</label><div class="bar"><select class="in" id="n-client"><option value="">— pick —</option>${DB.clients.map(c=>`<option>${c}</option>`).join("")}<option value="__new">+ New client…</option></select><input class="in" type="text" id="n-newclient" placeholder="New client name" hidden></div>
    <label>Engagement name *</label><input class="in" type="text" id="n-name" placeholder="e.g. Portal rebuild staffing" style="width:100%">
    <label>Engagement type *</label><select class="in" id="n-type"><option value="">— pick first —</option>${Object.entries(TYPE_LABEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select>
-   <label>Owner</label><input class="in" type="text" id="n-owner" placeholder="Account owner">
+   <label>Business unit *</label><select class="in" id="n-bu">${BUS.map(b=>`<option>${b}</option>`).join("")}</select>
+   <label>Sales owner</label><input class="in" type="text" id="n-owner" placeholder="Sales owner"><label>Delivery owner</label><input class="in" type="text" id="n-deliv" placeholder="Delivery owner">
    <label>Currency</label><select class="in" id="n-cur">${["USD","INR","GBP","EUR","CAD"].map(c=>`<option>${c}</option>`).join("")}</select>
    <label>Start *</label><input class="in" type="date" id="n-start"><label>End *</label><input class="in" type="date" id="n-end">
    <label>Total project price</label><input class="in" type="number" id="n-price" disabled placeholder="Fixed cost / Assessment only">
@@ -337,7 +368,7 @@ function renderNew(){
   g("n-file").onchange=async ev=>{ const file=ev.target.files[0]; if(!file) return; try{ const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:"array",cellDates:true}); const imp=parseWorkbook(wb);
       if(imp.errors.length){ g("n-filemsg").innerHTML='<span class="red">'+imp.errors.join(" · ")+'</span>'; return; }
       if(!DB.clients.includes(imp.client)) DB.clients.push(imp.client);
-      const e={id:"e"+(uid++),client:imp.client,name:imp.name,type:imp.type,start:imp.start,end:imp.end,currency:imp.currency,owner:"",hubspot:"—",totalPrice:imp.price,monthlyFee:imp.fee,addlFlag:imp.addl,sameDates:imp.same,allocs:imp.allocs,costs:imp.costs,importWarnings:imp.warnings};
+      const e={id:"e"+(uid++),client:imp.client,bu:$("#n-bu").value,salesOwner:$("#n-owner").value,deliveryOwner:$("#n-deliv").value,name:imp.name,type:imp.type,start:imp.start,end:imp.end,currency:imp.currency,owner:"",hubspot:"—",totalPrice:imp.price,monthlyFee:imp.fee,addlFlag:imp.addl,sameDates:imp.same,allocs:imp.allocs,costs:imp.costs,importWarnings:imp.warnings};
       DB.engagements.push(e); save(); view.page="eng"; view.eng=e.id; view.tab="allocations"; render(); }
     catch(err){ g("n-filemsg").innerHTML='<span class="red">Could not read that file: '+err.message+'</span>'; } };
   g("n-client").onchange=()=>{g("n-newclient").hidden=g("n-client").value!=="__new"};
@@ -347,7 +378,7 @@ function renderNew(){
     if(["fixed_cost","assessment"].includes(t)&&!g("n-price").value) miss.push("total price"); if(t==="msp"&&!g("n-fee").value) miss.push("monthly fee"); if(g("n-addl").value==="") miss.push("additional costs Y/N"); if(g("n-same").value==="") miss.push("same dates Y/N");
     if(miss.length){ g("n-err").textContent="Missing: "+miss.join(", "); return; }
     if(!DB.clients.includes(client)) DB.clients.push(client);
-    const e={id:"e"+(uid++),client,name:g("n-name").value.trim(),type:t,start:g("n-start").value,end:g("n-end").value,currency:g("n-cur").value,owner:g("n-owner").value,hubspot:"—",
+    const e={id:"e"+(uid++),client,bu:g("n-bu").value,salesOwner:g("n-owner").value,deliveryOwner:g("n-deliv").value,name:g("n-name").value.trim(),type:t,start:g("n-start").value,end:g("n-end").value,currency:g("n-cur").value,owner:g("n-owner").value,hubspot:"—",
       totalPrice:g("n-price").value?+g("n-price").value:null,monthlyFee:g("n-fee").value?+g("n-fee").value:null,addlFlag:g("n-addl").value==="1",sameDates:g("n-same").value==="1",allocs:[],costs:[]};
     DB.engagements.push(e); save(); view.page="eng"; view.eng=e.id; view.tab="allocations"; render(); };
 }
@@ -406,6 +437,42 @@ function renderSettings(){
   document.querySelectorAll("[data-rc]").forEach(el=>el.onchange=()=>{c.rateCard[el.dataset.rc]=el.value===""?undefined:+el.value;save();});
   document.querySelectorAll("[data-hol]").forEach(el=>el.onchange=()=>{c.holidays[el.dataset.hol]=el.value.split(/\s+/).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));save();render()});
 }
-function render(){ renderNav(); if(view.page==="portfolio") renderPortfolio(); else if(view.page==="new") renderNew(); else if(view.page==="settings") renderSettings(); else renderEng(); }
+// ---------------------------------------------------------------- import the forecast model master (dry run first)
+// The real importer is app/services/forecast/forecast_model_import.py (header-driven, one row per person, month blocks).
+// This prototype only reads enough of the workbook to show the dry-run shape: dashboard → BUs/clients, tabs → people.
+function dryRunModel(wb){
+  const BU_SET={"st21":"ST21","it avalon":"IT Avalon","retro rabbit":"Retro Rabbit"}; const dash={}; let bu=null;
+  const ds=wb.Sheets["Dashboard (RunRate)"]; if(!ds) return {error:"No 'Dashboard (RunRate)' tab — is this the forecast model master?"};
+  const rows=XLSX.utils.sheet_to_json(ds,{header:1,raw:true});
+  rows.forEach(r=>{ const name=(r[1]??"").toString().trim(); if(!name) return; const k=name.toLowerCase(); if(BU_SET[k]){bu=BU_SET[k];return;} if(["client","subtotal","total","new clients"].includes(k)||!bu) return; dash[name]={bu,sales:r[2]||"",delivery:r[3]||"",billing:r[4]||""}; });
+  const skip=new Set(["Dashboard (RunRate)","Dashboard (Projection)","IT Avalon Actual & Projection","WorkingDays","Costing Sheet","Billing Loss","Replacement Data","Template(Hours)","TEMPLATE","Costco (Prototype)","Sheet1"]);
+  const tabs=[];
+  for(const name of wb.SheetNames){ if(skip.has(name)) continue; const r=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true}); const hdr=(r[3]||[]).map(x=>(x??"").toString().toLowerCase());
+    if(!hdr.some(h=>h.startsWith("resource"))) continue; let people=0,noloc=0,ext=0; const ci=hdr.findIndex(h=>h.startsWith("location")); const months=(r[2]||[]).filter(x=>typeof x==="string"&&/^[a-z]+/i.test(x)).length; const extCols=hdr.filter(h=>h.startsWith("extension start")).length;
+    for(let i=4;i<r.length;i++){ const n=(r[i][0]??"").toString().trim(); if(!n) continue; if(/^totals?$/i.test(n)) break; if(!(r[i][1]||r[i][hdr.findIndex(h=>h.startsWith("rate"))])) continue; people++; if(ci>=0&&!r[i][ci]) noloc++; if(extCols) ext+=hdr.map((h,j)=>h.startsWith("extension start")&&r[i][j]?1:0).reduce((a,b)=>a+b,0); }
+    const ALIAS={"station casinos":"Stations Casino","caesars":"Caesars Palace (Project)","caesers entertainment":"Caesars Entertainment (Staffing)","blue shield-vms":"BCBS Ca-VMS","christus health-vms":"Christus Health","dreamscape":"Dreamscape (added line)","first citizens":"First Citizens + VMS","sierra nevada":"Sierra Nevada + VMS","costco":"Costco Travel","deloitte":"Deloitte (India)"};
+    const key=(ALIAS[name.toLowerCase()]&&dash[ALIAS[name.toLowerCase()]])?ALIAS[name.toLowerCase()]:Object.keys(dash).find(k=>k.toLowerCase().replace(/[^a-z]/g,"").startsWith(name.toLowerCase().replace(/[^a-z]/g,"").slice(0,8)));
+    tabs.push({tab:name,client:key||name,bu:key?dash[key].bu:"",billing:key?dash[key].billing:"",sales:key?dash[key].sales:"",delivery:key?dash[key].delivery:"",people,ext,months,noloc,onDash:!!key}); }
+  return {dash,tabs};
+}
+function renderImport(){
+  const r=view.dry;
+  $("#main").innerHTML=`<div class="top"><div><h1>Import the forecast model</h1><div class="sub">The FY forecast model master (one tab per client, one row per person, month blocks). Dry run first — nothing is created until you confirm.</div></div></div>
+  <div class="panel" style="max-width:880px;margin-bottom:12px"><h2>1 · Upload the workbook</h2><div class="bar"><input class="in" type="file" id="m-file" accept=".xlsx"><span class="mini" id="m-msg"></span></div>
+   <p class="mini">What the importer does: <b>dashboard</b> → business unit, sales owner, delivery owner, billing type per client · <b>client tab</b> → one engagement per SOW/PO (<i>Team/SOW</i> column) · <b>row</b> → one allocation per person, plus one per extension-date pair · <b>Actual</b> months → billed revenue and hours (vacation and unplanned leave deducted) · <b>WorkingDays</b> → holidays per location. A flat Max Billing every month (Costco-style 173 h) becomes a monthly rate; <i>-OVERTIME</i> / <i>-ON CALL</i> rows carry actuals only; CLOSED tabs import as closed.</p></div>
+  ${r?r.error?`<div class="proto red">${r.error}</div>`:`<div class="panel" style="max-width:880px;margin-bottom:12px"><h2>2 · Dry run — what would be created</h2>
+   <div class="cards" style="margin:10px 0">${["ST21","IT Avalon","Retro Rabbit",""].map(b=>{const t=r.tabs.filter(x=>x.bu===b);return `<div class="card"><div class="k">${b||"Not on the dashboard"}</div><div class="v">${t.length}</div><div class="d">client tabs · ${t.reduce((a,x)=>a+x.people,0)} people · ${t.reduce((a,x)=>a+x.ext,0)} extensions</div></div>`}).join("")}</div>
+   <div class="wrap"><table><thead><tr><th>Tab</th><th>Client (dashboard)</th><th>BU</th><th>Billing type</th><th>Sales · Delivery</th><th class="n">People</th><th class="n">Extensions</th><th class="n">Months</th><th>Needs attention</th></tr></thead><tbody>
+   ${r.tabs.map(t=>`<tr><td><b>${t.tab}</b></td><td>${t.client}</td><td>${t.bu||'<span class="red">—</span>'}</td><td>${t.billing||"—"}</td><td class="mini">${t.sales||"—"} · ${t.delivery||"—"}</td><td class="n">${t.people}</td><td class="n">${t.ext}</td><td class="n">${t.months}</td><td class="mini">${[!t.onDash?"not on the dashboard — pick a BU":"",t.noloc?t.noloc+" people without a location":""].filter(Boolean).join(" · ")||"—"}</td></tr>`).join("")}
+   </tbody></table></div>
+   <p class="mini" style="margin-top:8px">Not loaded from this workbook: <b>costs</b> (the Costing Sheet is empty — every imported person is <i>cost unknown</i> and the engagement shows INCOMPLETE until the rate card or a cost per hour is set) · clients that exist only as a number on the dashboard (no tab) · currency for Retro Rabbit (assumed USD).</p>
+   <div class="bar" style="margin-top:10px"><button class="btn" id="m-load">Load ${r.tabs.reduce((a,x)=>a+x.people,0)} people into ${r.tabs.length} client${r.tabs.length===1?"":"s"}</button><span class="mini">In the prototype this creates sample engagements with the counts above; the real importer creates the allocations and actuals.</span></div></div>`:""}`;
+  $("#m-file").onchange=async ev=>{ const file=ev.target.files[0]; if(!file) return; try{ const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:"array",cellDates:true}); view.dry=dryRunModel(wb); render(); } catch(err){ $("#m-msg").innerHTML='<span class="red">Could not read that file: '+err.message+'</span>'; } };
+  const L=$("#m-load"); if(L) L.onclick=()=>{ r.tabs.forEach(t=>{ if(!DB.clients.includes(t.client)) DB.clients.push(t.client);
+      DB.engagements.push({id:"e"+(uid++),client:t.client,bu:t.bu||"ST21",salesOwner:t.sales,deliveryOwner:t.delivery,name:`${t.tab} (imported from the forecast model)`,type:/fixed/i.test(t.billing)?"msp":"time_and_materials",start:"2026-01-01",end:"2026-12-31",addlFlag:false,sameDates:true,owner:t.sales,hubspot:"—",
+        allocs:Array.from({length:Math.min(t.people,6)},(_,i)=>({id:nid(),person:`Person ${i+1}`,role:"Imported",seniority:"Mid",location:"US",emp:"w2_employee",assignment:"",util:1,bill:100,basis:"hourly",cost:null,start:"",end:""})),costs:[],importWarnings:["Imported from the forecast model: cost per hour unknown — set the rate card or a cost per hour; check the location of each person."]}); });
+    save(); view.dry=null; view.page="portfolio"; view.bu=""; render(); };
+}
+function render(){ renderNav(); if(view.page==="portfolio") renderPortfolio(); else if(view.page==="new") renderNew(); else if(view.page==="settings") renderSettings(); else if(view.page==="import") renderImport(); else renderEng(); }
 render();
 </script>

@@ -19,6 +19,7 @@ HOURLY_TYPES = {"time_and_materials", "staff_augmentation"}
 FIXED_TYPES = {"fixed_cost", "assessment"}
 TYPES = HOURLY_TYPES | FIXED_TYPES | {"msp"}
 EMPLOYMENT_TYPES = {"w2_employee", "contractor_1099"}
+RATE_BASES = {"hourly", "daily", "monthly"}
 
 
 # ----------------------------------------------------------------------------- inputs
@@ -49,13 +50,24 @@ class Allocation:
     resource: str
     location: str
     employment_type: str
-    cost_per_hour: Decimal
+    cost_per_hour: Optional[Decimal]        # None -> cost unknown: labour 0, forecast INCOMPLETE
     assignment: Optional[str] = None
     utilization: Decimal = D("1")
     bill_rate: Optional[Decimal] = None
     start: Optional[date] = None            # None -> engagement start
     end: Optional[date] = None              # None -> engagement end
     hours_override: Optional[Decimal] = None
+    rate_basis: str = "hourly"              # hourly | daily | monthly — what bill_rate is per
+    person: Optional[str] = None            # the named person, when known (resource stays the role)
+
+
+@dataclass(frozen=True)
+class Actual:
+    """What really happened in a month for one allocation (from timesheets / invoices)."""
+    allocation_id: str
+    month: str                              # "YYYY-MM"
+    hours: Optional[Decimal] = None
+    revenue: Optional[Decimal] = None       # billed
 
 
 @dataclass(frozen=True)
@@ -93,7 +105,13 @@ class MonthLine:
     burden_cost: Decimal
     additional_costs: Decimal
     pass_through_revenue: Decimal
+    actual_hours: Optional[Decimal] = None        # set only for months that have actuals
+    actual_revenue: Optional[Decimal] = None
 
+    @property
+    def billing_loss(self) -> Optional[Decimal]:
+        """forecast revenue minus billed, for months with actuals (positive = under-billed)."""
+        return None if self.actual_revenue is None else self.revenue - self.actual_revenue
     @property
     def total_cost(self) -> Decimal: return self.labour_cost + self.burden_cost + self.additional_costs
     @property
@@ -123,6 +141,9 @@ class Forecast:
     location_check: dict              # {location: {"revenue", "loaded_cost", "gm_pct", "floor", "ok"}}
     monthly_required: bool
     missing: list
+    actual_revenue: Decimal = ZERO            # over months with actuals
+    forecast_in_actual_months: Decimal = ZERO
+    billing_loss: Decimal = ZERO              # forecast − billed over months with actuals
 
 
 # ----------------------------------------------------------------------------- calendar maths
@@ -158,8 +179,10 @@ def duration_months(start: date, end: date) -> Decimal:
 
 
 # ----------------------------------------------------------------------------- engine
-def compute(eng: Engagement, allocations: list, costs: list, cal: Calendar) -> Forecast:
+def compute(eng: Engagement, allocations: list, costs: list, cal: Calendar, actuals: Optional[list] = None) -> Forecast:
     missing = _validate(eng, allocations, costs)
+    fee_carries_revenue = eng.type == "msp" and eng.monthly_fee is not None
+    rate_revenue = eng.type in HOURLY_TYPES or (eng.type == "msp" and not fee_carries_revenue)
     dur = duration_months(eng.start, eng.end)
     slices = list(month_slices(eng.start, eng.end))
 
@@ -179,8 +202,17 @@ def compute(eng: Engagement, allocations: list, costs: list, cal: Calendar) -> F
                 hours = a.hours_override * D(wd) / D(total_wd)
             else:
                 hours = D(wd) * cal.hours_per_day * a.utilization
-            revenue = hours * a.bill_rate if (eng.type in HOURLY_TYPES and a.bill_rate is not None) else ZERO
-            labour = hours * a.cost_per_hour
+            if not rate_revenue or a.bill_rate is None:
+                revenue = ZERO
+            elif a.rate_basis == "monthly":
+                # a monthly rate pays for the person's share of that month's working days
+                month_wd = working_days(ms, me, hol)
+                revenue = a.bill_rate * a.utilization * D(wd) / D(month_wd) if month_wd else ZERO
+            elif a.rate_basis == "daily":
+                revenue = a.bill_rate * hours / cal.hours_per_day
+            else:
+                revenue = hours * a.bill_rate
+            labour = hours * (a.cost_per_hour or ZERO)
             alloc_months.append(AllocationMonth(a.id, key, a.assignment or "(unassigned)", wd, hours, revenue, labour, labour * burden))
 
     monthly_costs = sum((c.amount for c in costs if c.frequency == "monthly"), ZERO) if eng.additional_costs_flag else ZERO
@@ -194,9 +226,9 @@ def compute(eng: Engagement, allocations: list, costs: list, cal: Calendar) -> F
         hours = sum((r.hours for r in rows), ZERO)
         labour = sum((r.labour_cost for r in rows), ZERO)
         burden = sum((r.burden_cost for r in rows), ZERO)
-        if eng.type == "msp":
-            revenue = (eng.monthly_fee or ZERO) * share
-        elif eng.type in HOURLY_TYPES:
+        if fee_carries_revenue:
+            revenue = eng.monthly_fee * share
+        elif rate_revenue:
             revenue = sum((r.revenue for r in rows), ZERO)
         else:
             revenue = (eng.total_price or ZERO) * share / dur if dur else ZERO
@@ -204,7 +236,12 @@ def compute(eng: Engagement, allocations: list, costs: list, cal: Calendar) -> F
         # the same way a fixed price does, so a short engagement's first month is not distorted
         addl = (monthly_costs + (onetime_costs / dur if dur else ZERO)) * share
         pt = (monthly_pass + (onetime_pass / dur if dur else ZERO)) * share
-        months.append(MonthLine(key, share, sum(1 for r in rows if r.hours > 0), hours, revenue, labour, burden, addl, pt))
+        line = MonthLine(key, share, sum(1 for r in rows if r.hours > 0), hours, revenue, labour, burden, addl, pt)
+        acts = [x for x in (actuals or []) if x.month == key]
+        if acts:
+            line.actual_hours = sum((x.hours for x in acts if x.hours is not None), ZERO)
+            line.actual_revenue = sum((x.revenue for x in acts if x.revenue is not None), ZERO)
+        months.append(line)
 
     by_asg: dict = {}
     for am in alloc_months:
@@ -232,11 +269,15 @@ def compute(eng: Engagement, allocations: list, costs: list, cal: Calendar) -> F
     else:
         status = "PASS" if gm_pct >= cal.project_floor_pct else "BELOW FLOOR"
 
+    act_months = [m for m in months if m.actual_revenue is not None]
+    act_rev = sum((m.actual_revenue for m in act_months), ZERO)
+    fc_in_act = sum((m.revenue for m in act_months), ZERO)
     return Forecast(eng.id, dur, months, alloc_months, by_asg,
                     hours=sum((m.hours for m in months), ZERO), labour_cost=sum((m.labour_cost for m in months), ZERO),
                     burden_cost=sum((m.burden_cost for m in months), ZERO), additional_costs=sum((m.additional_costs for m in months), ZERO),
                     pass_through_revenue=sum((m.pass_through_revenue for m in months), ZERO), total_revenue=tot_rev, total_cost=tot_cost,
-                    gm_pct=gm_pct, status=status, location_check=loc_check, monthly_required=dur > 2, missing=missing)
+                    gm_pct=gm_pct, status=status, location_check=loc_check, monthly_required=dur > 2, missing=missing,
+                    actual_revenue=act_rev, forecast_in_actual_months=fc_in_act, billing_loss=fc_in_act - act_rev)
 
 
 def _loc_of(am: AllocationMonth, allocations: list) -> str:
@@ -248,9 +289,12 @@ def _validate(eng: Engagement, allocations: list, costs: list) -> list:
     if eng.type not in TYPES: m.append(f"unknown engagement type {eng.type!r}")
     if eng.end < eng.start: m.append("engagement end is before start")
     if eng.type in FIXED_TYPES and eng.total_price is None: m.append("total_price required for fixed cost / assessment")
-    if eng.type == "msp" and eng.monthly_fee is None: m.append("monthly_fee required for MSP")
+    if eng.type == "msp" and eng.monthly_fee is None and not any(a.bill_rate is not None for a in allocations):
+        m.append("monthly_fee required for MSP (or monthly rates on the people)")
     for a in allocations:
         if a.employment_type not in EMPLOYMENT_TYPES: m.append(f"{a.resource}: unknown employment type")
+        if a.rate_basis not in RATE_BASES: m.append(f"{a.resource}: rate basis must be hourly, daily or monthly")
+        if a.cost_per_hour is None: m.append(f"{a.resource}: cost per hour unknown")
         if not (ZERO <= a.utilization <= D("1")): m.append(f"{a.resource}: utilization must be 0–1")
         if a.start and a.end and a.end < a.start: m.append(f"{a.resource}: end before start")
         if eng.type in HOURLY_TYPES and a.bill_rate is None: m.append(f"{a.resource}: bill rate required for hourly engagement types")

@@ -82,3 +82,35 @@ def test_leaver_gap_rehire_month_by_month():
     x = f.by_assignment["Team X"]
     assert x["2026-12"]["people"] == 1 and "2027-01" not in x and x["2027-02"]["people"] == 1   # January: nobody billing
     assert f.location_check["US"]["floor"] == D("0.35")
+
+
+def test_rate_basis_daily_and_monthly_and_billing_loss():
+    """A daily rate bills rate × days; a monthly rate bills the person's share of the month's working days;
+    actuals give billing loss = forecast − billed over the months that have actuals."""
+    from app.services.forecast import Actual
+    cal = Calendar(D("8"), D("0.35"), {("US", "w2_employee"): D("0.36")}, {}, {"US": {date(2026, 1, 1), date(2026, 1, 19)}})
+    eng = Engagement("e", "time_and_materials", date(2026, 1, 1), date(2026, 2, 28))
+    daily = Allocation("d", "Dev", "US", "w2_employee", D("50"), bill_rate=D("800"), rate_basis="daily")
+    monthly = Allocation("m", "Lead", "US", "w2_employee", D("60"), bill_rate=D("10000"), rate_basis="monthly", start=date(2026, 1, 16))
+    f = compute(eng, [daily, monthly], [], cal, [Actual("d", "2026-01", D("152"), D("15200")), Actual("m", "2026-01", None, D("4000"))])
+    jan_d = next(x for x in f.allocation_months if x.allocation_id == "d" and x.month == "2026-01")
+    assert jan_d.working_days == 20 and jan_d.revenue == D("16000")          # 22 weekdays − 2 holidays, × 800
+    jan_m = next(x for x in f.allocation_months if x.allocation_id == "m" and x.month == "2026-01")
+    assert jan_m.working_days == 10 and jan_m.revenue == D("5000")           # 10 of January's 20 working days
+    feb_m = next(x for x in f.allocation_months if x.allocation_id == "m" and x.month == "2026-02")
+    assert feb_m.revenue == D("10000")
+    jan = f.months[0]
+    assert jan.actual_revenue == D("19200") and jan.billing_loss == D("1800") and jan.actual_hours == D("152")
+    assert f.months[1].actual_revenue is None and f.billing_loss == D("1800") and f.actual_revenue == D("19200")
+
+def test_msp_without_a_fee_bills_the_people_s_monthly_rates():
+    cal = Calendar(D("8"), D("0.35"), {}, {}, {})
+    eng = Engagement("e", "msp", date(2026, 3, 1), date(2026, 3, 31))
+    f = compute(eng, [Allocation("a", "Eng", "India", "w2_employee", D("20"), bill_rate=D("5151"), rate_basis="monthly", utilization=D("0.5"))], [], cal)
+    assert f.total_revenue == D("2575.5") and not f.missing
+
+def test_unknown_cost_makes_the_forecast_incomplete_not_wrong():
+    cal = Calendar(D("8"), D("0.35"), {}, {}, {})
+    eng = Engagement("e", "time_and_materials", date(2026, 3, 1), date(2026, 3, 31))
+    f = compute(eng, [Allocation("a", "Eng", "US", "w2_employee", None, bill_rate=D("100"))], [], cal)
+    assert f.status == "INCOMPLETE" and f.labour_cost == D(0) and f.total_revenue > 0 and any("cost per hour unknown" in m for m in f.missing)
