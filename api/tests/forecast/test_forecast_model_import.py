@@ -84,11 +84,13 @@ def build_fixture(path: Path):
     month_blocks(ws, 12, months, lambda m: "Forecast", ["Budgeted Hours", "Actual Hours", "Budget vs Actual", "Max Billing", "Actual Billing"])
     rows = [("Person G1", "Epic Analyst", "VMS", "Staffing", datetime(2025, 11, 3), datetime(2026, 2, 27), datetime(2026, 2, 28), datetime(2026, 8, 31), "US", 145, "Y"),
             ("Person G1-OVERTIME", "Epic Analyst", "VMS", "Staffing", None, None, None, None, None, 217.5, "N"),
-            ("Person G2", "PM", "PO 26-00389", "Staffing", datetime(2026, 1, 12), datetime(2026, 12, 31), None, None, "US", 100, "N")]
+            ("Person G2", "PM", "PO 26-00389", "Staffing", datetime(2026, 1, 12), datetime(2026, 12, 31), None, None, "US", 100, "N"),
+            ("Person G3", "Analyst", "VMS", "Staffing", datetime(2025, 12, 1), datetime(2026, 3, 31), None, datetime(2026, 6, 30), "US", 90, "N"),   # extension with no start date
+            ("Person G4", "Analyst", "VMS", "Staffing", datetime(2025, 12, 1), datetime(2026, 3, 31), datetime(2026, 3, 31), datetime(2026, 9, 30), "US", 90, "N")]   # extension typed as starting on the day the original ends
     for i, r in enumerate(rows, start=5):
         for k, v in enumerate(r, start=1): ws.cell(row=i, column=k, value=v)
     # Jan+Feb have actuals (actual hours + actual billing); Mar/Apr are plan only
-    for i, rate in ((5, 145), (6, 217.5), (7, 100)):
+    for i, rate in ((5, 145), (6, 217.5), (7, 100), (8, 90), (9, 90)):
         c = 12
         for m, (bud, act) in zip(months, [(168, 160), (160, 152), (176, None), (176, None)]):
             if i == 6: bud, act = None, (4 if m == "January" else None)
@@ -96,14 +98,17 @@ def build_fixture(path: Path):
             if bud: ws.cell(row=i, column=c + 3, value=bud * rate)
             if act is not None: ws.cell(row=i, column=c + 4, value=act * rate)
             c += 5
-    ws.cell(row=8, column=1, value="Total")
+    ws.cell(row=10, column=1, value="Total")
     # --- Zeta Unlisted: not on the dashboard at all, and one person with no Location
     ws = wb.create_sheet("Zeta Unlisted"); ws["A2"] = "ZETA"
     for k, h in enumerate(["Resource", "Role", "Team/SOW", "Type", "SOW Start Date", "SOW End Date", "Location", "Rate", "Max Days", "Vacation Days", "Unplanned Leave", "Max Billing", "Billing"], start=1): ws.cell(row=4, column=k, value=h)
     ws["I1"], ws["I2"], ws["I3"] = 2026, "Actual", "January"
     for k, v in enumerate(["Person Z1", "Engineer", "SOW #4", "Managed Services", datetime(2026, 1, 1), datetime(2026, 6, 30), None, 60, 20, None, None, 9600, 9600], start=1): ws.cell(row=5, column=k, value=v)
     for k, v in enumerate(["Person Z2", "Engineer", "SOW #4", "Managed Services", datetime(2026, 1, 1), datetime(2026, 6, 30), "US", 60, 20, None, None, 9600, 9600], start=1): ws.cell(row=6, column=k, value=v)
-    ws["A7"] = "Total"
+    # two placeholder seats with the same name, and an invoice (8,400 = 140 h) that is not units-minus-leave (20 d - 1 d = 152 h)
+    for k, v in enumerate(["TBC", "Engineer", "SOW #4", "Managed Services", datetime(2026, 1, 1), datetime(2026, 6, 30), "US", 60, 20, 1, None, 9600, 8400], start=1): ws.cell(row=7, column=k, value=v)
+    for k, v in enumerate(["TBC", "Engineer", "SOW #4", "Managed Services", datetime(2026, 1, 1), datetime(2026, 6, 30), "US", 60, 20, None, None, 9600, 9600], start=1): ws.cell(row=8, column=k, value=v)
+    ws["A9"] = "Total"
 
     # --- Delta Closed: CLOSED in the title
     ws = wb.create_sheet("Delta Closed"); ws["A2"] = "DELTA - CLOSED"
@@ -164,6 +169,62 @@ def test_the_report_leads_with_the_blockers(imp):
     assert "This workbook cannot be loaded yet" in md
     assert md.index("cannot be loaded yet") < md.index("Actuals are taken through")
     assert "Zeta Unlisted" in md
+
+
+def test_rows_that_share_a_name_keep_separate_identities(imp, cal):
+    """Costco carries eleven 'TBC' seats on one SOW. A re-import keyed on the name would collapse them into one
+    seat and drop ten people's forecast; keyed on row_key it finds each seat again."""
+    z = next(e for e in imp.engagements if e.tab == "Zeta Unlisted")
+    assert [a.row_key for a in z.allocations] == ["Person Z1", "Person Z2", "TBC #1", "TBC #2"]
+    eng, allocs, acts, _ = to_engine(z, cal)
+    assert len({a.id for a in allocs}) == 4 and {a.person for a in allocs} == {"Person Z1", "Person Z2", "TBC"}
+
+
+def test_actual_hours_come_from_the_invoice_not_the_leave_columns(imp, cal):
+    """The model's leave columns say 'hours' and hold days, or the reverse, and Costco's Days column is the
+    calendar rather than what was billed: 1,606 of 2,705 real actual months disagreed with the invoice by that
+    route. Where the sheet has an hourly rate and a billed amount, hours = billed / rate."""
+    z = next(e for e in imp.engagements if e.tab == "Zeta Unlisted")
+    eng, allocs, acts, _ = to_engine(z, cal)
+    tbc1 = next(a for a in allocs if a.id.endswith("TBC #1:0"))
+    jan = next(x for x in acts if x.allocation_id == tbc1.id and x.month == "2026-01")
+    assert jan.hours == D("140") and jan.revenue == D("8400")          # not (20 - 1) × 8 = 152
+
+
+def test_an_extension_with_no_start_begins_the_day_after_the_previous_segment(imp):
+    g3 = [a for e in imp.engagements if e.tab == "Gamma Health-VMS" for a in e.allocations if a.resource == "Person G3"]
+    assert [(a.segment, a.start, a.end) for a in g3] == [(0, date(2025, 12, 1), date(2026, 3, 31)), (1, date(2026, 4, 1), date(2026, 6, 30))]
+    assert g3[1].row_key == g3[0].row_key == "Person G3"               # one identity across its segments
+
+
+def test_an_extension_typed_to_start_on_the_original_s_last_day_does_not_bill_that_day_twice(imp):
+    """Nine of the ten overlapping extensions in the real model are this: start == previous end. The newer
+    contract wins from its start; the original gives way the day before. No typed date is altered."""
+    g4 = [a for e in imp.engagements if e.tab == "Gamma Health-VMS" for a in e.allocations if a.resource == "Person G4"]
+    assert [(a.segment, a.start, a.end) for a in g4] == [(0, date(2025, 12, 1), date(2026, 3, 30)), (1, date(2026, 3, 31), date(2026, 9, 30))]
+    assert not g4[1].notes                                             # a one-day overlap is the sheet's convention, not an issue
+
+
+def test_the_report_names_what_it_assumed(imp):
+    md = dry_run_markdown(imp)
+    assert "## Assumed, because the workbook does not say" in md
+    for s in ("Employment type", "Offshore", "Cost per hour", "Currency", "Actual hours"):
+        assert s in md
+
+
+def test_a_sheet_is_read_once_and_only_if_it_is_needed():
+    """The workbook is streamed, not parsed whole: openpyxl's normal mode cost ~5 s locally for the real
+    model (~25 s on a staging task), nearly all of an import request. Sheets materialise on first touch."""
+    from app.services.forecast.forecast_model_import import _Book
+    bk = _Book(FIX)
+    assert bk._grids == {}                                  # opening reads nothing
+    alpha = bk["Alpha"]
+    assert set(bk._grids) == {"Alpha"}
+    assert bk["Alpha"] is alpha                             # and only once
+    assert alpha.cell(row=4, column=1).value == "Resource"
+    assert alpha.cell(row=4, column=999).value is None      # off the edge is blank, not an error
+    assert alpha.cell(row=99999, column=1).value is None
+    bk.close()
 
 
 def test_as_of_is_per_call_and_never_leaks_between_imports():

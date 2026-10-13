@@ -14,8 +14,9 @@ Mapping:
   WorkingDays tab          → locations + holidays
 """
 from __future__ import annotations
+from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 import re
@@ -62,6 +63,8 @@ class ModelAllocation:
     months: list = field(default_factory=list)                      # [ActualMonth]
     notes: list = field(default_factory=list)
     mode: str = "standard"                                          # standard | overtime | on_call | part_time | pass_through (from a name suffix)
+    row_key: str = ""                                               # resource, plus ' #n' when the same name appears more than once
+                                                                    # on the engagement — the identity a re-import matches on
 
 @dataclass
 class ModelEngagement:
@@ -140,6 +143,53 @@ def _month_key(label, year_hint):
     if yr: year = int(yr) if len(yr) == 4 else 2000 + int(yr)
     else: year = year_hint
     return f"{year}-{mon:02d}", year
+
+
+# ----------------------------------------------------------------------------- reading the workbook
+# openpyxl's normal mode parses every sheet up front: ~5 s locally for this model, ~25 s on a staging task,
+# which is most of an import request. Read-only mode streams instead, and each sheet is materialised once,
+# on first touch, into plain tuples. Random access by (row, column) then costs a list index, and the parsing
+# below is unchanged — it still asks for ws.cell(row=, column=).value.
+class _Cell:
+    __slots__ = ("value",)
+    def __init__(self, value): self.value = value
+
+
+_BLANK = _Cell(None)
+
+
+class _Grid:
+    """One worksheet as rows of values, with the slice of the openpyxl API this module uses."""
+    def __init__(self, ws):
+        self._rows = [r for r in ws.iter_rows(values_only=True)]
+        self.sheet_state = getattr(ws, "sheet_state", "visible")
+        self.max_row = len(self._rows)
+        self.max_column = max((len(r) for r in self._rows), default=0)
+
+    def cell(self, row: int, column: int) -> _Cell:
+        if 1 <= row <= self.max_row:
+            r = self._rows[row - 1]
+            if 1 <= column <= len(r): return _Cell(r[column - 1])
+        return _BLANK
+
+
+class _Book:
+    """The workbook, materialising a sheet the first time it is asked for. Tabs we skip are never read."""
+    def __init__(self, src):
+        self._wb = load_workbook(src, data_only=True, read_only=True)
+        self.sheetnames = list(self._wb.sheetnames)
+        self._grids: dict = {}
+
+    def __contains__(self, name): return name in self.sheetnames
+
+    def __getitem__(self, name) -> _Grid:
+        g = self._grids.get(name)
+        if g is None: g = self._grids[name] = _Grid(self._wb[name])
+        return g
+
+    def close(self):
+        try: self._wb.close()
+        except Exception: pass
 
 
 # ----------------------------------------------------------------------------- dashboard
@@ -331,11 +381,22 @@ def _parse_tab(wb, tab: str, dash: dict, as_of: str) -> tuple:
             es, ee = _date(ws.cell(row=r, column=c).value), _date(ws.cell(row=r, column=c + 1).value)
             if es or ee: segs.append((es, ee))
         for i, (s_, e_) in enumerate(segs):
-            a = ModelAllocation(name, role or None, team or None, loc, rate, basis, pct, s_, e_, comm, i, months if i == 0 else [], list(notes), mode)
+            a = ModelAllocation(resource=name, role=role or None, assignment=team or None, location=loc, rate=rate, rate_basis=basis,
+                                allocation_pct=pct, start=s_, end=e_, commission=comm, segment=i, months=months if i == 0 else [],
+                                notes=list(notes), mode=mode)
             if i > 0:
                 prev = eng.allocations[-1]
-                if a.start is None and prev.end: a.start = prev.end
-                if prev.end and a.start and a.start < prev.end: a.notes.append(f"extension {i} starts before the previous segment ends")
+                if a.start is None and prev.end: a.start = prev.end + timedelta(days=1)
+                elif prev.end and a.start and a.start <= prev.end:
+                    # the sheet writes an extension as starting on the day the original ends (nine of ten cases),
+                    # occasionally earlier. The extension is the newer contract, so it wins from its start date and
+                    # the original gives way the day before — no day is billed twice, and no typed date is changed.
+                    if prev.start and a.start > prev.start:
+                        overlap = (prev.end - a.start).days + 1
+                        prev.end = a.start - timedelta(days=1)
+                        if overlap > 1: a.notes.append(f"extension {i} starts {overlap} days before the previous segment ended — the previous segment now ends {prev.end}")
+                    else:
+                        a.notes.append(f"extension {i} starts on or before the previous segment's start ({prev.start}) — check the dates")
                 rep.extensions += 1
             eng.allocations.append(a); rep.allocations += 1
         rep.people += 1
@@ -344,6 +405,18 @@ def _parse_tab(wb, tab: str, dash: dict, as_of: str) -> tuple:
     rep.actual_months = len({m.month for e in engagements.values() for a in e.allocations for m in a.months if m.kind == "actual"})
     rep.engagements = len(engagements)
     if no_dates: rep.issues.append(f"{no_dates} of {rep.people} people have no start/end dates (row or SOW text) — the month columns decide their window.")
+    # identity for re-import: the name, made unique within the engagement. Eleven 'TBC' placeholders on one SOW
+    # are eleven seats, and a re-import must find each of them again rather than collapse them into one.
+    for eng in engagements.values():
+        base_rows = [a for a in eng.allocations if a.segment == 0]
+        seen: dict = {}
+        total = Counter(a.resource for a in base_rows)
+        for a in base_rows:
+            n = seen[a.resource] = seen.get(a.resource, 0) + 1
+            a.row_key = f"{a.resource} #{n}" if total[a.resource] > 1 else a.resource
+        for a in eng.allocations:                                   # extensions share their base row's key
+            if a.segment > 0:
+                a.row_key = next(b.row_key for b in reversed(base_rows) if b.resource == a.resource)
     return list(engagements.values()), rep
 
 
@@ -352,7 +425,7 @@ def parse_master(src, as_of: Optional[str] = None) -> MasterImport:
     None means MODEL_AS_OF. The value is carried on the result and printed in the report, so what the
     numbers mean is never implicit."""
     as_of = as_of or MODEL_AS_OF
-    wb = load_workbook(src, data_only=True)
+    wb = _Book(src)
     dash = _parse_dashboard(wb)
     out = MasterImport(dash, _parse_workingdays(wb), as_of=as_of)
     if not dash: out.global_issues.append("Run-rate dashboard not found — no business units or owners.")
@@ -363,6 +436,7 @@ def parse_master(src, as_of: Optional[str] = None) -> MasterImport:
         except Exception as e:                                   # one bad tab must not sink the import
             rep = TabReport(name, name, None, ""); rep.issues.append(f"Could not parse this tab: {e!r}"); engs = []
         out.engagements.extend(engs); out.reports.append(rep)
+    wb.close()
     out.blockers = _blockers(out)
     on_dash_not_tabs = [c for c in dash if not any(_match_dashboard({c: dash[c]}, r.tab) for r in out.reports)]
     if on_dash_not_tabs:
@@ -432,7 +506,7 @@ def to_engine(me: ModelEngagement, cal: Calendar, cost_rates: Optional[dict] = N
     eng = Engagement(f"{me.client}:{me.assignment_key}", etype, s, e, None, None, False, False)
     allocs, actuals = [], []
     for i, a in enumerate(me.allocations):
-        aid = f"{me.assignment_key}:{i}"
+        aid = f"{me.assignment_key}:{a.row_key or a.resource}:{a.segment}"
         a_s, a_e = _alloc_dates(a, s, e)
         if a_e < a_s: notes.append(f"{a.resource}: window ends before it starts ({a_s}..{a_e}) — skipped"); continue
         loc = a.location or "US"
@@ -441,6 +515,8 @@ def to_engine(me: ModelEngagement, cal: Calendar, cost_rates: Optional[dict] = N
         units_kind = next((m.unit_kind for m in a.months), "hours")
         if basis == "hourly" and units_kind == "days": basis = "daily"
         rate = a.rate
+        sheet_rate_is_hourly = a.rate is not None and a.rate < MONTHLY_RATE_THRESHOLD      # before flat-billing rewrites basis
+        sheet_rate_per_day = sheet_rate_is_hourly and basis == "daily" and a.rate >= D("400")
         flat = [m.max_billing for m in a.months if m.max_billing]
         if basis != "monthly" and len(flat) >= 3 and len(set(flat)) == 1 and len({m.units for m in a.months if m.units}) > 1 and rate:
             # Max Billing is the same every month while the days/hours vary: this person is billed a flat monthly amount
@@ -465,7 +541,12 @@ def to_engine(me: ModelEngagement, cal: Calendar, cost_rates: Optional[dict] = N
         for m in a.months:
             if m.kind != "actual": continue
             hrs = None
-            if m.units is not None:
+            if m.billed is not None and sheet_rate_is_hourly:
+                # the invoice is the truth for hours: the sheet's leave columns say 'hours' and hold days (SoundHound),
+                # or hold days under an hours header (Costco September), and Costco's Days column is the calendar,
+                # not what was billed — 1,606 of 2,705 actual months disagreed with the invoice by the other route
+                hrs = m.billed / a.rate * (hours_per_day if sheet_rate_per_day else D(1))
+            elif m.units is not None:
                 net = m.units - (m.vacation or ZERO) - (m.unplanned or ZERO)
                 hrs = net * hours_per_day if m.unit_kind == "days" else net
             if hrs is not None or m.billed is not None:
@@ -549,6 +630,12 @@ def dry_run_markdown(imp: MasterImport, cal: Optional[Calendar] = None) -> str:
     for bu, b in d["bus"].items(): L += [f"- {x}" for x in b["beyond_sow"]]
     L += ["", "## Rows where the sheet disagrees with itself", "", "Max Billing in a forecast month is not rate × hours/days. The engine uses the rate; fix the sheet row or the rate in the tool.", ""]
     for bu, b in d["bus"].items(): L += [f"- {x}" for x in b["inconsistent"]]
+    L += ["", "## Assumed, because the workbook does not say", "",
+          "- **Employment type**: the model has no W-2 / 1099 column, so every person imports as W-2. For US people that is 36% burden; a 1099 contractor is 5%. Fix contractors on the Allocations tab before reading a US margin.",
+          "- **'Offshore' / 'Onsite'**: Offshore is imported as India - Pune, Onsite as US. Pune and Chennai share burden and floor; only the holiday list differs.",
+          "- **Cost per hour**: the Costing Sheet is empty, so every person is *cost unknown* and the engagement shows INCOMPLETE until the rate card or a cost per hour covers them.",
+          "- **Currency**: every figure is taken as USD, including Retro Rabbit.",
+          "- **Actual hours** are taken from the invoice (billed ÷ hourly rate) where the sheet has one; the Days / Vacation columns are not consistent enough to use.", ""]
     L += ["", "## How special rows were imported", ""]
     for bu, b in d["bus"].items():
         flat = [n for n in b["notes"] if "flat" in n]; other = [n for n in b["notes"] if "flat" not in n]

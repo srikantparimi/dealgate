@@ -99,7 +99,10 @@ paths:
         dry_run=true (default) returns the report and creates nothing. dry_run=false creates clients (manual, never mirrors),
         engagements (closed ones flagged closed), allocations (cost_per_hour null → cost unknown → INCOMPLETE until the rate card
         covers them) and actuals, loads holidays into the calendar for locations that have none, and returns the same report plus ids.
-        Re-importing the same file is idempotent on (client, assignment_key, person, segment): existing rows are updated, not duplicated.
+        Re-importing the same file is idempotent on the allocation's import_key — "{assignment_key}:{row_key}:{segment}" as
+        forecast_model_import.to_engine sets Allocation.id, where row_key is the person's name made unique within the
+        engagement ("TBC #1" … "TBC #11" on Costco) — so existing rows are updated, never duplicated and never collapsed.
+        dry_run=false with any blocker (a tab with no dashboard business unit, a person with no Location) is 422 {blockers} and writes nothing.
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary }, dry_run: { type: boolean, default: true }, as_of: { type: string, pattern: "^\\d{4}-\\d{2}$", description: the model's month; later months are never actuals } } } } } }
       responses:
         "200":
@@ -114,19 +117,7 @@ paths:
                   by_business_unit: { type: array, items: { type: object, properties: { business_unit: { type: string }, clients: { type: integer }, engagements: { type: integer }, people: { type: integer }, closed: { type: integer } } } }
                   tabs: { type: array, items: { type: object, properties: { tab: { type: string }, client: { type: string }, business_unit: { type: string, nullable: true }, engagement_type: { type: string }, engagements: { type: integer }, people: { type: integer }, allocations: { type: integer }, extensions: { type: integer }, months: { type: integer }, actual_months: { type: integer }, issues: { type: array, items: { type: string } } } } }
                   created: { type: object, nullable: true, properties: { clients: { type: integer }, engagements: { type: integer }, allocations: { type: integer }, actual_rows: { type: integer } } }
-                  blockers: { type: array, description: what the workbook must say before a load is safe (empty when it is complete); the load refuses with 422 while any remain, items: { type: object, properties: { kind: { type: string, enum: [business_unit, location] }, tab: { type: string }, detail: { type: string }, rows: { type: array, items: { type: string } }, fix: { type: string } } } }
-        "422":
-          description: >
-            Either not a forecast model master (no run-rate dashboard / no client tabs) — body.errors — or, on a load
-            (dry_run=false), the workbook does not say where people belong — body.blockers lists each blank cell
-            ({kind: business_unit | location, tab, detail, rows, fix}); nothing is created, no partial write. A dry run
-            with blockers is still 200 and returns the same list, so a dry run is how you find out.
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - { type: object, properties: { errors: { type: array, items: { type: string } } } }
-                  - { type: object, properties: { blockers: { type: array, items: { type: object, properties: { kind: { type: string, enum: [business_unit, location] }, tab: { type: string }, detail: { type: string }, rows: { type: array, items: { type: string } }, fix: { type: string } } } } } }
+        "422": { description: Not a forecast model master (no run-rate dashboard / no client tabs). }
   /engagements/{id}/forecast:
     get:
       tags: [forecast]
@@ -251,6 +242,7 @@ components:
             effective_start: { type: string, format: date }
             effective_end: { type: string, format: date }
             cost_per_hour_effective: { $ref: "#/components/schemas/Money", description: the value the engine used (override or rate card) }
+            import_key: { type: string, nullable: true, readOnly: true, description: "set by the forecast-model importer: {assignment_key}:{row_key}:{segment}; the identity a re-import matches on" }
             burden_pct: { $ref: "#/components/schemas/Pct" }
             superseded_by: { type: string, nullable: true }
             totals: { type: object, properties: { working_days: { type: integer }, hours: { type: number }, revenue: { $ref: "#/components/schemas/Money" }, loaded_cost: { $ref: "#/components/schemas/Money" }, row_gm_pct: { $ref: "#/components/schemas/Pct" }, under_resource_floor: { type: boolean } } }
