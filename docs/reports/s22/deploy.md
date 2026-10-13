@@ -143,6 +143,18 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | SPA | `assets/index-CwMcUryo.js` synced (immutable) + `index.html` (no-cache); CloudFront invalidation `I9X52BCW2B0D0RAKPWRWEPC643` COMPLETED; served bundle contains the import-workbook call |
 | S22 specs on staging | `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `4 passed (1.6m)`; owner path re-run with the P4-3 label assertions: passed; gate clean after every run: 0 clients / 0 approvers / 0 people / 0 engagements |
 
+## S22-P5 candidate (2026-10-12/13, session S22-3)
+
+| Item | Value |
+| --- | --- |
+| Branch / commit | `feat/s22-p5` @ `d0270a48` (off `origin/main` dfc3f8b) |
+| Image | `officeapp-dev-api:s22p5-d0270a48` · digest `sha256:9b2a594cb66f70aebbb3d5124224861583ed4a591556e1c055151585507c94ca` · 105,125,243 bytes · linux/amd64 |
+| SPA | `web/dist` → `assets/index-Cv_2NWJ5.js` |
+| Migration | **new**: `20261012_0066_bu_actuals` (engagement business_unit/sales_owner/delivery_owner/closed, allocation rate_basis/person, allocation_actual); reversible; parity 3 passed on Postgres; applied by the Terraform-owned migration task |
+| Plan | PLAN_SUMMARY |
+| Checksums | PLAN_CHECKSUMS |
+| Local proof | api/tests/forecast 33; test_s22_p5_business_units 9; test_s22_portfolio_forecast 21; vitest 91 files / 574; tsc clean; Playwright s22-p5-forecast-model (3) + s22-p4-upload (2) + s22-p1-contract + s22-p2-owner-path on the local stack (Postgres at 0066) all pass |
+
 ## S22-P4 main image (post-merge, 2026-10-12, Kanna: "approved")
 
 | Step | Result |
