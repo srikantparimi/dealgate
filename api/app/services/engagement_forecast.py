@@ -1072,6 +1072,7 @@ def _allocation_snapshot(row: Allocation) -> dict[str, Any]:
         "hours_override": None if row.hours_override is None else str(row.hours_override),
         "rate_basis": row.rate_basis or "hourly",
         "person": row.person,
+        "import_key": row.import_key,
         "superseded_by": None if row.superseded_by is None else str(row.superseded_by),
     }
 
@@ -1368,6 +1369,7 @@ def serialize_allocation(
         "resource_name": resource.name,
         "person": row.person,
         "rate_basis": row.rate_basis or "hourly",
+        "import_key": row.import_key,
         "role": row.role,
         "seniority": row.seniority,
         "location": row.location,
@@ -2235,8 +2237,9 @@ async def import_forecast_model(
 ) -> dict[str, Any]:
     """POST /engagements/import-forecast-model — dry run returns the report and creates nothing; load creates
     clients (manual), engagements (closed flagged), allocations (cost unknown), actuals and calendar locations.
-    Idempotent: an existing engagement (client × name) is updated; an existing allocation (engagement × person ×
-    start) is updated; actuals are replaced per allocation."""
+    Idempotent: an existing engagement (client × name) is updated; an existing allocation is matched on its
+    ``import_key`` — ``to_engine``'s ``Allocation.id`` ("{assignment_key}:{row_key}:{segment}"), so placeholder
+    seats that share a name (eleven ``TBC`` rows) survive a second import; actuals are replaced per allocation."""
 
     imp = parse_model_upload(data, as_of)
     bundle = await load_calendar(session)
@@ -2300,15 +2303,16 @@ async def import_forecast_model(
                 await session.flush()
             row = (
                 await session.execute(
-                    select(Allocation).where(Allocation.engagement_id == eng.id, Allocation.resource_id == resource.id,
-                                             Allocation.start == a.start, Allocation.superseded_by.is_(None)).limit(1)
+                    select(Allocation).where(Allocation.engagement_id == eng.id, Allocation.import_key == a.id).limit(1)
                 )
             ).scalar_one_or_none()
             if row is None:
                 row = Allocation(id=uuid.uuid4(), engagement_id=eng.id, resource_id=resource.id, role=a.resource, location=a.location,
-                                 employment_type=a.employment_type, utilization=a.utilization, start=a.start, cost_per_hour=None)
+                                 employment_type=a.employment_type, utilization=a.utilization, start=a.start, cost_per_hour=None,
+                                 import_key=a.id)
                 session.add(row)
                 created["allocations"] += 1
+            row.resource_id = resource.id
             row.role = a.resource
             row.location = a.location
             row.employment_type = a.employment_type

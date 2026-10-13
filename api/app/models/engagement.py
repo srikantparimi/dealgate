@@ -39,6 +39,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -147,6 +148,7 @@ class Allocation(Base):
         Index("ix_allocation_resource_window", "resource_id", "start", "end"),
         Index("ix_allocation_superseded_by", "superseded_by"),
         CheckConstraint("rate_basis IN ('hourly','daily','monthly')", name="ck_allocation_rate_basis"),
+        UniqueConstraint("engagement_id", "import_key", name="uq_allocation_import_key"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -175,6 +177,10 @@ class Allocation(Base):
         String(16), nullable=False, default="hourly", server_default="hourly"
     )
     person: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # S22 P5 final: the forecast-model importer's identity for this row
+    # ("{assignment_key}:{row_key}:{segment}"); matched on re-import. NULL for
+    # rows the app creates. Unique per engagement where set.
+    import_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     superseded_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("allocation.id", ondelete="SET NULL"), nullable=True
     )
