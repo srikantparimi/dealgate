@@ -54,6 +54,7 @@ async def demand_allocation(session, *, actor, account_id=None):
             demands.append(demand)
             metadata[demand.id] = {"source_id": source_id, "source_kind": source.get("source_kind", "plan"),
                 "project_id": source.get("project_id"), "plan_id": source["plan_id"], "title": source["title"],
+                "account_id": source["account_id"],
                 "account_name": source["account_name"], "source_url": source["source_url"],
                 "role": line["role"], "skills": line["skills"], "level": line["level"],
                 "location": line["location"], "timezone": line["timezone"]}

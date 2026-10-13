@@ -59,11 +59,21 @@ export interface CommandOverview {
     financial_blockers: string[];
   };
   capacity: {
-    planned_fte: number | null;
-    required_fte: number | null;
-    available_fte: number | null;
+    required_fte: DecimalStr | null;
+    allocated_fte: DecimalStr | null;
+    gap_fte: DecimalStr | null;
     status: "current" | "attention" | "unknown";
     message: string;
+    gaps: Array<{
+      account: string;
+      title: string;
+      role: string | null;
+      gap_fte: DecimalStr;
+      href: string;
+    }>;
+    source_status: "current" | "attention" | "unknown";
+    source_as_of: string | null;
+    source_detail: string;
   };
   recent_changes: Array<{
     id: UUID;

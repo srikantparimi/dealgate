@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -8,13 +9,25 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.models.client import Client
+from app.models.engagement import (
+    Allocation,
+    CalendarLocation,
+    Engagement,
+    ForecastPolicy,
+    Resource,
+)
 from app.models.hubspot_pipeline import HubspotPipeline, HubspotStage
 from app.models.opportunity import Opportunity
 from app.models.user import User
 from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.routers.command_center import router
-from app.services.command_center import CommandAccountFilters, command_accounts_csv, list_command_accounts
+from app.services.command_center import (
+    CommandAccountFilters,
+    build_command_overview,
+    command_accounts_csv,
+    list_command_accounts,
+)
 from app.services.hubspot_pipeline import PipelineFilters
 
 
@@ -69,6 +82,67 @@ async def _deal(
     session.add(row)
     await session.flush()
     return row
+
+
+async def _fixed_fee_engagement(
+    session,
+    *,
+    client: Client,
+    owner: User,
+    opportunity: Opportunity,
+    cost_per_hour: Decimal | None,
+) -> Engagement:
+    session.add(
+        ForecastPolicy(
+            hours_per_day=Decimal("8"), project_floor_pct=Decimal("0.35")
+        )
+    )
+    session.add(
+        CalendarLocation(
+            name="US",
+            burden_pct_w2=Decimal("0"),
+            burden_pct_1099=Decimal("0"),
+            resource_floor_pct=Decimal("0.35"),
+        )
+    )
+    resource = Resource(
+        name="Named consultant",
+        location="US",
+        employment_type="w2_employee",
+        seniority="Senior",
+    )
+    engagement = Engagement(
+        client_id=client.id,
+        opportunity_id=opportunity.id,
+        hubspot_deal_id=opportunity.hubspot_deal_id,
+        name="Signed delivery",
+        type="fixed_cost",
+        start=date(2026, 10, 1),
+        end=date(2026, 12, 31),
+        total_price=Decimal("90000"),
+        currency="USD",
+        same_dates_for_all=True,
+        owner_user_id=owner.id,
+        business_unit="ST21",
+    )
+    session.add_all([resource, engagement])
+    await session.flush()
+    session.add(
+        Allocation(
+            engagement_id=engagement.id,
+            resource_id=resource.id,
+            role="Consultant",
+            seniority="Senior",
+            location="US",
+            employment_type="w2_employee",
+            utilization=Decimal("1"),
+            bill_rate=None,
+            cost_per_hour=cost_per_hour,
+            rate_basis="hourly",
+        )
+    )
+    await session.flush()
+    return engagement
 
 
 @pytest.mark.asyncio
@@ -156,6 +230,216 @@ async def test_search_pagination_and_csv_share_the_eligible_population(session):
     assert "Alpha engagement" in csv_text
     assert "Beta engagement" in csv_text
     assert "Hidden engagement" not in csv_text
+    assert "Period revenue,Forecast GM,Assigned FTE,Required FTE,Financial status" in csv_text
+
+
+@pytest.mark.asyncio
+async def test_overview_keeps_stage4_in_its_population_while_accounts_do_not(session):
+    owner = User(email="scope@example.test", name="Scope Owner", groups=[])
+    client = Client(name="Scope account", hubspot_company_id="company-scope")
+    session.add_all([owner, client])
+    await session.flush()
+    stages = await _pipeline(session, "scope")
+    await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="scope",
+        stage=stages[3],
+        name="Stage four remains in pulse",
+    )
+    included = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="scope",
+        stage=stages[4],
+        name="Stage five appears in table",
+    )
+    await session.commit()
+
+    overview = await build_command_overview(
+        session, scope=PipelineFilters(include_closed=True)
+    )
+    accounts = await list_command_accounts(
+        session, scope=PipelineFilters(include_closed=True)
+    )
+
+    assert Decimal(overview["metrics"]["open_opportunity_value"]) == Decimal(
+        "250000"
+    )
+    assert overview["lifecycle"]["pipeline"] == 2
+    assert [row.opportunity_id for row in accounts.items] == [included.id]
+
+
+@pytest.mark.asyncio
+async def test_overview_reconciles_real_forecast_without_double_counting_pipeline(session):
+    owner = User(email="finance@example.test", name="Finance Owner", groups=[])
+    client = Client(name="Finance account", hubspot_company_id="company-finance")
+    session.add_all([owner, client])
+    await session.flush()
+    stages = await _pipeline(session, "finance")
+    deal = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="finance",
+        stage=stages[4],
+        name="Signed fixed fee",
+    )
+    await _fixed_fee_engagement(
+        session,
+        client=client,
+        owner=owner,
+        opportunity=deal,
+        cost_per_hour=Decimal("50"),
+    )
+    await session.commit()
+
+    overview = await build_command_overview(
+        session,
+        scope=PipelineFilters(include_closed=True),
+        period="this_quarter",
+        currency="USD",
+    )
+
+    # Oct-Dec 2026 has 66 weekdays: 528 hours * $50 = $26,400.
+    expected_gm = (Decimal("90000") - Decimal("26400")) / Decimal("90000")
+    assert Decimal(overview["revenue"]["remaining_signed"]) == Decimal("90000")
+    assert Decimal(overview["revenue"]["actual"]) == Decimal("0")
+    assert Decimal(overview["metrics"]["committed_gm_pct"]) == expected_gm
+    assert overview["revenue"]["potential_expected"] == "0"
+    assert overview["revenue"]["potential_upside"] == "0"
+    assert overview["revenue"]["cost_coverage_complete"] is True
+    assert overview["metrics"]["planned_people"] == 1
+    assert overview["lifecycle"]["active"] == 1
+    assert overview["lifecycle"]["pipeline"] == 0
+
+
+@pytest.mark.asyncio
+async def test_known_revenue_stays_visible_when_a_staff_cost_is_missing(session):
+    owner = User(email="missing@example.test", name="Missing Cost Owner", groups=[])
+    client = Client(name="Missing cost account", hubspot_company_id="company-missing")
+    session.add_all([owner, client])
+    await session.flush()
+    stages = await _pipeline(session, "missing")
+    deal = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="missing",
+        stage=stages[4],
+        name="Known fee, unknown cost",
+    )
+    await _fixed_fee_engagement(
+        session,
+        client=client,
+        owner=owner,
+        opportunity=deal,
+        cost_per_hour=None,
+    )
+    await session.commit()
+
+    overview = await build_command_overview(
+        session, scope=PipelineFilters(include_closed=True), currency="USD"
+    )
+
+    assert Decimal(overview["revenue"]["remaining_signed"]) == Decimal("90000")
+    assert overview["metrics"]["committed_gm_pct"] is None
+    assert overview["revenue"]["cost_coverage_complete"] is False
+    assert any(
+        "cost" in blocker.lower()
+        for blocker in overview["revenue"]["financial_blockers"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_capacity_uses_the_existing_dated_allocation_service(session, monkeypatch):
+    owner = User(email="capacity@example.test", name="Capacity Owner", groups=[])
+    client = Client(name="Capacity account", hubspot_company_id="company-capacity")
+    session.add_all([owner, client])
+    await session.flush()
+    stages = await _pipeline(session, "capacity")
+    deal = await _deal(
+        session,
+        client=client,
+        owner=owner,
+        pipeline="capacity",
+        stage=stages[4],
+        name="Dated staffed delivery",
+    )
+    await _fixed_fee_engagement(
+        session,
+        client=client,
+        owner=owner,
+        opportunity=deal,
+        cost_per_hour=Decimal("50"),
+    )
+    await session.commit()
+
+    async def allocation(*_args, **_kwargs):
+        return {
+            "complete": True,
+            "missing": [],
+            "sources": [{"source_as_of": "2026-10-12T20:00:00+00:00"}],
+            "intervals": [
+                {
+                    "start": "2026-10-01",
+                    "end": "2026-12-31",
+                    "demands": [
+                        {
+                            "id": "demand-1",
+                            "source_id": "plan-1",
+                            "account_id": str(client.id),
+                            "account_name": client.name,
+                            "title": "Delivery plan",
+                            "role": "Consultant",
+                            "required_fte": "2.5",
+                            "gap_fte": "0.5",
+                            "source_url": f"/forecast?account_id={client.id}",
+                        }
+                    ],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("app.services.people_allocation.demand_allocation", allocation)
+    overview = await build_command_overview(
+        session,
+        scope=PipelineFilters(include_closed=True),
+        currency="USD",
+        actor=AuthUser(owner.id, owner.email, owner.name, ("SystemAdmin",)),
+    )
+
+    assert overview["capacity"] == {
+        "required_fte": "2.5",
+        "allocated_fte": "2.0",
+        "gap_fte": "0.5",
+        "status": "attention",
+        "message": "0.5 FTE remains uncovered at peak demand.",
+        "gaps": [
+            {
+                "account": "Capacity account",
+                "title": "Delivery plan",
+                "role": "Consultant",
+                "href": f"/forecast?account_id={client.id}",
+                "gap_fte": "0.5",
+            }
+        ],
+        "source_status": "current",
+        "source_as_of": "2026-10-12T20:00:00+00:00",
+        "source_detail": "1 current managed workforce source(s)",
+    }
+    workforce = next(row for row in overview["sources"] if row["name"] == "Workforce supply")
+    assert workforce["status"] == "current"
+
+    accounts = await list_command_accounts(
+        session,
+        scope=PipelineFilters(include_closed=True),
+        actor=AuthUser(owner.id, owner.email, owner.name, ("SystemAdmin",)),
+    )
+    assert accounts.items[0].assigned_fte == Decimal("1")
+    assert accounts.items[0].required_fte == Decimal("2.5")
 
 
 @pytest.mark.asyncio

@@ -50,45 +50,39 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "growth",
-    label: "Growth",
+    id: "business",
+    label: "Business",
     items: [
-      { to: "/pipeline", label: "Pipeline clients", icon: Building2 },
-      { to: "/discovery", label: "AI discovery", icon: Sparkles },
-      { to: "/agreements", label: "NDA & MSA", icon: ShieldCheck },
-    ],
-  },
-  {
-    id: "commitments",
-    label: "Commitments",
-    items: [
-      { to: "/sows", label: "SOW approvals", icon: FileCheck2 },
-      { to: "/sows/new", label: "New SOW studio", icon: FilePlus2 },
-    ],
-  },
-  {
-    id: "operations",
-    label: "Operations",
-    items: [
+      { to: "/pipeline", label: "Pipeline", icon: Building2 },
+      { to: "/sows", label: "SOWs & approvals", icon: FileCheck2 },
       { to: "/projects", label: "Projects", icon: Truck },
-      { to: "/renewals", label: "Renewals", icon: RefreshCcw },
-      { to: "/handoffs", label: "Signed handoff", icon: Handshake },
-      { to: "/reports", label: "Reporting", icon: LineChart },
       { to: "/forecast", label: "Forecast", icon: ChartNoAxesCombined,
         requireAny: ["Delivery", "Finance", "CEO", "SystemAdmin", "Sales", "SalesLeader"] },
-      { to: "/portfolio", label: "Portfolio forecast", icon: Briefcase,
+      { to: "/portfolio", label: "Portfolio", icon: Briefcase,
         requireAny: ["Delivery", "Finance", "CEO", "SystemAdmin", "HR", "Sales", "SalesLeader", "Presales"] },
-      // S22 P5: the FY forecast model master → dry run → load. Writers only (it creates engagements).
-      { to: "/import/forecast-model", label: "Import the forecast model", icon: Upload,
-        requireAny: ["Delivery", "Finance", "SystemAdmin", "Sales", "SalesLeader"] },
-      { to: "/people", label: "People planning", icon: Users,
+      { to: "/people", label: "People", icon: Users,
         requireAny: ["HR", "SystemAdmin"] },
+    ],
+  },
+  {
+    id: "supporting",
+    label: "Supporting work",
+    items: [
+      { to: "/renewals", label: "Renewals", icon: RefreshCcw },
+      { to: "/agreements", label: "NDA & MSA", icon: ShieldCheck },
+      { to: "/discovery", label: "AI discovery", icon: Sparkles },
+      { to: "/reports", label: "Reports", icon: LineChart },
+      { to: "/handoffs", label: "Signed handoff", icon: Handshake },
+      { to: "/sows/new", label: "New SOW studio", icon: FilePlus2 },
     ],
   },
   {
     id: "administration",
     label: "Administration",
     items: [
+      // S22 P5: the FY forecast model master -> dry run -> load. Writers only.
+      { to: "/import/forecast-model", label: "Import the forecast model", icon: Upload,
+        requireAny: ["Delivery", "Finance", "SystemAdmin", "Sales", "SalesLeader"] },
       {
         to: "/settings",
         label: "Settings",

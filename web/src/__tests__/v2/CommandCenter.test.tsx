@@ -21,7 +21,7 @@ const overview: commandApi.CommandOverview = {
     { month: "2026-11", actual: "0", remaining_signed: "35000", potential_expected: "100000", potential_upside: "200000" },
     { month: "2026-12", actual: "0", remaining_signed: "35000", potential_expected: "150000", potential_upside: "300000" },
   ] },
-  capacity: { planned_fte: 4, required_fte: null, available_fte: null, status: "unknown", message: "Workforce supply is not current." },
+  capacity: { required_fte: null, allocated_fte: null, gap_fte: null, status: "unknown", message: "Workforce supply is not current.", gaps: [], source_status: "unknown", source_as_of: null, source_detail: "No current workforce source" },
   recent_changes: [],
   sources: [{ name: "HubSpot pipeline mirror", status: "current", as_of: "2026-10-13T12:00:00Z", detail: "3 deals" }],
   configuration_gaps: [],
@@ -75,5 +75,23 @@ describe("Command Center redesign", () => {
     expect(screen.getByRole("dialog", { name: "Acme" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open deal" })).toHaveAttribute("href", "/deals/11111111-1111-1111-1111-111111111111");
     expect(screen.getByText("rate missing")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Acme" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the Stage 5 account table available when the overview source fails", async () => {
+    vi.mocked(commandApi.getCommandOverview).mockRejectedValueOnce(new Error("forecast unavailable"));
+    renderPage();
+    expect(await screen.findByText("Could not load actions: forecast unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("Acme", { selector: "button" })).toBeInTheDocument();
+    expect(screen.getByTestId("stage5-scope")).toBeVisible();
+  });
+
+  it("keeps healthy overview sections available when the Stage 5 table fails", async () => {
+    vi.mocked(commandApi.getCommandAccounts).mockRejectedValueOnce(new Error("pipeline unavailable"));
+    renderPage();
+    expect(await screen.findByText("Could not load accounts: pipeline unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("$120,000")).toBeInTheDocument();
+    expect(screen.getByText("Protect delivery. Unlock growth.")).toBeVisible();
   });
 });

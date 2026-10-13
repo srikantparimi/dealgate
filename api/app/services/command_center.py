@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,7 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.services.hubspot_pipeline import PipelineFilters, matching_opportunity_ids
 from app.services.hubspot_pipeline import list_opportunities
+from app.services.people_demand import DEMAND_READ
 
 
 STAGE5_SCOPE_LABEL = "HubSpot deals · Stage 5 and above"
@@ -183,22 +185,34 @@ async def _engagement_financials(
 ) -> dict:
     from app.services.engagement_forecast import (
         ForecastInputError,
+        allocation_rows,
+        effective_window,
         forecast_payload,
         margin_pct,
     )
 
+    staffing = await allocation_rows(session, engagement.id, include_superseded=False)
+    assigned_by_month = {month: Decimal("0") for month in months}
+    for allocation, _resource in staffing:
+        allocation_start, allocation_end = effective_window(engagement, allocation)
+        for month in months:
+            month_start, month_end = _period_bounds((month,))
+            if allocation_start <= month_end and allocation_end >= month_start:
+                assigned_by_month[month] += allocation.utilization
+    assigned_fte = max(assigned_by_month.values(), default=Decimal("0"))
+
     try:
         payload = await forecast_payload(session, engagement, store=False)
     except ForecastInputError as error:
-        detail = error.detail if isinstance(error.detail, list) else [str(error.detail)]
         return {
             "status": "incomplete",
-            "blockers": tuple(str(item) for item in detail),
+            "blockers": tuple(str(item) for item in error.missing),
             "actual": None,
             "remaining": None,
             "cost": None,
             "gm_pct": None,
             "people": None,
+            "assigned_fte": assigned_fte,
             "monthly": {},
         }
 
@@ -233,13 +247,54 @@ async def _engagement_financials(
         "cost": cost if complete else None,
         "gm_pct": margin_pct(revenue, cost) if complete else None,
         "people": max((int(line.get("people") or 0) for line in selected), default=0),
+        "assigned_fte": assigned_fte,
         "monthly": monthly,
     }
+
+
+async def _required_fte_by_account(
+    session: AsyncSession,
+    *,
+    actor,
+    account_ids: set[uuid.UUID],
+    months: tuple[str, ...],
+) -> dict[uuid.UUID, Decimal]:
+    if actor is None or not set(actor.groups) & DEMAND_READ or not account_ids:
+        return {}
+    from app.services.people_allocation import demand_allocation
+
+    try:
+        allocation = await demand_allocation(session, actor=actor)
+    except HTTPException:
+        return {}
+    start, end = _period_bounds(months)
+    peak: dict[uuid.UUID, Decimal] = {}
+    for interval in allocation.get("intervals", []):
+        interval_start = date.fromisoformat(str(interval["start"])[:10])
+        interval_end = date.fromisoformat(str(interval["end"])[:10])
+        if interval_start > end or interval_end < start:
+            continue
+        totals: dict[uuid.UUID, Decimal] = {}
+        for row in interval.get("demands", []):
+            try:
+                account_id = uuid.UUID(str(row.get("account_id")))
+            except (TypeError, ValueError):
+                continue
+            if account_id in account_ids:
+                totals[account_id] = totals.get(account_id, Decimal("0")) + Decimal(
+                    str(row["required_fte"])
+                )
+        for account_id, required in totals.items():
+            peak[account_id] = max(peak.get(account_id, Decimal("0")), required)
+    return peak
+
+
 async def list_command_accounts(
     session: AsyncSession,
     *,
     scope: PipelineFilters,
     filters: CommandAccountFilters | None = None,
+    actor=None,
 ) -> CommandAccountsPage:
     filters = filters or CommandAccountFilters()
     page = max(1, filters.page)
@@ -340,6 +395,16 @@ async def list_command_accounts(
         financials[engagement.id] = await _engagement_financials(
             session, engagement, months=months
         )
+    required_by_account = await _required_fte_by_account(
+        session,
+        actor=actor,
+        account_ids={
+            opportunity.client_id
+            for opportunity, _client, _owner, _stage in records
+            if opportunity.client_id is not None
+        },
+        months=months,
+    )
 
     items = []
     for opportunity, client, owner, stage in records:
@@ -380,11 +445,11 @@ async def list_command_accounts(
                 period_revenue=period_revenue,
                 forecast_gm_pct=finance["gm_pct"] if finance else None,
                 assigned_fte=(
-                    Decimal(str(finance["people"]))
-                    if finance and finance["people"] is not None
+                    finance["assigned_fte"]
+                    if finance
                     else None
                 ),
-                required_fte=None,
+                required_fte=(required_by_account.get(client.id) if client else None),
                 financial_status=finance["status"] if finance else "unavailable",
                 financial_blockers=finance["blockers"] if finance else (),
             )
@@ -400,6 +465,7 @@ async def command_accounts_csv(
     *,
     scope: PipelineFilters,
     filters: CommandAccountFilters | None = None,
+    actor=None,
 ) -> str:
     filters = filters or CommandAccountFilters()
     page_number = 1
@@ -410,6 +476,7 @@ async def command_accounts_csv(
             session,
             scope=scope,
             filters=replace(filters, page=page_number, page_size=100),
+            actor=actor,
         )
         total = page.total
         rows.extend(page.items)
@@ -428,6 +495,11 @@ async def command_accounts_csv(
             "Business unit",
             "Currency",
             "Deal value",
+            "Period revenue",
+            "Forecast GM",
+            "Assigned FTE",
+            "Required FTE",
+            "Financial status",
             "Owner",
             "Next action",
             "Due",
@@ -444,6 +516,11 @@ async def command_accounts_csv(
                 row.business_unit or "",
                 row.currency or "",
                 "" if row.deal_value is None else format(row.deal_value, "f"),
+                "" if row.period_revenue is None else format(row.period_revenue, "f"),
+                "" if row.forecast_gm_pct is None else format(row.forecast_gm_pct, "f"),
+                "" if row.assigned_fte is None else format(row.assigned_fte, "f"),
+                "" if row.required_fte is None else format(row.required_fte, "f"),
+                row.financial_status,
                 row.owner_name or row.owner_email or "",
                 row.next_action or "",
                 row.next_action_due or "",
@@ -456,6 +533,131 @@ def _decimal_text(value: Decimal | None) -> str | None:
     return None if value is None else format(value, "f")
 
 
+def _period_bounds(months: tuple[str, ...]) -> tuple[date, date]:
+    start_year, start_month = (int(value) for value in months[0].split("-"))
+    end_year, end_month = (int(value) for value in months[-1].split("-"))
+    if end_month == 12:
+        next_month = date(end_year + 1, 1, 1)
+    else:
+        next_month = date(end_year, end_month + 1, 1)
+    return date(start_year, start_month, 1), date.fromordinal(next_month.toordinal() - 1)
+
+
+async def _capacity_summary(
+    session: AsyncSession,
+    *,
+    actor,
+    account_ids: set[uuid.UUID],
+    months: tuple[str, ...],
+) -> dict:
+    unavailable = {
+        "required_fte": None,
+        "allocated_fte": None,
+        "gap_fte": None,
+        "status": "unknown",
+        "message": "Current demand and workforce publications are required for a dated capacity view.",
+        "gaps": [],
+        "source_status": "unknown",
+        "source_as_of": None,
+        "source_detail": "No compatible dated supply evidence in this command scope",
+    }
+    if actor is None or not set(actor.groups) & DEMAND_READ or not account_ids:
+        return unavailable
+
+    from app.services.people_allocation import demand_allocation
+
+    try:
+        allocation = await demand_allocation(session, actor=actor)
+    except HTTPException as error:
+        return {
+            **unavailable,
+            "message": f"Capacity evidence is unavailable: {error.detail}",
+            "source_status": "attention",
+            "source_detail": str(error.detail),
+        }
+    start, end = _period_bounds(months)
+    snapshots: list[dict] = []
+    gap_rows: dict[str, dict] = {}
+    for interval in allocation.get("intervals", []):
+        interval_start = date.fromisoformat(str(interval["start"])[:10])
+        interval_end = date.fromisoformat(str(interval["end"])[:10])
+        if interval_start > end or interval_end < start:
+            continue
+        demands = [
+            row
+            for row in interval.get("demands", [])
+            if row.get("account_id") in {str(identifier) for identifier in account_ids}
+        ]
+        if not demands:
+            continue
+        required = sum((Decimal(str(row["required_fte"])) for row in demands), Decimal("0"))
+        gap = sum((Decimal(str(row["gap_fte"])) for row in demands), Decimal("0"))
+        snapshots.append({"required": required, "gap": gap})
+        for row in demands:
+            row_gap = Decimal(str(row["gap_fte"]))
+            if row_gap <= 0:
+                continue
+            key = str(row.get("source_id") or row.get("id"))
+            current = gap_rows.get(key)
+            if current is None or row_gap > current["gap"]:
+                gap_rows[key] = {
+                    "account": row.get("account_name") or "Account",
+                    "title": row.get("title") or row.get("role") or "Staffing demand",
+                    "role": row.get("role"),
+                    "gap": row_gap,
+                    "href": row.get("source_url") or "/people/demand",
+                }
+
+    sources = allocation.get("sources") or []
+    source_as_of = max((source.get("source_as_of") for source in sources), default=None)
+    missing = set(allocation.get("missing") or [])
+    if not snapshots:
+        return {
+            **unavailable,
+            "message": "No current dated demand publication matches signed work in this scope.",
+            "source_as_of": source_as_of,
+            "source_detail": "Demand publication is missing, stale or outside the selected period",
+        }
+
+    peak = max(snapshots, key=lambda row: (row["required"], row["gap"]))
+    required = peak["required"]
+    if not allocation.get("complete"):
+        blockers = ", ".join(sorted(missing)[:3]) or "publication evidence incomplete"
+        return {
+            **unavailable,
+            "required_fte": _decimal_text(required),
+            "message": f"Required demand is known; allocation remains unknown ({blockers}).",
+            "source_as_of": source_as_of,
+            "source_detail": f"Workforce allocation incomplete: {blockers}",
+        }
+
+    gap = peak["gap"]
+    allocated = required - gap
+    return {
+        "required_fte": _decimal_text(required),
+        "allocated_fte": _decimal_text(allocated),
+        "gap_fte": _decimal_text(gap),
+        "status": "attention" if gap > 0 else "current",
+        "message": (
+            f"{_decimal_text(gap)} FTE remains uncovered at peak demand."
+            if gap > 0
+            else "Current dated demand is covered by the managed workforce allocation."
+        ),
+        "gaps": [
+            {
+                key: value
+                for key, value in row.items()
+                if key != "gap"
+            }
+            | {"gap_fte": _decimal_text(row["gap"])}
+            for row in sorted(gap_rows.values(), key=lambda item: item["gap"], reverse=True)[:5]
+        ],
+        "source_status": "current",
+        "source_as_of": source_as_of,
+        "source_detail": f"{len(sources)} current managed workforce source(s)",
+    }
+
+
 async def build_command_overview(
     session: AsyncSession,
     *,
@@ -463,6 +665,7 @@ async def build_command_overview(
     period: str = "this_quarter",
     currency: str = "USD",
     focus: str = "leadership",
+    actor=None,
 ) -> dict:
     """Build the non-table sections from canonical pipeline and forecast data."""
 
@@ -519,7 +722,7 @@ async def build_command_overview(
     signed_cost = Decimal("0")
     has_signed_revenue = False
     complete_costs = True
-    planned_people = 0
+    planned_people_by_month = {month: 0 for month in months}
     financial_blockers: list[str] = []
     for engagement, finance in financial_rows:
         if engagement.currency != currency:
@@ -533,11 +736,19 @@ async def build_command_overview(
             financial_blockers.extend(finance["blockers"])
         else:
             signed_cost += finance["cost"]
-        planned_people = max(planned_people, int(finance["people"] or 0))
         for month, values in finance["monthly"].items():
             if month in monthly:
                 monthly[month]["actual"] += values["actual"]
                 monthly[month]["remaining_signed"] += values["signed"]
+                planned_people_by_month[month] += int(values["people"] or 0)
+
+    planned_people = max(planned_people_by_month.values(), default=0)
+    capacity = await _capacity_summary(
+        session,
+        actor=actor,
+        account_ids={engagement.client_id for engagement, _ in financial_rows},
+        months=months,
+    )
 
     stage_ids = {row.stage_id for row in opportunities if row.stage_id}
     stage_probability = dict(
@@ -552,8 +763,14 @@ async def build_command_overview(
     potential_expected = Decimal("0")
     potential_upside = Decimal("0")
     potential_complete = True
+    linked_opportunity_ids = set(first_engagement_by_opportunity)
     for row in opportunities:
-        if row.is_closed_won or row.is_closed_lost or row.currency != currency:
+        if (
+            row.opportunity_id in linked_opportunity_ids
+            or row.is_closed_won
+            or row.is_closed_lost
+            or row.currency != currency
+        ):
             continue
         if row.amount is None:
             potential_complete = False
@@ -583,9 +800,12 @@ async def build_command_overview(
         "ceo_exception": 0,
         "signature": 0,
         "handoff": 0,
-        "active": len(first_engagement_by_opportunity),
+        "active": 0,
     }
     for row in opportunities:
+        if row.opportunity_id in first_engagement_by_opportunity:
+            lifecycle["active"] += 1
+            continue
         state = row.sow_approval_state
         if row.sow_count == 0:
             lifecycle["pipeline"] += 1
@@ -708,13 +928,7 @@ async def build_command_overview(
             "cost_coverage_complete": complete_costs,
             "financial_blockers": sorted(set(financial_blockers)),
         },
-        "capacity": {
-            "planned_fte": planned_people if financial_rows else None,
-            "required_fte": None,
-            "available_fte": None,
-            "status": "unknown",
-            "message": "Required demand and available workforce remain unknown until current publications are present.",
-        },
+        "capacity": capacity,
         "recent_changes": recent,
         "sources": [
             {
@@ -731,9 +945,9 @@ async def build_command_overview(
             },
             {
                 "name": "Workforce supply",
-                "status": "unknown",
-                "as_of": None,
-                "detail": "No compatible dated supply evidence in this command scope",
+                "status": capacity["source_status"],
+                "as_of": capacity["source_as_of"],
+                "detail": capacity["source_detail"],
             },
             {
                 "name": "Notifications",

@@ -2,45 +2,73 @@
 
 ## RESUME HERE
 
-**2026-10-13 00:47 PDT — COMMAND CENTER REDESIGN LOCAL CHECKPOINT.**
+**2026-10-13 01:27 PDT — COMMAND CENTER REDESIGN CONNECTED LOCAL CHECKPOINT.**
 Authoritative tree `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`,
-branch `feat/command-center-redesign`, currently based on full commit
-`21a138a7369455ede9aa8f84664c5a74a72055ab` (the directive/prototype
-checkpoint; implementation changes listed below are intentionally uncommitted
-until this checkpoint is validated). Current task: complete and stage the
-approved real-data Command Center without merging to `main`. The new backend
-read model and routes implement per-HubSpot-pipeline Stage-5 eligibility,
-pagination/search/export, explicit configuration gaps, and established
-forecast-service financial enrichment. The new page implements independent
-section loading, operational filters/actions/metrics/lifecycle/revenue,
-honest unknown capacity, the mandatory Stage-5 table scope, CSV export and a
-record detail drawer. Focused evidence at this revision: backend Stage-5 suite
-5 passed; Ruff clean; frontend TypeScript and production build passed;
-Command Center interaction suite 3 passed. A checkpoint review found and fixed
-an unexercised wrong `margin_pct` import before connected testing. No deploy,
-migration, Terraform operation, or main merge is active.
+branch `feat/command-center-redesign`, application checkpoint
+`9e58bd2c8eb0bc5b24f07b30abd47af181d5fe04` plus the tested owned changes
+listed by `git status --short` (being committed at this checkpoint). Baseline
+is `origin/main` `03b76e62b154eb25fbac8b918112214f4e32543f`; directive checkpoint is
+`21a138a7369455ede9aa8f84664c5a74a72055ab`. Current task: complete staging
+release proof for the approved Command Center redesign and stop for owner
+click-through; do not merge `main`.
 
-Uncommitted owned files: `api/app/main.py`,
-`api/app/routers/command_center.py`, `api/app/services/command_center.py`,
-`api/tests/test_command_center_accounts.py`,
-`web/src/api/commandCenter.ts`, `web/src/pages/v2/CommandCenter.tsx`,
-`web/src/__tests__/v2/CommandCenter.test.tsx`, this handoff, and the execution
-note in `docs/backlog/command-center-redesign.md`. No other worker changes are
-present in this tree. Existing `.venv` and `web/node_modules` are local,
-gitignored dependencies. Exact resume:
+Implemented: canonical pipeline-backed overview; per-pipeline ordered Stage-5
+threshold; HubSpot-only qualified table; server search/BU/owner/watch/risk,
+pagination and CSV; real forecast-service revenue/cost/GM; dated staffing FTE;
+People demand/allocation integration with precise unknown states; ranked work,
+lifecycle, revenue scenarios, source health, activity, detail drawer and
+context-preserving links; compact approved navigation hierarchy; responsive
+desktop/mobile UI. The People allocator now exposes account identity on its
+authorized demand rows so this view can scope existing allocation results; it
+does not introduce a second capacity formula. Detailed acceptance evidence is
+`docs/reports/command-center-redesign.md`.
+
+Current evidence: Ruff clean; Command Center + People allocation backend 12
+passed; TypeScript clean; related frontend 46 passed; connected Playwright 2
+passed in 14.9s. Screenshots:
+`docs/evidence/command-center/command-center-desktop.png` and
+`command-center-mobile.png`. Connected values were $90,000 committed revenue,
+62.5% forecast GM, $224,000 weighted unsigned potential; Stage 5 and 6 were
+present exactly once, Stage 4 absent. Production build must be rerun after this
+checkpoint; staging verification is not yet done.
+
+Runtime: API session 74272 on `127.0.0.1:8230`; Vite session 95447 on
+`127.0.0.1:5230`; isolated PostgreSQL database `dealgate_command_center` in
+container `dg-s22-pg` on local port 55432, migration head
+`20261013_0067_import_key`. No browser test, migration, Terraform, deployment
+or background job is active. No subagent/worker owns work in this tree.
+Credentials are sourced from the existing local container/environment and are
+not recorded here.
+
+Owned dirty files before the checkpoint commit are the Command Center router,
+service, tests, People allocation enrichment, navigation, API/UI/types/tests,
+local fixture, connected spec/config, evidence PNGs, this handoff and the slice
+report. The separate main worktree remains at
+`3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six pre-existing
+modified `docs/reports/s19-1/*.png` files; they were not touched. Other legacy
+S20/S21 worktrees remain registered but have no ownership or unmerged dependency
+for this slice. Exact resume:
 
 ```bash
 cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
 git status --short && git diff --check
-.venv/bin/python -m pytest -q api/tests/test_command_center_accounts.py
-cd web && npm run typecheck && npm test -- --run src/__tests__/v2/CommandCenter.test.tsx
+.venv/bin/ruff check api/app/services/command_center.py api/app/services/people_allocation.py api/app/routers/command_center.py api/tests/test_command_center_accounts.py scripts/command_center_fixture.py
+.venv/bin/python -m pytest -q api/tests/test_command_center_accounts.py api/tests/test_s21_people_allocation_service.py
+cd web && npm run typecheck && npm test -- --run src/__tests__/v2/CommandCenter.test.tsx src/__tests__/ui-v2/PrimaryNavigation.test.tsx src/__tests__/v2/S16Navigation.test.tsx src/__tests__/v2/S22P5.test.tsx && npm run build
 ```
 
-Next: add connected financial reconciliation and population-independence
-assertions, verify navigation/back context and accessibility, then run the
-local real-service browser journey. Only after those gates pass, prepare the
-Terraform-owned staging plan for the required human approval. Older S21/S22
-entries below are historical and do not describe this branch.
+Then inspect the established S22 deploy report/workflow, build and push one
+immutable candidate, save/review the whole-root Terraform plan, and request
+the required human apply approval with exact plan counts and checksum. After
+apply, publish the exact SPA, run smoke plus this connected journey against
+staging, capture fresh proof, and stop for product-owner acceptance. Historical
+failures: the first browser attempt used the wrong API proxy; the second found
+missing ARIA label targets; the third found fixture BU evidence was not
+canonical; the first post-capacity run used an old API process without tenant
+configuration. Each boundary is fixed and the new run passed. The e2e package
+still has four unrelated inherited TypeScript errors in specs 22/23/24; this
+new spec executes successfully and those older files were not weakened.
+Older S21/S22 entries below are historical and do not describe this branch.
 
 **2026-10-13 — S22-P5 MERGED TO MAIN AND ROLLED.** Kanna accepted the staging
 click-through ("push and merge the changes looks good"); `feat/s22-p5` @ 48e46d0

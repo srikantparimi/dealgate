@@ -70,6 +70,7 @@ async def overview(
         period=period,
         currency=currency.upper(),
         focus=focus,
+        actor=user,
     )
     return jsonable_encoder(result)
 
@@ -102,6 +103,7 @@ async def accounts(
             watched_opportunity_ids=watched_opportunities,
             watched_client_ids=watched_clients,
         ),
+        actor=user,
     )
     return jsonable_encoder(asdict(result))
 
@@ -132,6 +134,7 @@ async def accounts_csv(
             watched_opportunity_ids=watched_opportunities,
             watched_client_ids=watched_clients,
         ),
+        actor=user,
     )
     return PlainTextResponse(
         text,

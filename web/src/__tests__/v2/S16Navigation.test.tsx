@@ -13,19 +13,19 @@ it("S16 exposes only the current navigation destinations", () => {
   expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
     "Command center",
     "My work",
-    "Pipeline clients",
-    "AI discovery",
-    "NDA & MSA",
-    "SOW approvals",
-    "New SOW studio",
+    "Pipeline",
+    "SOWs & approvals",
     "Projects",
-    "Renewals",
-    "Signed handoff",
-    "Reporting",
     "Forecast",
-    "Portfolio forecast",
+    "Portfolio",
+    "People",
+    "Renewals",
+    "NDA & MSA",
+    "AI discovery",
+    "Reports",
+    "Signed handoff",
+    "New SOW studio",
     "Import the forecast model",
-    "People planning",
     "Settings",
   ]);
   expect(screen.queryByText(/Legacy/)).not.toBeInTheDocument();
@@ -41,14 +41,14 @@ it.each(["HR", "Legal"])("Forecast financial views are not advertised to %s", (r
   expect(screen.queryByRole("link", { name: "Forecast" })).not.toBeInTheDocument();
 });
 
-it.each(["HR", "SystemAdmin"])("People planning is discoverable for %s", (role) => {
+it.each(["HR", "SystemAdmin"])("People is discoverable for %s", (role) => {
   render(<MemoryRouter><PrimaryNavigation groups={[role]} /></MemoryRouter>);
-  expect(screen.getByRole("link", { name: "People planning" })).toHaveAttribute("href", "/people");
+  expect(screen.getByRole("link", { name: "People" })).toHaveAttribute("href", "/people");
 });
 
 it.each(["Sales", "Legal", "Finance"])("Named People supply is not advertised to %s", (role) => {
   render(<MemoryRouter><PrimaryNavigation groups={[role]} /></MemoryRouter>);
-  expect(screen.queryByRole("link", { name: "People planning" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "People" })).not.toBeInTheDocument();
 });
 
 it.each([
