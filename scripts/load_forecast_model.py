@@ -39,7 +39,7 @@ def offline(args) -> int:
     from app.services.forecast import Calendar
     from app.services.forecast.forecast_model_import import dry_run_markdown, parse_master
 
-    imp = parse_master(args.file, as_of=args.as_of)
+    imp = parse_master(args.file, as_of=args.as_of)   # None -> the importer's MODEL_AS_OF
     cal = Calendar(D("8"), D("0.35"), {}, {}, {k: set(v) for k, v in imp.locations.items()})
     md = dry_run_markdown(imp, cal)
     out = _report_path(args)
@@ -61,7 +61,8 @@ def _post(args, dry_run: bool) -> dict:
         r = requests.post(url, headers={"Authorization": f"Bearer {token}"},
                           files={"file": (Path(args.file).name, fh,
                                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-                          data={"dry_run": str(dry_run).lower(), "as_of": args.as_of}, timeout=args.timeout)
+                          data={"dry_run": str(dry_run).lower(), **({"as_of": args.as_of} if args.as_of else {})},
+                          timeout=args.timeout)
     if r.status_code == 422:
         sys.exit(f"The server would not read that file: {r.json().get('detail') or r.text[:400]}")
     if r.status_code == 401 or r.status_code == 403:
@@ -85,7 +86,9 @@ def main() -> int:
     ap.add_argument("--file", required=True, help="the forecast model master .xlsx (never committed)")
     ap.add_argument("--base-url", default=os.environ.get("DEALGATE_URL", ""), help="e.g. https://app.dealgateapp.com")
     ap.add_argument("--token", help="bearer token; or set DEALGATE_TOKEN")
-    ap.add_argument("--as-of", default=date.today().strftime("%Y-%m"), help="the model's month, YYYY-MM; later months are never actuals")
+    ap.add_argument("--as-of", help="the month this workbook is cut to, YYYY-MM; later months are never actuals. "
+                                    "Left out, the server and the importer use their own MODEL_AS_OF — never today's date, "
+                                    "which would import an unbilled month as actuals.")
     ap.add_argument("--offline", action="store_true", help="parse here, no server")
     ap.add_argument("--load", action="store_true", help="create the rows after the dry run (asks once)")
     ap.add_argument("--yes", action="store_true", help="skip the question (for a scripted run)")

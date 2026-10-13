@@ -2115,7 +2115,7 @@ _MODEL_LOCATION_FALLBACK = (Decimal("0.08"), Decimal("0.08"), Decimal("0.35"))
 
 def parse_model_upload(data: bytes, as_of: str | None) -> model_import.MasterImport:
     try:
-        imp = model_import.parse_master(io.BytesIO(data), as_of=as_of or model_import._AS_OF)
+        imp = model_import.parse_master(io.BytesIO(data), as_of=as_of)   # None -> the importer's MODEL_AS_OF
     except WorkbookImportError:
         raise
     except Exception as exc:  # not an .xlsx at all

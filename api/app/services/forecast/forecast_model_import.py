@@ -32,7 +32,8 @@ LOCATION_MAP = {"us": "US", "usa": "US", "onsite": "US", "in pune": "India - Pun
                 "india": "India - Pune", "sa": "South Africa", "south africa": "South Africa"}
 SKIP_TABS = {"Dashboard (RunRate)", "Dashboard (Projection)", "IT Avalon Actual & Projection", "WorkingDays", "Costing Sheet", "Billing Loss",
              "Replacement Data", "Template(Hours)", "TEMPLATE", "Costco (Prototype)", "Sheet1"}
-_AS_OF = "2026-09"
+MODEL_AS_OF = "2026-09"   # the month the current model master is cut to; bump it when a newer cut arrives.
+                          # Never reassigned at runtime: as_of is a parameter, so one request can never change another's.
 MONTHLY_RATE_THRESHOLD = D("1000")   # a 'Rate' above this is a monthly rate per person, not hourly
 DEFAULT_YEAR = 2026                   # month labels without a year ("January") on tabs that never state one
 TAB_ALIASES = {"station casinos": "Stations Casino", "caesars": "Caesars Palace (Project)", "caesers entertainment": "Caesars Entertainment (Staffing)",
@@ -84,6 +85,7 @@ class MasterImport:
     engagements: list = field(default_factory=list)
     reports: list = field(default_factory=list)
     global_issues: list = field(default_factory=list)
+    as_of: str = ""                   # actuals were taken through this month; later months are forecast
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -219,7 +221,7 @@ def _month_blocks(ws, rep: TabReport):
     rep.months = [b[0] for b in blocks]
     return blocks
 
-def _parse_tab(wb, tab: str, dash: dict) -> tuple:
+def _parse_tab(wb, tab: str, dash: dict, as_of: str) -> tuple:
     ws = wb[tab]
     m = _match_dashboard(dash, tab)
     client = m[0] if m else tab.strip()
@@ -292,8 +294,8 @@ def _parse_tab(wb, tab: str, dash: dict) -> tuple:
                              _dec(ws.cell(row=r, column=f["unplanned"]).value) if "unplanned" in f else None,
                              _dec(ws.cell(row=r, column=f["max_billing"]).value) if "max_billing" in f else None,
                              _dec(ws.cell(row=r, column=f["billed"]).value) if "billed" in f else None)
-            if kind == "actual" and key > _AS_OF: am.kind = kind = "forecast"
-            if kind == "forecast" and key <= _AS_OF and (am.billed is not None or (("actual_units" in f) and _dec(ws.cell(row=r, column=f["actual_units"]).value) is not None)):
+            if kind == "actual" and key > as_of: am.kind = kind = "forecast"
+            if kind == "forecast" and key <= as_of and (am.billed is not None or (("actual_units" in f) and _dec(ws.cell(row=r, column=f["actual_units"]).value) is not None)):
                 am.kind = "actual"; am.units = _dec(ws.cell(row=r, column=f["actual_units"]).value) if "actual_units" in f else am.units
             months.append(am)
             tot = am.billed if am.kind == "actual" else am.max_billing
@@ -325,17 +327,19 @@ def _parse_tab(wb, tab: str, dash: dict) -> tuple:
     return list(engagements.values()), rep
 
 
-def parse_master(src, as_of: str = "2026-09") -> MasterImport:
-    """as_of: the model's own month ('YYYY-MM'); months after it are never treated as actuals."""
-    global _AS_OF; _AS_OF = as_of
+def parse_master(src, as_of: Optional[str] = None) -> MasterImport:
+    """as_of: the model's own month ('YYYY-MM'); months after it are never treated as actuals.
+    None means MODEL_AS_OF. The value is carried on the result and printed in the report, so what the
+    numbers mean is never implicit."""
+    as_of = as_of or MODEL_AS_OF
     wb = load_workbook(src, data_only=True)
     dash = _parse_dashboard(wb)
-    out = MasterImport(dash, _parse_workingdays(wb))
+    out = MasterImport(dash, _parse_workingdays(wb), as_of=as_of)
     if not dash: out.global_issues.append("Run-rate dashboard not found — no business units or owners.")
     for name in wb.sheetnames:
         if name in SKIP_TABS or wb[name].sheet_state != "visible": continue
         try:
-            engs, rep = _parse_tab(wb, name, dash)
+            engs, rep = _parse_tab(wb, name, dash, as_of)
         except Exception as e:                                   # one bad tab must not sink the import
             rep = TabReport(name, name, None, ""); rep.issues.append(f"Could not parse this tab: {e!r}"); engs = []
         out.engagements.extend(engs); out.reports.append(rep)
@@ -346,7 +350,7 @@ def parse_master(src, as_of: str = "2026-09") -> MasterImport:
 
 
 # ----------------------------------------------------------------------------- loader
-from app.services.forecast import Actual, Allocation, Calendar, Engagement, compute, ZERO, HOURLY_TYPES   # noqa: E402
+from app.services.forecast import ZERO, Actual, Allocation, Calendar, Engagement, compute   # noqa: E402
 
 def _window(me: ModelEngagement):
     """Engagement window = earliest start / latest end on its people, else the span of its month columns."""
@@ -483,6 +487,9 @@ def dry_run_markdown(imp: MasterImport, cal: Optional[Calendar] = None) -> str:
     cal = cal or Calendar(D("8"), D("0.35"), {}, {}, {k: set(v) for k, v in imp.locations.items()})
     d = dry_run(imp, cal)
     L = ["# Forecast model import — dry run", "", "Nothing has been loaded. This is what the importer read from the workbook and what the DealGate engine makes of it.", ""]
+    L.append(f"**Actuals are taken through {imp.as_of}; every later month is forecast.** "
+             f"If that is not the month this workbook is cut to, re-run with the right as-of before loading.")
+    L.append("")
     L.append(f"Dashboard clients: {len(imp.dashboard)} · client tabs parsed: {len(imp.reports)} · engagements: {len(imp.engagements)} · holidays loaded for: " + ", ".join(f"{k} ({v})" for k, v in d["locations"].items()))
     for g in d["global_issues"]: L.append(f"- ⚠ {g}")
     L += ["", "## By business unit", "", "| BU | Clients | Engagements | People | Closed | Engine forecast (term) | Actuals captured |", "|---|---|---|---|---|---|---|"]

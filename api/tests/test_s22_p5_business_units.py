@@ -34,11 +34,11 @@ def model_bytes() -> bytes:
     return MODEL.read_bytes()
 
 
-async def upload_model(client, *, dry_run: bool, as_of: str = "2026-02", expect: int = 200) -> dict:
+async def upload_model(client, *, dry_run: bool, as_of: str | None = "2026-02", expect: int = 200) -> dict:
     response = await client.post(
         "/engagements/import-forecast-model",
         files={"file": ("model.xlsx", model_bytes(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        data={"dry_run": "true" if dry_run else "false", "as_of": as_of},
+        data={"dry_run": "true" if dry_run else "false", **({"as_of": as_of} if as_of else {})},
     )
     assert response.status_code == expect, response.text
     return response.json()
@@ -215,3 +215,21 @@ async def test_model_import_rejects_a_workbook_that_is_not_the_master(session):
         assert response.status_code == 422 and "Not a forecast model master" in response.text
         response = await client.post("/engagements/import-forecast-model", files={"file": ("x.xlsx", b"not a workbook")}, data={"dry_run": "true"})
         assert response.status_code == 422
+
+
+async def test_as_of_defaults_to_the_models_month_and_never_leaks_from_an_earlier_request(session):
+    """P5b: a request without as_of resolves to the importer's MODEL_AS_OF (2026-09) even right after a
+    request that asked for a different month — the service passes None through; nothing is cached."""
+    await seed_calendar(session)
+    actor = await actor_for(session, ("Delivery",))
+    async with client_for(session, actor) as client:
+        earlier = await upload_model(client, dry_run=True, as_of="2025-10")
+        assert earlier["report_markdown"].splitlines()[0].startswith("# ")
+        assert "Actuals are taken through 2025-10" in earlier["report_markdown"]
+        alpha_earlier = next(t for t in earlier["tabs"] if t["tab"] == "Alpha")
+        default = await upload_model(client, dry_run=True, as_of=None)
+        assert "Actuals are taken through 2026-09; every later month is forecast" in default["report_markdown"]
+        alpha_default = next(t for t in default["tabs"] if t["tab"] == "Alpha")
+        assert alpha_earlier["actual_months"] == 2 and alpha_default["actual_months"] == 3     # Sep+Oct vs Sep+Oct+Nov 2025
+        bad = await client.post("/engagements/import-forecast-model", files={"file": ("m.xlsx", model_bytes())}, data={"dry_run": "true", "as_of": "Sept"})
+        assert bad.status_code == 422

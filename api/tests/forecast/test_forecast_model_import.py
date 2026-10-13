@@ -124,6 +124,24 @@ def test_the_roll_up_block_below_the_total_is_not_a_client_list(imp):
     assert sum(1 for v in imp.dashboard.values() if v["business_unit"] == "ST21") == 2
 
 
+def test_as_of_is_per_call_and_never_leaks_between_imports():
+    """One request asking for a different as-of must not change what the next request means by 'actual'.
+    (It used to: as_of lived in a module global that every parse rewrote, so a worker inherited the last caller's.)"""
+    from app.services.forecast import forecast_model_import as fm
+    def actual_months(i):
+        return sorted({m.month for e in i.engagements for a in e.allocations for m in a.months if m.kind == "actual"})
+    earlier = fm.parse_master(FIX, as_of="2025-10")         # a caller asking for an older cut
+    default_after = fm.parse_master(FIX)                    # the next caller, taking the default
+    assert earlier.as_of == "2025-10" and actual_months(earlier) == ["2025-09", "2025-10"]
+    assert default_after.as_of == fm.MODEL_AS_OF == "2026-09"
+    assert actual_months(default_after) == ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"]
+    assert actual_months(default_after) == actual_months(fm.parse_master(FIX, as_of="2026-09"))
+
+
+def test_the_report_says_which_month_the_actuals_run_to(imp):
+    assert f"Actuals are taken through {imp.as_of}" in dry_run_markdown(imp)
+
+
 def test_dashboard_gives_bu_owners_and_billing_type(imp):
     assert imp.dashboard["Alpha Retail"] == dict(business_unit="ST21", sales_owner="Sam", delivery_owner="Dee", billing_type="T&M")
     assert imp.dashboard["Gamma Health-VMS"]["business_unit"] == "IT Avalon" and imp.dashboard["Epsilon"]["business_unit"] == "Retro Rabbit"
