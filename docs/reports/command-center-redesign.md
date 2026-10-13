@@ -1,8 +1,9 @@
 # Command Center redesign evidence
 
-Status at 2026-10-13 12:14 PDT: **owner-reported population defect fixed and
-focused locally verified; the fix is not yet on staging**. The currently deployed
-candidate still contains the defect described below. Authoritative branch
+Status at 2026-10-13 12:24 PDT: **owner-reported population defect fixed,
+focused locally verified, and packaged in a reviewed staging plan awaiting
+human approval**. The currently deployed candidate still contains the defect
+described below. Authoritative branch
 `feat/command-center-redesign`, worktree
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`. No merge to
 `main` is permitted before product-owner acceptance.
@@ -79,6 +80,41 @@ Artifacts:
 - `tests/e2e/local/command-center-redesign.spec.ts`
 
 ## Staging candidate
+
+The current fix candidate is application commit
+`c606d763273ffa40379e4f4d39c8677e390045d5`, packaged as immutable image
+`officeapp-dev-api:ccfix-c606d76` with ECR digest
+`sha256:c84f1f49a62b5b2b3d7e859cf26926ea11dab97a655f3e4b0a74bccf1d69f980`.
+The matching production SPA build contains `assets/index-BPc0sdEg.js` and
+`assets/index-CZ_B4MrY.css`.
+
+The saved whole-root plan is `/tmp/ccfix-c606d76.tfplan`: **12 to add, 14 to
+change, 12 to destroy**. It contains only the expected application-image
+rollout: eleven ECS task-definition replacements plus the migration trigger,
+the API service reference, nine EventBridge task references and four RunTask
+policies. Every task image moves from `cc-eac3ee1f` to `ccfix-c606d76`. No RDS,
+S3, Cognito, SES, KMS, VPC, security-group, CloudFront or DNS resource changes
+are present. The API task also shows only AWS-provider normalization of omitted
+empty arrays and `hostPort` defaulting to `containerPort`; its environment and
+secret references are unchanged. There is no new migration file, so the
+migration task is expected to confirm head `20261013_0067_import_key`.
+
+| Artifact | SHA-256 |
+|---|---|
+| `/tmp/ccfix-c606d76.tfplan` | `945741933d94bd7ca9c28beb53946ddc6db65891efc9ea3f6296f62595a51524` |
+| `/tmp/ccfix-c606d76.plan.txt` | `491c47a9b18968b17e52991f03ebd828ea9ba279edf8ecce48da900bc59dfa62` |
+| `/tmp/ccfix-c606d76.plan.json` | `2a790fa475612f32a914914e593ee00e74afa04b5e3fbcdbb0af4eb99ed0b440` |
+
+This plan has **not** been applied. Required human action: approve this exact
+staging Terraform plan. The authorized apply command after approval is:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 \
+  terraform -chdir=infra-tf apply /tmp/ccfix-c606d76.tfplan
+```
+
+### Previous deployed candidate
 
 The identifiers below describe the **previous candidate and do not contain
 `c606d76`**. They are retained as deployment history, not current-fix evidence.

@@ -2,17 +2,17 @@
 
 ## RESUME HERE
 
-**2026-10-13 12:14 PDT — COMMAND CENTER HISTORICAL CLOSED-WON DEFECT FIXED
-LOCALLY; STAGING STILL RUNS THE PRE-FIX CANDIDATE.**
+**2026-10-13 12:24 PDT — COMMAND CENTER HISTORICAL CLOSED-WON DEFECT FIXED,
+PACKAGED AND PLANNED; HUMAN TERRAFORM APPROVAL REQUIRED.**
 Authoritative tree `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`,
-branch `feat/command-center-redesign`. Current application checkpoint is
+branch `feat/command-center-redesign`, branch checkpoint
+`5538e66c24958d63748fab72766f39607e5dc0d6`. Current application checkpoint is
 `c606d763273ffa40379e4f4d39c8677e390045d5`; previous staging application is
 `eac3ee1faec7a55209a37907a6332c29b2d7714b`; staging verification checkpoint is
 `8deaf3f6f195bb41ce0062d55a3d8794b150140a`. Baseline is `origin/main`
-`03b76e62b154eb25fbac8b918112214f4e32543f`. Current task: build an immutable
-image for `c606d76`, prepare/review a Terraform staging plan, obtain the required
-human approval, deploy, and repeat the owner's real-data check. Do not merge
-`main`.
+`03b76e62b154eb25fbac8b918112214f4e32543f`. Current task: obtain human
+approval for the reviewed saved Terraform plan, apply it, publish the matching
+SPA, and repeat the owner's real-data check. Do not merge `main`.
 
 Owner acceptance found that the deployed page was dominated by old Closed Won
 deals, including an October 2025 win with no SOW. Root cause:
@@ -44,14 +44,28 @@ SPA `index-ezj6RfOC.js`, and migration head
 the owner-visible defect remains there until the next approved apply. The prior
 smoke, browser and no-drift results are deployment history only.
 
-Runtime: no local API, Vite, preview, browser test, Terraform, migration,
-deployment or background job is active. The isolated PostgreSQL container is
+New immutable candidate image `officeapp-dev-api:ccfix-c606d76` is present in
+ECR at digest
+`sha256:c84f1f49a62b5b2b3d7e859cf26926ea11dab97a655f3e4b0a74bccf1d69f980`.
+The reviewed whole-root plan `/tmp/ccfix-c606d76.tfplan` is saved and unapplied:
+12 add / 14 change / 12 destroy, limited to eleven image-bearing ECS task
+definitions, the migration trigger and their API service/EventBridge/RunTask
+policy references. It has no data, auth, storage, network, CDN or DNS changes.
+Checksums: plan
+`945741933d94bd7ca9c28beb53946ddc6db65891efc9ea3f6296f62595a51524`, text
+`491c47a9b18968b17e52991f03ebd828ea9ba279edf8ecce48da900bc59dfa62`, JSON
+`2a790fa475612f32a914914e593ee00e74afa04b5e3fbcdbb0af4eb99ed0b440`.
+Matching SPA build: `assets/index-BPc0sdEg.js` and
+`assets/index-CZ_B4MrY.css`.
+
+Runtime: no local API, Vite, preview, browser test, Terraform plan/apply,
+migration, deployment or background job is active. The isolated PostgreSQL container is
 available on port 55432; `dealgate_command_center` was rebuilt at schema head
 0067 and contains only the four guarded test opportunities. No worker/subagent
 owns this branch. Secrets remain in the established AWS/Terraform references;
 none are recorded here.
 
-Application/test changes are committed at `c606d76`; this handoff/report edit
+Application/test changes are committed at `c606d76`; this handoff/report update
 is the only current uncommitted work. The separate main tree remains at
 `3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six existing
 modified `docs/reports/s19-1/*.png` files untouched. Exact resume:
@@ -59,18 +73,18 @@ modified `docs/reports/s19-1/*.png` files untouched. Exact resume:
 ```bash
 cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
 git status --short && git diff --check
-git show --stat --oneline c606d763273ffa40379e4f4d39c8677e390045d5
-curl -fsS https://app.dealgateapp.com/api/healthz
-curl -fsS https://app.dealgateapp.com/ | rg 'assets/index-ezj6RfOC.js'
+shasum -a 256 /tmp/ccfix-c606d76.tfplan
+env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 \
+  terraform -chdir=infra-tf apply /tmp/ccfix-c606d76.tfplan
 ```
 
-Next release gate: build/push an immutable `c606d76` image, create a whole-root
-Terraform plan, and stop for infrastructure approval. After apply, publish the
-matching SPA, invalidate CloudFront, verify running API/frontend identifiers,
-then ask the owner to confirm the reported 2025 deal is absent while current
-open work/current delivery remain. No main merge before explicit acceptance.
-Do not rerun unchanged local browser paths merely to obtain green. Older
-S21/S22 entries below are historical and do not describe this branch.
+Next release gate: human approval of the exact saved Terraform plan above.
+After approval, verify its checksum before apply, publish the matching SPA,
+invalidate CloudFront, verify running API/frontend identifiers, then ask the
+owner to confirm the reported 2025 deal is absent while current open
+work/current delivery remain. No main merge before explicit acceptance. Do not
+rerun unchanged local browser paths merely to obtain green. Older S21/S22
+entries below are historical and do not describe this branch.
 
 **2026-10-13 — S22-P5 MERGED TO MAIN AND ROLLED.** Kanna accepted the staging
 click-through ("push and merge the changes looks good"); `feat/s22-p5` @ 48e46d0
