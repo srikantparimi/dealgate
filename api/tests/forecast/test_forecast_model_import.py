@@ -97,6 +97,14 @@ def build_fixture(path: Path):
             if act is not None: ws.cell(row=i, column=c + 4, value=act * rate)
             c += 5
     ws.cell(row=8, column=1, value="Total")
+    # --- Zeta Unlisted: not on the dashboard at all, and one person with no Location
+    ws = wb.create_sheet("Zeta Unlisted"); ws["A2"] = "ZETA"
+    for k, h in enumerate(["Resource", "Role", "Team/SOW", "Type", "SOW Start Date", "SOW End Date", "Location", "Rate", "Max Days", "Vacation Days", "Unplanned Leave", "Max Billing", "Billing"], start=1): ws.cell(row=4, column=k, value=h)
+    ws["I1"], ws["I2"], ws["I3"] = 2026, "Actual", "January"
+    for k, v in enumerate(["Person Z1", "Engineer", "SOW #4", "Managed Services", datetime(2026, 1, 1), datetime(2026, 6, 30), None, 60, 20, None, None, 9600, 9600], start=1): ws.cell(row=5, column=k, value=v)
+    for k, v in enumerate(["Person Z2", "Engineer", "SOW #4", "Managed Services", datetime(2026, 1, 1), datetime(2026, 6, 30), "US", 60, 20, None, None, 9600, 9600], start=1): ws.cell(row=6, column=k, value=v)
+    ws["A7"] = "Total"
+
     # --- Delta Closed: CLOSED in the title
     ws = wb.create_sheet("Delta Closed"); ws["A2"] = "DELTA - CLOSED"
     for k, h in enumerate(["Resource", "Role", "Team/SOW", "Type", "SOW Start Date", "SOW End Date", "Location", "Rate", "Max Days", "Vacation Days", "Unplanned Leave", "Max Billing", "Billing"], start=1): ws.cell(row=4, column=k, value=h)
@@ -122,6 +130,40 @@ def test_the_roll_up_block_below_the_total_is_not_a_client_list(imp):
     assert set(imp.dashboard) == {"Alpha Retail", "Beta Insurance", "Gamma Health-VMS", "Delta Closed", "Epsilon"}
     assert not any(k in imp.dashboard for k in ("ITA", "RR", "Total", "Client"))
     assert sum(1 for v in imp.dashboard.values() if v["business_unit"] == "ST21") == 2
+
+
+def test_a_workbook_that_does_not_say_where_people_belong_blocks_the_load(imp):
+    """A blank business unit or a blank location does not fail loudly once loaded — the rows land under a
+    default, the totals still reconcile, and only the margin underneath is wrong. So the import refuses and
+    names the cells. Nothing here is a judgement call; each one is an empty cell in the workbook."""
+    kinds = {(b.kind, b.tab) for b in imp.blockers}
+    assert ("business_unit", "Zeta Unlisted") in kinds          # no dashboard row -> no BU, no owners
+    assert ("location", "Zeta Unlisted") in kinds
+    loc = next(b for b in imp.blockers if b.kind == "location" and b.tab == "Zeta Unlisted")
+    assert loc.rows == ["Person Z1"] and "Person Z2" not in loc.rows
+    assert "1 person has no Location" in loc.detail and "US burden" in loc.detail
+    assert "Fill the Location column" in loc.fix and "Person Z1" in loc.fix
+    bu = next(b for b in imp.blockers if b.kind == "business_unit" and b.tab == "Zeta Unlisted")
+    assert "Dashboard (RunRate)" in bu.fix
+    # the tabs the workbook does describe are not blocked
+    assert not any(b.tab in ("Alpha", "Beta") for b in imp.blockers)
+
+
+def test_a_complete_workbook_has_no_blockers(tmp_path):
+    """The same fixture without the unlisted tab loads with nothing to fix — the refusal is about missing
+    facts, not a tax on every import."""
+    import openpyxl
+    path = tmp_path / "complete.xlsx"
+    build_fixture(path)
+    wb = openpyxl.load_workbook(path); wb.remove(wb["Zeta Unlisted"]); wb.save(path)
+    assert parse_master(path, as_of="2026-02").blockers == []
+
+
+def test_the_report_leads_with_the_blockers(imp):
+    md = dry_run_markdown(imp)
+    assert "This workbook cannot be loaded yet" in md
+    assert md.index("cannot be loaded yet") < md.index("Actuals are taken through")
+    assert "Zeta Unlisted" in md
 
 
 def test_as_of_is_per_call_and_never_leaks_between_imports():
@@ -214,4 +256,4 @@ def test_dry_run_report_reads_as_a_document(imp, cal):
     for s in ("## By business unit", "| ST21 |", "| IT Avalon |", "## Where the sheet forecasts past the SOW end", "## Issues by tab", "Marked CLOSED"):
         assert s in md
     rec = reconcile(imp, cal)
-    assert {r["tab"] for r in rec} == {"Alpha", "Beta", "Gamma Health-VMS", "Delta Closed"}
+    assert {r["tab"] for r in rec} == {"Alpha", "Beta", "Gamma Health-VMS", "Delta Closed", "Zeta Unlisted"}

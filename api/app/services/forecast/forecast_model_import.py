@@ -79,6 +79,25 @@ class TabReport:
     issues: list = field(default_factory=list)
 
 @dataclass
+class Blocker:
+    """Something the workbook does not say, where guessing would be worse than stopping.
+
+    A blank business unit or a blank location does not fail loudly once loaded: the engagement lands
+    under a default, the numbers still add up on screen, and only the GM underneath is wrong. So the
+    load refuses and names the cells instead."""
+    kind: str                         # business_unit | location
+    tab: str
+    detail: str                       # what is missing, in the workbook's own terms
+    rows: list = field(default_factory=list)       # the people affected, by name
+
+    @property
+    def fix(self) -> str:
+        if self.kind == "business_unit":
+            return f"Add '{self.tab}' to the Dashboard (RunRate) tab under its business unit, with sales owner, delivery owner and billing type."
+        return f"Fill the Location column on the {self.tab} tab for: " + ", ".join(self.rows[:12]) + (f" and {len(self.rows) - 12} more" if len(self.rows) > 12 else "")
+
+
+@dataclass
 class MasterImport:
     dashboard: dict                   # client -> {bu, sales_owner, delivery_owner, billing_type}
     locations: dict                   # location -> [holiday dates]
@@ -86,6 +105,7 @@ class MasterImport:
     reports: list = field(default_factory=list)
     global_issues: list = field(default_factory=list)
     as_of: str = ""                   # actuals were taken through this month; later months are forecast
+    blockers: list = field(default_factory=list)   # [Blocker] — facts the workbook must carry before a load is safe
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -343,9 +363,30 @@ def parse_master(src, as_of: Optional[str] = None) -> MasterImport:
         except Exception as e:                                   # one bad tab must not sink the import
             rep = TabReport(name, name, None, ""); rep.issues.append(f"Could not parse this tab: {e!r}"); engs = []
         out.engagements.extend(engs); out.reports.append(rep)
+    out.blockers = _blockers(out)
     on_dash_not_tabs = [c for c in dash if not any(_match_dashboard({c: dash[c]}, r.tab) for r in out.reports)]
     if on_dash_not_tabs:
         out.global_issues.append("On the dashboard but with no client tab (numbers typed in directly): " + ", ".join(on_dash_not_tabs))
+    return out
+
+
+def _blockers(imp: MasterImport) -> list:
+    """What must be filled in before a load. Nothing here is a judgement call — each one is a blank cell."""
+    out = []
+    for rep in imp.reports:
+        engs = [e for e in imp.engagements if e.tab == rep.tab]
+        if engs and not rep.business_unit:
+            out.append(Blocker("business_unit", rep.tab,
+                               f"not on the run-rate dashboard, so it has no business unit, sales owner or billing type "
+                               f"({len(engs)} {'engagement' if len(engs) == 1 else 'engagements'}, "
+                               f"{len({a.resource for e in engs for a in e.allocations})} people)",
+                               sorted({e.assignment_key for e in engs})))
+        blank = sorted({a.resource for e in engs for a in e.allocations if not a.location})
+        if blank:
+            out.append(Blocker("location", rep.tab,
+                               f"{len(blank)} {'person has' if len(blank) == 1 else 'people have'} no Location, "
+                               f"and a blank location is charged US burden and the US floor",
+                               blank))
     return out
 
 
@@ -487,6 +528,12 @@ def dry_run_markdown(imp: MasterImport, cal: Optional[Calendar] = None) -> str:
     cal = cal or Calendar(D("8"), D("0.35"), {}, {}, {k: set(v) for k, v in imp.locations.items()})
     d = dry_run(imp, cal)
     L = ["# Forecast model import — dry run", "", "Nothing has been loaded. This is what the importer read from the workbook and what the DealGate engine makes of it.", ""]
+    if imp.blockers:
+        L += ["> **This workbook cannot be loaded yet.** The cells below are blank, and every default the tool could pick "
+              "would be wrong in a way the totals would still hide. Fill them in and upload again.", ""]
+        for b in imp.blockers:
+            L.append(f"- **{b.tab}** — {b.detail}. {b.fix}")
+        L.append("")
     L.append(f"**Actuals are taken through {imp.as_of}; every later month is forecast.** "
              f"If that is not the month this workbook is cut to, re-run with the right as-of before loading.")
     L.append("")

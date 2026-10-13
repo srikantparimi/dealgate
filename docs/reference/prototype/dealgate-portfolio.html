@@ -46,6 +46,9 @@ h2{font-family:var(--display);font-size:15px;margin:0}
 .card .v{font-family:var(--display);font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
 .card .d{font-size:12px;color:var(--muted);margin-top:2px}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.panel.blocked{border-color:#c2410c}.panel.blocked h2{color:#fdba74}
+.fixlist{margin:8px 0 10px;padding-left:18px}.fixlist li{margin-bottom:8px;line-height:1.45}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
 .butabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}.butabs button{all:unset;cursor:pointer;padding:7px 14px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-weight:600}.butabs button.on{background:var(--violet);color:#fff;border-color:var(--violet)}.butabs button:focus-visible{outline:2px solid var(--violet)}
 tr.grp td{background:var(--panel2,#f3f1fb);font-size:13px;padding-top:10px}tr.sub td{font-weight:600;border-top:1px solid var(--line);background:rgba(0,0,0,.02)}
 .tabs button{all:unset;cursor:pointer;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted)}
@@ -448,12 +451,19 @@ function dryRunModel(wb){
   const skip=new Set(["Dashboard (RunRate)","Dashboard (Projection)","IT Avalon Actual & Projection","WorkingDays","Costing Sheet","Billing Loss","Replacement Data","Template(Hours)","TEMPLATE","Costco (Prototype)","Sheet1"]);
   const tabs=[];
   for(const name of wb.SheetNames){ if(skip.has(name)) continue; const r=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true}); const hdr=(r[3]||[]).map(x=>(x??"").toString().toLowerCase());
-    if(!hdr.some(h=>h.startsWith("resource"))) continue; let people=0,noloc=0,ext=0; const ci=hdr.findIndex(h=>h.startsWith("location")); const months=(r[2]||[]).filter(x=>typeof x==="string"&&/^[a-z]+/i.test(x)).length; const extCols=hdr.filter(h=>h.startsWith("extension start")).length;
-    for(let i=4;i<r.length;i++){ const n=(r[i][0]??"").toString().trim(); if(!n) continue; if(/^totals?$/i.test(n)) break; if(!(r[i][1]||r[i][hdr.findIndex(h=>h.startsWith("rate"))])) continue; people++; if(ci>=0&&!r[i][ci]) noloc++; if(extCols) ext+=hdr.map((h,j)=>h.startsWith("extension start")&&r[i][j]?1:0).reduce((a,b)=>a+b,0); }
+    if(!hdr.some(h=>h.startsWith("resource"))) continue; let people=0,noloc=0,ext=0; const noLocNames=[]; const ci=hdr.findIndex(h=>h.startsWith("location")); const months=(r[2]||[]).filter(x=>typeof x==="string"&&/^[a-z]+/i.test(x)).length; const extCols=hdr.filter(h=>h.startsWith("extension start")).length;
+    for(let i=4;i<r.length;i++){ const n=(r[i][0]??"").toString().trim(); if(!n) continue; if(/^totals?$/i.test(n)) break; if(!(r[i][1]||r[i][hdr.findIndex(h=>h.startsWith("rate"))])) continue; people++; if(ci>=0&&!r[i][ci]){ noloc++; noLocNames.push(n); } if(extCols) ext+=hdr.map((h,j)=>h.startsWith("extension start")&&r[i][j]?1:0).reduce((a,b)=>a+b,0); }
     const ALIAS={"station casinos":"Stations Casino","caesars":"Caesars Palace (Project)","caesers entertainment":"Caesars Entertainment (Staffing)","blue shield-vms":"BCBS Ca-VMS","christus health-vms":"Christus Health","dreamscape":"Dreamscape (added line)","first citizens":"First Citizens + VMS","sierra nevada":"Sierra Nevada + VMS","costco":"Costco Travel","deloitte":"Deloitte (India)"};
     const key=(ALIAS[name.toLowerCase()]&&dash[ALIAS[name.toLowerCase()]])?ALIAS[name.toLowerCase()]:Object.keys(dash).find(k=>k.toLowerCase().replace(/[^a-z]/g,"").startsWith(name.toLowerCase().replace(/[^a-z]/g,"").slice(0,8)));
-    tabs.push({tab:name,client:key||name,bu:key?dash[key].bu:"",billing:key?dash[key].billing:"",sales:key?dash[key].sales:"",delivery:key?dash[key].delivery:"",people,ext,months,noloc,onDash:!!key}); }
-  return {dash,tabs};
+    tabs.push({tab:name,client:key||name,bu:key?dash[key].bu:"",billing:key?dash[key].billing:"",sales:key?dash[key].sales:"",delivery:key?dash[key].delivery:"",people,ext,months,noloc,noLocNames,onDash:!!key}); }
+  const blockers=[];
+  for(const t of tabs){
+    if(!t.onDash) blockers.push({kind:"business_unit",tab:t.tab,detail:`not on the run-rate dashboard, so it has no business unit, sales owner or billing type (${t.people} people)`,
+      fix:`Add '${t.tab}' to the Dashboard (RunRate) tab under its business unit, with sales owner, delivery owner and billing type.`});
+    if(t.noloc) blockers.push({kind:"location",tab:t.tab,detail:`${t.noloc} ${t.noloc===1?"person has":"people have"} no Location, and a blank location is charged US burden and the US floor`,
+      fix:`Fill the Location column on the ${t.tab} tab for: ${t.noLocNames.slice(0,12).join(", ")}${t.noLocNames.length>12?` and ${t.noLocNames.length-12} more`:""}`});
+  }
+  return {dash,tabs,blockers};
 }
 function renderImport(){
   const r=view.dry;
@@ -466,10 +476,15 @@ function renderImport(){
    ${r.tabs.map(t=>`<tr><td><b>${t.tab}</b></td><td>${t.client}</td><td>${t.bu||'<span class="red">—</span>'}</td><td>${t.billing||"—"}</td><td class="mini">${t.sales||"—"} · ${t.delivery||"—"}</td><td class="n">${t.people}</td><td class="n">${t.ext}</td><td class="n">${t.months}</td><td class="mini">${[!t.onDash?"not on the dashboard — pick a BU":"",t.noloc?t.noloc+" people without a location":""].filter(Boolean).join(" · ")||"—"}</td></tr>`).join("")}
    </tbody></table></div>
    <p class="mini" style="margin-top:8px">Not loaded from this workbook: <b>costs</b> (the Costing Sheet is empty — every imported person is <i>cost unknown</i> and the engagement shows INCOMPLETE until the rate card or a cost per hour is set) · clients that exist only as a number on the dashboard (no tab) · currency for Retro Rabbit (assumed USD).</p>
-   <div class="bar" style="margin-top:10px"><button class="btn" id="m-load">Load ${r.tabs.reduce((a,x)=>a+x.people,0)} people into ${r.tabs.length} client${r.tabs.length===1?"":"s"}</button><span class="mini">In the prototype this creates sample engagements with the counts above; the real importer creates the allocations and actuals.</span></div></div>`:""}`;
+   ${r.blockers.length?`<div class="panel blocked" style="margin-top:12px"><h2>Fix these in the workbook before loading</h2>
+     <p class="mini">Each one is a blank cell. Loading anyway would file the rows under a default — the totals on screen would still add up, and only the margin underneath would be wrong — so the import stops here instead.</p>
+     <ul class="fixlist">${r.blockers.map(b=>`<li><b>${b.tab}</b> — ${b.detail}.<br><span class="mini">${b.fix}</span></li>`).join("")}</ul>
+     <div class="bar"><button class="btn" disabled title="Fill the cells above and upload again">Load ${r.tabs.reduce((a,x)=>a+x.people,0)} people into ${r.tabs.length} clients</button>
+      <span class="mini">${r.blockers.length} thing${r.blockers.length===1?"":"s"} to fix · re-upload when the workbook carries them</span></div></div>`
+   :`<div class="bar" style="margin-top:10px"><button class="btn" id="m-load">Load ${r.tabs.reduce((a,x)=>a+x.people,0)} people into ${r.tabs.length} client${r.tabs.length===1?"":"s"}</button><span class="mini">In the prototype this creates sample engagements with the counts above; the real importer creates the allocations and actuals.</span></div>`}</div>`:""}`;
   $("#m-file").onchange=async ev=>{ const file=ev.target.files[0]; if(!file) return; try{ const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:"array",cellDates:true}); view.dry=dryRunModel(wb); render(); } catch(err){ $("#m-msg").innerHTML='<span class="red">Could not read that file: '+err.message+'</span>'; } };
   const L=$("#m-load"); if(L) L.onclick=()=>{ r.tabs.forEach(t=>{ if(!DB.clients.includes(t.client)) DB.clients.push(t.client);
-      DB.engagements.push({id:"e"+(uid++),client:t.client,bu:t.bu||"ST21",salesOwner:t.sales,deliveryOwner:t.delivery,name:`${t.tab} (imported from the forecast model)`,type:/fixed/i.test(t.billing)?"msp":"time_and_materials",start:"2026-01-01",end:"2026-12-31",addlFlag:false,sameDates:true,owner:t.sales,hubspot:"—",
+      DB.engagements.push({id:"e"+(uid++),client:t.client,bu:t.bu,salesOwner:t.sales,deliveryOwner:t.delivery,name:`${t.tab} (imported from the forecast model)`,type:/fixed/i.test(t.billing)?"msp":"time_and_materials",start:"2026-01-01",end:"2026-12-31",addlFlag:false,sameDates:true,owner:t.sales,hubspot:"—",
         allocs:Array.from({length:Math.min(t.people,6)},(_,i)=>({id:nid(),person:`Person ${i+1}`,role:"Imported",seniority:"Mid",location:"US",emp:"w2_employee",assignment:"",util:1,bill:100,basis:"hourly",cost:null,start:"",end:""})),costs:[],importWarnings:["Imported from the forecast model: cost per hour unknown — set the rate card or a cost per hour; check the location of each person."]}); });
     save(); view.dry=null; view.page="portfolio"; view.bu=""; render(); };
 }
