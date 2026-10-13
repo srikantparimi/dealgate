@@ -394,7 +394,7 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
               const under = row.totals.under_resource_floor === true;
               const person = row.person ?? "";
               return (
-                <tr key={row.id} data-testid="allocation-row">
+                <tr key={row.id} data-testid="allocation-row" data-person={person || row.resource_name}>
                   <td className={cn(textCell, "font-medium")}>
                     <div className="flex flex-col gap-0.5">
                       <CellInput ariaLabel="Person" value={person} placeholder="(name)" onCommit={(v) => commit(row, { person: v.trim() || null })} disabled={!canWrite || busy} className="w-40" />

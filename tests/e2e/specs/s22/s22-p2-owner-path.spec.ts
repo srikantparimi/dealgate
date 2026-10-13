@@ -122,12 +122,15 @@ test.afterAll(async () => {
   }
 });
 
+// P5: the person's name is the editable first column (an input, so no text to filter on); the row carries it as data-person.
+const rowsNamed = (page: Page, name: string) => page.locator(`[data-testid="allocation-row"][data-person="${name}"]`);
+
 async function addPerson(page: Page, person: (typeof PEOPLE)[number]) {
   await page.getByRole("button", { name: "Add person" }).click();
   const draft = page.getByTestId("draft-row");
   await expect(draft).toBeVisible();
-  await draft.getByLabel("Person", { exact: true }).selectOption("");
-  await draft.getByLabel("New person name", { exact: true }).fill(person.name);
+  await draft.getByLabel("Planning resource", { exact: true }).selectOption("");
+  await draft.getByLabel("Person", { exact: true }).fill(person.name); // P5: the person's name is the first column; blank planning resource = create one named after it
   await draft.getByLabel("Role", { exact: true }).fill(person.role);
   await draft.getByLabel("Location", { exact: true }).selectOption(person.location);
   await draft.getByLabel("Employment type", { exact: true }).selectOption(person.employment);
@@ -135,7 +138,9 @@ async function addPerson(page: Page, person: (typeof PEOPLE)[number]) {
   await draft.getByLabel("Bill rate", { exact: true }).fill(person.bill);
   await draft.getByLabel("Our cost per hour", { exact: true }).fill(person.cost);
   await draft.getByRole("button", { name: "Add" }).click();
-  await expect(page.getByTestId("allocation-row").filter({ hasText: person.name })).toBeVisible({ timeout: 60_000 });
+  const added = rowsNamed(page, person.name);
+  await expect(added).toBeVisible({ timeout: 60_000 });
+  await expect(added.getByLabel("Person", { exact: true })).toHaveValue(person.name); // what the owner sees: the name in the first column
 }
 
 test("S22 P2-6 · owner path: new engagement → five people → leaves → re-hire → gap month at zero → burden moves the numbers", async ({ page }) => {
@@ -179,15 +184,15 @@ test("S22 P2-6 · owner path: new engagement → five people → leaves → re-h
   await expect(page.getByTestId("status-line")).toContainText("PASS");
 
   // 3 · One leaves (end = last day of this month)
-  const tester = page.getByTestId("allocation-row").filter({ hasText: PEOPLE[1].name });
+  const tester = rowsNamed(page, PEOPLE[1].name);
   await tester.getByRole("button", { name: "Leaves" }).click();
   const thisMonthEnd = iso(utc(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
   await expect(tester.getByLabel(`${PEOPLE[1].name} end`, { exact: true })).toHaveValue(thisMonthEnd, { timeout: 60_000 });
 
   // 4 · Re-hire (new row from the day after), then push its start two months out → a gap month
   await tester.getByRole("button", { name: "Re-hire" }).click();
-  await expect(page.getByTestId("allocation-row").filter({ hasText: PEOPLE[1].name })).toHaveCount(2, { timeout: 60_000 });
-  const rehired = page.getByTestId("allocation-row").filter({ hasText: PEOPLE[1].name }).nth(1);
+  await expect(rowsNamed(page, PEOPLE[1].name)).toHaveCount(2, { timeout: 60_000 });
+  const rehired = rowsNamed(page, PEOPLE[1].name).nth(1);
   await rehired.getByLabel(`${PEOPLE[1].name} start`, { exact: true }).fill(iso(REHIRE_START));
   await rehired.getByLabel(`${PEOPLE[1].name} start`, { exact: true }).blur();
   await expect(rehired.getByLabel(`${PEOPLE[1].name} start`, { exact: true })).toHaveValue(iso(REHIRE_START), { timeout: 60_000 });
@@ -238,16 +243,16 @@ test("S22 P2-6 · owner path: new engagement → five people → leaves → re-h
   await expect(row).toContainText("Staff augmentation");
   await expect(row).toContainText(/PASS|BELOW FLOOR|INCOMPLETE/);
   for (const id of ["card-gm", "card-below_floor", "card-rolloffs", "card-bench"]) await expect(page.getByTestId(id)).toBeVisible();
-  await expect(page.getByTestId("portfolio-totals")).toContainText(`Portfolio · ${monthLabel(GAP_MONTH)}`);
+  await expect(page.getByTestId("portfolio-total")).toContainText(`All business units · ${monthLabel(GAP_MONTH)}`);
   await expect(page.getByRole("region", { name: "Roll-offs in the next 60 days" }).or(page.locator("#rolloffs"))).toBeVisible();
   await expect(page.locator("#bench")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
   const csv = await api.get("portfolio/forecast.csv", { params: { month: GAP_MONTH } });
   expect(csv.ok()).toBe(true);
   const csvText = await csv.text();
-  expect(csvText.split("\n")[0]).toContain("Client,Engagement,Type");
+  expect(csvText.split("\n")[0]).toContain("Business unit,Client,Engagement,Sales owner,Delivery owner,Type");
   expect(csvText).toContain(clientName);
-  expect(csvText).toContain(`Portfolio · ${GAP_MONTH}`);
+  expect(csvText).toContain(`All business units · ${GAP_MONTH}`);
   await page.goto(engagementUrl.replace(/\/allocations$/, "/forecast"));
   await expect(page.getByTestId("status-line")).toBeVisible();
 
