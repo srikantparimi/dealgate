@@ -2162,7 +2162,17 @@ def _model_calendar(bundle: CalendarBundle, imp: model_import.MasterImport) -> t
 
 
 def _model_report(imp: model_import.MasterImport, cal: engine.Calendar, notes: list[str]) -> dict[str, Any]:
-    dry = model_import.dry_run(imp, cal)
+    # The counts per business unit need no engine run (clients / engagements / people / closed are facts of the
+    # workbook), so they are tallied here; the engine runs once, inside the pack's report. On the real master
+    # (81 engagements) running it twice pushed the request past the load balancer's 60 s idle timeout.
+    tallies: dict[str, dict[str, Any]] = {}
+    for me in imp.engagements:
+        b = tallies.setdefault(me.business_unit or "Unassigned", {"clients": set(), "engagements": 0, "people": 0, "closed": 0})
+        b["clients"].add(me.client)
+        b["engagements"] += 1
+        b["people"] += len({a.resource for a in me.allocations})
+        b["closed"] += int(bool(me.closed))
+    dry = {"bus": tallies}
     markdown = model_import.dry_run_markdown(imp, cal)
     if notes:
         markdown += "\n\n## Calendar\n\n" + "\n".join(f"- {n}" for n in notes) + "\n"
