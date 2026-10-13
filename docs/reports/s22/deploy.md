@@ -155,6 +155,19 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | Checksums | tfplan `b558b29b8a43b9bdc7b19d6fd4081e7159e9966987b4abd66c992758fb52b9b6` · plan.txt `13f49b42…fa0b60` · plan.json `361ba7ed…ef7de4` |
 | Local proof | api/tests/forecast 33; test_s22_p5_business_units 9; test_s22_portfolio_forecast 21; vitest 91 files / 574; tsc clean; Playwright s22-p5-forecast-model (3) + s22-p4-upload (2) + s22-p1-contract + s22-p2-owner-path on the local stack (Postgres at 0066) all pass |
 
+## S22-P5a roll (2026-10-13, importer fix only, image-only plan, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| Commit / image | `feat/s22-p5` @ `a1c856f8` → `officeapp-dev-api:s22p5a-a1c856f8` · digest `sha256:cc35618a88dd481210aab18075877f4980ae3ea4e59d3a6760baf29f3d889b10` |
+| Plan | `/tmp/s22p5a-a1c856f8.tfplan` SHA-256 `0dff250ed5834c0495d8f8824710b0c296ad573279903c685dbd756662a7388a` (plan.txt `ac566021…4392d`, plan.json `e57ef708…01cf0`) — 12 to add / 14 to change / 12 to destroy, image-only, every image → the new tag, same inputs |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed**; migration task `4ee76899115c4dffaf438e6b8b30fba4` on `api-migrate:41` succeeded (no-op at head 0066) |
+| API service | `officeapp-dev-api:103`, `services-stable`; families alert-scheduler 55, notification-sender 55, renewals-scheduler 55, portfolio-scheduler 7, audit-export 55, hubspot-intake 54, hubspot-reconcile 54, forecast-plans 32, deletion-cleanup 32, api-migrate 41 — all `s22p5a-a1c856f8` |
+| SPA | unchanged (`index-Cv_2NWJ5.js`; P5a has no web change) |
+| Proof of the fix on staging | `scripts/load_forecast_model.py` server dry run of the real master: ST21 **7** clients (was 9 on `s22p5-d0270a48`); the report no longer lists `ITA`, `RR` as dashboard-only clients; nothing created |
+| Smoke | `smoke 20261013T025103Z` GREEN; gate clean |
+| S22 specs on staging | `s22-p5-forecast-model`: `3 passed (49.9s)`; gate clean after |
+
 ## S22-P5 apply and roll (2026-10-13, image-only plan with the Terraform-owned migration, applied by the session)
 
 | Step | Result |

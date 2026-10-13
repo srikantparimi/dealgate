@@ -1,7 +1,7 @@
 # S22-P5 · business units, the forecast-model master, actuals — report
 
 **Session:** S22-3 · **Branch:** `feat/s22-p5` (worktree `/Users/srikanthparimi/OfficeApp/dealgate-s22-p5`, off `origin/main` dfc3f8b), pushed ·
-**Staging now:** API `officeapp-dev-api:102` on image `s22p5-d0270a48` (`sha256:9b2a594cb66f70aebbb3d5124224861583ed4a591556e1c055151585507c94ca`), SPA `assets/index-Cv_2NWJ5.js`, all ten worker families + `api-migrate:40` on the same image, migration head `20261012_0066_bu_actuals` ·
+**Staging now:** API `officeapp-dev-api:103` on image `s22p5a-a1c856f8` (`sha256:cc35618a88dd481210aab18075877f4980ae3ea4e59d3a6760baf29f3d889b10`; P5 proper was `s22p5-d0270a48`, rev 102), SPA `assets/index-Cv_2NWJ5.js`, all ten worker families + `api-migrate:40` on the same image, migration head `20261012_0066_bu_actuals` ·
 **Written:** 2026-10-13 · companions: `deploy.md` §"S22-P5 candidate" / §"S22-P5 apply and roll", `docs/bugs/s22-p5.md` (rows 1–6), scoreboard rows S22-P5-1 … S22-P5-9.
 
 ## Order of authority, as applied
@@ -53,6 +53,23 @@ Rows 1–5 fixed inside their bounded attempt (revision id length; fee-less MSP 
 | `scripts/deploy-smoke.sh` on `s22p5-d0270a48` | `smoke 20261013T005136Z` GREEN; gate clean |
 | Playwright on staging | `s22-p5-forecast-model` (3) + `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `7 passed (1.8m)` |
 | `scripts/check-test-data-clean.sh` after | clean: 0 clients / 0 approvers / 0 people / 0 engagements; calendar snapshot restored by the spec's teardown (no teardown warnings) |
+
+## S22-P5a (2026-10-12 evening pack, rides on `feat/s22-p5`)
+
+Pack applied as given (importer replaced, test extended, `scripts/load_forecast_model.py`, directive). `python -m pytest api/tests/forecast -q` → **34 passed**. The master workbook (`~/Downloads/ST21 FY2526 Forecast Model (Master) 09.18.26.xlsx`, the newest file there) is gitignored by name and was never copied into the repo; reports were written to `/tmp`.
+
+| Item | State | Proof |
+| --- | --- | --- |
+| P5a-1 | verified working (staging) | staging API rev 103 · image s22p5a-a1c856f8 (digest cc35618a…b10) · 2026-10-13 · server dry run of the real master through scripts/load_forecast_model.py: ST21 7 clients (9 on the previous image), ITA/RR gone from the report; 34 forecast tests incl. test_the_roll_up_block_below_the_total_is_not_a_client_list; importer byte-identical to the pack; smoke 20261013T025103Z GREEN; s22-p5-forecast-model 3 passed on staging; gate clean |
+| P5a-2 | verified working (staging) | staging API rev 103 · image s22p5a-a1c856f8 (digest cc35618a…b10) · 2026-10-13 · the three documented commands run against the newest master in Downloads: --offline (28 tabs → 81 engagements, 393 people, report in /tmp, nothing created); server dry run (nothing created); --load refused by the S21 runtime isolation for the e2e bot (bug log row 7, by design) — needs a real user's bearer or the Load button; master gitignored by name, never committed; requests added to dev deps |
+
+The three documented commands, run against the newest master in Downloads:
+
+| Command | Outcome |
+| --- | --- |
+| `--offline --as-of 2026-09` | parsed locally: 28 client tabs → 81 engagements, 393 people; ST21 **7** clients (the fix), IT Avalon 18, Retro Rabbit 1, Unassigned 2; report `/tmp/forecast-model-dryrun-offline.md`; nothing created |
+| server dry run (`--base-url https://app.dealgateapp.com --as-of 2026-09`, bot bearer) | on `s22p5-d0270a48` (pre-fix): ST21 9 clients, IT Avalon 25, Retro Rabbit 12, Unassigned 2 (the card counts dashboard clients, so dashboard-only clients are included); after the P5a roll (`s22p5a-a1c856f8`): ST21 **7**, ITA/RR gone; reports `/tmp/forecast-model-dryrun-staging*.md`; nothing created |
+| `--load --yes` (bot bearer) | dry run repeated, then the create was refused by the S21 runtime isolation: the e2e bot is a test identity and may only touch fixture accounts (bug log row 7). Nothing was created. The load needs a real user's bearer, or the Load button on `/import/forecast-model` as yourself |
 
 ## For the product owner's click-through
 
