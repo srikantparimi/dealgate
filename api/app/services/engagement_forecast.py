@@ -1809,15 +1809,22 @@ def hours_text(value: Decimal) -> str:
     return str(int(value)) if value == value.to_integral_value() else format(value.quantize(Decimal("0.01")), "f")
 
 
-async def import_workbook(session: AsyncSession, *, actor: AuthUser, data: bytes) -> dict[str, Any]:
-    """POST /engagements/import-workbook: parse → create engagement + people + allocations + costs → forecast."""
+async def import_workbook(
+    session: AsyncSession, *, actor: AuthUser, data: bytes, ownership: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """POST /engagements/import-workbook: parse → create engagement + people + allocations + costs → forecast.
+    ``ownership`` carries the New-engagement page's business unit and owners (P5); the sheet has none."""
 
     imported = parse_workbook_upload(data)
     if imported.errors:
         raise WorkbookImportError(imported.errors)
     bundle = await load_calendar(session)
     client = await resolve_workbook_client(session, actor=actor, name=imported.client)
+    ownership = ownership or {}
     eng = Engagement(
+        business_unit=_business_unit(ownership.get("business_unit")),
+        sales_owner=_owner_text(ownership.get("sales_owner")),
+        delivery_owner=_owner_text(ownership.get("delivery_owner")),
         id=uuid.uuid4(),
         client_id=client.id,
         name=imported.name,

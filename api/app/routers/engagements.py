@@ -319,6 +319,9 @@ async def create_engagement(
 @router.post("/engagements/import-workbook", status_code=201)
 async def import_workbook(
     file: UploadFile = File(...),
+    business_unit: BusinessUnit | None = Form(default=None),
+    sales_owner: str | None = Form(default=None),
+    delivery_owner: str | None = Form(default=None),
     user: AuthUser = Depends(require_write),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
@@ -329,7 +332,10 @@ async def import_workbook(
     if not data:
         raise HTTPException(status_code=422, detail={"errors": ["The upload was empty."]})
     try:
-        result = await svc.import_workbook(session, actor=actor, data=data)
+        result = await svc.import_workbook(
+            session, actor=actor, data=data,
+            ownership={"business_unit": business_unit, "sales_owner": sales_owner, "delivery_owner": delivery_owner},
+        )
     except svc.WorkbookImportError:
         await session.rollback()
         raise
