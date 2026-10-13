@@ -2,6 +2,46 @@
 
 ## RESUME HERE
 
+**2026-10-13 00:47 PDT — COMMAND CENTER REDESIGN LOCAL CHECKPOINT.**
+Authoritative tree `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`,
+branch `feat/command-center-redesign`, currently based on full commit
+`21a138a7369455ede9aa8f84664c5a74a72055ab` (the directive/prototype
+checkpoint; implementation changes listed below are intentionally uncommitted
+until this checkpoint is validated). Current task: complete and stage the
+approved real-data Command Center without merging to `main`. The new backend
+read model and routes implement per-HubSpot-pipeline Stage-5 eligibility,
+pagination/search/export, explicit configuration gaps, and established
+forecast-service financial enrichment. The new page implements independent
+section loading, operational filters/actions/metrics/lifecycle/revenue,
+honest unknown capacity, the mandatory Stage-5 table scope, CSV export and a
+record detail drawer. Focused evidence at this revision: backend Stage-5 suite
+5 passed; Ruff clean; frontend TypeScript and production build passed;
+Command Center interaction suite 3 passed. A checkpoint review found and fixed
+an unexercised wrong `margin_pct` import before connected testing. No deploy,
+migration, Terraform operation, or main merge is active.
+
+Uncommitted owned files: `api/app/main.py`,
+`api/app/routers/command_center.py`, `api/app/services/command_center.py`,
+`api/tests/test_command_center_accounts.py`,
+`web/src/api/commandCenter.ts`, `web/src/pages/v2/CommandCenter.tsx`,
+`web/src/__tests__/v2/CommandCenter.test.tsx`, this handoff, and the execution
+note in `docs/backlog/command-center-redesign.md`. No other worker changes are
+present in this tree. Existing `.venv` and `web/node_modules` are local,
+gitignored dependencies. Exact resume:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git status --short && git diff --check
+.venv/bin/python -m pytest -q api/tests/test_command_center_accounts.py
+cd web && npm run typecheck && npm test -- --run src/__tests__/v2/CommandCenter.test.tsx
+```
+
+Next: add connected financial reconciliation and population-independence
+assertions, verify navigation/back context and accessibility, then run the
+local real-service browser journey. Only after those gates pass, prepare the
+Terraform-owned staging plan for the required human approval. Older S21/S22
+entries below are historical and do not describe this branch.
+
 **2026-10-13 — S22-P5 MERGED TO MAIN AND ROLLED.** Kanna accepted the staging
 click-through ("push and merge the changes looks good"); `feat/s22-p5` @ 48e46d0
 squashed → `origin/main` = `3598e3b` (release worktree `dealgate-s22-release`,

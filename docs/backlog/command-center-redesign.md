@@ -59,3 +59,13 @@ ids are opaque identifiers.
 Deploy the feature branch through the established staging workflow and stop
 for product-owner click-through. Do not merge to `main` before explicit
 acceptance.
+
+## Execution decision
+
+The product owner authorized uninterrupted implementation and verification for
+this slice on 2026-10-13 ("don't stop until everything is implemented and all
+testing is passed and background integration is also fully completed"). This
+replaces the default 60-minute stopping point for this Command Center branch;
+durable checkpoints continue throughout the work. It does not replace the
+Terraform approval rule, staging click-through, or prohibition on merging to
+`main` before explicit acceptance.
