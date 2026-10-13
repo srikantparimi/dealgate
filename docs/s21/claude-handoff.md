@@ -2,6 +2,21 @@
 
 ## RESUME HERE
 
+**2026-10-13 — S22-P5 MERGED TO MAIN AND ROLLED.** Kanna accepted the staging
+click-through ("push and merge the changes looks good"); `feat/s22-p5` @ 48e46d0
+squashed → `origin/main` = `3598e3b` (release worktree `dealgate-s22-release`,
+branch `release/s22-p5`; squash tree identical to the accepted build). Main image
+`s22p5main-3598e3bf`
+(`sha256:ae7ab595ccadc18f39085b421907f763786c1f21b62d567a3459cd3a187eb41b`)
+applied from an image-only plan (12/14/12), API `officeapp-dev-api:108`, all ten
+worker families + `api-migrate:46` on it, migration head
+`20261013_0067_import_key`, SPA the identical `index-freWl-_8.js`, smoke
+`20261013T062303Z` GREEN, five S22 specs 9 passed, gate clean. Nothing in
+flight. What remains is the product owner's sheet edits (the real master has 7
+blockers: UEBIZ + Children's Hospital-VMS on the dashboard, 26 Location cells)
+and then the Load button on `/import/forecast-model`; the e2e bot cannot load
+real clients (test identity). Next slice starts from main `3598e3b`.
+
 **2026-10-13 — S22-P5 + P5a (BUSINESS UNITS, FORECAST-MODEL IMPORT, ACTUALS;
 IMPORTER ROLL-UP FIX + CLI LOADER) ON STAGING; AWAITING PRODUCT-OWNER CLICK.**
 Staging now: API rev 107 on `s22p5f-0b8e92cc` (P5 final: importer re-audited,

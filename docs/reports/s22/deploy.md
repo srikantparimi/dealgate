@@ -155,6 +155,21 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | Checksums | tfplan `b558b29b8a43b9bdc7b19d6fd4081e7159e9966987b4abd66c992758fb52b9b6` · plan.txt `13f49b42…fa0b60` · plan.json `361ba7ed…ef7de4` |
 | Local proof | api/tests/forecast 33; test_s22_p5_business_units 9; test_s22_portfolio_forecast 21; vitest 91 files / 574; tsc clean; Playwright s22-p5-forecast-model (3) + s22-p4-upload (2) + s22-p1-contract + s22-p2-owner-path on the local stack (Postgres at 0066) all pass |
 
+## S22-P5 main image (post-merge, 2026-10-13, Kanna: "push and merge the changes looks good")
+
+| Step | Result |
+| --- | --- |
+| Merge | `feat/s22-p5` @ 48e46d0 squashed → `origin/main` = `3598e3b` (release worktree `dealgate-s22-release`, branch `release/s22-p5`); squash tree `a5513f2f…` identical to the accepted staging build |
+| Image | `officeapp-dev-api:s22p5main-3598e3bf` · digest `sha256:ae7ab595ccadc18f39085b421907f763786c1f21b62d567a3459cd3a187eb41b` (same code as `s22p5f-0b8e92cc`; builds are not byte-reproducible) |
+| Plan | `/tmp/s22p5main-3598e3bf.tfplan` SHA-256 `3f53d21053b813f120310c31d1afb10919b91b6064d92393b2d6852c7d788e86` (plan.txt `3f9eea1f…e8fa`, plan.json `f6b8c3d0…0b3a`) — 12 to add / 14 to change / 12 to destroy, image-only, same inputs; `infra-tf` byte-identical between main and the initialised p4 worktree it was planned from |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed**; migration task `17a8b6f929ba414fb84b6f47a275cc11` on `api-migrate:46` succeeded (no-op at head `20261013_0067_import_key`) |
+| API service | `officeapp-dev-api:108`, `services-stable`; families alert-scheduler 60, notification-sender 60, renewals-scheduler 60, portfolio-scheduler 12, audit-export 60, hubspot-intake 59, hubspot-reconcile 59, forecast-plans 37, deletion-cleanup 37, api-migrate 46 — all `s22p5main-3598e3bf` |
+| SPA | built from `3598e3b` → the identical `assets/index-freWl-_8.js`; synced with cache headers + `index.html` no-cache; CloudFront invalidation `I14P15ZO1HGR8SVG3CR67VOF5B` COMPLETED |
+| Smoke | `smoke 20261013T062303Z` GREEN; gate clean |
+| S22 specs on the main image | `s22-p5c-blockers` (2) + `s22-p5-forecast-model` (3) + `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `9 passed (2.5m)`; gate clean after: 0 clients / 0 approvers / 0 people / 0 engagements |
+
+Staging now runs the main image with S22-P5. What remains is the product owner's sheet edits (7 blockers) and the Load button.
+
 ## S22-P5 final roll (2026-10-13, import_key migration 0067; image-only plan with the Terraform-owned migration, applied by the session)
 
 | Step | Result |
