@@ -5,7 +5,7 @@
  * the "Total" column uses the engine's totals, never a browser sum.
  */
 
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Button } from "../../../ui-v2/primitives/button";
 import { EMPLOYMENT_TYPE_LABEL, HOURLY_TYPES, type AllocationMonth } from "../../../api/engagements";
 import { cn } from "../../../lib/cn";
@@ -24,6 +24,10 @@ export function ForecastTab({ data }: { data: EngagementData }) {
   const [showSplit, setShowSplit] = useState(false);
   const splitVisible = !short || showSplit;
   const peopleTotal = forecast.months.reduce((max, m) => Math.max(max, m.people), 0);
+  // P5: the Actuals block (Billed, Actual hours, Billing loss) once any month has actuals.
+  const actuals = forecast.actuals;
+  const hasActuals = actuals !== undefined && actuals !== null && actuals.months_with_actuals > 0;
+  const orDash = <T,>(value: T | null | undefined, format: (v: T) => string) => (value === null || value === undefined ? "—" : format(value));
 
   const head = (first: string) => (
     <thead>
@@ -91,6 +95,18 @@ export function ForecastTab({ data }: { data: EngagementData }) {
               <tr className={totalsRow}><td className={textCell}>Gross margin $</td><td className={numCell}>{money(forecast.totals.gm)}</td></tr>
               <tr><td className={textCell}><b>Gross margin %</b></td><td className={cn(numCell, "font-semibold", under(forecast.totals.gm_pct) && "text-danger")}>{pct(forecast.totals.gm_pct)}</td></tr>
             </tbody>
+            {hasActuals ? (
+              <tbody data-testid="actuals-block">
+                <tr className="bg-surface-sunken/40">
+                  <td className={cn(textCell, "font-semibold")} colSpan={2}>
+                    Actuals <span className="font-normal text-text-secondary">· from timesheets / invoices · {actuals.months_with_actuals} months loaded</span>
+                  </td>
+                </tr>
+                <tr><td className={textCell}>Billed</td><td className={numCell}>{money(actuals.actual_revenue)}</td></tr>
+                <tr><td className={textCell}>Forecast in those months</td><td className={numCell}>{money(actuals.forecast_in_actual_months)}</td></tr>
+                <tr className={totalsRow}><td className={textCell}>Billing loss (forecast − billed)</td><td className={numCell}>{money(actuals.billing_loss)}</td></tr>
+              </tbody>
+            ) : null}
           </table>
         </div>
       ) : null}
@@ -115,6 +131,18 @@ export function ForecastTab({ data }: { data: EngagementData }) {
               months.map((m) => under(m.gm_pct)),
             )}
           </tbody>
+          {hasActuals ? (
+            <tbody data-testid="actuals-block">
+              <tr className="bg-surface-sunken/40">
+                <td className={cn(textCell, "font-semibold")} colSpan={months.length + 2}>
+                  Actuals <span className="font-normal text-text-secondary">· from timesheets / invoices · {actuals.months_with_actuals} months loaded</span>
+                </td>
+              </tr>
+              {line("Billed", months.map((m) => orDash(m.actual_revenue, money)), money(actuals.actual_revenue))}
+              {line("Actual hours", months.map((m) => orDash(m.actual_hours, hours)), "")}
+              {line("Billing loss (forecast − billed)", months.map((m) => orDash(m.billing_loss, money)), money(actuals.billing_loss), totalsRow)}
+            </tbody>
+          ) : null}
         </table>
       </div>
       ) : null}
@@ -165,21 +193,25 @@ export function ForecastTab({ data }: { data: EngagementData }) {
             <tbody>
               {allocations.map((row) => {
                 const cells = byMonth(row.id);
-                return line(
-                  <span>
-                    {row.resource_name}
-                    {row.role ? ` · ${row.role}` : ""}
-                    {row.assignment ? ` · ${row.assignment}` : ""}{" "}
-                    <span className="text-secondary text-text-secondary">
-                      {row.location} {EMPLOYMENT_TYPE_LABEL[row.employment_type].split(" ")[0]}
-                    </span>
-                  </span>,
-                  months.map((m) => {
-                    const cell = cells[m.month];
-                    if (!cell) return "";
-                    return hourly ? money(cell.revenue) : hours(cell.hours);
-                  }),
-                  hourly ? money(row.totals.revenue) : hours(row.totals.hours),
+                return (
+                  <Fragment key={row.id}>
+                    {line(
+                      <span>
+                        {row.person ?? row.resource_name}
+                        {row.role ? ` · ${row.role}` : ""}
+                        {row.assignment ? ` · ${row.assignment}` : ""}{" "}
+                        <span className="text-secondary text-text-secondary">
+                          {row.location} {EMPLOYMENT_TYPE_LABEL[row.employment_type].split(" ")[0]}
+                        </span>
+                      </span>,
+                      months.map((m) => {
+                        const cell = cells[m.month];
+                        if (!cell) return "";
+                        return hourly ? money(cell.revenue) : hours(cell.hours);
+                      }),
+                      hourly ? money(row.totals.revenue) : hours(row.totals.hours),
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
