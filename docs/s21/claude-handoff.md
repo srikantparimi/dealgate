@@ -4,8 +4,9 @@
 
 **2026-10-13 — S22-P5 + P5a (BUSINESS UNITS, FORECAST-MODEL IMPORT, ACTUALS;
 IMPORTER ROLL-UP FIX + CLI LOADER) ON STAGING; AWAITING PRODUCT-OWNER CLICK.**
-Staging now: API rev 103 on `s22p5a-a1c856f8` (P5a importer fix; ST21 reads 7
-clients). `scripts/load_forecast_model.py` dry runs work with the e2e bot's
+Staging now: API rev 104 on `s22p5b-63b786af` (P5b: as_of is a parameter —
+MODEL_AS_OF 2026-09 is the one constant, in the importer; the report states the
+month on its first body line; P5a importer fix; ST21 reads 7 clients). `scripts/load_forecast_model.py` dry runs work with the e2e bot's
 bearer; a real load needs a real user's bearer (or the Load button) — the bot
 is a test identity. The master lives in ~/Downloads (gitignored by name). Tree
 `/Users/srikanthparimi/OfficeApp/dealgate-s22-p5`, branch `feat/s22-p5` (off

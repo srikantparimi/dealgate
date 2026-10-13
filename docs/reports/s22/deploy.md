@@ -155,6 +155,19 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | Checksums | tfplan `b558b29b8a43b9bdc7b19d6fd4081e7159e9966987b4abd66c992758fb52b9b6` · plan.txt `13f49b42…fa0b60` · plan.json `361ba7ed…ef7de4` |
 | Local proof | api/tests/forecast 33; test_s22_p5_business_units 9; test_s22_portfolio_forecast 21; vitest 91 files / 574; tsc clean; Playwright s22-p5-forecast-model (3) + s22-p4-upload (2) + s22-p1-contract + s22-p2-owner-path on the local stack (Postgres at 0066) all pass |
 
+## S22-P5b roll (2026-10-13, as_of as a parameter; image-only plan, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| Commit / image | `feat/s22-p5` @ `63b786af` → `officeapp-dev-api:s22p5b-63b786af` · digest `sha256:42023218c99636999fbad900b0d3a1ab82286aaa11f82c1d69dfa05e13cc5444` |
+| Plan | `/tmp/s22p5b-63b786af.tfplan` SHA-256 `6fccc0af195fbdac2c44b369a0420a5d2bf5533e7e27fa01e785307bddcf8ede` (plan.txt `94879ee5…ad8e0`, plan.json `c543ae5d…08629`) — 12 to add / 14 to change / 12 to destroy, image-only, every image → the new tag, same inputs |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed**; migration task `d011cb8ec32a4adb85abea3abccaf933` on `api-migrate:42` succeeded (no-op at head 0066) |
+| API service | `officeapp-dev-api:104`, `services-stable`; families alert-scheduler 56, notification-sender 56, renewals-scheduler 56, portfolio-scheduler 8, audit-export 56, hubspot-intake 55, hubspot-reconcile 55, forecast-plans 33, deletion-cleanup 33, api-migrate 42 — all `s22p5b-63b786af` |
+| SPA | unchanged (`index-Cv_2NWJ5.js`; no web change) |
+| Proof on staging | `scripts/load_forecast_model.py` server dry run of the real master with no `--as-of`: report opens with **Actuals are taken through 2026-09; every later month is forecast**; 28 tabs, 81 engagements, Σ tab people 393, ST21 7 clients; BU and tab tables byte-identical to the P5a run; nothing created |
+| Smoke | `smoke 20261013T042510Z` GREEN; gate clean |
+| S22 specs on staging | `s22-p5-forecast-model`: `3 passed (49.0s)`; gate clean after |
+
 ## S22-P5a roll (2026-10-13, importer fix only, image-only plan, applied by the session)
 
 | Step | Result |

@@ -1,7 +1,7 @@
 # S22-P5 · business units, the forecast-model master, actuals — report
 
 **Session:** S22-3 · **Branch:** `feat/s22-p5` (worktree `/Users/srikanthparimi/OfficeApp/dealgate-s22-p5`, off `origin/main` dfc3f8b), pushed ·
-**Staging now:** API `officeapp-dev-api:103` on image `s22p5a-a1c856f8` (`sha256:cc35618a88dd481210aab18075877f4980ae3ea4e59d3a6760baf29f3d889b10`; P5 proper was `s22p5-d0270a48`, rev 102), SPA `assets/index-Cv_2NWJ5.js`, all ten worker families + `api-migrate:40` on the same image, migration head `20261012_0066_bu_actuals` ·
+**Staging now:** API `officeapp-dev-api:104` on image `s22p5b-63b786af` (`sha256:42023218c99636999fbad900b0d3a1ab82286aaa11f82c1d69dfa05e13cc5444`; P5a was `s22p5a-a1c856f8` rev 103, P5 proper `s22p5-d0270a48` rev 102), SPA `assets/index-Cv_2NWJ5.js`, all ten worker families + `api-migrate:40` on the same image, migration head `20261012_0066_bu_actuals` ·
 **Written:** 2026-10-13 · companions: `deploy.md` §"S22-P5 candidate" / §"S22-P5 apply and roll", `docs/bugs/s22-p5.md` (rows 1–6), scoreboard rows S22-P5-1 … S22-P5-9.
 
 ## Order of authority, as applied
@@ -70,6 +70,18 @@ The three documented commands, run against the newest master in Downloads:
 | `--offline --as-of 2026-09` | parsed locally: 28 client tabs → 81 engagements, 393 people; ST21 **7** clients (the fix), IT Avalon 18, Retro Rabbit 1, Unassigned 2; report `/tmp/forecast-model-dryrun-offline.md`; nothing created |
 | server dry run (`--base-url https://app.dealgateapp.com --as-of 2026-09`, bot bearer) | on `s22p5-d0270a48` (pre-fix): ST21 9 clients, IT Avalon 25, Retro Rabbit 12, Unassigned 2 (the card counts dashboard clients, so dashboard-only clients are included); after the P5a roll (`s22p5a-a1c856f8`): ST21 **7**, ITA/RR gone; reports `/tmp/forecast-model-dryrun-staging*.md`; nothing created |
 | `--load --yes` (bot bearer) | dry run repeated, then the create was refused by the S21 runtime isolation: the e2e bot is a test identity and may only touch fixture accounts (bug log row 7). Nothing was created. The load needs a real user's bearer, or the Load button on `/import/forecast-model` as yourself |
+
+## S22-P5b (as_of is a parameter, not a global)
+
+Pack applied as given (importer + its test + CLI replaced, directive added). `python -m pytest api/tests/forecast -q` → **36 passed** first.
+
+| Item | State | Proof |
+| --- | --- | --- |
+| P5b-1 | verified working (staging) | staging API rev 104 · image s22p5b-63b786af (digest 42023218…5444) · 2026-10-13 · importer from the pack deployed unmodified; 36 forecast tests incl. test_as_of_is_per_call_and_never_leaks_between_imports + test_the_report_says_which_month_the_actuals_run_to; staging dry run of the real master without as_of opens with 'Actuals are taken through 2026-09; every later month is forecast' |
+| P5b-2 | verified working (staging) | staging API rev 104 · image s22p5b-63b786af (digest 42023218…5444) · 2026-10-13 · service passes the request's as_of through, None when absent (no _AS_OF read, no month in the service); test_as_of_defaults_to_the_models_month_and_never_leaks_from_an_earlier_request (2025-10 then none → 2026-09; Alpha actual months 2 then 3; 'Sept' → 422); the import screen sends no as_of and resolves to 2026-09 on staging |
+| P5b-3 | verified working (staging) | staging API rev 104 · image s22p5b-63b786af (digest 42023218…5444) · 2026-10-13 · CLI from the pack: --as-of has no default and is only sent when given; offline run without the flag → 28 tabs / 81 engagements / 393 people and the 2026-09 line; staging dry run without the flag → same counts (Σ tab people 393, ST21 7 clients), report identical to the P5a run; nothing created |
+
+Every item is `verified working (staging)`.
 
 ## For the product owner's click-through
 
