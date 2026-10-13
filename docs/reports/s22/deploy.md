@@ -155,6 +155,19 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | Checksums | tfplan `b558b29b8a43b9bdc7b19d6fd4081e7159e9966987b4abd66c992758fb52b9b6` · plan.txt `13f49b42…fa0b60` · plan.json `361ba7ed…ef7de4` |
 | Local proof | api/tests/forecast 33; test_s22_p5_business_units 9; test_s22_portfolio_forecast 21; vitest 91 files / 574; tsc clean; Playwright s22-p5-forecast-model (3) + s22-p4-upload (2) + s22-p1-contract + s22-p2-owner-path on the local stack (Postgres at 0066) all pass |
 
+## S22-P5 final roll (2026-10-13, import_key migration 0067; image-only plan with the Terraform-owned migration, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| Commit / image | `feat/s22-p5` @ `0b8e92cc` → `officeapp-dev-api:s22p5f-0b8e92cc` · digest `sha256:b711d567bde4252f6f140c3259b8920ebb5a9c7cf3f5626d015d9be58ca674e9` |
+| Plan | `/tmp/s22p5f-0b8e92cc.tfplan` SHA-256 `94e12132670c3d2f571f3455644bbe08b2632df992fdf64453ed47a02afa6ed9` (plan.txt `d00e98e5…50588`, plan.json `54d699d8…b9f85`) — 12 to add / 14 to change / 12 to destroy, image-only, every image → the new tag, same inputs |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed**; migration task `a7c271504898486daa8e95051473854c` on `api-migrate:45` succeeded — staging head now `20261013_0067_import_key` |
+| API service | `officeapp-dev-api:107`, `services-stable`; families alert-scheduler 59, notification-sender 59, renewals-scheduler 59, portfolio-scheduler 11, audit-export 59, hubspot-intake 58, hubspot-reconcile 58, forecast-plans 36, deletion-cleanup 36, api-migrate 45 — all `s22p5f-0b8e92cc` |
+| SPA | unchanged (`index-freWl-_8.js`; no screen change — item 5) |
+| Staging dry run of the real master (item 4) | CLI server dry run of the real master, quiet server: **9.3 s, 6.9 s, 6.4 s** (was 23–25 s); same counts (44 dashboard clients, 28 tabs, 81 engagements, ST21 7); report carries the new "Assumed, because the workbook does not say" section; `--load --yes` still refused by the 7 blockers, nothing created |
+| Smoke | `smoke 20261013T055139Z` GREEN; gate clean |
+| S22 specs on staging | `s22-p5c-blockers` (2) + `s22-p5-forecast-model` (3) + `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `9 passed (2.1m)`; gate clean after; calendar restored by teardown |
+
 ## S22-P5c roll (2026-10-13, the import refuses rather than guessing; image-only plans, applied by the session)
 
 | Step | Result |

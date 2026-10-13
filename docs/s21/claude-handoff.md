@@ -4,7 +4,9 @@
 
 **2026-10-13 — S22-P5 + P5a (BUSINESS UNITS, FORECAST-MODEL IMPORT, ACTUALS;
 IMPORTER ROLL-UP FIX + CLI LOADER) ON STAGING; AWAITING PRODUCT-OWNER CLICK.**
-Staging now: API rev 106 on `s22p5c-a19358cc`, SPA `index-freWl-_8.js` (P5c:
+Staging now: API rev 107 on `s22p5f-0b8e92cc` (P5 final: importer re-audited,
+allocation.import_key via migration 0067, dry run of the real master ~6–9 s),
+SPA `index-freWl-_8.js` (P5c:
 the import refuses rather than guessing — blockers for a blank business unit
 or location, no ST21 default, 422 {blockers} on load; P5b as_of parameter,
 MODEL_AS_OF 2026-09; P5a importer fix). The real master currently has 7

@@ -1,7 +1,7 @@
 # S22-P5 · business units, the forecast-model master, actuals — report
 
 **Session:** S22-3 · **Branch:** `feat/s22-p5` (worktree `/Users/srikanthparimi/OfficeApp/dealgate-s22-p5`, off `origin/main` dfc3f8b), pushed ·
-**Staging now:** API `officeapp-dev-api:106` on image `s22p5c-a19358cc` (`sha256:3012304055785729a76f8ea079c1214b6823b72b8aa87b8a3bdcec909d74ac0f`; P5b `s22p5b-63b786af` rev 104, P5a `s22p5a-a1c856f8` rev 103, P5 proper `s22p5-d0270a48` rev 102), SPA `assets/index-freWl-_8.js`, SPA `assets/index-Cv_2NWJ5.js`, all ten worker families + `api-migrate:40` on the same image, migration head `20261012_0066_bu_actuals` ·
+**Staging now:** API `officeapp-dev-api:107` on image `s22p5f-0b8e92cc` (`sha256:b711d567bde4252f6f140c3259b8920ebb5a9c7cf3f5626d015d9be58ca674e9`; migration head `20261013_0067_import_key`; earlier rounds revs 102–106), SPA `assets/index-freWl-_8.js`, SPA `assets/index-Cv_2NWJ5.js`, all ten worker families + `api-migrate:40` on the same image, migration head `20261012_0066_bu_actuals` ·
 **Written:** 2026-10-13 · companions: `deploy.md` §"S22-P5 candidate" / §"S22-P5 apply and roll", `docs/bugs/s22-p5.md` (rows 1–6), scoreboard rows S22-P5-1 … S22-P5-9.
 
 ## Order of authority, as applied
@@ -97,6 +97,20 @@ Pack applied as given (importer + its test + prototype v5). `python -m pytest ap
 Every item is `verified working (staging)`. Open in the bug log: row 8 (the full master's import timing — ~24 s dry run; the load is not timeable until the sheet is fixed).
 
 On the real master as it stands (never committed): the dry run lists **7 blockers** — UEBIZ and Children's Hospital-VMS with no dashboard row, and 26 people without a location across Liberty Mutual, UEBIZ, Caesars, Caesers Entertainment and First Citizens; `--load` is refused with each fix on its own line and nothing is created. Once the dashboard carries the two clients and the Location column is filled, the same command loads.
+
+## S22-P5 final (one build, audited)
+
+Pack applied as given (importer re-audited against the real model: row_key identity, actual hours from the invoice, extension day-after, "Assumed, because the workbook does not say", streaming read; contract carries `import_key`). `python -m pytest api/tests/forecast -q` → **45 passed** first.
+
+| Item | State | Proof |
+| --- | --- | --- |
+| P5f-1 | verified working (staging) | staging API rev 107 · image s22p5f-0b8e92cc (digest b711d567…74e9) · migration 0067 applied by task a7c27150 · 2026-10-13 · importer + tests from the pack deployed unmodified; 45 forecast tests; the real master's staging dry run reads 44 dashboard clients / 28 tabs / 81 engagements / ST21 7, carries the 'Assumed, because the workbook does not say' section and the 7 blockers; all five S22 specs pass on staging against the regenerated fixture (9 passed, 2.1 m) |
+| P5f-2 | verified working (staging) | staging API rev 107 · image s22p5f-0b8e92cc (digest b711d567…74e9) · migration 0067 applied by task a7c27150 · 2026-10-13 · migration 20261013_0067_import_key (text, nullable, unique per engagement where set) applied on staging; parity 3 passed on Postgres; the import writes to_engine's Allocation.id into allocation.import_key and matches on it (the (client, assignment_key, person, segment) match is gone); contract: import_key readOnly on Allocation + the corrected idempotency sentence; serialised on GET allocations — proven on staging by the owner path's load + the P5f-3 pytest |
+| P5f-3 | fixed and tested | test_placeholder_seats_and_extensions_survive_a_second_import: the fixed fixture imported twice → Zeta four allocations both times with import_keys ending ':TBC #1:0' and ':TBC #2:0', same row ids, allocation count unchanged, created.allocations 0 on the second import; Gamma Person G4 segments (0: 2025-12-01 → 2026-03-30, 1: 2026-03-31 → 2026-09-30) · the staging re-import cannot be exercised by the e2e bot (test identity, no fixture account for the second load of the same clients is needed — the owner path's single load passes on staging) |
+| P5f-4 | verified working (staging) | staging API rev 107 · image s22p5f-0b8e92cc (digest b711d567…74e9) · migration 0067 applied by task a7c27150 · 2026-10-13 · CLI server dry run of the real master on the quiet server: 9.3 s cold, 6.9 s, 6.4 s (was 23–25 s on s22p5c-a19358cc) — recorded in docs/bugs/s22-p5.md row 8 |
+| P5f-5 | verified working (staging) | staging API rev 107 · image s22p5f-0b8e92cc (digest b711d567…74e9) · migration 0067 applied by task a7c27150 · 2026-10-13 · no screen change; SPA unchanged (index-freWl-_8.js, the P5c build); prototype v5 as committed; `git diff 0b8e92cc~3 -- web` empty |
+
+Items 1, 2, 4 and 5 are `verified working (staging)`. Item 3 is `fixed and tested` (its proof is the pytest; a second import of the same workbook on staging needs a real user's bearer, which the e2e bot cannot supply). Nothing is missing, blocked or deferred. After this build the only thing left is the product owner's sheet edits and the Load button.
 
 ## For the product owner's click-through
 
