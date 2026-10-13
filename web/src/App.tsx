@@ -50,6 +50,7 @@ import { NeedsReviewQueuePage } from "./pages/v2/NeedsReviewQueue";
 import { PortfolioPage } from "./pages/v2/portfolio/PortfolioPage";
 import { EngagementPage } from "./pages/v2/portfolio/EngagementPage";
 import { NewEngagementPage } from "./pages/v2/portfolio/NewEngagementPage";
+import { ImportForecastModelPage } from "./pages/v2/portfolio/ImportForecastModelPage";
 
 const CAPABILITY_WRITE_ROLES = new Set(["Delivery", "SystemAdmin"]);
 const CAPABILITY_DELETE_ROLES = new Set(["SystemAdmin"]);
@@ -174,6 +175,9 @@ export function App() {
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/forecast" element={<ForecastPage />} />
                   <Route path="/portfolio" element={<PortfolioPage />} />
+                  {/* S22 P5: one business-unit tab — /portfolio/st21, /portfolio/it-avalon, /portfolio/retro-rabbit. */}
+                  <Route path="/portfolio/:bu" element={<PortfolioPage />} />
+                  <Route path="/import/forecast-model" element={<ImportForecastModelPage />} />
                   <Route path="/engagements/new" element={<NewEngagementPage />} />
                   <Route path="/engagements/:id" element={<EngagementPage />} />
                   <Route path="/engagements/:id/:tab" element={<EngagementPage />} />

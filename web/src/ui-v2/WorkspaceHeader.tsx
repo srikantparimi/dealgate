@@ -8,7 +8,7 @@ import { NAV_GROUPS } from "./PrimaryNavigation";
 import { NotificationDrawer } from "./NotificationDrawer";
 import { ProfileMenu } from "./ProfileMenu";
 import { getDeal, getCurrentSowVersion, getSowVersion } from "../api/client";
-import { getEngagement } from "../api/engagements";
+import { BU_FROM_SLUG, getEngagement } from "../api/engagements";
 import { workspaceTitle } from "../pages/v2/sow-workspace/readiness";
 
 /**
@@ -34,6 +34,13 @@ function buildCrumbs(pathname: string): Crumb[] {
   }
   if (segments[0] === "engagements" && segments[1] === "new") {
     return [{ label: "Portfolio forecast", to: "/portfolio" }, { label: "New engagement" }];
+  }
+  // S22 P5: a business-unit tab reads as its BU, never the slug; the importer hangs off the portfolio.
+  if (segments[0] === "portfolio" && segments[1] && BU_FROM_SLUG[segments[1]]) {
+    return [{ label: "Portfolio forecast", to: "/portfolio" }, { label: BU_FROM_SLUG[segments[1]] }];
+  }
+  if (segments[0] === "import" && segments[1] === "forecast-model") {
+    return [{ label: "Portfolio forecast", to: "/portfolio" }, { label: "Import the forecast model" }];
   }
   if (segments[0] === "deletions") {
     return [{ label: "SOWs", to: "/sows" }, { label: "Deletion status" }];
