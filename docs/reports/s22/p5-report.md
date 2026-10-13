@@ -1,7 +1,7 @@
 # S22-P5 · business units, the forecast-model master, actuals — report
 
 **Session:** S22-3 · **Branch:** `feat/s22-p5` (worktree `/Users/srikanthparimi/OfficeApp/dealgate-s22-p5`, off `origin/main` dfc3f8b), pushed ·
-**Staging now:** API `officeapp-dev-api:104` on image `s22p5b-63b786af` (`sha256:42023218c99636999fbad900b0d3a1ab82286aaa11f82c1d69dfa05e13cc5444`; P5a was `s22p5a-a1c856f8` rev 103, P5 proper `s22p5-d0270a48` rev 102), SPA `assets/index-Cv_2NWJ5.js`, all ten worker families + `api-migrate:40` on the same image, migration head `20261012_0066_bu_actuals` ·
+**Staging now:** API `officeapp-dev-api:106` on image `s22p5c-a19358cc` (`sha256:3012304055785729a76f8ea079c1214b6823b72b8aa87b8a3bdcec909d74ac0f`; P5b `s22p5b-63b786af` rev 104, P5a `s22p5a-a1c856f8` rev 103, P5 proper `s22p5-d0270a48` rev 102), SPA `assets/index-freWl-_8.js`, SPA `assets/index-Cv_2NWJ5.js`, all ten worker families + `api-migrate:40` on the same image, migration head `20261012_0066_bu_actuals` ·
 **Written:** 2026-10-13 · companions: `deploy.md` §"S22-P5 candidate" / §"S22-P5 apply and roll", `docs/bugs/s22-p5.md` (rows 1–6), scoreboard rows S22-P5-1 … S22-P5-9.
 
 ## Order of authority, as applied
@@ -82,6 +82,21 @@ Pack applied as given (importer + its test + CLI replaced, directive added). `py
 | P5b-3 | verified working (staging) | staging API rev 104 · image s22p5b-63b786af (digest 42023218…5444) · 2026-10-13 · CLI from the pack: --as-of has no default and is only sent when given; offline run without the flag → 28 tabs / 81 engagements / 393 people and the 2026-09 line; staging dry run without the flag → same counts (Σ tab people 393, ST21 7 clients), report identical to the P5a run; nothing created |
 
 Every item is `verified working (staging)`.
+
+## S22-P5c (the import refuses rather than guessing)
+
+Pack applied as given (importer + its test + prototype v5). `python -m pytest api/tests/forecast -q` → **39 passed** first. No default, no override: a blank business unit or location stops the load and names the cells.
+
+| Item | State | Proof |
+| --- | --- | --- |
+| P5c-1 | verified working (staging) | staging API rev 106 · image s22p5c-a19358cc (digest 30123040…ac0f) · SPA index-freWl-_8.js · 2026-10-13 · importer from the pack deployed unmodified; 39 forecast tests; staging dry run of the real master lists 7 blockers (UEBIZ + Children's Hospital-VMS no BU; 26 people without a location) and leads the report with them; the synthetic fixture's Zeta Unlisted yields both kinds on staging (s22-p5c-blockers) |
+| P5c-2 | verified working (staging) | staging API rev 106 · image s22p5c-a19358cc (digest 30123040…ac0f) · SPA index-freWl-_8.js · 2026-10-13 · no ST21 default (an engagement without a dashboard BU can only stop the load); dry run returns blockers at 200; load with blockers → 422 {blockers} with nothing written — test_a_load_with_blockers_is_422_and_writes_nothing (client/engagement/person/location/holiday counts unchanged) and the direct call in s22-p5c-blockers on staging; contract carries the second 422; CLI `--load` on the real master printed `Not loaded — fix these in the workbook first (7)` with each fix on its own line, exit 2, nothing created |
+| P5c-3 | verified working (staging) | staging API rev 106 · image s22p5c-a19358cc (digest 30123040…ac0f) · SPA index-freWl-_8.js · 2026-10-13 · s22-p5c-blockers on staging: the panel 'Fix these in the workbook before loading' lists both blockers with the fix beneath each, Load disabled, '2 things to fix · re-upload when the workbook carries them'; vitest (S22P5.test.tsx) asserts the panel, the disabled button and that nothing is posted dry_run=false |
+| P5c-4 | verified working (staging) | staging API rev 106 · image s22p5c-a19358cc (digest 30123040…ac0f) · SPA index-freWl-_8.js · 2026-10-13 · tests/e2e/specs/s22/s22-p5c-blockers.spec.ts: 2 passed on staging (panel + disabled Load; direct dry_run=false → 422 {blockers}, engagement count unchanged); the owner path (s22-p5-forecast-model) loads the complete copy of the fixture: 3 passed; all five S22 specs 9 passed (2.1 m); gate clean |
+
+Every item is `verified working (staging)`. Open in the bug log: row 8 (the full master's import timing — ~24 s dry run; the load is not timeable until the sheet is fixed).
+
+On the real master as it stands (never committed): the dry run lists **7 blockers** — UEBIZ and Children's Hospital-VMS with no dashboard row, and 26 people without a location across Liberty Mutual, UEBIZ, Caesars, Caesers Entertainment and First Citizens; `--load` is refused with each fix on its own line and nothing is created. Once the dashboard carries the two clients and the Location column is filled, the same command loads.
 
 ## For the product owner's click-through
 

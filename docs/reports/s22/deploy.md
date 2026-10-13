@@ -155,6 +155,15 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | Checksums | tfplan `b558b29b8a43b9bdc7b19d6fd4081e7159e9966987b4abd66c992758fb52b9b6` · plan.txt `13f49b42…fa0b60` · plan.json `361ba7ed…ef7de4` |
 | Local proof | api/tests/forecast 33; test_s22_p5_business_units 9; test_s22_portfolio_forecast 21; vitest 91 files / 574; tsc clean; Playwright s22-p5-forecast-model (3) + s22-p4-upload (2) + s22-p1-contract + s22-p2-owner-path on the local stack (Postgres at 0066) all pass |
 
+## S22-P5c roll (2026-10-13, the import refuses rather than guessing; image-only plans, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| First roll | `feat/s22-p5` @ `2cc9ee9e` → `officeapp-dev-api:s22p5c-2cc9ee9e` · digest `sha256:d35c9058e085e63dcdd7541b36d584e56cabe31fa2b2c543a0fc5c9b4e59737f`; plan `/tmp/s22p5c-2cc9ee9e.tfplan` SHA-256 `fc581c645e429c8c07991fc77b8c85b39e21d10a26e1309fe42fdcfe374efa6e` (12/14/12, image-only); apply exit 0, migration task `5a3e685fbefb495cac5799467bcc71f8` no-op; API rev 105; SPA `assets/index-freWl-_8.js` synced + `index.html`, CloudFront `I1XJBS7JW1ZDBRWI5496HGB5TB` COMPLETED; smoke `smoke 20261013T050248Z` GREEN, gate clean |
+| Proof on staging (first roll) | CLI dry run of the real master: 7 blockers listed with their fixes (UEBIZ + Children's Hospital-VMS no BU; 26 people without a location across Liberty Mutual, UEBIZ, Caesars, Caesers Entertainment, First Citizens); counts unchanged; nothing created. `--load`'s preliminary dry run hit a 504 while the smoke ran concurrently (bug log row 8) |
+| Second roll | `feat/s22-p5` @ `a19358cc` (dry run tallies without the engine) → `officeapp-dev-api:s22p5c-a19358cc` · digest `sha256:3012304055785729a76f8ea079c1214b6823b72b8aa87b8a3bdcec909d74ac0f`; plan `/tmp/s22p5c-a19358cc.tfplan` SHA-256 `ce7a3417937fe1f3f4aa4f0439defb435e03ddc8d5fdcc6771800e2ad8b06b2b` (12/14/12, image-only); apply exit 0, migration task `36b7355f323a4eac9ecdb45765c64903` no-op; API rev 106, families alert-scheduler 58, notification-sender 58, renewals-scheduler 58, portfolio-scheduler 10, audit-export 58, hubspot-intake 57, hubspot-reconcile 57, forecast-plans 35, deletion-cleanup 35, api-migrate 44; SPA unchanged (`index-freWl-_8.js`); CLI dry run of the real master 23–25 s standalone (same as before — the cost is parsing), `--load --yes` refused: `Not loaded — fix these in the workbook first (7)` with each fix on its own line, exit 2, nothing created; smoke `smoke 20261013T051539Z` GREEN, gate clean |
+| S22 specs on staging | first roll: `s22-p5c-blockers` 2 passed (25.7 s); second roll: `s22-p5c-blockers` (2) + `s22-p5-forecast-model` (3, complete fixture) + `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `9 passed (2.1m)`; gate clean after; calendar restored by teardown |
+
 ## S22-P5b roll (2026-10-13, as_of as a parameter; image-only plan, applied by the session)
 
 | Step | Result |
