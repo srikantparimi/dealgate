@@ -265,9 +265,12 @@ describe("S22 P5 · business units, actuals, import", () => {
     expect(tabs.map((t) => t.getAttribute("aria-label"))).toEqual(["All business units", "ST21", "IT Avalon", "Retro Rabbit"]);
     expect(tabs.map((t) => t.getAttribute("data-bu"))).toEqual(["", "ST21", "IT Avalon", "Retro Rabbit"]);
     expect(tabs[0]).toHaveAttribute("aria-pressed", "true");
-    expect(within(tabs[0]).getByTestId("bu-tab-count")).toHaveTextContent("4");
-    expect(within(tabs[1]).getByTestId("bu-tab-count")).toHaveTextContent("2");
-    expect(within(tabs[2]).getByTestId("bu-tab-count")).toHaveTextContent("1");
+    await waitFor(() => {
+      // the counts land with the fetch; under full-suite load the first paint can precede it
+      expect(within(tabs[0]).getByTestId("bu-tab-count")).toHaveTextContent("4");
+      expect(within(tabs[1]).getByTestId("bu-tab-count")).toHaveTextContent("2");
+      expect(within(tabs[2]).getByTestId("bu-tab-count")).toHaveTextContent("1");
+    });
 
     const headers = screen.getAllByTestId("bu-group");
     expect(headers.map((h) => h.getAttribute("data-bu"))).toEqual(["ST21", "IT Avalon", "Retro Rabbit"]);
