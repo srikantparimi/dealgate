@@ -22,7 +22,7 @@ const LOCAL_USER = process.env.E2E_LOCAL_USER;
 const API_BASE = process.env.E2E_API_BASE ? `${process.env.E2E_API_BASE}/` : `${BASE}/api/`;
 const authHeaders = (): Record<string, string> => (LOCAL_USER ? { "X-Test-User": LOCAL_USER } : bearerFor("system"));
 const REPO = path.resolve(__dirname, "..", "..", "..", "..");
-const MODEL = path.join(REPO, "api/tests/forecast/fixtures/forecast_model_synthetic.xlsx");
+const MODEL = path.join(REPO, "api/tests/forecast/fixtures/forecast_model_synthetic_complete.xlsx"); // P5c: the full fixture carries a blocking tab; the owner path loads the complete copy
 const RUN_TAG = `S22 e2e ${Date.now()}`;
 const MONTH = "2026-02"; // both Gamma engagements are active and carry actuals; Alpha + Beta (ST21) are active
 const MODEL_CLIENTS = ["Alpha Retail", "Beta Insurance", "Gamma Health-VMS", "Delta Closed"];
