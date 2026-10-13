@@ -45,6 +45,8 @@ dev = [
   # DEALGATE_POSTGRES_URL — so the missing driver went unnoticed until CI
   # gained a Postgres service and un-skipped it.
   "asyncpg>=0.29",
+  # requests: scripts/load_forecast_model.py (S22-P5a) posts the model to the API from the command line.
+  "requests>=2.32",
   # Deterministic PDF builder for the fixture SOWs under
   # `fixtures/sample_sows/`. Only used by dev + CI, never at runtime.
   "reportlab>=4.2",

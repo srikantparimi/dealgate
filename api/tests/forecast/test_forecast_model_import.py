@@ -20,7 +20,8 @@ def build_fixture(path: Path):
     ws["B5"], ws["C5"], ws["D5"], ws["E5"] = "Client", "Sales Owner", "Delivery Owner", "Billing Type"
     rows = [("ST21",), ("Alpha Retail", "Sam", "Dee", "T&M"), ("Beta Insurance", "Sam", "Raj", "Fixed Monthly"), ("Subtotal",),
             ("IT Avalon",), ("Gamma Health-VMS", "Kim", "Lee", "T&M"), ("Delta Closed", "Kim", "Lee", "Closed"), ("Subtotal",),
-            ("Retro Rabbit",), ("Epsilon", "Jo", "Jo", "T&M")]
+            ("Retro Rabbit",), ("Epsilon", "Jo", "Jo", "T&M"), ("Subtotal",), ("Total",),
+            (None,), ("Client",), ("ST21",), ("ITA",), ("RR",), ("Total",)]   # the roll-up block the real sheet repeats below the total
     for i, r in enumerate(rows, start=6):
         for j, v in enumerate(r, start=2): ws.cell(row=i, column=j, value=v)
     # --- working days / holidays -----------------------------------------------------------------------------
@@ -113,6 +114,14 @@ def imp():
 @pytest.fixture(scope="module")
 def cal(imp):
     return Calendar(D("8"), D("0.35"), {("US", "w2_employee"): D("0.36")}, {}, {k: set(v) for k, v in imp.locations.items()})
+
+
+def test_the_roll_up_block_below_the_total_is_not_a_client_list(imp):
+    """The real dashboard repeats Client / ST21 / ITA / RR as a summary under the grand total.
+    Counting those as ST21 clients made the import screen read 9 ST21 clients instead of 7."""
+    assert set(imp.dashboard) == {"Alpha Retail", "Beta Insurance", "Gamma Health-VMS", "Delta Closed", "Epsilon"}
+    assert not any(k in imp.dashboard for k in ("ITA", "RR", "Total", "Client"))
+    assert sum(1 for v in imp.dashboard.values() if v["business_unit"] == "ST21") == 2
 
 
 def test_dashboard_gives_bu_owners_and_billing_type(imp):

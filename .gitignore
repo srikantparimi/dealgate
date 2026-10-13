@@ -66,3 +66,7 @@ web/tsconfig.tsbuildinfo
 .vscode/
 .idea/
 api/dev.db
+
+# S22-P5a: the forecast model master holds real staff names and rates — never committed
+*Forecast_Model_Master*.xlsx
+*Forecast Model*.xlsx

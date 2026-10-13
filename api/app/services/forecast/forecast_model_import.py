@@ -25,6 +25,7 @@ from openpyxl import load_workbook
 D = Decimal
 MONTHS = {m.lower(): i for i, m in enumerate(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"], start=1)}
 BU_LABELS = {"st21": "ST21", "it avalon": "IT Avalon", "retro rabbit": "Retro Rabbit"}
+BU_ABBREV = {"ita", "rr", "st 21", "sa"}                 # roll-up rows, never clients
 BILLING_TYPE = {"fixed monthly": "msp", "t&m": "time_and_materials", "closed": None}
 LOCATION_MAP = {"us": "US", "usa": "US", "onsite": "US", "in pune": "India - Pune", "in - pune": "India - Pune", "pune": "India - Pune",
                 "in chennai": "India - Chennai", "in - chennai": "India - Chennai", "chennai": "India - Chennai", "offshore": "India - Pune",
@@ -121,15 +122,22 @@ def _month_key(label, year_hint):
 
 # ----------------------------------------------------------------------------- dashboard
 def _parse_dashboard(wb) -> dict:
+    """Client rows only. The sheet repeats 'Client' / 'ST21' / 'ITA' / 'RR' as a roll-up block below the
+    grand total; that block is not a client list, so parsing stops at the first 'Total' row and any
+    second header block is ignored."""
     out = {}
     if "Dashboard (RunRate)" not in wb.sheetnames: return out
-    ws = wb["Dashboard (RunRate)"]; bu = None
+    ws = wb["Dashboard (RunRate)"]; bu = None; seen_header = False
     for r in range(1, ws.max_row + 1):
         name = _t(ws.cell(row=r, column=2).value)
         if not name: continue
         key = _l(name)
+        if key == "total": break                                   # the grand total ends the client list
+        if key == "client":
+            if seen_header: break                                  # a second 'Client' header starts the roll-up block
+            seen_header = True; continue
         if key in BU_LABELS: bu = BU_LABELS[key]; continue
-        if key in ("subtotal", "total", "client", "new clients") or key.startswith("*"): continue
+        if key in BU_ABBREV or key in ("subtotal", "new clients") or key.startswith("*"): continue
         if bu is None: continue
         out[name] = {"business_unit": bu, "sales_owner": _t(ws.cell(row=r, column=3).value) or None,
                      "delivery_owner": _t(ws.cell(row=r, column=4).value) or None, "billing_type": _t(ws.cell(row=r, column=5).value) or None}
