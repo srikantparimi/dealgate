@@ -1,7 +1,8 @@
 # Command Center redesign evidence
 
-Status at 2026-10-13 01:27 PDT: **implemented and connected locally; staging
-pending**. Authoritative branch `feat/command-center-redesign`, worktree
+Status at 2026-10-13 01:34 PDT: **implemented, connected locally and packaged;
+staging apply pending explicit infrastructure approval**. Authoritative branch
+`feat/command-center-redesign`, worktree
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`. No merge to
 `main` is permitted before product-owner acceptance.
 
@@ -26,6 +27,7 @@ Backend: 12 passed
 Frontend TypeScript: passed
 Frontend related suites: 46 passed
 Connected Playwright: 2 passed (14.9s)
+Production web build: passed
 ```
 
 Connected local data is isolated in `dealgate_command_center`. The guarded
@@ -46,10 +48,38 @@ Artifacts:
 - `api/tests/test_command_center_accounts.py`
 - `tests/e2e/local/command-center-redesign.spec.ts`
 
+## Staging candidate
+
+Application revision: `eac3ee1faec7a55209a37907a6332c29b2d7714b`.
+
+- API and worker image:
+  `669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:cc-eac3ee1f`
+- ECR digest:
+  `sha256:30421cd6b245a98b41de3cf4defe0a1ed52e9c93660e41913b7c3c2dc0f97cdf`
+- Exact SPA assets: `assets/index-ezj6RfOC.js` and
+  `assets/index-CZ_B4MrY.css`
+- Saved Terraform plan: `/tmp/cc-eac3ee1f.tfplan`
+- Plan result: `12 to add, 14 to change, 12 to destroy`
+- Plan SHA-256:
+  `18f777d8aa273e454eec783ad504418392f5f28e8479b9528cc3663ac1d1ed49`
+- Human-readable plan SHA-256:
+  `b73cbd2094a9ba7e33ef760e394526e439a16a690febc1b3498208fc74c43272`
+- JSON plan SHA-256:
+  `cfcce2e3dd5b9c51f155ec1881cf06a9c502e44fc53777553fe77c50ea84285a`
+
+Plan review found only the expected application-image rollout: 12 ECS task
+definition replacements, the ECS API service reference, nine EventBridge task
+references, four run-task IAM policies and the migration trigger. Every task
+moves from `s22p5main-3598e3bf` to `cc-eac3ee1f`; container environments and
+secret references are unchanged. The plan contains no RDS, S3, Cognito, SES,
+KMS, VPC, security-group, CloudFront or DNS changes and no business-data
+mutation. Migration execution is retained but the application has no new
+migration file, so it is expected to confirm the existing head
+`20261013_0067_import_key`.
+
 ## Remaining release gates
 
-1. Production build after the final local checkpoint.
-2. Immutable API/worker image and reviewed Terraform-owned staging plan.
-3. Staging migration/image/frontend/smoke and connected browser proof.
-4. Product-owner click-through and explicit acceptance.
-5. Only then merge to `main` and verify the resulting main-image deployment.
+1. Explicit human approval for the saved Terraform plan above.
+2. Staging apply, exact SPA publish, smoke and connected browser proof.
+3. Product-owner click-through and explicit acceptance.
+4. Only then merge to `main` and verify the resulting main-image deployment.
