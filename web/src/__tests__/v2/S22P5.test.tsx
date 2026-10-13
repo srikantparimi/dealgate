@@ -178,6 +178,7 @@ const avalonPortfolio: api.PortfolioForecast = {
 
 const dryRun: api.ForecastModelImportResult = {
   dry_run: true,
+  blockers: [],
   report_markdown: "# Forecast model — dry run\n\nParsed **3 business units**.\n\n| Business unit | Clients |\n|---|---:|\n| ST21 | 2 |\n| IT Avalon | 1 |\n\n- Gamma Health-VMS: 1 person without a location",
   by_business_unit: [
     { business_unit: "ST21", clients: 2, engagements: 3, people: 12, closed: 1 },
@@ -534,6 +535,37 @@ describe("S22 P5 · business units, actuals, import", () => {
     await waitFor(() => expect(api.importForecastModel).toHaveBeenCalledWith(file, false));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/portfolio"));
     expect(await screen.findByRole("heading", { name: "Portfolio forecast" })).toBeInTheDocument();
+  });
+
+  it("a dry run with blockers shows 'Fix these in the workbook before loading' with each fix, and Load is disabled (P5c)", async () => {
+    const blocked = {
+      ...dryRun,
+      blockers: [
+        { kind: "business_unit", tab: "Zeta Unlisted", detail: "not on the run-rate dashboard, so it has no business unit, sales owner or billing type (1 person)", rows: [], fix: "Add 'Zeta Unlisted' to the Dashboard (RunRate) tab under its business unit, with sales owner, delivery owner and billing type." },
+        { kind: "location", tab: "Zeta Unlisted", detail: "1 person has no Location, and a blank location is charged US burden and the US floor", rows: ["Person Z1"], fix: "Fill the Location column on the Zeta Unlisted tab for: Person Z1" },
+      ],
+    };
+    vi.mocked(api.importForecastModel).mockResolvedValue(blocked);
+    render(
+      <MemoryRouter initialEntries={["/import/forecast-model"]}>
+        <Routes>
+          <Route path="/import/forecast-model" element={<ImportForecastModelPage />} />
+          <Route path="/portfolio" element={<PortfolioPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("heading", { name: "Import the forecast model" })).toBeInTheDocument();
+    const file = new File([new Uint8Array([80, 75, 3, 4])], "model.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    fireEvent.change(screen.getByLabelText("Forecast model (.xlsx)"), { target: { files: [file] } });
+    const panel = await screen.findByTestId("blockers-panel");
+    expect(panel).toHaveTextContent("Fix these in the workbook before loading");
+    expect(screen.getAllByTestId("blocker")).toHaveLength(2);
+    expect(screen.getAllByTestId("blocker-fix")[1]).toHaveTextContent("Fill the Location column on the Zeta Unlisted tab for: Person Z1");
+    const load = screen.getByTestId("load-button");
+    expect(load).toBeDisabled();
+    expect(screen.getByTestId("blockers-count")).toHaveTextContent("2 things to fix · re-upload when the workbook carries them");
+    fireEvent.click(load);
+    expect(api.importForecastModel).toHaveBeenCalledTimes(1); // the dry run only — nothing posted dry_run=false
   });
 
   it("a workbook the server rejects shows its errors and offers no Load button", async () => {

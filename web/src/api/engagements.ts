@@ -511,11 +511,21 @@ export interface ForecastModelTab {
   issues: string[];
 }
 
+/** Something the workbook does not say (P5c). The load refuses with 422 `{ blockers }` while any remain. */
+export interface ForecastModelBlocker {
+  kind: "business_unit" | "location" | string;
+  tab: string;
+  detail: string;
+  rows: string[];
+  fix: string;
+}
+
 export interface ForecastModelImportResult {
   dry_run: boolean;
   report_markdown: string;
   by_business_unit: ForecastModelBusinessUnit[];
   tabs: ForecastModelTab[];
+  blockers: ForecastModelBlocker[];
   created: null | { clients: number; engagements: number; allocations: number; actual_rows: number };
 }
 

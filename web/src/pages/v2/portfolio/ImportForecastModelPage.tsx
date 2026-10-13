@@ -78,6 +78,7 @@ export function ImportForecastModelPage() {
   }
 
   // The button's label counts what the dry run listed: people across the client tabs, into that many clients.
+  const blockers = result?.blockers ?? [];
   const peopleCount = result ? result.tabs.reduce((sum, tab) => sum + tab.people, 0) : 0;
   const clientCount = result ? result.tabs.length : 0;
   const busy = phase !== "idle";
@@ -178,13 +179,42 @@ export function ImportForecastModelPage() {
             hour is set) · clients that exist only as a number on the dashboard (no tab) · currency for Retro Rabbit (assumed USD).
           </p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <Button onClick={() => void load()} disabled={busy} data-testid="load-button">
-              <Upload className="mr-1 h-4 w-4" aria-hidden />
-              {phase === "loading" ? "Loading…" : `Load ${peopleCount} people into ${plural(clientCount, "client")}`}
-            </Button>
-            <span className="text-secondary text-text-secondary">Creates the clients, engagements, allocations and actuals above, then opens the portfolio. Re-importing the same file updates rows, never duplicates them.</span>
-          </div>
+          {blockers.length > 0 ? (
+            <section className="mt-4 rounded-card border border-danger bg-danger-surface/30 p-4" aria-label="Fix these in the workbook before loading" data-testid="blockers-panel">
+              <h2 className="text-heading-sm text-danger">Fix these in the workbook before loading</h2>
+              <p className="mt-1 text-secondary text-text-secondary">
+                Each one is a blank cell. Loading anyway would file the rows under a default — the totals on screen would still add up, and only the margin underneath would be wrong — so the import stops here
+                instead.
+              </p>
+              <ul className="mt-3 space-y-3 pl-5 list-disc">
+                {blockers.map((blocker) => (
+                  <li key={`${blocker.kind}:${blocker.tab}`} data-testid="blocker" data-kind={blocker.kind} data-tab={blocker.tab}>
+                    <span className="font-semibold">{blocker.tab}</span> — {blocker.detail}.
+                    <div className="mt-0.5 text-secondary text-text-secondary" data-testid="blocker-fix">
+                      {blocker.fix}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Button disabled title="Fill the cells above and upload again" data-testid="load-button">
+                  <Upload className="mr-1 h-4 w-4" aria-hidden />
+                  {`Load ${peopleCount} people into ${plural(clientCount, "client")}`}
+                </Button>
+                <span className="text-secondary text-text-secondary" data-testid="blockers-count">
+                  {`${blockers.length} ${blockers.length === 1 ? "thing" : "things"} to fix · re-upload when the workbook carries them`}
+                </span>
+              </div>
+            </section>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Button onClick={() => void load()} disabled={busy} data-testid="load-button">
+                <Upload className="mr-1 h-4 w-4" aria-hidden />
+                {phase === "loading" ? "Loading…" : `Load ${peopleCount} people into ${plural(clientCount, "client")}`}
+              </Button>
+              <span className="text-secondary text-text-secondary">Creates the clients, engagements, allocations and actuals above, then opens the portfolio. Re-importing the same file updates rows, never duplicates them.</span>
+            </div>
+          )}
         </Panel>
       ) : null}
     </div>
