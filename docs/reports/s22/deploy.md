@@ -151,9 +151,21 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | Image | `officeapp-dev-api:s22p5-d0270a48` · digest `sha256:9b2a594cb66f70aebbb3d5124224861583ed4a591556e1c055151585507c94ca` · 105,125,243 bytes · linux/amd64 |
 | SPA | `web/dist` → `assets/index-Cv_2NWJ5.js` |
 | Migration | **new**: `20261012_0066_bu_actuals` (engagement business_unit/sales_owner/delivery_owner/closed, allocation rate_basis/person, allocation_actual); reversible; parity 3 passed on Postgres; applied by the Terraform-owned migration task |
-| Plan | PLAN_SUMMARY |
-| Checksums | PLAN_CHECKSUMS |
+| Plan | `/tmp/s22p5-d0270a48.tfplan` — **12 to add, 14 to change, 12 to destroy**, image-only: 11 `aws_ecs_task_definition` + the `terraform_data` migration trigger replaced; `aws_ecs_service` + 9 `aws_cloudwatch_event_target` + 4 `aws_iam_role_policy` updated; nothing of any other type; every image → `s22p5-d0270a48`; same inputs as every previous plan; planned from the initialised p4 worktree whose `infra-tf` is byte-identical to this branch's |
+| Checksums | tfplan `b558b29b8a43b9bdc7b19d6fd4081e7159e9966987b4abd66c992758fb52b9b6` · plan.txt `13f49b42…fa0b60` · plan.json `361ba7ed…ef7de4` |
 | Local proof | api/tests/forecast 33; test_s22_p5_business_units 9; test_s22_portfolio_forecast 21; vitest 91 files / 574; tsc clean; Playwright s22-p5-forecast-model (3) + s22-p4-upload (2) + s22-p1-contract + s22-p2-owner-path on the local stack (Postgres at 0066) all pass |
+
+## S22-P5 apply and roll (2026-10-13, image-only plan with the Terraform-owned migration, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| `terraform -chdir=infra-tf apply /tmp/s22p5-d0270a48.tfplan` (checksum re-verified first) | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed** — exactly the plan |
+| Migration task `40ddd4bb265740fc84bad1d1091ba1da` on `officeapp-dev-api-migrate:40` | succeeded — staging head now `20261012_0066_bu_actuals` |
+| API service | `officeapp-dev-api:102`, `services-stable`, 1/1 PRIMARY; running task on `s22p5-d0270a48`, digest `sha256:9b2a594cb66f70aebbb3d5124224861583ed4a591556e1c055151585507c94ca`; `POST /api/engagements/import-forecast-model` → 401 unauthenticated (present) |
+| Worker families | alert-scheduler 54, notification-sender 54, renewals-scheduler 54, portfolio-scheduler 6, audit-export 54, hubspot-intake 53, hubspot-reconcile 53, forecast-plans 31, deletion-cleanup 31, api-migrate 40 — all `s22p5-d0270a48` |
+| SPA | `assets/index-Cv_2NWJ5.js` synced (immutable) + `index.html` (no-cache); CloudFront invalidation `IAGR8YTKDNV49X6L7J9I4W6OHL` COMPLETED; served bundle contains the import-forecast-model call |
+| Smoke | `smoke 20261013T005136Z` GREEN; gate clean (0 clients / 0 approvers / 0 people / 0 engagements) |
+| S22 specs on staging | `s22-p5-forecast-model` (3) + `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `7 passed (1.8m)`; gate clean after: 0 clients / 0 approvers / 0 people / 0 engagements; calendar restored by teardown |
 
 ## S22-P4 main image (post-merge, 2026-10-12, Kanna: "approved")
 

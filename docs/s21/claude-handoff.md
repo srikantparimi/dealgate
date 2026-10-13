@@ -2,6 +2,23 @@
 
 ## RESUME HERE
 
+**2026-10-13 — S22-P5 (BUSINESS UNITS, FORECAST-MODEL IMPORT, ACTUALS) ON
+STAGING; AWAITING PRODUCT-OWNER CLICK.** Tree
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-p5`, branch `feat/s22-p5` (off
+`origin/main` dfc3f8b), pushed. Staging: API `officeapp-dev-api:102` on
+image `s22p5-d0270a48`
+(`sha256:9b2a594cb66f70aebbb3d5124224861583ed4a591556e1c055151585507c94ca`),
+migration `20261012_0066_bu_actuals` applied by the Terraform-owned task, SPA
+`assets/index-Cv_2NWJ5.js`, all worker families on the image. Smoke
+`smoke 20261013T005136Z` GREEN; the four S22 specs pass on staging (7 tests);
+gate 0/0/0/0. Scoreboard S22-P5-1 … S22-P5-9 all `verified working
+(staging)`; report `docs/reports/s22/p5-report.md`; bug log
+`docs/bugs/s22-p5.md` (rows 1–6, all fixed or noted). No merge to main before
+Kanna's click: `/import/forecast-model` with the real master (never
+committed), `/portfolio` BU tabs, an imported engagement's grid / Forecast
+Actuals / Setup. On acceptance: squash-merge `feat/s22-p5` → main → main-image
+roll (same image-only plan shape; the migration is already on staging).
+
 **2026-10-12 — S22-P4 MERGED TO MAIN AND ROLLED.** Kanna accepted the
 staging click-through; `feat/s22-p4` @ 7e11726 squashed → `origin/main`
 = `ef50ef9` (release worktree `dealgate-s22-release`, branch
