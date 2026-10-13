@@ -2,17 +2,17 @@
 
 ## RESUME HERE
 
-**2026-10-13 12:24 PDT — COMMAND CENTER HISTORICAL CLOSED-WON DEFECT FIXED,
-PACKAGED AND PLANNED; HUMAN TERRAFORM APPROVAL REQUIRED.**
+**2026-10-13 13:19 PDT — COMMAND CENTER HISTORICAL CLOSED-WON DEFECT DEPLOYED;
+AUTOMATED STAGING GATES GREEN; OWNER REAL-DATA CLICK REQUIRED.**
 Authoritative tree `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`,
-branch `feat/command-center-redesign`, branch checkpoint
-`5538e66c24958d63748fab72766f39607e5dc0d6`. Current application checkpoint is
+branch `feat/command-center-redesign`, pre-deploy approval checkpoint
+`408d68507fbc93f36e425e2526a73f361b2fd34a`. Current application checkpoint is
 `c606d763273ffa40379e4f4d39c8677e390045d5`; previous staging application is
 `eac3ee1faec7a55209a37907a6332c29b2d7714b`; staging verification checkpoint is
 `8deaf3f6f195bb41ce0062d55a3d8794b150140a`. Baseline is `origin/main`
-`03b76e62b154eb25fbac8b918112214f4e32543f`. Current task: obtain human
-approval for the reviewed saved Terraform plan, apply it, publish the matching
-SPA, and repeat the owner's real-data check. Do not merge `main`.
+`03b76e62b154eb25fbac8b918112214f4e32543f`. Current task: obtain the product
+owner's real-data click-through on the deployed correction. Do not merge
+`main` before explicit acceptance.
 
 Owner acceptance found that the deployed page was dominated by old Closed Won
 deals, including an October 2025 win with no SOW. Root cause:
@@ -36,18 +36,19 @@ rejected the dev-only identity. No timeout/assertion was weakened and no blind
 retry remains. Failure traces are under `tests/e2e/test-results/`. Detailed
 status is `docs/reports/command-center-redesign.md`.
 
-Previous staging still runs API service `officeapp-dev-api:109`, image
+Previous staging ran API service `officeapp-dev-api:109`, image
 `officeapp-dev-api:cc-eac3ee1f`, digest
 `sha256:30421cd6b245a98b41de3cf4defe0a1ed52e9c93660e41913b7c3c2dc0f97cdf`,
 SPA `index-ezj6RfOC.js`, and migration head
 `20261013_0067_import_key`. That deployment does **not** contain `c606d76` and
-the owner-visible defect remains there until the next approved apply. The prior
-smoke, browser and no-drift results are deployment history only.
+the owner-visible defect remained there. The prior smoke, browser and no-drift
+results are deployment history only.
 
-New immutable candidate image `officeapp-dev-api:ccfix-c606d76` is present in
-ECR at digest
+Current staging runs immutable image `officeapp-dev-api:ccfix-c606d76` at ECR
+digest
 `sha256:c84f1f49a62b5b2b3d7e859cf26926ea11dab97a655f3e4b0a74bccf1d69f980`.
-The reviewed whole-root plan `/tmp/ccfix-c606d76.tfplan` is saved and unapplied:
+The owner approved and Terraform applied reviewed plan
+`/tmp/ccfix-c606d76.tfplan` exactly:
 12 add / 14 change / 12 destroy, limited to eleven image-bearing ECS task
 definitions, the migration trigger and their API service/EventBridge/RunTask
 policy references. It has no data, auth, storage, network, CDN or DNS changes.
@@ -58,6 +59,17 @@ Checksums: plan
 Matching SPA build: `assets/index-BPc0sdEg.js` and
 `assets/index-CZ_B4MrY.css`.
 
+Deployment proof: migration task `e56a87f1c7cf467aae95adad1d02eac5`
+(`api-migrate:48`) succeeded; API `officeapp-dev-api:110` is stable 1/1 on task
+`d7ed7048876e4063b2738f600ea70fbe` and the exact ECR digest; every scheduler
+family resolves to `ccfix-c606d76`; CloudFront invalidation
+`I4F7087D1UPI68V5QH1DDJFWA0` completed; deploy smoke
+`smoke 20261013T201315Z` GREEN with cleanup; deployed Command Center Playwright
+2/2 passed; separate leak gate clean; post-apply Terraform reports No changes.
+The isolated staging identity has zero owner business records, so automation
+cannot assert the owner's 2025 Closed Won row is absent. That final condition
+is a product-owner click, not an engineering failure or hidden skip.
+
 Runtime: no local API, Vite, preview, browser test, Terraform plan/apply,
 migration, deployment or background job is active. The isolated PostgreSQL container is
 available on port 55432; `dealgate_command_center` was rebuilt at schema head
@@ -65,26 +77,26 @@ available on port 55432; `dealgate_command_center` was rebuilt at schema head
 owns this branch. Secrets remain in the established AWS/Terraform references;
 none are recorded here.
 
-Application/test changes are committed at `c606d76`; this handoff/report update
-is the only current uncommitted work. The separate main tree remains at
+Application changes are committed at `c606d76`; the staging spec wording,
+refreshed mobile screenshot and deployment evidence belong to the documentation
+checkpoint containing this text. No other feature-tree work is uncommitted. The
+separate main tree remains at
 `3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six existing
 modified `docs/reports/s19-1/*.png` files untouched. Exact resume:
 
 ```bash
 cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
 git status --short && git diff --check
-shasum -a 256 /tmp/ccfix-c606d76.tfplan
-env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 \
-  terraform -chdir=infra-tf apply /tmp/ccfix-c606d76.tfplan
+curl -fsS https://app.dealgateapp.com/ | rg 'assets/index-BPc0sdEg.js'
+curl -fsS https://app.dealgateapp.com/api/healthz
 ```
 
-Next release gate: human approval of the exact saved Terraform plan above.
-After approval, verify its checksum before apply, publish the matching SPA,
-invalidate CloudFront, verify running API/frontend identifiers, then ask the
-owner to confirm the reported 2025 deal is absent while current open
-work/current delivery remain. No main merge before explicit acceptance. Do not
-rerun unchanged local browser paths merely to obtain green. Older S21/S22
-entries below are historical and do not describe this branch.
+Next release gate: product owner opens `/command` in a fresh session and
+confirms the reported October 2025 Closed Won/no-SOW deal is absent while
+current open work and current-period/active-delivery wins remain. No main merge
+before explicit acceptance. Do not rerun unchanged local browser paths merely
+to obtain green. Older S21/S22 entries below are historical and do not describe
+this branch.
 
 **2026-10-13 — S22-P5 MERGED TO MAIN AND ROLLED.** Kanna accepted the staging
 click-through ("push and merge the changes looks good"); `feat/s22-p5` @ 48e46d0

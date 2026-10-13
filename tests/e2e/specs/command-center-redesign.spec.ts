@@ -84,7 +84,7 @@ test("deployed Command Center serves the canonical scope and connected operation
 
   if (accounts.items.length === 0) {
     await expect(
-      page.getByText("No Stage 5 or later HubSpot deals match these filters."),
+      page.getByText("No current Stage 5 or later HubSpot deals match these filters."),
     ).toBeVisible();
     await expect(page.getByText("0 eligible deals")).toBeVisible();
   } else {

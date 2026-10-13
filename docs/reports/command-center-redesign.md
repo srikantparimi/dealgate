@@ -1,9 +1,9 @@
 # Command Center redesign evidence
 
-Status at 2026-10-13 12:24 PDT: **owner-reported population defect fixed,
-focused locally verified, and packaged in a reviewed staging plan awaiting
-human approval**. The currently deployed candidate still contains the defect
-described below. Authoritative branch
+Status at 2026-10-13 13:19 PDT: **owner-reported population defect fixed,
+deployed to staging, and verified through the automated staging gates**. The
+product owner's real-data click-through remains required because the isolated
+test identity cannot see owner business accounts. Authoritative branch
 `feat/command-center-redesign`, worktree
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`. No merge to
 `main` is permitted before product-owner acceptance.
@@ -30,7 +30,7 @@ missing close dates remain incomplete instead of being assigned to a period.
 | # | Acceptance condition | Local evidence | Staging |
 |---|---|---|---|
 | 1 | Stage 4 excluded; Stage 5+ included per ordered pipeline | Backend `test_stage5_is_resolved_per_pipeline_and_not_from_stage_ids`; connected Playwright sees Stage 5/6 and excludes Stage 4 | Deployed API/UI contract verified; owner-visible populated rows pending click-through because the staging test identity has no access to business accounts |
-| 2 | SOW state does not affect sales-stage eligibility | `test_sow_governance_does_not_change_sales_stage_eligibility` | Deployed in API revision 109; populated owner-data assertion pending click-through |
+| 2 | SOW state does not affect sales-stage eligibility | `test_sow_governance_does_not_change_sales_stage_eligibility` | Deployed in API revision 110; populated owner-data assertion pending click-through |
 | 3 | Per-pipeline threshold; unknown/unlinked/unconfigured rows excluded; gaps explicit | `test_unknown_unlinked_lost_and_unconfigured_rows_are_explicit` | Deployed and empty state verified; real pipeline rows/gaps pending owner click-through |
 | 4 | Server search, filters, paging and CSV use one eligible population | Backend search/paging/CSV test; connected BU/owner filters and CSV download; unique opportunity IDs asserted | CSV and canonical API population pass through Cognito/CloudFront; populated paging/filter check pending owner data |
 | 5 | Reset preserves visible Stage-5 constraint | UI unit and connected browser assertions | Verified on staging browser |
@@ -39,7 +39,7 @@ missing close dates remain incomplete instead of being assigned to a period.
 | 8 | Established financial/capacity services; missing data is unknown | Real forecast test independently verifies $90,000 - $26,400; missing-cost test; People allocation integration test; connected 62.5% GM | Correct unknown-source state verified on staging; populated owner financial/capacity values pending click-through |
 | 9 | Independent loading/empty/error behavior | UI tests prove an overview failure keeps the table and a table failure keeps the overview; source gaps render explicitly | Settled empty state and source states verified on staging |
 | 10 | Responsive, keyboard-operable layout and focus-contained drawer | Connected 390px containment, desktop/mobile screenshots, named controls, Radix Sheet Escape test | Desktop/mobile staging browser proof passed; populated drawer remains covered locally |
-| 11 | Historical Closed Won rows do not dominate current work | `test_historical_closed_won_requires_current_delivery_context`; `test_overview_excludes_historical_wins_and_period_scopes_potential`; connected isolated API fixture contains one 2025 win and still returns only current Stage 5/6 rows | Pending deployment and owner re-check on the reported real record |
+| 11 | Historical Closed Won rows do not dominate current work | `test_historical_closed_won_requires_current_delivery_context`; `test_overview_excludes_historical_wins_and_period_scopes_potential`; connected isolated API fixture contains one 2025 win and still returns only current Stage 5/6 rows | Deployed in API revision 110; authenticated staging journey passed, but the isolated test identity has zero business rows. Owner re-check of the reported real record remains required |
 
 ## Focused verification
 
@@ -79,16 +79,16 @@ Artifacts:
 - `api/tests/test_command_center_accounts.py`
 - `tests/e2e/local/command-center-redesign.spec.ts`
 
-## Staging candidate
+## Deployed correction
 
-The current fix candidate is application commit
+The deployed fix is application commit
 `c606d763273ffa40379e4f4d39c8677e390045d5`, packaged as immutable image
 `officeapp-dev-api:ccfix-c606d76` with ECR digest
 `sha256:c84f1f49a62b5b2b3d7e859cf26926ea11dab97a655f3e4b0a74bccf1d69f980`.
 The matching production SPA build contains `assets/index-BPc0sdEg.js` and
 `assets/index-CZ_B4MrY.css`.
 
-The saved whole-root plan is `/tmp/ccfix-c606d76.tfplan`: **12 to add, 14 to
+The applied whole-root plan is `/tmp/ccfix-c606d76.tfplan`: **12 to add, 14 to
 change, 12 to destroy**. It contains only the expected application-image
 rollout: eleven ECS task-definition replacements plus the migration trigger,
 the API service reference, nine EventBridge task references and four RunTask
@@ -105,8 +105,33 @@ migration task is expected to confirm head `20261013_0067_import_key`.
 | `/tmp/ccfix-c606d76.plan.txt` | `491c47a9b18968b17e52991f03ebd828ea9ba279edf8ecce48da900bc59dfa62` |
 | `/tmp/ccfix-c606d76.plan.json` | `2a790fa475612f32a914914e593ee00e74afa04b5e3fbcdbb0af4eb99ed0b440` |
 
-This plan has **not** been applied. Required human action: approve this exact
-staging Terraform plan. The authorized apply command after approval is:
+The owner approved this exact plan with “go”. Its checksum was reverified before
+apply, and Terraform completed exactly: **12 added, 14 changed, 12 destroyed**.
+
+Current staging evidence:
+
+- Migration task `e56a87f1c7cf467aae95adad1d02eac5` on
+  `officeapp-dev-api-migrate:48` exited successfully after running
+  `alembic upgrade head`; source head remains `20261013_0067_import_key`.
+- API service `officeapp-dev-api:110` is stable at 1/1 with one completed
+  PRIMARY deployment. Running task `d7ed7048876e4063b2738f600ea70fbe`
+  resolves to the candidate digest above.
+- All API, migration and nine scheduler task families resolve to image
+  `ccfix-c606d76` (revisions API 110, migrate 48, core schedulers 62,
+  portfolio 14, HubSpot 61, S21 jobs 39).
+- SPA `assets/index-BPc0sdEg.js` and `assets/index-CZ_B4MrY.css` are served;
+  `index.html` is `no-cache,must-revalidate`. CloudFront invalidation
+  `I4F7087D1UPI68V5QH1DDJFWA0` completed.
+- Deploy smoke `smoke 20261013T201315Z` passed upload, extraction, listing,
+  cleanup and the zero-leak gate.
+- Focused deployed Command Center Playwright: **2 passed** in 37.8 seconds,
+  covering authenticated API contracts, desktop operations, filter/reset,
+  CSV, mobile containment and staging screenshots.
+- A separate cleanup gate is clean: zero tagged clients, real-SOW e2e
+  approvers, people and engagements.
+- Post-apply whole-root Terraform detailed-exitcode is 0: **No changes**.
+
+The exact apply command was:
 
 ```bash
 cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
@@ -146,7 +171,7 @@ mutation. Migration execution is retained but the application has no new
 migration file, so it is expected to confirm the existing head
 `20261013_0067_import_key`.
 
-## Staging verification
+## Previous candidate verification
 
 - Approved plan applied exactly: `12 added, 14 changed, 12 destroyed`.
 - Migration task `officeapp-dev-api-migrate:47` succeeded and retained head
