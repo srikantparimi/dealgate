@@ -64,7 +64,15 @@ def _post(args, dry_run: bool) -> dict:
                           data={"dry_run": str(dry_run).lower(), **({"as_of": args.as_of} if args.as_of else {})},
                           timeout=args.timeout)
     if r.status_code == 422:
-        sys.exit(f"The server would not read that file: {r.json().get('detail') or r.text[:400]}")
+        detail = r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else None
+        blockers = (detail or {}).get("blockers") if isinstance(detail, dict) else None
+        if blockers:
+            print(f"Not loaded — fix these in the workbook first ({len(blockers)}):")
+            for b in blockers:
+                print(f"  - {b.get('tab')}: {b.get('detail')}")
+                print(f"    {b.get('fix')}")
+            sys.exit(2)
+        sys.exit(f"The server would not read that file: {detail or r.text[:400]}")
     if r.status_code == 401 or r.status_code == 403:
         sys.exit("Token rejected. Get a fresh one the way the e2e suite does.")
     r.raise_for_status()
@@ -72,6 +80,9 @@ def _post(args, dry_run: bool) -> dict:
 
 
 def _summarise(body: dict) -> None:
+    for b in body.get("blockers", []):
+        print(f"  BLOCKER {b.get('tab')}: {b.get('detail')}")
+        print(f"          {b.get('fix')}")
     for g in body.get("by_business_unit", []):
         print(f"  {g.get('business_unit') or 'not on the dashboard':16} "
               f"{g.get('clients', 0):>3} clients · {g.get('engagements', 0):>3} engagements · "

@@ -114,7 +114,19 @@ paths:
                   by_business_unit: { type: array, items: { type: object, properties: { business_unit: { type: string }, clients: { type: integer }, engagements: { type: integer }, people: { type: integer }, closed: { type: integer } } } }
                   tabs: { type: array, items: { type: object, properties: { tab: { type: string }, client: { type: string }, business_unit: { type: string, nullable: true }, engagement_type: { type: string }, engagements: { type: integer }, people: { type: integer }, allocations: { type: integer }, extensions: { type: integer }, months: { type: integer }, actual_months: { type: integer }, issues: { type: array, items: { type: string } } } } }
                   created: { type: object, nullable: true, properties: { clients: { type: integer }, engagements: { type: integer }, allocations: { type: integer }, actual_rows: { type: integer } } }
-        "422": { description: Not a forecast model master (no run-rate dashboard / no client tabs). }
+                  blockers: { type: array, description: what the workbook must say before a load is safe (empty when it is complete); the load refuses with 422 while any remain, items: { type: object, properties: { kind: { type: string, enum: [business_unit, location] }, tab: { type: string }, detail: { type: string }, rows: { type: array, items: { type: string } }, fix: { type: string } } } }
+        "422":
+          description: >
+            Either not a forecast model master (no run-rate dashboard / no client tabs) — body.errors — or, on a load
+            (dry_run=false), the workbook does not say where people belong — body.blockers lists each blank cell
+            ({kind: business_unit | location, tab, detail, rows, fix}); nothing is created, no partial write. A dry run
+            with blockers is still 200 and returns the same list, so a dry run is how you find out.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { type: object, properties: { errors: { type: array, items: { type: string } } } }
+                  - { type: object, properties: { blockers: { type: array, items: { type: object, properties: { kind: { type: string, enum: [business_unit, location] }, tab: { type: string }, detail: { type: string }, rows: { type: array, items: { type: string } }, fix: { type: string } } } } } }
   /engagements/{id}/forecast:
     get:
       tags: [forecast]

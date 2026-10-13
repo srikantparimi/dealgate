@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
+from app.models.client import Client
 from app.models.engagement import Engagement
 from tests.forecast.test_forecast_model_import import build_fixture
 from tests.test_s22_portfolio_forecast import (
@@ -26,18 +27,29 @@ from tests.test_s22_portfolio_forecast import (
 )
 
 MODEL = Path(__file__).parent / "forecast" / "fixtures" / "forecast_model_synthetic.xlsx"
+# The same workbook without the "Zeta Unlisted" tab (no dashboard row, one blank location): nothing blocks a load.
+# Playwright uses both files: this one for the owner's load path, the full one for the blockers panel (P5c).
+COMPLETE = Path(__file__).parent / "forecast" / "fixtures" / "forecast_model_synthetic_complete.xlsx"
 
 
-def model_bytes() -> bytes:
+def model_bytes(complete: bool = False) -> bytes:
     if not MODEL.exists():
         build_fixture(MODEL)
+    if complete:
+        import openpyxl
+
+        wb = openpyxl.load_workbook(MODEL)
+        if "Zeta Unlisted" in wb.sheetnames:
+            wb.remove(wb["Zeta Unlisted"])
+        wb.save(COMPLETE)
+        return COMPLETE.read_bytes()
     return MODEL.read_bytes()
 
 
-async def upload_model(client, *, dry_run: bool, as_of: str | None = "2026-02", expect: int = 200) -> dict:
+async def upload_model(client, *, dry_run: bool, as_of: str | None = "2026-02", expect: int = 200, complete: bool = False) -> dict:
     response = await client.post(
         "/engagements/import-forecast-model",
-        files={"file": ("model.xlsx", model_bytes(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        files={"file": ("model.xlsx", model_bytes(complete), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         data={"dry_run": "true" if dry_run else "false", **({"as_of": as_of} if as_of else {})},
     )
     assert response.status_code == expect, response.text
@@ -50,12 +62,13 @@ async def test_model_import_dry_run_reports_three_business_units_and_creates_not
     async with client_for(session, actor) as client:
         report = await upload_model(client, dry_run=True)
         assert report["dry_run"] is True and report["created"] is None
-        assert [b["business_unit"] for b in report["by_business_unit"]] == ["ST21", "IT Avalon", "Retro Rabbit"]
+        assert [b["business_unit"] for b in report["by_business_unit"]] == ["ST21", "IT Avalon", "Retro Rabbit", "Unassigned"]
         st21 = next(b for b in report["by_business_unit"] if b["business_unit"] == "ST21")
         assert st21["clients"] == 2 and st21["engagements"] == 2 and st21["people"] == 5
         avalon = next(b for b in report["by_business_unit"] if b["business_unit"] == "IT Avalon")
         assert avalon["engagements"] == 3 and avalon["closed"] == 1            # Gamma VMS + PO, Delta (closed)
-        assert {t["tab"] for t in report["tabs"]} == {"Alpha", "Beta", "Gamma Health-VMS", "Delta Closed"}
+        assert {t["tab"] for t in report["tabs"]} == {"Alpha", "Beta", "Gamma Health-VMS", "Delta Closed", "Zeta Unlisted"}
+        assert {(b["kind"], b["tab"]) for b in report["blockers"]} == {("business_unit", "Zeta Unlisted"), ("location", "Zeta Unlisted")}
         assert "## By business unit" in report["report_markdown"] and "## Calendar" in report["report_markdown"]
         assert "India - Pune" in report["report_markdown"] and "South Africa" in report["report_markdown"]
         assert (await client.get("/engagements")).json()["total"] == 0
@@ -66,7 +79,8 @@ async def test_model_import_load_creates_the_ledger_and_the_portfolio_groups_rec
     await seed_calendar(session)
     actor = await actor_for(session, ("SystemAdmin",))
     async with client_for(session, actor) as client:
-        loaded = await upload_model(client, dry_run=False)
+        loaded = await upload_model(client, dry_run=False, complete=True)
+        assert loaded["blockers"] == []
         created = loaded["created"]
         assert created["clients"] == 4 and created["engagements"] == 5 and created["allocations"] >= 8 and created["actual_rows"] > 0
         # locations the Settings page lacked now exist with their WorkingDays holidays
@@ -120,7 +134,7 @@ async def test_model_import_load_creates_the_ledger_and_the_portfolio_groups_rec
         assert "ST21 subtotal" in csv_text and "IT Avalon subtotal" in csv_text and f"All business units · {month}" in csv_text
 
         # re-importing the same file is idempotent
-        again = await upload_model(client, dry_run=False)
+        again = await upload_model(client, dry_run=False, complete=True)
         assert again["created"]["engagements"] == 0 and again["created"]["allocations"] == 0 and again["created"]["clients"] == 0
         assert (await client.get("/engagements?page_size=50")).json()["total"] == 5
         assert len((await client.get(f"/engagements/{alpha['id']}/allocations")).json()) == 3
@@ -233,3 +247,44 @@ async def test_as_of_defaults_to_the_models_month_and_never_leaks_from_an_earlie
         assert alpha_earlier["actual_months"] == 2 and alpha_default["actual_months"] == 3     # Sep+Oct vs Sep+Oct+Nov 2025
         bad = await client.post("/engagements/import-forecast-model", files={"file": ("m.xlsx", model_bytes())}, data={"dry_run": "true", "as_of": "Sept"})
         assert bad.status_code == 422
+
+
+async def test_a_load_with_blockers_is_422_and_writes_nothing(session):
+    """P5c: the fixture's 'Zeta Unlisted' tab has no dashboard row and a blank location. The dry run reports both
+    (200, nothing created); the load refuses with 422 {blockers} before any write — no client, engagement,
+    person, location or holiday appears; nothing is filed under a default business unit."""
+    from app.models.engagement import CalendarLocation, Holiday, Resource
+
+    await seed_calendar(session)
+    actor = await actor_for(session, ("SystemAdmin",))
+    async with client_for(session, actor) as client:
+        async def counts():
+            out = []
+            for m in (Client, Engagement, Resource, CalendarLocation, Holiday):
+                out.append(await session.scalar(select(func.count()).select_from(m)))
+            return tuple(out)
+
+        before = await counts()
+        dry = await upload_model(client, dry_run=True)
+        assert dry["dry_run"] is True and dry["created"] is None
+        kinds = {(b["kind"], b["tab"]) for b in dry["blockers"]}
+        assert kinds == {("business_unit", "Zeta Unlisted"), ("location", "Zeta Unlisted")}
+        loc = next(b for b in dry["blockers"] if b["kind"] == "location")
+        assert loc["rows"] and loc["fix"].startswith("Fill the Location column") and all(name in loc["fix"] for name in loc["rows"])
+        bu = next(b for b in dry["blockers"] if b["kind"] == "business_unit")
+        assert "Dashboard (RunRate)" in bu["fix"]
+        assert dry["report_markdown"].index('> **This workbook ca') < dry["report_markdown"].index("Actuals are taken through")
+        response = await client.post(
+            "/engagements/import-forecast-model",
+            files={"file": ("model.xlsx", model_bytes(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"dry_run": "false", "as_of": "2026-02"},
+        )
+        assert response.status_code == 422, response.text
+        body = response.json()["detail"]
+        assert "errors" not in body and {(b["kind"], b["tab"]) for b in body["blockers"]} == kinds
+        assert await counts() == before
+        assert (await client.get("/engagements?page_size=50")).json()["total"] == 0
+        # the same workbook without that tab loads
+        loaded = await upload_model(client, dry_run=False, complete=True)
+        assert loaded["blockers"] == [] and loaded["created"]["engagements"] == 5
+        assert all(e["business_unit"] in ("ST21", "IT Avalon", "Retro Rabbit") for e in (await client.get("/engagements?page_size=50")).json()["items"])

@@ -2113,6 +2113,19 @@ _MODEL_LOCATION_DEFAULTS: dict[str, tuple[Decimal, Decimal, Decimal]] = {
 _MODEL_LOCATION_FALLBACK = (Decimal("0.08"), Decimal("0.08"), Decimal("0.35"))
 
 
+class ModelBlockedError(WorkbookImportError):
+    """422 whose body lists what the workbook must say before a load is safe (contract: ``body.blockers``)."""
+
+    def __init__(self, blockers: list[dict[str, Any]]):
+        HTTPException.__init__(self, status_code=422, detail={"blockers": list(blockers)})
+        self.errors = [b["fix"] for b in blockers]
+        self.blockers = list(blockers)
+
+
+def serialize_blockers(imp: model_import.MasterImport) -> list[dict[str, Any]]:
+    return [{"kind": b.kind, "tab": b.tab, "detail": b.detail, "rows": list(b.rows), "fix": b.fix} for b in imp.blockers]
+
+
 def parse_model_upload(data: bytes, as_of: str | None) -> model_import.MasterImport:
     try:
         imp = model_import.parse_master(io.BytesIO(data), as_of=as_of)   # None -> the importer's MODEL_AS_OF
@@ -2179,7 +2192,7 @@ def _model_report(imp: model_import.MasterImport, cal: engine.Calendar, notes: l
         }
         for r in imp.reports
     ]
-    return {"report_markdown": markdown, "by_business_unit": by_bu, "tabs": tabs}
+    return {"report_markdown": markdown, "by_business_unit": by_bu, "tabs": tabs, "blockers": serialize_blockers(imp)}
 
 
 async def _ensure_model_locations(session: AsyncSession, bundle: CalendarBundle, imp: model_import.MasterImport) -> int:
@@ -2221,6 +2234,10 @@ async def import_forecast_model(
     report = _model_report(imp, cal, notes)
     if dry_run:
         return {"dry_run": True, **report, "created": None}
+    # A blank business unit or location is not a judgement call: the load stops here, before any write,
+    # and names the cells (P5c). No default, no override.
+    if imp.blockers:
+        raise ModelBlockedError(report["blockers"])
 
     added_locations = await _ensure_model_locations(session, bundle, imp)
     bundle = await load_calendar(session)
@@ -2250,7 +2267,10 @@ async def import_forecast_model(
         before = None if is_new else _engagement_snapshot(eng)
         eng.type = eng_in.type
         eng.start, eng.end = eng_in.start, eng_in.end
-        eng.business_unit = me.business_unit if me.business_unit in BUSINESS_UNITS else "ST21"
+        if me.business_unit not in BUSINESS_UNITS:   # cannot happen past the blockers check; never default
+            raise ModelBlockedError([{"kind": "business_unit", "tab": me.tab, "detail": "no business unit on the run-rate dashboard", "rows": [],
+                                      "fix": f"Add '{me.tab}' to the Dashboard (RunRate) tab under its business unit, with sales owner, delivery owner and billing type."}])
+        eng.business_unit = me.business_unit
         eng.sales_owner = _owner_text(me.sales_owner)
         eng.delivery_owner = _owner_text(me.delivery_owner)
         eng.closed = bool(me.closed)
