@@ -20,6 +20,7 @@ stay, because the deal's margin is already theirs to see.
 from __future__ import annotations
 
 import copy
+import re
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -139,6 +140,10 @@ EmploymentType = Literal["w2_employee", "contractor_1099"]
 Seniority = Literal["Junior", "Mid", "Senior", "Principal"]
 
 
+BusinessUnit = Literal["ST21", "IT Avalon", "Retro Rabbit"]
+RateBasis = Literal["hourly", "daily", "monthly"]
+
+
 class EngagementIn(BaseModel):
     client_id: uuid.UUID
     hubspot_deal_id: str | None = None
@@ -153,6 +158,10 @@ class EngagementIn(BaseModel):
     additional_costs_flag: bool
     same_dates_for_all: bool
     owner_user_id: uuid.UUID | None = None
+    business_unit: BusinessUnit = "ST21"
+    sales_owner: str | None = Field(default=None, max_length=255)
+    delivery_owner: str | None = Field(default=None, max_length=255)
+    closed: bool = False
 
 
 class EngagementPatch(BaseModel):
@@ -169,6 +178,10 @@ class EngagementPatch(BaseModel):
     additional_costs_flag: bool | None = None
     same_dates_for_all: bool | None = None
     owner_user_id: uuid.UUID | None = None
+    business_unit: BusinessUnit | None = None
+    sales_owner: str | None = Field(default=None, max_length=255)
+    delivery_owner: str | None = Field(default=None, max_length=255)
+    closed: bool | None = None
 
 
 class AllocationIn(BaseModel):
@@ -184,6 +197,8 @@ class AllocationIn(BaseModel):
     start: date | None = None
     end: date | None = None
     hours_override: Decimal | None = None
+    rate_basis: RateBasis = "hourly"
+    person: str | None = Field(default=None, max_length=255)
 
 
 class AllocationPatch(BaseModel):
@@ -198,6 +213,14 @@ class AllocationPatch(BaseModel):
     start: date | None = None
     end: date | None = None
     hours_override: Decimal | None = None
+    rate_basis: RateBasis | None = None
+    person: str | None = Field(default=None, max_length=255)
+
+
+class ActualIn(BaseModel):
+    month: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+    hours: Decimal | None = None
+    revenue: Decimal | None = None
 
 
 class CloseIn(BaseModel):
@@ -314,6 +337,34 @@ async def import_workbook(
     return {**result, "forecast": _for_user(result["forecast"], user)}
 
 
+@router.post("/engagements/import-forecast-model")
+async def import_forecast_model(
+    file: UploadFile = File(...),
+    dry_run: bool = Form(default=True),
+    as_of: str | None = Form(default=None),
+    user: AuthUser = Depends(require_write),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Import the FY forecast model master (.xlsx): dry run (default) reports and creates nothing; load creates."""
+
+    actor = await _actor(session, user)
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail={"errors": ["The upload was empty."]})
+    if as_of is not None and not re.fullmatch(_MONTH, as_of):
+        raise HTTPException(status_code=422, detail={"errors": ["as_of must be YYYY-MM."]})
+    try:
+        result = await svc.import_forecast_model(session, actor=actor, data=data, dry_run=dry_run, as_of=as_of)
+    except svc.WorkbookImportError:
+        await session.rollback()
+        raise
+    if dry_run:
+        await session.rollback()
+    else:
+        await session.commit()
+    return result
+
+
 @router.get("/engagements/{engagement_id}")
 async def get_engagement(
     engagement_id: uuid.UUID,
@@ -391,6 +442,23 @@ async def patch_allocation(
     actor, row = await _allocation_for(session, user, allocation_id)
     row = await svc.patch_allocation(session, actor=actor, row=row, body=_dump(body, patch=True))
     payload = await svc.allocation_detail(session, row)
+    await session.commit()
+    return _for_user(payload, user)
+
+
+@router.put("/allocations/{allocation_id}/actuals")
+async def put_actuals(
+    allocation_id: uuid.UUID,
+    body: list[ActualIn],
+    user: AuthUser = Depends(require_write),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Replace the allocation's actuals (one row per month); returns the engagement's recomputed forecast."""
+
+    actor, row = await _allocation_for(session, user, allocation_id)
+    await svc.replace_actuals(session, actor=actor, row=row, body=[item.model_dump() for item in body])
+    eng = await svc.load_engagement(session, row.engagement_id)
+    payload = await svc.forecast_payload(session, eng)
     await session.commit()
     return _for_user(payload, user)
 
@@ -536,13 +604,14 @@ _MONTH = r"^\d{4}-(0[1-9]|1[0-2])$"
 @router.get("/portfolio/forecast")
 async def portfolio_forecast(
     month: str = Query(..., pattern=_MONTH),
+    business_unit: BusinessUnit | None = Query(default=None),
     type: EngagementType | None = Query(default=None),
     client_id: uuid.UUID | None = Query(default=None),
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     actor = await _actor(session, user)
-    view = await svc.portfolio_month(session, actor=actor, month=month, type_=type, client_id=client_id)
+    view = await svc.portfolio_month(session, actor=actor, month=month, type_=type, client_id=client_id, business_unit=business_unit)
     await session.commit()
     return view
 
@@ -550,13 +619,14 @@ async def portfolio_forecast(
 @router.get("/portfolio/forecast.csv", response_class=PlainTextResponse)
 async def portfolio_forecast_csv(
     month: str = Query(..., pattern=_MONTH),
+    business_unit: BusinessUnit | None = Query(default=None),
     type: EngagementType | None = Query(default=None),
     client_id: uuid.UUID | None = Query(default=None),
     user: AuthUser = Depends(require_read),
     session: AsyncSession = Depends(get_session),
 ) -> PlainTextResponse:
     actor = await _actor(session, user)
-    view = await svc.portfolio_month(session, actor=actor, month=month, type_=type, client_id=client_id)
+    view = await svc.portfolio_month(session, actor=actor, month=month, type_=type, client_id=client_id, business_unit=business_unit)
     await session.commit()
     return PlainTextResponse(
         svc.portfolio_csv(view),
