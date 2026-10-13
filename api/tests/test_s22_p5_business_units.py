@@ -7,6 +7,7 @@ real model, invented people and clients); the real model never enters the repo.
 
 from __future__ import annotations
 
+import io
 from decimal import Decimal as D
 from pathlib import Path
 
@@ -14,7 +15,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models.client import Client
-from app.models.engagement import Engagement
+from app.models.engagement import Allocation, Engagement
 from tests.forecast.test_forecast_model_import import build_fixture
 from tests.test_s22_portfolio_forecast import (
     actor_for,
@@ -46,10 +47,37 @@ def model_bytes(complete: bool = False) -> bytes:
     return MODEL.read_bytes()
 
 
-async def upload_model(client, *, dry_run: bool, as_of: str | None = "2026-02", expect: int = 200, complete: bool = False) -> dict:
+FIXED = Path(__file__).parent / "forecast" / "fixtures" / "forecast_model_synthetic_fixed.xlsx"
+
+
+def fixed_bytes() -> bytes:
+    """The full fixture with its two blockers fixed in the workbook, the way the product owner will: Zeta Unlisted
+    gets a dashboard row under ST21 and its blank Location is filled. Nothing else changes — the two TBC seats and
+    the extension cases stay. Built on demand, never committed."""
+    import openpyxl
+
+    model_bytes()
+    wb = openpyxl.load_workbook(MODEL)
+    dash = wb["Dashboard (RunRate)"]
+    subtotal_row = next(r for r in range(6, 40) if str(dash.cell(row=r, column=2).value or "").strip().lower() == "subtotal")
+    dash.insert_rows(subtotal_row)
+    for col, value in enumerate(("Zeta Unlisted", "Sam", "Dee", "T&M"), start=2):
+        dash.cell(row=subtotal_row, column=col, value=value)
+    zeta = wb["Zeta Unlisted"]
+    headers = {str(zeta.cell(row=4, column=c).value or "").strip().lower(): c for c in range(1, 20)}
+    loc_col = headers["location"]
+    for r in range(5, 12):
+        if zeta.cell(row=r, column=1).value and str(zeta.cell(row=r, column=1).value).strip().lower() != "total" and not zeta.cell(row=r, column=loc_col).value:
+            zeta.cell(row=r, column=loc_col, value="US")
+    wb.save(FIXED)
+    return FIXED.read_bytes()
+
+
+async def upload_model(client, *, dry_run: bool, as_of: str | None = "2026-02", expect: int = 200, complete: bool = False, fixed: bool = False) -> dict:
+    data = fixed_bytes() if fixed else model_bytes(complete)
     response = await client.post(
         "/engagements/import-forecast-model",
-        files={"file": ("model.xlsx", model_bytes(complete), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        files={"file": ("model.xlsx", data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         data={"dry_run": "true" if dry_run else "false", **({"as_of": as_of} if as_of else {})},
     )
     assert response.status_code == expect, response.text
@@ -288,3 +316,45 @@ async def test_a_load_with_blockers_is_422_and_writes_nothing(session):
         loaded = await upload_model(client, dry_run=False, complete=True)
         assert loaded["blockers"] == [] and loaded["created"]["engagements"] == 5
         assert all(e["business_unit"] in ("ST21", "IT Avalon", "Retro Rabbit") for e in (await client.get("/engagements?page_size=50")).json()["items"])
+
+
+async def test_placeholder_seats_and_extensions_survive_a_second_import(session):
+    """P5 final, item 3: the importer's row_key is the identity (allocation.import_key). Importing the fixed fixture
+    twice leaves Zeta Unlisted with four allocations both times — Person Z1, Person Z2, TBC #1 and TBC #2 — nothing
+    duplicated, nothing collapsed; and Gamma's Person G4, whose extension is typed as starting on the day the original
+    ends, keeps a first segment that ends 2026-03-30 (the newer contract wins from its start)."""
+    from app.services.forecast.forecast_model_import import parse_master
+
+    await seed_calendar(session)
+    actor = await actor_for(session, ("SystemAdmin",))
+    assert parse_master(io.BytesIO(fixed_bytes()), as_of="2026-02").blockers == []
+    async with client_for(session, actor) as client:
+        first = await upload_model(client, dry_run=False, fixed=True)
+        assert first["blockers"] == [] and first["created"]["engagements"] == 6
+        listed = (await client.get("/engagements?page_size=50")).json()["items"]
+        zeta = next(e for e in listed if e["name"].startswith("Zeta Unlisted"))
+        assert zeta["business_unit"] == "ST21" and zeta["sales_owner"] == "Sam"
+
+        async def zeta_rows():
+            rows = (await client.get(f"/engagements/{zeta['id']}/allocations")).json()
+            return sorted(r["import_key"] for r in rows), rows
+
+        keys_1, rows_1 = await zeta_rows()
+        assert len(rows_1) == 4 and all(k for k in keys_1) and len(set(keys_1)) == 4
+        assert any(k.endswith(":TBC #1:0") for k in keys_1) and any(k.endswith(":TBC #2:0") for k in keys_1)
+        assert {r["person"] for r in rows_1} == {"Person Z1", "Person Z2", "TBC"}
+        total_before = await session.scalar(select(func.count()).select_from(Allocation))
+
+        second = await upload_model(client, dry_run=False, fixed=True)
+        assert second["created"]["engagements"] == 0 and second["created"]["allocations"] == 0 and second["created"]["clients"] == 0
+        keys_2, rows_2 = await zeta_rows()
+        assert keys_2 == keys_1 and len(rows_2) == 4
+        assert {r["id"] for r in rows_2} == {r["id"] for r in rows_1}                       # the same rows, updated in place
+        assert await session.scalar(select(func.count()).select_from(Allocation)) == total_before
+
+        gamma_vms = next(e for e in listed if e["name"].startswith("Gamma Health-VMS") and "VMS" in e["name"].split("·")[-1])
+        g4 = [r for r in (await client.get(f"/engagements/{gamma_vms['id']}/allocations")).json() if r["person"] == "Person G4"]
+        assert sorted((r["import_key"].rsplit(":", 1)[-1], r["effective_start"], r["effective_end"]) for r in g4) == [
+            ("0", "2025-12-01", "2026-03-30"),
+            ("1", "2026-03-31", "2026-09-30"),
+        ]
