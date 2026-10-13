@@ -1,9 +1,14 @@
 /**
- * Allocations grid (S22 P2-1): the prototype's columns, yellow editable
+ * Allocations grid (S22 P2-1, P5-6): the prototype's columns, yellow editable
  * cells, cost/hour pre-filled from the rate card (blank = rate card, the
  * placeholder shows the card value), dates pre-filled from the engagement
  * window, row actions Leaves / Re-hire / remove, totals row, Row GM red under
  * the resource floor. Also the CSV importer entry point (P1-6).
+ *
+ * P5: Person is the first column (the named person; the planning resource
+ * stays the row's label), "per" (hourly / daily / monthly) sits next to Bill
+ * rate, and the Bill-rate columns also show for an MSP with no monthly fee
+ * (the people's monthly rates are the revenue).
  *
  * Every cell edit is a PATCH; the page reloads from the server. A leaver is
  * an End date; a re-hire is a new row; a rate change on a started row
@@ -15,8 +20,10 @@ import { Plus, Upload } from "lucide-react";
 import {
   EMPLOYMENT_TYPE_LABEL,
   HOURLY_TYPES,
+  RATE_BASIS_LABEL,
   SENIORITIES,
   addAllocation,
+  billsByRate,
   closeAllocation,
   createResource,
   deleteAllocation,
@@ -27,6 +34,7 @@ import {
   rehireAllocation,
   type Allocation,
   type EmploymentType,
+  type RateBasis,
   type Resource,
   type Seniority,
 } from "../../../api/engagements";
@@ -50,9 +58,11 @@ import {
   totalsRow,
 } from "./shared";
 
+const RATE_BASIS_OPTIONS = (Object.keys(RATE_BASIS_LABEL) as RateBasis[]).map((k) => ({ value: k, label: RATE_BASIS_LABEL[k] }));
+
 interface DraftRow {
+  person: string;
   resource_id: string;
-  new_name: string;
   role: string;
   seniority: Seniority;
   location: string;
@@ -60,6 +70,7 @@ interface DraftRow {
   assignment: string;
   utilization: string;
   bill_rate: string;
+  rate_basis: RateBasis;
   cost_per_hour: string;
   start: string;
   end: string;
@@ -68,8 +79,8 @@ interface DraftRow {
 
 function emptyDraft(location: string): DraftRow {
   return {
+    person: "",
     resource_id: "",
-    new_name: "",
     role: "",
     seniority: "Mid",
     location,
@@ -77,6 +88,7 @@ function emptyDraft(location: string): DraftRow {
     assignment: "",
     utilization: "100",
     bill_rate: "",
+    rate_basis: "hourly",
     cost_per_hour: "",
     start: "",
     end: "",
@@ -91,6 +103,8 @@ function utilText(value: number): string {
 export function AllocationsTab({ data, canWrite, onChanged }: { data: EngagementData; canWrite: boolean; onChanged: () => Promise<void> }) {
   const { engagement, allocations, forecast, calendar } = data;
   const hourly = HOURLY_TYPES.has(engagement.type);
+  /** Bill rate / per / Revenue / Row GM: hourly types, or an MSP billed on monthly rates (no fee). */
+  const rateRev = billsByRate(engagement.type, engagement.monthly_fee);
   const locations = useMemo(() => {
     const set = new Set<string>(calendar?.locations.map((l) => l.name) ?? []);
     allocations.forEach((a) => set.add(a.location));
@@ -146,7 +160,7 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
       ...draft,
       resource_id: id,
       ...(res
-        ? { location: res.location, employment_type: res.employment_type, seniority: res.seniority ?? draft.seniority, role: draft.role || res.name }
+        ? { location: res.location, employment_type: res.employment_type, seniority: res.seniority ?? draft.seniority, role: draft.role || res.name, person: draft.person || res.name }
         : {}),
     });
   }
@@ -156,9 +170,11 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
     await run(async () => {
       let resourceId = draft.resource_id;
       if (!resourceId) {
-        if (!draft.new_name.trim()) throw new Error("Pick a person or type a new person's name.");
+        // No planning resource picked: the typed person (or role) becomes one.
+        const name = draft.person.trim() || draft.role.trim();
+        if (!name) throw new Error("Type the person's name, or pick a planning resource.");
         const created = await createResource({
-          name: draft.new_name.trim(),
+          name,
           location: draft.location,
           employment_type: draft.employment_type,
           seniority: draft.seniority,
@@ -168,13 +184,15 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
       }
       await addAllocation(engagement.id, {
         resource_id: resourceId,
+        person: draft.person.trim() || null,
         role: draft.role.trim() || null,
         seniority: draft.seniority,
         location: draft.location,
         employment_type: draft.employment_type,
         assignment: hourly ? draft.assignment.trim() || null : null,
         utilization: draft.utilization.trim() === "" ? 1 : Number(draft.utilization) / 100,
-        bill_rate: hourly && draft.bill_rate.trim() !== "" ? draft.bill_rate : null,
+        bill_rate: rateRev && draft.bill_rate.trim() !== "" ? draft.bill_rate : null,
+        rate_basis: draft.rate_basis,
         cost_per_hour: draft.cost_per_hour.trim() !== "" ? draft.cost_per_hour : null,
         start: draft.start || null,
         end: draft.end || null,
@@ -192,7 +210,10 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
 
   const staffing = forecast.staffing_totals;
   const sameDates = engagement.same_dates_for_all;
-  const colCount = 11 + (hourly ? 4 : 0) + 3; // person, role, seniority, location, employment, [assignment], util, [bill], cost, start, end, hours, override, burden, [revenue], loaded, [row gm], actions
+  // person, role, seniority, location, employment, [assignment], util, [bill, per], cost, start, end
+  const colsBeforeHours = 10 + (hourly ? 1 : 0) + (rateRev ? 2 : 0);
+  // … hours, override, burden, [revenue], loaded, [row gm], actions
+  const colCount = colsBeforeHours + 4 + (rateRev ? 2 : 0);
 
   return (
     <div className="flex flex-col gap-3">
@@ -238,16 +259,17 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
               <th className={headCell}>Employment</th>
               {hourly ? <th className={headCell}>Assignment</th> : null}
               <th className={headCellNum}>Util %</th>
-              {hourly ? <th className={headCellNum}>Bill rate</th> : null}
+              {rateRev ? <th className={headCellNum}>Bill rate</th> : null}
+              {rateRev ? <th className={headCell}>per</th> : null}
               <th className={headCellNum}>Our cost/hr</th>
               <th className={headCell}>Start</th>
               <th className={headCell}>End</th>
               <th className={headCellNum}>Hours</th>
               <th className={headCellNum}>Hours override</th>
               <th className={headCellNum}>Burden</th>
-              {hourly ? <th className={headCellNum}>Revenue</th> : null}
+              {rateRev ? <th className={headCellNum}>Revenue</th> : null}
               <th className={headCellNum}>Loaded cost</th>
-              {hourly ? <th className={headCellNum}>Row GM</th> : null}
+              {rateRev ? <th className={headCellNum}>Row GM</th> : null}
               <th className={headCell} />
             </tr>
           </thead>
@@ -256,28 +278,27 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
               <tr className="bg-primary-subtle" data-testid="draft-row">
                 <td className={textCell}>
                   <div className="flex flex-col gap-1">
-                    <select
+                    <input
                       aria-label="Person"
+                      className={cn(cellInput, "w-40")}
+                      placeholder="(name)"
+                      value={draft.person}
+                      onChange={(e) => setDraft({ ...draft, person: e.target.value })}
+                    />
+                    <select
+                      aria-label="Planning resource"
+                      title="The planning label; blank = a new resource named after the person"
                       className={cn(cellInput, "w-40")}
                       value={draft.resource_id}
                       onChange={(e) => pickResource(e.target.value)}
                     >
-                      <option value="">+ New person…</option>
+                      <option value="">+ New resource from the name…</option>
                       {(resources ?? []).map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.name} · {r.location}
                         </option>
                       ))}
                     </select>
-                    {draft.resource_id === "" ? (
-                      <input
-                        aria-label="New person name"
-                        className={cn(cellInput, "w-40")}
-                        placeholder="New person's name"
-                        value={draft.new_name}
-                        onChange={(e) => setDraft({ ...draft, new_name: e.target.value })}
-                      />
-                    ) : null}
                   </div>
                 </td>
                 <td className={textCell}>
@@ -314,9 +335,20 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
                 <td className={numCell}>
                   <input aria-label="Utilization %" type="number" min={0} max={100} step={5} className={cn(cellInput, "w-20 text-right")} value={draft.utilization} onChange={(e) => setDraft({ ...draft, utilization: e.target.value })} />
                 </td>
-                {hourly ? (
+                {rateRev ? (
                   <td className={numCell}>
                     <input aria-label="Bill rate" type="number" min={0} className={cn(cellInput, "w-24 text-right")} value={draft.bill_rate} onChange={(e) => setDraft({ ...draft, bill_rate: e.target.value })} />
+                  </td>
+                ) : null}
+                {rateRev ? (
+                  <td className={textCell}>
+                    <select aria-label="Rate basis" className={cn(cellInput, "w-auto")} value={draft.rate_basis} onChange={(e) => setDraft({ ...draft, rate_basis: e.target.value as RateBasis })}>
+                      {RATE_BASIS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                 ) : null}
                 <td className={numCell}>
@@ -342,9 +374,9 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
                   <input aria-label="Hours override" type="number" min={0} className={cn(cellInput, "w-24 text-right")} value={draft.hours_override} onChange={(e) => setDraft({ ...draft, hours_override: e.target.value })} />
                 </td>
                 <td className={cn(numCell, calcCell)}>—</td>
-                {hourly ? <td className={cn(numCell, calcCell)}>—</td> : null}
+                {rateRev ? <td className={cn(numCell, calcCell)}>—</td> : null}
                 <td className={cn(numCell, calcCell)}>—</td>
-                {hourly ? <td className={cn(numCell, calcCell)}>—</td> : null}
+                {rateRev ? <td className={cn(numCell, calcCell)}>—</td> : null}
                 <td className={textCell}>
                   <div className="flex gap-1">
                     <Button size="sm" onClick={() => void submitDraft()} disabled={busy}>
@@ -360,9 +392,15 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
             {allocations.map((row) => {
               const card = rateCard(row.seniority, row.location, row.employment_type);
               const under = row.totals.under_resource_floor === true;
+              const person = row.person ?? "";
               return (
-                <tr key={row.id} data-testid="allocation-row">
-                  <td className={cn(textCell, "font-medium")}>{row.resource_name}</td>
+                <tr key={row.id} data-testid="allocation-row" data-person={person || row.resource_name}>
+                  <td className={cn(textCell, "font-medium")}>
+                    <div className="flex flex-col gap-0.5">
+                      <CellInput ariaLabel="Person" value={person} placeholder="(name)" onCommit={(v) => commit(row, { person: v.trim() || null })} disabled={!canWrite || busy} className="w-40" />
+                      {person !== row.resource_name ? <span className="text-secondary font-normal text-text-secondary">{row.resource_name}</span> : null}
+                    </div>
+                  </td>
                   <td className={textCell}>
                     <CellInput ariaLabel={`${row.resource_name} role`} value={row.role} onCommit={(v) => commit(row, { role: v })} disabled={!canWrite || busy} className="w-32" />
                   </td>
@@ -395,9 +433,14 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
                   <td className={numCell}>
                     <CellInput ariaLabel={`${row.resource_name} utilization %`} type="number" min={0} max={100} step={5} value={utilText(row.utilization)} onCommit={(v) => commit(row, { utilization: Number(v) / 100 })} disabled={!canWrite || busy} className="w-20" />
                   </td>
-                  {hourly ? (
+                  {rateRev ? (
                     <td className={numCell}>
                       <CellInput ariaLabel={`${row.resource_name} bill rate`} type="number" min={0} value={row.bill_rate ?? ""} onCommit={(v) => commit(row, { bill_rate: v === "" ? null : v })} disabled={!canWrite || busy} />
+                    </td>
+                  ) : null}
+                  {rateRev ? (
+                    <td className={textCell}>
+                      <CellSelect ariaLabel="Rate basis" value={row.rate_basis ?? "hourly"} options={RATE_BASIS_OPTIONS} onCommit={(v) => commit(row, { rate_basis: v })} disabled={!canWrite || busy} className="min-w-0" />
                     </td>
                   ) : null}
                   <td className={numCell}>
@@ -427,9 +470,9 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
                     <CellInput ariaLabel={`${row.resource_name} hours override`} type="number" min={0} value={row.hours_override === null ? "" : String(row.hours_override)} onCommit={(v) => commit(row, { hours_override: v === "" ? null : v })} disabled={!canWrite || busy} />
                   </td>
                   <td className={cn(numCell, calcCell)}>{row.burden_pct === undefined ? "—" : pct(row.burden_pct)}</td>
-                  {hourly ? <td className={cn(numCell, calcCell)}>{money(row.totals.revenue)}</td> : null}
+                  {rateRev ? <td className={cn(numCell, calcCell)}>{money(row.totals.revenue)}</td> : null}
                   <td className={cn(numCell, calcCell)}>{row.totals.loaded_cost === undefined ? "—" : money(row.totals.loaded_cost)}</td>
-                  {hourly ? (
+                  {rateRev ? (
                     <td className={cn(numCell, under ? "font-semibold text-danger" : calcCell)} data-testid="row-gm">
                       {row.totals.row_gm_pct === undefined ? "—" : pct(row.totals.row_gm_pct)}
                     </td>
@@ -460,15 +503,15 @@ export function AllocationsTab({ data, canWrite, onChanged }: { data: Engagement
               </tr>
             ) : null}
             <tr className={totalsRow} data-testid="allocations-totals">
-              <td className={textCell} colSpan={hourly ? 10 : 8}>
+              <td className={textCell} colSpan={colsBeforeHours}>
                 Total
               </td>
               <td className={numCell}>{hours(staffing?.hours ?? forecast.totals.hours)}</td>
               <td className={numCell} />
               <td className={numCell} />
-              {hourly ? <td className={numCell}>{money(staffing?.revenue)}</td> : null}
+              {rateRev ? <td className={numCell}>{money(staffing?.revenue)}</td> : null}
               <td className={numCell}>{staffing?.loaded_cost === undefined ? "—" : money(staffing.loaded_cost)}</td>
-              {hourly ? <td className={numCell}>{staffing?.gm_pct === undefined ? "—" : pct(staffing.gm_pct)}</td> : null}
+              {rateRev ? <td className={numCell}>{staffing?.gm_pct === undefined ? "—" : pct(staffing.gm_pct)}</td> : null}
               <td className={textCell} />
             </tr>
           </tbody>

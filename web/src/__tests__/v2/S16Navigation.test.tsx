@@ -24,6 +24,7 @@ it("S16 exposes only the current navigation destinations", () => {
     "Reporting",
     "Forecast",
     "Portfolio forecast",
+    "Import the forecast model",
     "People planning",
     "Settings",
   ]);

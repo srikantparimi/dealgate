@@ -66,3 +66,10 @@ web/tsconfig.tsbuildinfo
 .vscode/
 .idea/
 api/dev.db
+
+# S22-P5a: the forecast model master holds real staff names and rates — never committed
+*Forecast_Model_Master*.xlsx
+*Forecast Model*.xlsx
+
+# S22-P5 final: a copy of the synthetic fixture with its blockers fixed, built on demand by the tests
+api/tests/forecast/fixtures/forecast_model_synthetic_fixed.xlsx

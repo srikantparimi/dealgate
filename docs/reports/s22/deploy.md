@@ -143,6 +143,78 @@ Working rule for this round (Kanna): plan for Kanna to apply only if infrastruct
 | SPA | `assets/index-CwMcUryo.js` synced (immutable) + `index.html` (no-cache); CloudFront invalidation `I9X52BCW2B0D0RAKPWRWEPC643` COMPLETED; served bundle contains the import-workbook call |
 | S22 specs on staging | `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `4 passed (1.6m)`; owner path re-run with the P4-3 label assertions: passed; gate clean after every run: 0 clients / 0 approvers / 0 people / 0 engagements |
 
+## S22-P5 candidate (2026-10-12/13, session S22-3)
+
+| Item | Value |
+| --- | --- |
+| Branch / commit | `feat/s22-p5` @ `d0270a48` (off `origin/main` dfc3f8b) |
+| Image | `officeapp-dev-api:s22p5-d0270a48` · digest `sha256:9b2a594cb66f70aebbb3d5124224861583ed4a591556e1c055151585507c94ca` · 105,125,243 bytes · linux/amd64 |
+| SPA | `web/dist` → `assets/index-Cv_2NWJ5.js` |
+| Migration | **new**: `20261012_0066_bu_actuals` (engagement business_unit/sales_owner/delivery_owner/closed, allocation rate_basis/person, allocation_actual); reversible; parity 3 passed on Postgres; applied by the Terraform-owned migration task |
+| Plan | `/tmp/s22p5-d0270a48.tfplan` — **12 to add, 14 to change, 12 to destroy**, image-only: 11 `aws_ecs_task_definition` + the `terraform_data` migration trigger replaced; `aws_ecs_service` + 9 `aws_cloudwatch_event_target` + 4 `aws_iam_role_policy` updated; nothing of any other type; every image → `s22p5-d0270a48`; same inputs as every previous plan; planned from the initialised p4 worktree whose `infra-tf` is byte-identical to this branch's |
+| Checksums | tfplan `b558b29b8a43b9bdc7b19d6fd4081e7159e9966987b4abd66c992758fb52b9b6` · plan.txt `13f49b42…fa0b60` · plan.json `361ba7ed…ef7de4` |
+| Local proof | api/tests/forecast 33; test_s22_p5_business_units 9; test_s22_portfolio_forecast 21; vitest 91 files / 574; tsc clean; Playwright s22-p5-forecast-model (3) + s22-p4-upload (2) + s22-p1-contract + s22-p2-owner-path on the local stack (Postgres at 0066) all pass |
+
+## S22-P5 final roll (2026-10-13, import_key migration 0067; image-only plan with the Terraform-owned migration, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| Commit / image | `feat/s22-p5` @ `0b8e92cc` → `officeapp-dev-api:s22p5f-0b8e92cc` · digest `sha256:b711d567bde4252f6f140c3259b8920ebb5a9c7cf3f5626d015d9be58ca674e9` |
+| Plan | `/tmp/s22p5f-0b8e92cc.tfplan` SHA-256 `94e12132670c3d2f571f3455644bbe08b2632df992fdf64453ed47a02afa6ed9` (plan.txt `d00e98e5…50588`, plan.json `54d699d8…b9f85`) — 12 to add / 14 to change / 12 to destroy, image-only, every image → the new tag, same inputs |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed**; migration task `a7c271504898486daa8e95051473854c` on `api-migrate:45` succeeded — staging head now `20261013_0067_import_key` |
+| API service | `officeapp-dev-api:107`, `services-stable`; families alert-scheduler 59, notification-sender 59, renewals-scheduler 59, portfolio-scheduler 11, audit-export 59, hubspot-intake 58, hubspot-reconcile 58, forecast-plans 36, deletion-cleanup 36, api-migrate 45 — all `s22p5f-0b8e92cc` |
+| SPA | unchanged (`index-freWl-_8.js`; no screen change — item 5) |
+| Staging dry run of the real master (item 4) | CLI server dry run of the real master, quiet server: **9.3 s, 6.9 s, 6.4 s** (was 23–25 s); same counts (44 dashboard clients, 28 tabs, 81 engagements, ST21 7); report carries the new "Assumed, because the workbook does not say" section; `--load --yes` still refused by the 7 blockers, nothing created |
+| Smoke | `smoke 20261013T055139Z` GREEN; gate clean |
+| S22 specs on staging | `s22-p5c-blockers` (2) + `s22-p5-forecast-model` (3) + `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `9 passed (2.1m)`; gate clean after; calendar restored by teardown |
+
+## S22-P5c roll (2026-10-13, the import refuses rather than guessing; image-only plans, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| First roll | `feat/s22-p5` @ `2cc9ee9e` → `officeapp-dev-api:s22p5c-2cc9ee9e` · digest `sha256:d35c9058e085e63dcdd7541b36d584e56cabe31fa2b2c543a0fc5c9b4e59737f`; plan `/tmp/s22p5c-2cc9ee9e.tfplan` SHA-256 `fc581c645e429c8c07991fc77b8c85b39e21d10a26e1309fe42fdcfe374efa6e` (12/14/12, image-only); apply exit 0, migration task `5a3e685fbefb495cac5799467bcc71f8` no-op; API rev 105; SPA `assets/index-freWl-_8.js` synced + `index.html`, CloudFront `I1XJBS7JW1ZDBRWI5496HGB5TB` COMPLETED; smoke `smoke 20261013T050248Z` GREEN, gate clean |
+| Proof on staging (first roll) | CLI dry run of the real master: 7 blockers listed with their fixes (UEBIZ + Children's Hospital-VMS no BU; 26 people without a location across Liberty Mutual, UEBIZ, Caesars, Caesers Entertainment, First Citizens); counts unchanged; nothing created. `--load`'s preliminary dry run hit a 504 while the smoke ran concurrently (bug log row 8) |
+| Second roll | `feat/s22-p5` @ `a19358cc` (dry run tallies without the engine) → `officeapp-dev-api:s22p5c-a19358cc` · digest `sha256:3012304055785729a76f8ea079c1214b6823b72b8aa87b8a3bdcec909d74ac0f`; plan `/tmp/s22p5c-a19358cc.tfplan` SHA-256 `ce7a3417937fe1f3f4aa4f0439defb435e03ddc8d5fdcc6771800e2ad8b06b2b` (12/14/12, image-only); apply exit 0, migration task `36b7355f323a4eac9ecdb45765c64903` no-op; API rev 106, families alert-scheduler 58, notification-sender 58, renewals-scheduler 58, portfolio-scheduler 10, audit-export 58, hubspot-intake 57, hubspot-reconcile 57, forecast-plans 35, deletion-cleanup 35, api-migrate 44; SPA unchanged (`index-freWl-_8.js`); CLI dry run of the real master 23–25 s standalone (same as before — the cost is parsing), `--load --yes` refused: `Not loaded — fix these in the workbook first (7)` with each fix on its own line, exit 2, nothing created; smoke `smoke 20261013T051539Z` GREEN, gate clean |
+| S22 specs on staging | first roll: `s22-p5c-blockers` 2 passed (25.7 s); second roll: `s22-p5c-blockers` (2) + `s22-p5-forecast-model` (3, complete fixture) + `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `9 passed (2.1m)`; gate clean after; calendar restored by teardown |
+
+## S22-P5b roll (2026-10-13, as_of as a parameter; image-only plan, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| Commit / image | `feat/s22-p5` @ `63b786af` → `officeapp-dev-api:s22p5b-63b786af` · digest `sha256:42023218c99636999fbad900b0d3a1ab82286aaa11f82c1d69dfa05e13cc5444` |
+| Plan | `/tmp/s22p5b-63b786af.tfplan` SHA-256 `6fccc0af195fbdac2c44b369a0420a5d2bf5533e7e27fa01e785307bddcf8ede` (plan.txt `94879ee5…ad8e0`, plan.json `c543ae5d…08629`) — 12 to add / 14 to change / 12 to destroy, image-only, every image → the new tag, same inputs |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed**; migration task `d011cb8ec32a4adb85abea3abccaf933` on `api-migrate:42` succeeded (no-op at head 0066) |
+| API service | `officeapp-dev-api:104`, `services-stable`; families alert-scheduler 56, notification-sender 56, renewals-scheduler 56, portfolio-scheduler 8, audit-export 56, hubspot-intake 55, hubspot-reconcile 55, forecast-plans 33, deletion-cleanup 33, api-migrate 42 — all `s22p5b-63b786af` |
+| SPA | unchanged (`index-Cv_2NWJ5.js`; no web change) |
+| Proof on staging | `scripts/load_forecast_model.py` server dry run of the real master with no `--as-of`: report opens with **Actuals are taken through 2026-09; every later month is forecast**; 28 tabs, 81 engagements, Σ tab people 393, ST21 7 clients; BU and tab tables byte-identical to the P5a run; nothing created |
+| Smoke | `smoke 20261013T042510Z` GREEN; gate clean |
+| S22 specs on staging | `s22-p5-forecast-model`: `3 passed (49.0s)`; gate clean after |
+
+## S22-P5a roll (2026-10-13, importer fix only, image-only plan, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| Commit / image | `feat/s22-p5` @ `a1c856f8` → `officeapp-dev-api:s22p5a-a1c856f8` · digest `sha256:cc35618a88dd481210aab18075877f4980ae3ea4e59d3a6760baf29f3d889b10` |
+| Plan | `/tmp/s22p5a-a1c856f8.tfplan` SHA-256 `0dff250ed5834c0495d8f8824710b0c296ad573279903c685dbd756662a7388a` (plan.txt `ac566021…4392d`, plan.json `e57ef708…01cf0`) — 12 to add / 14 to change / 12 to destroy, image-only, every image → the new tag, same inputs |
+| Apply | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed**; migration task `4ee76899115c4dffaf438e6b8b30fba4` on `api-migrate:41` succeeded (no-op at head 0066) |
+| API service | `officeapp-dev-api:103`, `services-stable`; families alert-scheduler 55, notification-sender 55, renewals-scheduler 55, portfolio-scheduler 7, audit-export 55, hubspot-intake 54, hubspot-reconcile 54, forecast-plans 32, deletion-cleanup 32, api-migrate 41 — all `s22p5a-a1c856f8` |
+| SPA | unchanged (`index-Cv_2NWJ5.js`; P5a has no web change) |
+| Proof of the fix on staging | `scripts/load_forecast_model.py` server dry run of the real master: ST21 **7** clients (was 9 on `s22p5-d0270a48`); the report no longer lists `ITA`, `RR` as dashboard-only clients; nothing created |
+| Smoke | `smoke 20261013T025103Z` GREEN; gate clean |
+| S22 specs on staging | `s22-p5-forecast-model`: `3 passed (49.9s)`; gate clean after |
+
+## S22-P5 apply and roll (2026-10-13, image-only plan with the Terraform-owned migration, applied by the session)
+
+| Step | Result |
+| --- | --- |
+| `terraform -chdir=infra-tf apply /tmp/s22p5-d0270a48.tfplan` (checksum re-verified first) | exit 0 · **Apply complete! Resources: 12 added, 14 changed, 12 destroyed** — exactly the plan |
+| Migration task `40ddd4bb265740fc84bad1d1091ba1da` on `officeapp-dev-api-migrate:40` | succeeded — staging head now `20261012_0066_bu_actuals` |
+| API service | `officeapp-dev-api:102`, `services-stable`, 1/1 PRIMARY; running task on `s22p5-d0270a48`, digest `sha256:9b2a594cb66f70aebbb3d5124224861583ed4a591556e1c055151585507c94ca`; `POST /api/engagements/import-forecast-model` → 401 unauthenticated (present) |
+| Worker families | alert-scheduler 54, notification-sender 54, renewals-scheduler 54, portfolio-scheduler 6, audit-export 54, hubspot-intake 53, hubspot-reconcile 53, forecast-plans 31, deletion-cleanup 31, api-migrate 40 — all `s22p5-d0270a48` |
+| SPA | `assets/index-Cv_2NWJ5.js` synced (immutable) + `index.html` (no-cache); CloudFront invalidation `IAGR8YTKDNV49X6L7J9I4W6OHL` COMPLETED; served bundle contains the import-forecast-model call |
+| Smoke | `smoke 20261013T005136Z` GREEN; gate clean (0 clients / 0 approvers / 0 people / 0 engagements) |
+| S22 specs on staging | `s22-p5-forecast-model` (3) + `s22-p4-upload` (2) + `s22-p1-contract` + `s22-p2-owner-path`: `7 passed (1.8m)`; gate clean after: 0 clients / 0 approvers / 0 people / 0 engagements; calendar restored by teardown |
+
 ## S22-P4 main image (post-merge, 2026-10-12, Kanna: "approved")
 
 | Step | Result |

@@ -39,6 +39,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -58,6 +59,8 @@ ENGAGEMENT_TYPES: tuple[str, ...] = (
 EMPLOYMENT_TYPES: tuple[str, ...] = ("w2_employee", "contractor_1099")
 COST_FREQUENCIES: tuple[str, ...] = ("one_time", "monthly")
 SENIORITIES: tuple[str, ...] = ("Junior", "Mid", "Senior", "Principal")
+BUSINESS_UNITS: tuple[str, ...] = ("ST21", "IT Avalon", "Retro Rabbit")
+RATE_BASES: tuple[str, ...] = ("hourly", "daily", "monthly")
 
 
 class Engagement(Base):
@@ -67,7 +70,12 @@ class Engagement(Base):
             "type IN ('fixed_cost','assessment','msp','time_and_materials','staff_augmentation')",
             name="ck_engagement_type",
         ),
+        CheckConstraint(
+            "business_unit IN ('ST21','IT Avalon','Retro Rabbit')",
+            name="ck_engagement_business_unit",
+        ),
         Index("ix_engagement_client_window", "client_id", "start", "end"),
+        Index("ix_engagement_business_unit", "business_unit", "closed"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -95,6 +103,15 @@ class Engagement(Base):
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
+    # S22 P5: the company reports across three business units; owners are the
+    # model's free-text names (not user ids); closed rows stay for history and
+    # are excluded from the portfolio.
+    business_unit: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="ST21", server_default="ST21"
+    )
+    sales_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delivery_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    closed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )
@@ -130,6 +147,8 @@ class Allocation(Base):
         Index("ix_allocation_engagement_window", "engagement_id", "start", "end"),
         Index("ix_allocation_resource_window", "resource_id", "start", "end"),
         Index("ix_allocation_superseded_by", "superseded_by"),
+        CheckConstraint("rate_basis IN ('hourly','daily','monthly')", name="ck_allocation_rate_basis"),
+        UniqueConstraint("engagement_id", "import_key", name="uq_allocation_import_key"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -152,9 +171,48 @@ class Allocation(Base):
     start: Mapped[date | None] = mapped_column(Date, nullable=True)
     end: Mapped[date | None] = mapped_column(Date, nullable=True)
     hours_override: Mapped[Decimal | None] = mapped_column(ExactNumeric, nullable=True)
+    # S22 P5: what bill_rate is per (engine semantics) and the named person
+    # when known (resource/role stays the planning label).
+    rate_basis: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="hourly", server_default="hourly"
+    )
+    person: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # S22 P5 final: the forecast-model importer's identity for this row
+    # ("{assignment_key}:{row_key}:{segment}"); matched on re-import. NULL for
+    # rows the app creates. Unique per engagement where set.
+    import_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     superseded_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("allocation.id", ondelete="SET NULL"), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class AllocationActual(Base):
+    """What really happened in a month for one allocation (timesheets / invoices).
+
+    ``hours`` are net (leave already deducted); ``revenue`` is billed. One row
+    per allocation-month; ``PUT /allocations/{id}/actuals`` replaces the set.
+    The engine turns these into ``MonthLine.actual_*`` and ``billing_loss``.
+    """
+
+    __tablename__ = "allocation_actual"
+    __table_args__ = (
+        UniqueConstraint("allocation_id", "month", name="uq_allocation_actual_month"),
+        Index("ix_allocation_actual_allocation", "allocation_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    allocation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("allocation.id", ondelete="CASCADE"), nullable=False
+    )
+    month: Mapped[str] = mapped_column(String(7), nullable=False)
+    hours: Mapped[Decimal | None] = mapped_column(ExactNumeric, nullable=True)
+    revenue: Mapped[Decimal | None] = mapped_column(ExactNumeric, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -268,6 +326,9 @@ class ForecastRun(Base):
 
 __all__ = [
     "Allocation",
+    "AllocationActual",
+    "BUSINESS_UNITS",
+    "RATE_BASES",
     "CalendarLocation",
     "COST_FREQUENCIES",
     "CostRateCard",

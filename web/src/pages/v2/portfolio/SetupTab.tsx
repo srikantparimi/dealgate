@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { getPipelineFacets, type PipelineOwnerFacet } from "../../../api/client";
 import {
+  BUS,
   CURRENCIES,
   ENGAGEMENT_TYPE_LABEL,
   FIXED_TYPES,
@@ -40,6 +41,11 @@ const BILLED_OPTIONS = [
 const YES_NO = (yes: string, no: string) => [
   { value: "1", label: yes },
   { value: "0", label: no },
+];
+// P5: closed engagements stay for history and leave the portfolio.
+const STATUS_OPTIONS = [
+  { value: "0", label: "Active" },
+  { value: "1", label: "Closed — kept for history, off the portfolio" },
 ];
 
 interface CostDraft {
@@ -134,6 +140,14 @@ export function SetupTab({ data, canWrite, onChanged }: { data: EngagementData; 
             />
             <label className="text-secondary text-text-secondary">Engagement name</label>
             <CellInput ariaLabel="Engagement name" value={engagement.name} onCommit={(v) => patch({ name: v })} disabled={disabled} className="w-full" />
+            <label className="text-secondary text-text-secondary">Business unit</label>
+            <CellSelect ariaLabel="Business unit" value={engagement.business_unit} options={BUS.map((b) => ({ value: b, label: b }))} onCommit={(v) => patch({ business_unit: v })} disabled={disabled} />
+            <label className="text-secondary text-text-secondary">Sales owner</label>
+            <CellInput ariaLabel="Sales owner" value={engagement.sales_owner ?? ""} placeholder="—" onCommit={(v) => patch({ sales_owner: v.trim() || null })} disabled={disabled} className="w-full" />
+            <label className="text-secondary text-text-secondary">Delivery owner</label>
+            <CellInput ariaLabel="Delivery owner" value={engagement.delivery_owner ?? ""} placeholder="—" onCommit={(v) => patch({ delivery_owner: v.trim() || null })} disabled={disabled} className="w-full" />
+            <label className="text-secondary text-text-secondary">Status</label>
+            <CellSelect ariaLabel="Status" value={engagement.closed ? "1" : "0"} options={STATUS_OPTIONS} onCommit={(v) => patch({ closed: v === "1" })} disabled={disabled} />
             <label className="text-secondary text-text-secondary">Owner</label>
             <CellSelect ariaLabel="Owner" value={engagement.owner_user_id ?? ""} options={ownerOptions} onCommit={(v) => patch({ owner_user_id: v || null })} disabled={disabled} />
             <label className="text-secondary text-text-secondary">Currency</label>

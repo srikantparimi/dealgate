@@ -1,12 +1,14 @@
 openapi: 3.0.3
 info:
   title: DealGate — Portfolio & Forecast
-  version: "1.0"
+  version: "1.1"
   description: >
     Contract for the Portfolio & Forecast module. Every forecast response is a serialisation of
     api/app/services/forecast.Forecast — nothing is computed elsewhere. Money is a decimal string
     with two places; percentages are decimal fractions (0.3603 = 36.03%); dates are YYYY-MM-DD;
     months are YYYY-MM. The approved screens are docs/reference/prototype/dealgate-portfolio.html.
+    1.1 (P5): business units + owners on engagements, rate basis on allocations, actuals and billing loss,
+    the forecast-model master importer (dry run then load), and /portfolio/forecast grouped by business unit.
 servers: [{ url: /api }]
 tags: [{ name: engagements }, { name: allocations }, { name: costs }, { name: forecast }, { name: portfolio }, { name: settings }]
 
@@ -80,6 +82,42 @@ paths:
       responses:
         "201": { description: Created, content: { application/json: { schema: { type: object, properties: { engagement: { $ref: "#/components/schemas/Engagement" }, forecast: { $ref: "#/components/schemas/Forecast" }, warnings: { type: array, items: { type: string } }, hours_check: { type: array, items: { type: object, properties: { role: { type: string }, sheet_hours: { type: number, nullable: true }, engine_hours: { type: number }, note: { type: string } } } } } } } } }
         "422": { description: The sheet is incomplete. body.errors lists each problem in the sheet's own words (e.g. "Engagement type not picked on the sheet"). Nothing is created. }
+  /allocations/{id}/actuals:
+    put:
+      tags: [allocations]
+      summary: Replace the actuals (billed revenue / net hours) for one allocation, one row per month. Months not in the body are removed.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ActualIn" } } } } }
+      responses: { "200": { description: Saved; the engagement's forecast is recomputed with actuals } }
+  /engagements/import-forecast-model:
+    post:
+      tags: [engagements]
+      summary: Import the FY forecast model master (.xlsx) — dry run first, then load.
+      description: >
+        Parses with app.services.forecast.forecast_model_import.parse_master (dashboard → BU/owners/billing type; one engagement per
+        client × SOW/PO; one allocation per person plus one per extension-date pair; Actual months → actuals; WorkingDays → holidays).
+        dry_run=true (default) returns the report and creates nothing. dry_run=false creates clients (manual, never mirrors),
+        engagements (closed ones flagged closed), allocations (cost_per_hour null → cost unknown → INCOMPLETE until the rate card
+        covers them) and actuals, loads holidays into the calendar for locations that have none, and returns the same report plus ids.
+        Re-importing the same file is idempotent on the allocation's import_key — "{assignment_key}:{row_key}:{segment}" as
+        forecast_model_import.to_engine sets Allocation.id, where row_key is the person's name made unique within the
+        engagement ("TBC #1" … "TBC #11" on Costco) — so existing rows are updated, never duplicated and never collapsed.
+        dry_run=false with any blocker (a tab with no dashboard business unit, a person with no Location) is 422 {blockers} and writes nothing.
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary }, dry_run: { type: boolean, default: true }, as_of: { type: string, pattern: "^\\d{4}-\\d{2}$", description: the model's month; later months are never actuals } } } } } }
+      responses:
+        "200":
+          description: Dry run (or load) report — the markdown from forecast_model_import.dry_run_markdown plus the structured counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dry_run: { type: boolean }
+                  report_markdown: { type: string }
+                  by_business_unit: { type: array, items: { type: object, properties: { business_unit: { type: string }, clients: { type: integer }, engagements: { type: integer }, people: { type: integer }, closed: { type: integer } } } }
+                  tabs: { type: array, items: { type: object, properties: { tab: { type: string }, client: { type: string }, business_unit: { type: string, nullable: true }, engagement_type: { type: string }, engagements: { type: integer }, people: { type: integer }, allocations: { type: integer }, extensions: { type: integer }, months: { type: integer }, actual_months: { type: integer }, issues: { type: array, items: { type: string } } } } }
+                  created: { type: object, nullable: true, properties: { clients: { type: integer }, engagements: { type: integer }, allocations: { type: integer }, actual_rows: { type: integer } } }
+        "422": { description: Not a forecast model master (no run-rate dashboard / no client tabs). }
   /engagements/{id}/forecast:
     get:
       tags: [forecast]
@@ -92,6 +130,7 @@ paths:
       summary: Every engagement for one month plus the four signal cards. Card counts equal the lists they open.
       parameters:
         - { name: month, in: query, required: true, schema: { type: string, pattern: "^\\d{4}-\\d{2}$" } }
+        - { name: business_unit, in: query, schema: { type: string, enum: [ST21, "IT Avalon", "Retro Rabbit"] }, description: one BU tab; omit for all BUs (then `groups` carries one subtotal block per BU) }
         - { name: type, in: query, schema: { $ref: "#/components/schemas/EngagementType" } }
         - { name: client_id, in: query, schema: { type: string } }
       responses:
@@ -111,7 +150,9 @@ paths:
                       below_floor: { type: integer, description: engagements whose term GM < project floor }
                       rolloffs_60d: { type: integer, description: allocations ending within 60 days of the month start with no later allocation for the same resource }
                       bench: { type: integer, description: active resources with no allocation in the month }
+                      billing_loss: { type: object, properties: { amount: { $ref: "#/components/schemas/Money" }, forecast: { $ref: "#/components/schemas/Money" }, billed: { $ref: "#/components/schemas/Money" }, engagements: { type: integer } }, description: over engagements and months that have actuals }
                   rows: { type: array, items: { $ref: "#/components/schemas/PortfolioRow" } }
+                  groups: { type: array, description: one per business unit in BU order (ST21, IT Avalon, Retro Rabbit) when business_unit is omitted; each subtotal is computed from its rows the same way totals is, items: { type: object, properties: { business_unit: { type: string }, engagements: { type: integer }, people: { type: integer }, revenue: { $ref: "#/components/schemas/Money" }, cost: { $ref: "#/components/schemas/Money" }, gm_pct: { $ref: "#/components/schemas/Pct" }, below_floor: { type: integer } } } }
                   totals: { type: object, properties: { people: { type: integer }, revenue: { $ref: "#/components/schemas/Money" }, cost: { $ref: "#/components/schemas/Money" }, gm_pct: { $ref: "#/components/schemas/Pct" } } }
                   rolloffs: { type: array, items: { type: object, properties: { client: { type: string }, resource: { type: string }, role: { type: string }, assignment: { type: string, nullable: true }, end: { type: string, format: date } } } }
                   bench_list: { type: array, items: { type: object, properties: { resource: { type: string }, location: { type: string }, employment_type: { $ref: "#/components/schemas/EmploymentType" }, seniority: { type: string }, free_from: { type: string, format: date } } } }
@@ -137,7 +178,7 @@ components:
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
   responses:
-    Validation: { description: Input rejected. body.missing lists each problem in the user's words (e.g. "Developer: bill rate required for hourly engagement types"). }
+    Validation: { description: "Input rejected. body.missing lists each problem in the user's words (e.g. 'Developer: bill rate required for hourly engagement types')." }
   schemas:
     Money: { type: string, pattern: "^-?\\d+\\.\\d{2}$", example: "339684.00" }
     Pct: { type: number, nullable: true, example: 0.3603 }
@@ -159,6 +200,10 @@ components:
         additional_costs_flag: { type: boolean }
         same_dates_for_all: { type: boolean }
         owner_user_id: { type: string, nullable: true }
+        business_unit: { type: string, enum: [ST21, "IT Avalon", "Retro Rabbit"], description: required; the Portfolio page groups and subtotals by it }
+        sales_owner: { type: string, nullable: true, description: free text name (from the model's dashboard; not a user id) }
+        delivery_owner: { type: string, nullable: true }
+        closed: { type: boolean, default: false, description: closed engagements stay for history and are excluded from /portfolio/forecast }
     Engagement:
       allOf:
         - { $ref: "#/components/schemas/EngagementIn" }
@@ -185,6 +230,8 @@ components:
         start: { type: string, format: date, nullable: true, description: null = engagement start }
         end: { type: string, format: date, nullable: true, description: null = engagement end }
         hours_override: { type: number, nullable: true }
+        rate_basis: { type: string, enum: [hourly, daily, monthly], default: hourly, description: what bill_rate is per. monthly = rate × utilization × (working days worked / working days in the month); daily = rate × hours / hours_per_day }
+        person: { type: string, nullable: true, description: the named person when known; resource/role stays the planning label }
     Allocation:
       allOf:
         - { $ref: "#/components/schemas/AllocationIn" }
@@ -195,6 +242,7 @@ components:
             effective_start: { type: string, format: date }
             effective_end: { type: string, format: date }
             cost_per_hour_effective: { $ref: "#/components/schemas/Money", description: the value the engine used (override or rate card) }
+            import_key: { type: string, nullable: true, readOnly: true, description: "set by the forecast-model importer: {assignment_key}:{row_key}:{segment}; the identity a re-import matches on" }
             burden_pct: { $ref: "#/components/schemas/Pct" }
             superseded_by: { type: string, nullable: true }
             totals: { type: object, properties: { working_days: { type: integer }, hours: { type: number }, revenue: { $ref: "#/components/schemas/Money" }, loaded_cost: { $ref: "#/components/schemas/Money" }, row_gm_pct: { $ref: "#/components/schemas/Pct" }, under_resource_floor: { type: boolean } } }
@@ -226,6 +274,16 @@ components:
         total_cost: { $ref: "#/components/schemas/Money" }
         gm: { $ref: "#/components/schemas/Money" }
         gm_pct: { $ref: "#/components/schemas/Pct" }
+    ActualIn:
+      type: object
+      required: [month]
+      properties:
+        month: { type: string, pattern: "^\\d{4}-\\d{2}$" }
+        hours: { type: number, nullable: true, description: net hours worked (leave already deducted) }
+        revenue: { $ref: "#/components/schemas/Money", nullable: true, description: billed }
+        actual_hours: { type: number, nullable: true, description: null when the month has no actuals }
+        actual_revenue: { $ref: "#/components/schemas/Money", nullable: true }
+        billing_loss: { $ref: "#/components/schemas/Money", nullable: true, description: revenue − actual_revenue }
     Forecast:
       type: object
       required: [engagement_id, duration_months, status, months, by_assignment, allocation_months, location_check, totals, missing, monthly_required]
@@ -237,6 +295,7 @@ components:
         monthly_required: { type: boolean }
         missing: { type: array, items: { type: string } }
         totals: { type: object, properties: { hours: { type: number }, labour_cost: { $ref: "#/components/schemas/Money" }, burden_cost: { $ref: "#/components/schemas/Money" }, additional_costs: { $ref: "#/components/schemas/Money" }, pass_through_revenue: { $ref: "#/components/schemas/Money" }, total_revenue: { $ref: "#/components/schemas/Money" }, total_cost: { $ref: "#/components/schemas/Money" }, gm_pct: { $ref: "#/components/schemas/Pct" } } }
+        actuals: { type: object, description: over the months that have actuals only, properties: { months_with_actuals: { type: integer }, actual_revenue: { $ref: "#/components/schemas/Money" }, forecast_in_actual_months: { $ref: "#/components/schemas/Money" }, billing_loss: { $ref: "#/components/schemas/Money", description: forecast − billed; positive = under-billed } } }
         months: { type: array, items: { $ref: "#/components/schemas/MonthLine" } }
         by_assignment:
           type: object
@@ -254,8 +313,11 @@ components:
       type: object
       properties:
         engagement_id: { type: string }
+        business_unit: { type: string }
         client_name: { type: string }
         name: { type: string }
+        sales_owner: { type: string, nullable: true }
+        delivery_owner: { type: string, nullable: true }
         type: { $ref: "#/components/schemas/EngagementType" }
         start: { type: string, format: date }
         end: { type: string, format: date }

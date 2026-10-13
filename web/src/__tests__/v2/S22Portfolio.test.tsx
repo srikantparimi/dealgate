@@ -40,6 +40,10 @@ const engagement: api.Engagement = {
   owner_name: "Adil Lalji",
   status: "active",
   duration_months: 5.966667,
+  business_unit: "ST21",
+  sales_owner: "Adil Lalji",
+  delivery_owner: "Priya N.",
+  closed: false,
 };
 
 const allocation: api.Allocation = {
@@ -63,6 +67,8 @@ const allocation: api.Allocation = {
   effective_end: "2027-04-30",
   hours_override: null,
   superseded_by: null,
+  rate_basis: "hourly",
+  person: null,
   totals: { working_days: 124, hours: 992, revenue: "133920.00", loaded_cost: "94438.40", row_gm_pct: 0.2948, under_resource_floor: true },
 };
 
@@ -81,6 +87,9 @@ const month = (key: string): api.MonthLine => ({
   total_cost: "15832.00",
   gm: "5768.00",
   gm_pct: 0.267,
+  actual_hours: null,
+  actual_revenue: null,
+  billing_loss: null,
 });
 
 const forecast: api.Forecast = {
@@ -103,6 +112,7 @@ const forecast: api.Forecast = {
     gm_pct: 0.2679,
   },
   staffing_totals: { hours: 992, revenue: "133920.00", loaded_cost: "94438.40", gm_pct: 0.2948 },
+  actuals: { months_with_actuals: 0, actual_revenue: "0.00", forecast_in_actual_months: "0.00", billing_loss: "0.00" },
   months: [month("2026-11"), month("2026-12")],
   by_assignment: { "Portal rebuild": { "2026-11": { people: 1, hours: 160, revenue: "21600.00", loaded_cost: "15232.00", gm_pct: 0.2948 } } },
   by_assignment_totals: { "Portal rebuild": { people: 1, hours: 992, revenue: "133920.00", loaded_cost: "94438.40", gm_pct: 0.2948 } },
@@ -113,12 +123,15 @@ const forecast: api.Forecast = {
 const portfolio: api.PortfolioForecast = {
   month: "2026-11",
   project_floor_pct: 0.35,
-  cards: { portfolio_gm_pct: 0.267, below_floor: 1, rolloffs_60d: 1, bench: 1 },
+  cards: { portfolio_gm_pct: 0.267, below_floor: 1, rolloffs_60d: 1, bench: 1, billing_loss: { amount: "0.00", forecast: "0.00", billed: "0.00", engagements: 0 } },
   rows: [
     {
       engagement_id: "e1",
+      business_unit: "ST21",
       client_name: "Client A",
       name: engagement.name,
+      sales_owner: "Adil Lalji",
+      delivery_owner: "Priya N.",
       type: "staff_augmentation",
       start: engagement.start,
       end: engagement.end,
@@ -130,6 +143,7 @@ const portfolio: api.PortfolioForecast = {
       status: "BELOW FLOOR",
     },
   ],
+  groups: [{ business_unit: "ST21", engagements: 1, people: 1, revenue: "21600.00", cost: "15832.00", gm_pct: 0.267, below_floor: 1 }],
   totals: { people: 1, revenue: "21600.00", cost: "15832.00", gm_pct: 0.267 },
   rolloffs: [{ engagement_id: "e1", allocation_id: "a1", client: "Client A", resource: "Developer 1", role: "Developer", assignment: "Portal rebuild", end: "2026-12-31" }],
   bench_list: [{ resource_id: "r2", resource: "Priya N.", location: "India", employment_type: "w2_employee", seniority: "Mid", free_from: "2026-11-01" }],
@@ -201,14 +215,14 @@ describe("S22 · PortfolioPage", () => {
     expect(screen.getByTestId("card-below_floor")).toHaveTextContent("1");
     expect(screen.getByTestId("card-rolloffs")).toHaveTextContent("1");
     expect(screen.getByTestId("card-bench")).toHaveTextContent("1");
-    const totals = screen.getByTestId("portfolio-totals");
-    expect(totals).toHaveTextContent("Portfolio · Nov 2026");
+    const totals = screen.getByTestId("portfolio-total");
+    expect(totals).toHaveTextContent("All business units · Nov 2026");
     expect(totals).toHaveTextContent("$21,600");
     expect(totals).toHaveTextContent("$15,832");
     expect(within(screen.getByRole("table", { name: "Roll-offs" })).getByText("Developer 1")).toBeInTheDocument();
     expect(within(screen.getByRole("table", { name: "Bench" })).getByText("Priya N.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /New engagement/ })).toBeInTheDocument();
-    expect(api.getPortfolioForecast).toHaveBeenCalledWith({ month: "2026-11", type: "", client_id: "" });
+    expect(api.getPortfolioForecast).toHaveBeenCalledWith({ month: "2026-11", business_unit: "", type: "", client_id: "" });
   });
 
   it("the Below floor card filters the table to the rows it counts", async () => {
@@ -404,7 +418,7 @@ describe("S22 P4 · click-through fixes", () => {
     expect(screen.getByRole("heading", { name: "…or fill it in" })).toBeInTheDocument();
     const file = new File([new Uint8Array([80, 75, 3, 4])], "DealGate_Cost_Margin_SAMPLE_StaffAug.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     fireEvent.change(screen.getByLabelText("Cost-margin sheet (.xlsx)"), { target: { files: [file] } });
-    await waitFor(() => expect(api.importWorkbook).toHaveBeenCalledWith(file));
+    await waitFor(() => expect(api.importWorkbook).toHaveBeenCalledWith(file, { business_unit: "ST21", sales_owner: null, delivery_owner: null }));
     const note = await screen.findByTestId("import-note");
     expect(note).toHaveTextContent("Imported from the sheet.");
     expect(note).toHaveTextContent("Sheet said 168 h for Vikrin; the app computes 160 h — weekday holiday(s) in the window: 2026-09-07");

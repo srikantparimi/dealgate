@@ -437,7 +437,7 @@ async def test_portfolio_month_reconciles_three_ways_and_exports_csv(session):
         only_b = (await client.get(f"/portfolio/forecast?month={month}&client_id={b.id}")).json()
         assert [r["engagement_id"] for r in only_b["rows"]] == [eng_b["id"]] and close(only_b["totals"]["revenue"], month_b["total_revenue"])
         csv_text = (await client.get(f"/portfolio/forecast.csv?month={month}")).text
-        assert csv_text.splitlines()[0].startswith("Client,Engagement,Type") and f"Portfolio · {month}" in csv_text
+        assert csv_text.splitlines()[0].startswith("Business unit,Client,Engagement,Sales owner,Delivery owner,Type") and f"All business units · {month}" in csv_text
         assert view["totals"]["revenue"] in csv_text
 
 

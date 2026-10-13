@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
   Truck,
+  Upload,
   Users,
   type LucideIcon,
   Briefcase,
@@ -77,6 +78,9 @@ export const NAV_GROUPS: NavGroup[] = [
         requireAny: ["Delivery", "Finance", "CEO", "SystemAdmin", "Sales", "SalesLeader"] },
       { to: "/portfolio", label: "Portfolio forecast", icon: Briefcase,
         requireAny: ["Delivery", "Finance", "CEO", "SystemAdmin", "HR", "Sales", "SalesLeader", "Presales"] },
+      // S22 P5: the FY forecast model master → dry run → load. Writers only (it creates engagements).
+      { to: "/import/forecast-model", label: "Import the forecast model", icon: Upload,
+        requireAny: ["Delivery", "Finance", "SystemAdmin", "Sales", "SalesLeader"] },
       { to: "/people", label: "People planning", icon: Users,
         requireAny: ["HR", "SystemAdmin"] },
     ],

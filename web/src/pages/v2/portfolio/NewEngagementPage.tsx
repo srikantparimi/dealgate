@@ -9,9 +9,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getPipelineFacets, getPipelineOpportunity, listPipelineOpportunities, type PipelineOpportunityRow, type PipelineOwnerFacet } from "../../../api/client";
 import {
+  BUS,
   CURRENCIES,
   ENGAGEMENT_TYPE_LABEL,
   FIXED_TYPES,
+  isBusinessUnit,
   createClient,
   createEngagement,
   errorsFrom,
@@ -19,6 +21,7 @@ import {
   listClientOptions,
   missingFrom,
   rememberImportNote,
+  type BusinessUnit,
   type ClientOption,
   type EngagementType,
 } from "../../../api/engagements";
@@ -44,6 +47,9 @@ interface Form {
   same_dates_for_all: "" | "1" | "0";
   hubspot_deal_id: string;
   opportunity_id: string;
+  business_unit: BusinessUnit;
+  sales_owner: string;
+  delivery_owner: string;
 }
 
 const EMPTY: Form = {
@@ -61,6 +67,9 @@ const EMPTY: Form = {
   same_dates_for_all: "",
   hubspot_deal_id: "",
   opportunity_id: "",
+  business_unit: "ST21",
+  sales_owner: "",
+  delivery_owner: "",
 };
 
 const TYPE_FROM_DEAL: Record<string, EngagementType> = {
@@ -90,6 +99,9 @@ function prefillFromDeal(form: Form, deal: PipelineOpportunityRow): Form {
     hubspot_deal_id: deal.hubspot_deal_id ?? "",
     opportunity_id: deal.opportunity_id,
     type: form.type || suggested || "",
+    // P5: the deal's business unit when it is one of ours; the owner's name as the sales owner.
+    business_unit: isBusinessUnit(deal.business_unit) ? deal.business_unit : form.business_unit,
+    sales_owner: form.sales_owner || deal.owner_name || "",
   };
 }
 
@@ -115,7 +127,7 @@ export function NewEngagementPage() {
     setSheetErrors(null);
     setSheetMessage(`Reading ${file.name}…`);
     try {
-      const result = await importWorkbook(file);
+      const result = await importWorkbook(file, { business_unit: form.business_unit, sales_owner: form.sales_owner.trim() || null, delivery_owner: form.delivery_owner.trim() || null });
       rememberImportNote(result.engagement.id, result);
       navigate(`/engagements/${result.engagement.id}/allocations`);
     } catch (cause) {
@@ -194,6 +206,9 @@ export function NewEngagementPage() {
         owner_user_id: form.owner_user_id || null,
         hubspot_deal_id: form.hubspot_deal_id || null,
         opportunity_id: form.opportunity_id || null,
+        business_unit: form.business_unit,
+        sales_owner: form.sales_owner.trim() || null,
+        delivery_owner: form.delivery_owner.trim() || null,
       });
       navigate(`/engagements/${engagement.id}/allocations`);
     } catch (cause) {
@@ -300,6 +315,26 @@ export function NewEngagementPage() {
               </option>
             ))}
           </select>
+
+          <label className="text-secondary text-text-secondary" htmlFor="ne-bu">
+            Business unit
+          </label>
+          <select id="ne-bu" className={field} value={form.business_unit} onChange={(event) => set("business_unit", event.target.value as BusinessUnit)}>
+            {BUS.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+
+          <label className="text-secondary text-text-secondary" htmlFor="ne-sales">
+            Sales owner
+          </label>
+          <input id="ne-sales" className={cn(field, "w-full")} placeholder="Sales owner" value={form.sales_owner} onChange={(event) => set("sales_owner", event.target.value)} />
+          <label className="text-secondary text-text-secondary" htmlFor="ne-delivery">
+            Delivery owner
+          </label>
+          <input id="ne-delivery" className={cn(field, "w-full")} placeholder="Delivery owner" value={form.delivery_owner} onChange={(event) => set("delivery_owner", event.target.value)} />
 
           <label className="text-secondary text-text-secondary" htmlFor="ne-owner">
             Owner

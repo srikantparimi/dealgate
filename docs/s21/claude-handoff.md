@@ -2,6 +2,34 @@
 
 ## RESUME HERE
 
+**2026-10-13 — S22-P5 + P5a (BUSINESS UNITS, FORECAST-MODEL IMPORT, ACTUALS;
+IMPORTER ROLL-UP FIX + CLI LOADER) ON STAGING; AWAITING PRODUCT-OWNER CLICK.**
+Staging now: API rev 107 on `s22p5f-0b8e92cc` (P5 final: importer re-audited,
+allocation.import_key via migration 0067, dry run of the real master ~6–9 s),
+SPA `index-freWl-_8.js` (P5c:
+the import refuses rather than guessing — blockers for a blank business unit
+or location, no ST21 default, 422 {blockers} on load; P5b as_of parameter,
+MODEL_AS_OF 2026-09; P5a importer fix). The real master currently has 7
+blockers; it loads once the dashboard carries UEBIZ + Children's
+Hospital-VMS and the Location column is filled. Open: full-master import
+timing (bug log row 8). `scripts/load_forecast_model.py` dry runs work with the e2e bot's
+bearer; a real load needs a real user's bearer (or the Load button) — the bot
+is a test identity. The master lives in ~/Downloads (gitignored by name). Tree
+`/Users/srikanthparimi/OfficeApp/dealgate-s22-p5`, branch `feat/s22-p5` (off
+`origin/main` dfc3f8b), pushed. Staging: API `officeapp-dev-api:102` on
+image `s22p5-d0270a48`
+(`sha256:9b2a594cb66f70aebbb3d5124224861583ed4a591556e1c055151585507c94ca`),
+migration `20261012_0066_bu_actuals` applied by the Terraform-owned task, SPA
+`assets/index-Cv_2NWJ5.js`, all worker families on the image. Smoke
+`smoke 20261013T005136Z` GREEN; the four S22 specs pass on staging (7 tests);
+gate 0/0/0/0. Scoreboard S22-P5-1 … S22-P5-9 all `verified working
+(staging)`; report `docs/reports/s22/p5-report.md`; bug log
+`docs/bugs/s22-p5.md` (rows 1–6, all fixed or noted). No merge to main before
+Kanna's click: `/import/forecast-model` with the real master (never
+committed), `/portfolio` BU tabs, an imported engagement's grid / Forecast
+Actuals / Setup. On acceptance: squash-merge `feat/s22-p5` → main → main-image
+roll (same image-only plan shape; the migration is already on staging).
+
 **2026-10-12 — S22-P4 MERGED TO MAIN AND ROLLED.** Kanna accepted the
 staging click-through; `feat/s22-p4` @ 7e11726 squashed → `origin/main`
 = `ef50ef9` (release worktree `dealgate-s22-release`, branch

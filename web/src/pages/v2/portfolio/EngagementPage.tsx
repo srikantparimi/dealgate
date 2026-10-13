@@ -114,7 +114,20 @@ export function EngagementPage() {
             {engagement.client_name} · {engagement.name}
           </span>
         }
-        subtitle={`${ENGAGEMENT_TYPE_LABEL[engagement.type]} · ${engagement.start} → ${engagement.end} · ${duration(forecast.duration_months)} months · owner ${engagement.owner_name ?? "—"} · HubSpot: ${engagement.hubspot_deal_id ?? "—"}`}
+        subtitle={
+          <span data-testid="engagement-subtitle">
+            {engagement.business_unit} · {ENGAGEMENT_TYPE_LABEL[engagement.type]} · {engagement.start} → {engagement.end} · {duration(forecast.duration_months)} months · sales{" "}
+            {engagement.sales_owner ?? "—"} · delivery {engagement.delivery_owner ?? "—"} · HubSpot: {engagement.hubspot_deal_id ?? "—"}
+            {engagement.closed ? (
+              <>
+                {" · "}
+                <span data-testid="closed-badge" className="inline-flex align-middle">
+                  <StatusBadge tone="neutral" label="CLOSED" />
+                </span>
+              </>
+            ) : null}
+          </span>
+        }
         actions={
           <Button variant="secondary" onClick={() => navigate("/portfolio")}>
             <ArrowLeft className="mr-1 h-4 w-4" aria-hidden /> Portfolio

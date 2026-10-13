@@ -39,11 +39,14 @@ from app.audit import append_audit
 from app.auth import AuthUser
 from app.models.client import Client
 from app.models.engagement import (
+    BUSINESS_UNITS,
     COST_FREQUENCIES,
     EMPLOYMENT_TYPES,
     ENGAGEMENT_TYPES,
+    RATE_BASES,
     SENIORITIES,
     Allocation,
+    AllocationActual,
     CalendarLocation,
     CostRateCard,
     Engagement,
@@ -55,6 +58,7 @@ from app.models.engagement import (
 )
 from app.models.user import User
 from app.services import forecast as engine
+from app.services.forecast import forecast_model_import as model_import
 from app.services.forecast.workbook_import import ImportedEngagement, parse_workbook
 from app.services.test_fixtures import E2E_USER_GROUP, account_scope, user_allowed
 
@@ -402,14 +406,26 @@ def engine_allocation(row: Allocation, resource_name: str, bundle: CalendarBundl
         resource=resource_name,
         location=row.location,
         employment_type=row.employment_type,
-        cost_per_hour=cost if cost is not None else engine.ZERO,
+        cost_per_hour=cost,  # None -> the engine reports "cost per hour unknown" -> INCOMPLETE
         assignment=row.assignment or None,
         utilization=row.utilization,
         bill_rate=row.bill_rate,
         start=row.start,
         end=row.end,
         hours_override=row.hours_override,
+        rate_basis=row.rate_basis or "hourly",
+        person=row.person,
     )
+
+
+def engine_actual(row: AllocationActual) -> engine.Actual:
+    return engine.Actual(allocation_id=str(row.allocation_id), month=row.month, hours=row.hours, revenue=row.revenue)
+
+
+def rate_revenue(eng: Engagement) -> bool:
+    """Engine rule: people's bill rates carry revenue for hourly types and for an MSP with no monthly fee."""
+
+    return eng.type in HOURLY_TYPES or (eng.type == "msp" and eng.monthly_fee is None)
 
 
 def engine_cost(row: EngagementCost) -> engine.EngagementCost:
@@ -458,6 +474,16 @@ async def allocation_rows(
     return [(alloc, res) for alloc, res in (await session.execute(stmt)).all()]
 
 
+async def actual_rows(session: AsyncSession, engagement_id: uuid.UUID) -> list[AllocationActual]:
+    stmt = (
+        select(AllocationActual)
+        .join(Allocation, Allocation.id == AllocationActual.allocation_id)
+        .where(Allocation.engagement_id == engagement_id)
+        .order_by(AllocationActual.month, AllocationActual.allocation_id)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
 async def cost_rows(session: AsyncSession, engagement_id: uuid.UUID) -> list[EngagementCost]:
     stmt = (
         select(EngagementCost)
@@ -468,7 +494,13 @@ async def cost_rows(session: AsyncSession, engagement_id: uuid.UUID) -> list[Eng
 
 
 # ----------------------------------------------------------------------------- compute + cache
-def _input_hash(eng: Engagement, rows: list[tuple[Allocation, Resource]], costs: list[EngagementCost], bundle: CalendarBundle) -> str:
+def _input_hash(
+    eng: Engagement,
+    rows: list[tuple[Allocation, Resource]],
+    costs: list[EngagementCost],
+    bundle: CalendarBundle,
+    actuals: list[AllocationActual] | None = None,
+) -> str:
     canonical = {
         "engagement": {
             "type": eng.type,
@@ -493,11 +525,17 @@ def _input_hash(eng: Engagement, rows: list[tuple[Allocation, Resource]], costs:
                 None if alloc.start is None else alloc.start.isoformat(),
                 None if alloc.end is None else alloc.end.isoformat(),
                 None if alloc.hours_override is None else str(alloc.hours_override),
+                alloc.rate_basis or "hourly",
+                alloc.person or "",
             ]
             for alloc, res in rows
         ),
         "costs": sorted(
             [cost.description, str(cost.amount), cost.frequency, cost.billed_to_client] for cost in costs
+        ),
+        "actuals": sorted(
+            [str(a.allocation_id), a.month, None if a.hours is None else str(a.hours), None if a.revenue is None else str(a.revenue)]
+            for a in (actuals or [])
         ),
         "calendar": bundle.fingerprint(),
     }
@@ -505,13 +543,18 @@ def _input_hash(eng: Engagement, rows: list[tuple[Allocation, Resource]], costs:
 
 
 def compute_forecast(
-    eng: Engagement, rows: list[tuple[Allocation, Resource]], costs: list[EngagementCost], bundle: CalendarBundle
+    eng: Engagement,
+    rows: list[tuple[Allocation, Resource]],
+    costs: list[EngagementCost],
+    bundle: CalendarBundle,
+    actuals: list[AllocationActual] | None = None,
 ) -> engine.Forecast:
     return engine.compute(
         engine_engagement(eng),
         [engine_allocation(alloc, res.name, bundle) for alloc, res in rows],
         [engine_cost(cost) for cost in costs],
         bundle.engine_calendar(),
+        [engine_actual(a) for a in (actuals or [])],
     )
 
 
@@ -568,6 +611,13 @@ def serialize_forecast(forecast: engine.Forecast, resource_names: dict[str, str]
         },
         # The allocations grid footer: sums of the engine's AllocationMonth rows (labour revenue, loaded cost).
         "staffing_totals": _staffing_totals(forecast),
+        # Over the months that have actuals only (engine: Forecast.actual_revenue / forecast_in_actual_months / billing_loss).
+        "actuals": {
+            "months_with_actuals": sum(1 for line in forecast.months if line.actual_revenue is not None),
+            "actual_revenue": money(forecast.actual_revenue),
+            "forecast_in_actual_months": money(forecast.forecast_in_actual_months),
+            "billing_loss": money(forecast.billing_loss),
+        },
         "months": [
             {
                 "month": line.month,
@@ -584,6 +634,9 @@ def serialize_forecast(forecast: engine.Forecast, resource_names: dict[str, str]
                 "total_cost": money(line.total_cost),
                 "gm": money(line.gm),
                 "gm_pct": pct(line.gm_pct),
+                "actual_hours": num(line.actual_hours),
+                "actual_revenue": money(line.actual_revenue),
+                "billing_loss": money(line.billing_loss),
             }
             for line in forecast.months
         ],
@@ -637,7 +690,8 @@ async def forecast_payload(
     bundle = bundle or await load_calendar(session)
     rows = await allocation_rows(session, eng.id, include_superseded=True)
     costs = await cost_rows(session, eng.id)
-    digest = _input_hash(eng, rows, costs, bundle)
+    actuals = await actual_rows(session, eng.id)
+    digest = _input_hash(eng, rows, costs, bundle, actuals)
     cached = (
         await session.execute(
             select(ForecastRun)
@@ -648,7 +702,7 @@ async def forecast_payload(
     ).scalar_one_or_none()
     if cached is not None:
         return cached.payload
-    forecast = compute_forecast(eng, rows, costs, bundle)
+    forecast = compute_forecast(eng, rows, costs, bundle, actuals)
     payload = serialize_forecast(forecast, {str(alloc.id): res.name for alloc, res in rows}, bundle.project_floor_pct)
     if store:
         session.add(ForecastRun(id=uuid.uuid4(), engagement_id=eng.id, input_hash=digest, payload=payload))
@@ -692,6 +746,10 @@ def serialize_engagement(row: Engagement, client_name: str, owner_name: str | No
         "same_dates_for_all": row.same_dates_for_all,
         "owner_user_id": None if row.owner_user_id is None else str(row.owner_user_id),
         "owner_name": owner_name,
+        "business_unit": row.business_unit,
+        "sales_owner": row.sales_owner,
+        "delivery_owner": row.delivery_owner,
+        "closed": bool(row.closed),
         "status": engagement_status(row),
         "duration_months": num(engine.duration_months(row.start, row.end)),
     }
@@ -748,6 +806,10 @@ def _validate_engagement(eng: Engagement, bundle: CalendarBundle) -> None:
     """422 with the engine's own ``missing`` strings for the project block."""
 
     missing = engine.compute(engine_engagement(eng), [], [], bundle.engine_calendar()).missing
+    # An MSP may bill its people's monthly rates instead of a fee (engine rule, P5). At setup the people are not
+    # there yet, so that one message stays on the forecast (status INCOMPLETE) rather than blocking the save.
+    if eng.type == "msp" and eng.monthly_fee is None:
+        missing = [m for m in missing if not m.startswith("monthly_fee required for MSP")]
     if missing:
         raise ForecastInputError(missing)
 
@@ -767,7 +829,23 @@ def _engagement_snapshot(row: Engagement) -> dict[str, Any]:
         "additional_costs_flag": row.additional_costs_flag,
         "same_dates_for_all": row.same_dates_for_all,
         "owner_user_id": None if row.owner_user_id is None else str(row.owner_user_id),
+        "business_unit": row.business_unit,
+        "sales_owner": row.sales_owner,
+        "delivery_owner": row.delivery_owner,
+        "closed": bool(row.closed),
     }
+
+
+def _business_unit(value: Any) -> str:
+    unit = (value or "ST21").strip()
+    if unit not in BUSINESS_UNITS:
+        raise ForecastInputError([f"business unit must be one of {', '.join(BUSINESS_UNITS)}"])
+    return unit
+
+
+def _owner_text(value: Any) -> str | None:
+    text = (value or "").strip() if isinstance(value, str) else value
+    return text or None
 
 
 async def create_engagement(session: AsyncSession, *, actor: AuthUser, body: dict[str, Any]) -> Engagement:
@@ -792,6 +870,10 @@ async def create_engagement(session: AsyncSession, *, actor: AuthUser, body: dic
         additional_costs_flag=bool(body["additional_costs_flag"]),
         same_dates_for_all=bool(body["same_dates_for_all"]),
         owner_user_id=body.get("owner_user_id"),
+        business_unit=_business_unit(body.get("business_unit")),
+        sales_owner=_owner_text(body.get("sales_owner")),
+        delivery_owner=_owner_text(body.get("delivery_owner")),
+        closed=bool(body.get("closed") or False),
         created_by=actor.id,
     )
     if not row.name:
@@ -835,9 +917,14 @@ async def update_engagement(session: AsyncSession, *, actor: AuthUser, row: Enga
             setattr(row, key, _dec(body[key]))
     if body.get("currency"):
         row.currency = body["currency"].upper()
-    for key in ("additional_costs_flag", "same_dates_for_all"):
+    for key in ("additional_costs_flag", "same_dates_for_all", "closed"):
         if body.get(key) is not None:
             setattr(row, key, bool(body[key]))
+    if body.get("business_unit") is not None:
+        row.business_unit = _business_unit(body["business_unit"])
+    for key in ("sales_owner", "delivery_owner"):
+        if key in body:
+            setattr(row, key, _owner_text(body[key]))
     bundle = await load_calendar(session)
     _validate_engagement(row, bundle)
     await session.flush()
@@ -983,6 +1070,9 @@ def _allocation_snapshot(row: Allocation) -> dict[str, Any]:
         "start": None if row.start is None else row.start.isoformat(),
         "end": None if row.end is None else row.end.isoformat(),
         "hours_override": None if row.hours_override is None else str(row.hours_override),
+        "rate_basis": row.rate_basis or "hourly",
+        "person": row.person,
+        "import_key": row.import_key,
         "superseded_by": None if row.superseded_by is None else str(row.superseded_by),
     }
 
@@ -993,7 +1083,8 @@ def _own_problems(eng: Engagement, row: Allocation, resource_name: str, bundle: 
     cal = bundle.engine_calendar()
     base = set(engine.compute(engine_engagement(eng), [], [], cal).missing)
     with_row = engine.compute(engine_engagement(eng), [engine_allocation(row, resource_name, bundle)], [], cal).missing
-    problems = [message for message in with_row if message not in base]
+    # the engine's "cost per hour unknown" is restated below with the rate-card cell that would fill it
+    problems = [message for message in with_row if message not in base and "cost per hour unknown" not in message]
     if row.cost_per_hour is None and bundle.rate_card_cost(row.seniority, row.location, row.employment_type) is None:
         problems.append(
             f"{resource_name}: cost per hour required — no rate card cell for "
@@ -1027,6 +1118,12 @@ def _apply_allocation_fields(row: Allocation, body: dict[str, Any], resource: Re
         row.end = body["end"]
     if "hours_override" in body:
         row.hours_override = _dec(body["hours_override"])
+    if body.get("rate_basis") is not None:
+        if body["rate_basis"] not in RATE_BASES:
+            raise ForecastInputError([f"{row.role}: rate basis must be hourly, daily or monthly"])
+        row.rate_basis = body["rate_basis"]
+    if "person" in body:
+        row.person = (body["person"] or "").strip() or None
 
 
 async def add_allocation(session: AsyncSession, *, actor: AuthUser, eng: Engagement, body: dict[str, Any]) -> Allocation:
@@ -1049,7 +1146,11 @@ async def add_allocation(session: AsyncSession, *, actor: AuthUser, eng: Engagem
         start=body.get("start"),
         end=body.get("end"),
         hours_override=_dec(body.get("hours_override")),
+        rate_basis=body.get("rate_basis") or "hourly",
+        person=(body.get("person") or "").strip() or None,
     )
+    if row.rate_basis not in RATE_BASES:
+        raise ForecastInputError([f"{row.role}: rate basis must be hourly, daily or monthly"])
     problems = _own_problems(eng, row, resource.name, bundle)
     if problems:
         raise ForecastInputError(problems)
@@ -1098,6 +1199,8 @@ async def patch_allocation(session: AsyncSession, *, actor: AuthUser, row: Alloc
             start=now,
             end=row.end,
             hours_override=row.hours_override,
+            rate_basis=row.rate_basis,
+            person=row.person,
         )
         _apply_allocation_fields(successor, {k: v for k, v in body.items() if k not in ("start",)}, resource)
         successor.start = now
@@ -1196,6 +1299,8 @@ async def rehire_allocation(
         start=new_start,
         end=None,
         hours_override=None,
+        rate_basis=row.rate_basis,
+        person=row.person,
     )
     if new_start > eng.end:
         raise ForecastInputError([f"{row.role}: re-hire start {new_start.isoformat()} is after the engagement end {eng.end.isoformat()}"])
@@ -1254,7 +1359,7 @@ def serialize_allocation(
     hours = sum((Decimal(str(am["hours"])) for am in mine), engine.ZERO)
     revenue = sum((Decimal(am["revenue"]) for am in mine), engine.ZERO)
     loaded_cost = sum((Decimal(am["loaded_cost"]) for am in mine), engine.ZERO)
-    hourly = eng.type in HOURLY_TYPES
+    hourly = rate_revenue(eng)
     row_gm = margin_pct(revenue, loaded_cost) if hourly else None
     floor = bundle.resource_floor(row.location)
     return {
@@ -1262,6 +1367,9 @@ def serialize_allocation(
         "engagement_id": str(row.engagement_id),
         "resource_id": str(row.resource_id),
         "resource_name": resource.name,
+        "person": row.person,
+        "rate_basis": row.rate_basis or "hourly",
+        "import_key": row.import_key,
         "role": row.role,
         "seniority": row.seniority,
         "location": row.location,
@@ -1416,8 +1524,9 @@ async def portfolio_month(
     month: str,
     type_: str | None = None,
     client_id: uuid.UUID | None = None,
+    business_unit: str | None = None,
 ) -> dict[str, Any]:
-    """GET /portfolio/forecast — every engagement for one month plus the four cards.
+    """GET /portfolio/forecast — every open engagement for one month plus the five cards.
 
     One pass produces the rows, the totals, the roll-off list and the bench
     list; each card is the count (or total) of the list it opens, so the
@@ -1429,9 +1538,11 @@ async def portfolio_month(
     stmt = (
         select(Engagement, Client.name)
         .join(Client, Client.id == Engagement.client_id)
-        .where(Engagement.start <= month_end, Engagement.end >= month_start)
+        .where(Engagement.start <= month_end, Engagement.end >= month_start, Engagement.closed.is_(False))
         .order_by(Client.name, Engagement.name)
     )
+    if business_unit:
+        stmt = stmt.where(Engagement.business_unit == business_unit)
     if type_:
         stmt = stmt.where(Engagement.type == type_)
     if client_id is not None:
@@ -1445,6 +1556,9 @@ async def portfolio_month(
     revenue_total = engine.ZERO
     cost_total = engine.ZERO
     below_floor = 0
+    groups: dict[str, dict[str, Any]] = {}
+    loss_amount = loss_forecast = loss_billed = engine.ZERO
+    loss_engagements = 0
     for eng, client_name in engagements:
         payload = await forecast_payload(session, eng, bundle=bundle)
         line = next((m for m in payload["months"] if m["month"] == month), None)
@@ -1455,11 +1569,29 @@ async def portfolio_month(
         people_total += line["people"]
         revenue_total += Decimal(line["total_revenue"])
         cost_total += Decimal(line["total_cost"])
+        group = groups.setdefault(
+            eng.business_unit,
+            {"business_unit": eng.business_unit, "engagements": 0, "people": 0, "revenue": engine.ZERO, "cost": engine.ZERO, "below_floor": 0},
+        )
+        group["engagements"] += 1
+        group["people"] += line["people"]
+        group["revenue"] += Decimal(line["total_revenue"])
+        group["cost"] += Decimal(line["total_cost"])
+        group["below_floor"] += 1 if payload["status"] == "BELOW FLOOR" else 0
+        actuals = payload.get("actuals") or {}
+        if actuals.get("months_with_actuals"):
+            loss_engagements += 1
+            loss_amount += Decimal(actuals["billing_loss"])
+            loss_forecast += Decimal(actuals["forecast_in_actual_months"])
+            loss_billed += Decimal(actuals["actual_revenue"])
         rows.append(
             {
                 "engagement_id": str(eng.id),
+                "business_unit": eng.business_unit,
                 "client_name": client_name,
                 "name": eng.name,
+                "sales_owner": eng.sales_owner,
+                "delivery_owner": eng.delivery_owner,
                 "type": eng.type,
                 "start": eng.start.isoformat(),
                 "end": eng.end.isoformat(),
@@ -1478,13 +1610,34 @@ async def portfolio_month(
     return {
         "month": month,
         "project_floor_pct": pct(bundle.project_floor_pct),
+        "business_unit": business_unit,
         "cards": {
             "portfolio_gm_pct": pct(portfolio_gm),
             "below_floor": below_floor,
             "rolloffs_60d": len(rolloffs),
             "bench": len(bench),
+            # over engagements and months that have actuals (engine: Forecast.billing_loss per engagement)
+            "billing_loss": {
+                "amount": money(loss_amount),
+                "forecast": money(loss_forecast),
+                "billed": money(loss_billed),
+                "engagements": loss_engagements,
+            },
         },
         "rows": rows,
+        # one subtotal block per business unit, in BU order, computed from its rows the same way totals is
+        "groups": [
+            {
+                "business_unit": g["business_unit"],
+                "engagements": g["engagements"],
+                "people": g["people"],
+                "revenue": money(g["revenue"]),
+                "cost": money(g["cost"]),
+                "gm_pct": pct(margin_pct(g["revenue"], g["cost"])),
+                "below_floor": g["below_floor"],
+            }
+            for g in sorted(groups.values(), key=lambda g: BUSINESS_UNITS.index(g["business_unit"]) if g["business_unit"] in BUSINESS_UNITS else 99)
+        ],
         "totals": {
             "people": people_total,
             "revenue": money(revenue_total),
@@ -1571,21 +1724,28 @@ def portfolio_csv(view: dict[str, Any]) -> str:
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(
-        ["Client", "Engagement", "Type", "Start", "End", "People", "Revenue · month", "Cost · month", "GM % · month", "GM % · term", "Status"]
+        ["Business unit", "Client", "Engagement", "Sales owner", "Delivery owner", "Type", "Start", "End", "People",
+         "Revenue · month", "Cost · month", "GM % · month", "GM % · term", "Status"]
     )
-    for row in view["rows"]:
+    for group in view.get("groups", []):
+        for row in (r for r in view["rows"] if r["business_unit"] == group["business_unit"]):
+            writer.writerow(
+                [
+                    row["business_unit"], row["client_name"], row["name"], row.get("sales_owner") or "", row.get("delivery_owner") or "",
+                    row["type"], row["start"], row["end"], row["people"],
+                    row["revenue_month"], row["cost_month"],
+                    "" if row["gm_pct_month"] is None else row["gm_pct_month"],
+                    "" if row["gm_pct_term"] is None else row["gm_pct_term"],
+                    row["status"],
+                ]
+            )
         writer.writerow(
-            [
-                row["client_name"], row["name"], row["type"], row["start"], row["end"], row["people"],
-                row["revenue_month"], row["cost_month"],
-                "" if row["gm_pct_month"] is None else row["gm_pct_month"],
-                "" if row["gm_pct_term"] is None else row["gm_pct_term"],
-                row["status"],
-            ]
+            [group["business_unit"], f"{group['business_unit']} subtotal · {view['month']}", "", "", "", "", "", "", group["people"],
+             group["revenue"], group["cost"], "" if group["gm_pct"] is None else group["gm_pct"], "", ""]
         )
     totals = view["totals"]
     writer.writerow(
-        [f"Portfolio · {view['month']}", "", "", "", "", totals["people"], totals["revenue"], totals["cost"],
+        ["", f"All business units · {view['month']}", "", "", "", "", "", "", totals["people"], totals["revenue"], totals["cost"],
          "" if totals["gm_pct"] is None else totals["gm_pct"], "", ""]
     )
     return buf.getvalue()
@@ -1651,15 +1811,22 @@ def hours_text(value: Decimal) -> str:
     return str(int(value)) if value == value.to_integral_value() else format(value.quantize(Decimal("0.01")), "f")
 
 
-async def import_workbook(session: AsyncSession, *, actor: AuthUser, data: bytes) -> dict[str, Any]:
-    """POST /engagements/import-workbook: parse → create engagement + people + allocations + costs → forecast."""
+async def import_workbook(
+    session: AsyncSession, *, actor: AuthUser, data: bytes, ownership: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """POST /engagements/import-workbook: parse → create engagement + people + allocations + costs → forecast.
+    ``ownership`` carries the New-engagement page's business unit and owners (P5); the sheet has none."""
 
     imported = parse_workbook_upload(data)
     if imported.errors:
         raise WorkbookImportError(imported.errors)
     bundle = await load_calendar(session)
     client = await resolve_workbook_client(session, actor=actor, name=imported.client)
+    ownership = ownership or {}
     eng = Engagement(
+        business_unit=_business_unit(ownership.get("business_unit")),
+        sales_owner=_owner_text(ownership.get("sales_owner")),
+        delivery_owner=_owner_text(ownership.get("delivery_owner")),
         id=uuid.uuid4(),
         client_id=client.id,
         name=imported.name,
@@ -1890,3 +2057,281 @@ async def import_allocations_csv(
         after={"rows": len(created), "allocation_ids": [str(a.id) for a in created]},
     )
     return {"created": len(created), "allocation_ids": [str(a.id) for a in created]}
+
+
+# ----------------------------------------------------------------------------- actuals (P5)
+async def replace_actuals(session: AsyncSession, *, actor: AuthUser, row: Allocation, body: list[dict[str, Any]]) -> list[AllocationActual]:
+    """PUT /allocations/{id}/actuals: one row per month; months not in the body are removed."""
+
+    seen: dict[str, dict[str, Any]] = {}
+    for item in body:
+        month = str(item.get("month") or "")
+        try:
+            month_bounds(month)
+        except (ValueError, TypeError):
+            raise ForecastInputError([f"actuals: month {month!r} must be YYYY-MM"])
+        if month in seen:
+            raise ForecastInputError([f"actuals: month {month} appears twice"])
+        seen[month] = item
+    existing = {
+        a.month: a
+        for a in (await session.execute(select(AllocationActual).where(AllocationActual.allocation_id == row.id))).scalars().all()
+    }
+    before = {m: {"hours": num(a.hours), "revenue": money(a.revenue)} for m, a in sorted(existing.items())}
+    for month, a in existing.items():
+        if month not in seen:
+            await session.delete(a)
+    out: list[AllocationActual] = []
+    for month, item in seen.items():
+        a = existing.get(month)
+        if a is None:
+            a = AllocationActual(id=uuid.uuid4(), allocation_id=row.id, month=month)
+            session.add(a)
+        a.hours = _dec(item.get("hours"))
+        a.revenue = _dec(item.get("revenue"))
+        out.append(a)
+    await session.flush()
+    await append_audit(
+        session,
+        actor_id=actor.id,
+        action="allocation.actuals_replaced",
+        entity="allocation",
+        entity_id=str(row.id),
+        before=before,
+        after={a.month: {"hours": num(a.hours), "revenue": money(a.revenue)} for a in sorted(out, key=lambda a: a.month)},
+    )
+    return out
+
+
+# ----------------------------------------------------------------------------- the forecast-model master (P5-4)
+# Placeholder calendar for locations the model names and the Settings page lacks (directive §P5 item 4).
+_MODEL_LOCATION_DEFAULTS: dict[str, tuple[Decimal, Decimal, Decimal]] = {
+    # name -> (burden W-2, burden 1099, resource floor)
+    "US": (Decimal("0.36"), Decimal("0.05"), Decimal("0.35")),
+    "India - Pune": (Decimal("0.08"), Decimal("0.08"), Decimal("0.50")),
+    "India - Chennai": (Decimal("0.08"), Decimal("0.08"), Decimal("0.50")),
+    "South Africa": (Decimal("0.08"), Decimal("0.08"), Decimal("0.35")),
+}
+_MODEL_LOCATION_FALLBACK = (Decimal("0.08"), Decimal("0.08"), Decimal("0.35"))
+
+
+class ModelBlockedError(WorkbookImportError):
+    """422 whose body lists what the workbook must say before a load is safe (contract: ``body.blockers``)."""
+
+    def __init__(self, blockers: list[dict[str, Any]]):
+        HTTPException.__init__(self, status_code=422, detail={"blockers": list(blockers)})
+        self.errors = [b["fix"] for b in blockers]
+        self.blockers = list(blockers)
+
+
+def serialize_blockers(imp: model_import.MasterImport) -> list[dict[str, Any]]:
+    return [{"kind": b.kind, "tab": b.tab, "detail": b.detail, "rows": list(b.rows), "fix": b.fix} for b in imp.blockers]
+
+
+def parse_model_upload(data: bytes, as_of: str | None) -> model_import.MasterImport:
+    try:
+        imp = model_import.parse_master(io.BytesIO(data), as_of=as_of)   # None -> the importer's MODEL_AS_OF
+    except WorkbookImportError:
+        raise
+    except Exception as exc:  # not an .xlsx at all
+        raise WorkbookImportError([f"Could not read that file as an .xlsx workbook ({exc.__class__.__name__})."])
+    if not imp.dashboard and not imp.engagements:
+        raise WorkbookImportError(["Not a forecast model master (no run-rate dashboard / no client tabs)."])
+    return imp
+
+
+def _model_calendar(bundle: CalendarBundle, imp: model_import.MasterImport) -> tuple[engine.Calendar, list[str]]:
+    """The Settings calendar plus the model's locations/holidays that it lacks; the notes say what the load will add."""
+
+    cal = bundle.engine_calendar()
+    notes: list[str] = []
+    known = set(bundle.location_names())
+    for name, days in imp.locations.items():
+        if name not in known:
+            w2, c99, floor = _MODEL_LOCATION_DEFAULTS.get(name, _MODEL_LOCATION_FALLBACK)
+            cal.burden_pct[(name, "w2_employee")] = w2
+            cal.burden_pct[(name, "contractor_1099")] = c99
+            cal.resource_floor_pct[name] = floor
+            cal.holidays[name] = set(days)
+            notes.append(
+                f"Location {name} is not on the Settings page — the load adds it with placeholder burden "
+                f"W-2 {w2:.0%} / 1099 {c99:.0%}, resource floor {floor:.0%} and {len(days)} holidays from the WorkingDays tab."
+            )
+        elif not cal.holidays.get(name) and days:
+            cal.holidays[name] = set(days)
+            notes.append(f"Location {name} had no holidays — the load adds {len(days)} from the WorkingDays tab.")
+    return cal, notes
+
+
+def _model_report(imp: model_import.MasterImport, cal: engine.Calendar, notes: list[str]) -> dict[str, Any]:
+    # The counts per business unit need no engine run (clients / engagements / people / closed are facts of the
+    # workbook), so they are tallied here; the engine runs once, inside the pack's report. On the real master
+    # (81 engagements) running it twice pushed the request past the load balancer's 60 s idle timeout.
+    tallies: dict[str, dict[str, Any]] = {}
+    for me in imp.engagements:
+        b = tallies.setdefault(me.business_unit or "Unassigned", {"clients": set(), "engagements": 0, "people": 0, "closed": 0})
+        b["clients"].add(me.client)
+        b["engagements"] += 1
+        b["people"] += len({a.resource for a in me.allocations})
+        b["closed"] += int(bool(me.closed))
+    dry = {"bus": tallies}
+    markdown = model_import.dry_run_markdown(imp, cal)
+    if notes:
+        markdown += "\n\n## Calendar\n\n" + "\n".join(f"- {n}" for n in notes) + "\n"
+    # every business unit the dashboard names (clients counted there even when they have no tab yet), then any unassigned tabs
+    order = {bu: i for i, bu in enumerate(BUSINESS_UNITS)}
+    clients_by_bu: dict[str, set[str]] = {}
+    for client, info in imp.dashboard.items():
+        clients_by_bu.setdefault(info.get("business_unit") or "Unassigned", set()).add(client)
+    for bu, b in dry["bus"].items():
+        clients_by_bu.setdefault(bu, set()).update(b["clients"])
+    by_bu = [
+        {
+            "business_unit": bu,
+            "clients": len(clients),
+            "engagements": dry["bus"].get(bu, {}).get("engagements", 0),
+            "people": dry["bus"].get(bu, {}).get("people", 0),
+            "closed": dry["bus"].get(bu, {}).get("closed", 0),
+        }
+        for bu, clients in sorted(clients_by_bu.items(), key=lambda kv: order.get(kv[0], 99))
+        if clients or dry["bus"].get(bu)
+    ]
+    tabs = [
+        {
+            "tab": r.tab, "client": r.client, "business_unit": r.business_unit, "engagement_type": r.engagement_type,
+            "engagements": r.engagements, "people": r.people, "allocations": r.allocations, "extensions": r.extensions,
+            "months": len(r.months), "actual_months": r.actual_months, "issues": list(r.issues),
+        }
+        for r in imp.reports
+    ]
+    return {"report_markdown": markdown, "by_business_unit": by_bu, "tabs": tabs, "blockers": serialize_blockers(imp)}
+
+
+async def _ensure_model_locations(session: AsyncSession, bundle: CalendarBundle, imp: model_import.MasterImport) -> int:
+    added = 0
+    by_name = {loc.name: loc for loc in bundle.locations}
+    for name, days in imp.locations.items():
+        loc = by_name.get(name)
+        if loc is None:
+            w2, c99, floor = _MODEL_LOCATION_DEFAULTS.get(name, _MODEL_LOCATION_FALLBACK)
+            loc = CalendarLocation(id=uuid.uuid4(), name=name, burden_pct_w2=w2, burden_pct_1099=c99, resource_floor_pct=floor)
+            session.add(loc)
+            await session.flush()
+            added += 1
+            for day in days:
+                session.add(Holiday(id=uuid.uuid4(), location_id=loc.id, day=day))
+        elif not bundle.holidays.get(name) and days:
+            for day in days:
+                session.add(Holiday(id=uuid.uuid4(), location_id=loc.id, day=day))
+    await session.flush()
+    return added
+
+
+def _model_engagement_name(me: model_import.ModelEngagement) -> str:
+    key = (me.assignment_key or "").strip()
+    return me.tab if not key or key.lower() == me.tab.lower() else f"{me.tab} · {key}"
+
+
+async def import_forecast_model(
+    session: AsyncSession, *, actor: AuthUser, data: bytes, dry_run: bool = True, as_of: str | None = None
+) -> dict[str, Any]:
+    """POST /engagements/import-forecast-model — dry run returns the report and creates nothing; load creates
+    clients (manual), engagements (closed flagged), allocations (cost unknown), actuals and calendar locations.
+    Idempotent: an existing engagement (client × name) is updated; an existing allocation is matched on its
+    ``import_key`` — ``to_engine``'s ``Allocation.id`` ("{assignment_key}:{row_key}:{segment}"), so placeholder
+    seats that share a name (eleven ``TBC`` rows) survive a second import; actuals are replaced per allocation."""
+
+    imp = parse_model_upload(data, as_of)
+    bundle = await load_calendar(session)
+    cal, notes = _model_calendar(bundle, imp)
+    report = _model_report(imp, cal, notes)
+    if dry_run:
+        return {"dry_run": True, **report, "created": None}
+    # A blank business unit or location is not a judgement call: the load stops here, before any write,
+    # and names the cells (P5c). No default, no override.
+    if imp.blockers:
+        raise ModelBlockedError(report["blockers"])
+
+    added_locations = await _ensure_model_locations(session, bundle, imp)
+    bundle = await load_calendar(session)
+    created = {"clients": 0, "engagements": 0, "allocations": 0, "actual_rows": 0, "locations": added_locations}
+    clients: dict[str, Client] = {}
+    for me in imp.engagements:
+        eng_in, allocs, acts, eng_notes = model_import.to_engine(me, cal)
+        if eng_in is None:
+            continue
+        client = clients.get(me.client)
+        if client is None:
+            before_count = (await session.execute(select(func.count()).select_from(Client))).scalar_one()
+            client = await resolve_workbook_client(session, actor=actor, name=me.client)
+            after_count = (await session.execute(select(func.count()).select_from(Client))).scalar_one()
+            created["clients"] += int(after_count > before_count)
+            clients[me.client] = client
+        name = _model_engagement_name(me)
+        eng = (
+            await session.execute(select(Engagement).where(Engagement.client_id == client.id, Engagement.name == name).limit(1))
+        ).scalar_one_or_none()
+        is_new = eng is None
+        if is_new:
+            eng = Engagement(id=uuid.uuid4(), client_id=client.id, name=name, currency="USD", additional_costs_flag=False,
+                             same_dates_for_all=False, owner_user_id=actor.id, created_by=actor.id)
+            session.add(eng)
+            created["engagements"] += 1
+        before = None if is_new else _engagement_snapshot(eng)
+        eng.type = eng_in.type
+        eng.start, eng.end = eng_in.start, eng_in.end
+        if me.business_unit not in BUSINESS_UNITS:   # cannot happen past the blockers check; never default
+            raise ModelBlockedError([{"kind": "business_unit", "tab": me.tab, "detail": "no business unit on the run-rate dashboard", "rows": [],
+                                      "fix": f"Add '{me.tab}' to the Dashboard (RunRate) tab under its business unit, with sales owner, delivery owner and billing type."}])
+        eng.business_unit = me.business_unit
+        eng.sales_owner = _owner_text(me.sales_owner)
+        eng.delivery_owner = _owner_text(me.delivery_owner)
+        eng.closed = bool(me.closed)
+        await session.flush()
+        rows_by_engine_id: dict[str, Allocation] = {}
+        for a in allocs:
+            person = a.person or a.resource
+            resource = (
+                await session.execute(
+                    select(Resource).where(func.lower(Resource.name) == person.lower(), Resource.location == a.location,
+                                           Resource.employment_type == a.employment_type).limit(1)
+                )
+            ).scalar_one_or_none()
+            if resource is None:
+                resource = Resource(id=uuid.uuid4(), name=person, location=a.location, employment_type=a.employment_type, active=True)
+                session.add(resource)
+                await session.flush()
+            row = (
+                await session.execute(
+                    select(Allocation).where(Allocation.engagement_id == eng.id, Allocation.import_key == a.id).limit(1)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                row = Allocation(id=uuid.uuid4(), engagement_id=eng.id, resource_id=resource.id, role=a.resource, location=a.location,
+                                 employment_type=a.employment_type, utilization=a.utilization, start=a.start, cost_per_hour=None,
+                                 import_key=a.id)
+                session.add(row)
+                created["allocations"] += 1
+            row.resource_id = resource.id
+            row.role = a.resource
+            row.location = a.location
+            row.employment_type = a.employment_type
+            row.assignment = a.assignment
+            row.utilization = a.utilization
+            row.bill_rate = a.bill_rate
+            row.rate_basis = a.rate_basis
+            row.person = a.person
+            row.start, row.end = a.start, a.end
+            await session.flush()
+            rows_by_engine_id[a.id] = row
+        for engine_id, row in rows_by_engine_id.items():
+            mine = [x for x in acts if x.allocation_id == engine_id]
+            if mine:
+                saved = await replace_actuals(session, actor=actor, row=row, body=[{"month": x.month, "hours": x.hours, "revenue": x.revenue} for x in mine])
+                created["actual_rows"] += len(saved)
+        await append_audit(
+            session, actor_id=actor.id, action="engagement.imported_forecast_model", entity="engagement", entity_id=str(eng.id),
+            before=before, after={**_engagement_snapshot(eng), "tab": me.tab, "allocations": len(rows_by_engine_id), "notes": list(eng_notes)},
+        )
+    await session.flush()
+    return {"dry_run": False, **report, "created": created}
