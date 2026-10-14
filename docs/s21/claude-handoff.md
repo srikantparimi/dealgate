@@ -2,6 +2,60 @@
 
 ## RESUME HERE
 
+**2026-10-13 22:15 PDT — COMMAND CENTER INTEGRATION CANDIDATE COMMITTED,
+IMMUTABLE IMAGE PUBLISHED, EXACT STAGING PLAN AWAITS HUMAN APPROVAL.** The
+authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
+`feat/command-center-redesign`, full application commit
+`a5f3445a8d99c762559426e499f6cd366779592f`. Main remains isolated and no merge
+is authorized before staging acceptance.
+
+Local gates on that revision: PostgreSQL fresh upgrade -> 0068 downgrade ->
+0068 re-upgrade succeeded in isolated database `dealgate_cc_verify`, leaving
+head `20261013_0068_cc_rules` and constraint `ck_renewal_likelihood`; Command
+Center backend tests 15/15; current Command Center UI tests 6/6; TypeScript and
+Ruff clean. The broader affected frontend set was 41/41 before the final
+migration-name correction, which did not touch frontend code.
+
+Immutable AMD64 image
+`669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:ccint-a5f3445`
+is published at digest
+`sha256:a5c3020afad1ec8fd11e3da9d515ba0e16c4d0ee67a08313e8aad786bee861f0`.
+The refreshed whole-root Terraform plan is
+`/tmp/ccint-a5f3445.tfplan` (SHA-256
+`29bb4ea49ea75499f982e7dae160c9a547ebe2a064d029d2080ca44d3cae1e2d`);
+text and JSON renderings are `/tmp/ccint-a5f3445.plan.txt` and
+`/tmp/ccint-a5f3445.plan.json` with checksums
+`7b5caa855bb44ddf512a7fdb7f592c7863115b6dbb651cfb19d5795c1f74cb55` and
+`2c546982faa70ef8614f96330275aec2569f6ee3c616030248d5ce6dc03f0020`.
+
+The plan is exactly **12 add / 14 change / 12 destroy**. Eleven replacements
+are the API, migration and nine scheduled-worker ECS task definitions; the
+twelfth is the Terraform migration trigger. Updates are the API service, nine
+EventBridge targets and four RunTask policies following the new task
+revisions. Every container changes only from `ccfix-c606d76` to
+`ccint-a5f3445`. There are zero RDS, storage, Cognito, SES, secret, network,
+DNS, CloudFront, schedule-rule or business-data changes. Inputs preserve
+America/Los_Angeles, USD, S21 jobs enabled, production approver identities
+enabled, and optional cleanup/continuous HubSpot/operational hardening
+disabled.
+
+Required human action: approve only the exact saved Terraform plan identified
+above. After approval, resume with:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/ccint-a5f3445.tfplan
+```
+
+Then verify the migration task reaches 0068, the API and all worker task
+definitions resolve to the recorded digest, publish the matching production
+SPA, invalidate CloudFront, run deploy smoke and the focused connected Command
+Center reconciliation. No Terraform, migration, deployment, test or browser
+process is active. Current staging remains API revision 110 on
+`ccfix-c606d76` and SPA `assets/index-D6YIm2ot.js`; the candidate is not yet
+deployed.
+
 **2026-10-13 22:01 PDT — COMMAND CENTER FORECAST/PORTFOLIO APPLICATION
 CANDIDATE IMPLEMENTED LOCALLY; STAGING PLAN IS NEXT.** Authoritative tree
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch

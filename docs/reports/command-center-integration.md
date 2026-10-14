@@ -1,5 +1,17 @@
 # Command Center Forecast and Portfolio Integration
 
+## Staging candidate
+
+Application commit `a5f3445a8d99c762559426e499f6cd366779592f` is packaged as
+immutable AMD64 image `officeapp-dev-api:ccint-a5f3445`, digest
+`sha256:a5c3020afad1ec8fd11e3da9d515ba0e16c4d0ee67a08313e8aad786bee861f0`.
+The exact saved Terraform plan `/tmp/ccint-a5f3445.tfplan` is 12 add / 14
+change / 12 destroy and contains only revisioned ECS task definitions, the
+migration trigger, and references that follow those revisions. It contains no
+persistent-data, identity, storage, network, DNS or CDN change. The plan awaits
+the required human infrastructure approval; staging still runs API revision
+110 and the prior SPA.
+
 ## Verified baseline
 
 Read-only staging query on 2026-10-13 against API task definition `officeapp-dev-api:110`:
