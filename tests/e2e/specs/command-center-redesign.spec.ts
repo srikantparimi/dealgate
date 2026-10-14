@@ -76,6 +76,7 @@ test("deployed Command Center serves the canonical scope and connected operation
   await expect(page.getByRole("heading", { name: "Revenue outlook" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Delivery capacity" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Accounts & engagements" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Filter accounts by business unit" })).toBeVisible();
   await expect(page.getByText(/Could not load (actions|accounts):/)).toHaveCount(0);
 
   for (const label of ["Pipeline", "SOWs & approvals", "Projects", "Forecast", "Portfolio", "People"]) {

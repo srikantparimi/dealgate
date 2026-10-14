@@ -58,6 +58,35 @@ describe("Command Center redesign", () => {
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
     expect(screen.getByTestId("stage5-scope")).toHaveTextContent("HubSpot deals · Stage 5 and above");
     expect(screen.getByText("Open late-stage work, current-period wins and active delivery.")).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Business unit" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "ST21" })).toBeVisible();
+  });
+
+  it("filters accounts and exports through the shared business-unit scope", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const accountBusinessUnit = await screen.findByRole("combobox", {
+      name: "Filter accounts by business unit",
+    });
+    await user.selectOptions(accountBusinessUnit, "ST21");
+
+    await waitFor(() =>
+      expect(commandApi.getCommandAccounts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ business_unit: "ST21" }),
+        expect.objectContaining({ page: 1, page_size: 25 }),
+      ),
+    );
+    expect(commandApi.getCommandOverview).toHaveBeenLastCalledWith(
+      expect.objectContaining({ business_unit: "ST21" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Export this view" }));
+    expect(commandApi.downloadCommandAccounts).toHaveBeenCalledWith(
+      expect.objectContaining({ business_unit: "ST21" }),
+      undefined,
+      "all",
+    );
   });
 
   it("reset removes user filters but preserves the mandatory Stage 5 scope", async () => {

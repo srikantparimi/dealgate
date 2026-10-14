@@ -23,6 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 ROOT = Path(__file__).resolve().parents[1]
 EMAIL = "command-center-owner@example.test"
 DATABASE = "dealgate_command_center"
+BUSINESS_UNIT_OPTIONS = [
+    {"value": value, "label": value, "displayOrder": index, "hidden": False}
+    for index, value in enumerate(("ST21", "IT Avalon"))
+]
 
 
 def require(condition: bool, message: str) -> None:
@@ -77,20 +81,15 @@ async def seed(url) -> dict[str, object]:
                             object_type="deal",
                             label="Business unit",
                             field_type="enumeration",
-                            options=[
-                                {
-                                    "value": "ST21",
-                                    "label": "ST21",
-                                    "displayOrder": 0,
-                                    "hidden": False,
-                                }
-                            ],
+                            options=BUSINESS_UNIT_OPTIONS,
                             availability_state="configured",
                             mapping_version=1,
                             checked_at=now,
                             last_success_at=now,
                         )
                     )
+                else:
+                    mapping.options = BUSINESS_UNIT_OPTIONS
                 fixture_opportunities = (
                     await session.scalars(
                         select(Opportunity).where(
@@ -99,8 +98,17 @@ async def seed(url) -> dict[str, object]:
                     )
                 ).all()
                 for opportunity in fixture_opportunities:
+                    business_unit = (
+                        "IT Avalon"
+                        if opportunity.name == "Stage Six Account expansion"
+                        else "ST21"
+                    )
+                    opportunity.business_unit_value = business_unit
                     opportunity.business_unit_mapping_version = 1
                     opportunity.business_unit_observed_at = now
+                    client = await session.get(Client, opportunity.client_id)
+                    if client is not None:
+                        client.business_unit_value = business_unit
                 await session.commit()
                 clients = int(await session.scalar(select(func.count()).select_from(Client)) or 0)
                 return {"status": "already_seeded", "clients": clients, "actor": EMAIL}
@@ -125,14 +133,7 @@ async def seed(url) -> dict[str, object]:
                 object_type="deal",
                 label="Business unit",
                 field_type="enumeration",
-                options=[
-                    {
-                        "value": "ST21",
-                        "label": "ST21",
-                        "displayOrder": 0,
-                        "hidden": False,
-                    }
-                ],
+                options=BUSINESS_UNIT_OPTIONS,
                 availability_state="configured",
                 mapping_version=1,
                 checked_at=now,
@@ -157,18 +158,18 @@ async def seed(url) -> dict[str, object]:
 
             opportunities: list[Opportunity] = []
             definitions = (
-                ("Stage Four Account", 4, "120000", "Discovery review", date(2026, 11, 4), False),
-                ("Stage Five Account", 5, "90000", "Confirm delivery start", date(2026, 11, 5), False),
-                ("Stage Six Account", 6, "200000", "Complete commercial review", date(2026, 11, 6), False),
-                ("Historical Won Account", 7, "78736", "Create delivery release", date(2025, 10, 2), True),
+                ("Stage Four Account", 4, "120000", "Discovery review", date(2026, 11, 4), False, "ST21"),
+                ("Stage Five Account", 5, "90000", "Confirm delivery start", date(2026, 11, 5), False, "ST21"),
+                ("Stage Six Account", 6, "200000", "Complete commercial review", date(2026, 11, 6), False, "IT Avalon"),
+                ("Historical Won Account", 7, "78736", "Create delivery release", date(2025, 10, 2), True, "ST21"),
             )
-            for label, stage_number, amount, next_action, close_date, is_closed_won in definitions:
+            for label, stage_number, amount, next_action, close_date, is_closed_won, business_unit in definitions:
                 key = label.lower().replace(" ", "-")
                 client = Client(
                     id=uuid.uuid5(namespace, f"client:{key}"),
                     name=label,
                     hubspot_company_id=f"cc-company-{stage_number}",
-                    business_unit_value="ST21",
+                    business_unit_value=business_unit,
                     hubspot_last_seen_at=now,
                 )
                 opportunity = Opportunity(
@@ -178,7 +179,7 @@ async def seed(url) -> dict[str, object]:
                     client_id=client.id,
                     primary_client_id=client.id,
                     owner_id=actor.id,
-                    business_unit_value="ST21",
+                    business_unit_value=business_unit,
                     business_unit_mapping_version=1,
                     business_unit_observed_at=now,
                     sales_stage=stages[stage_number - 1].id,

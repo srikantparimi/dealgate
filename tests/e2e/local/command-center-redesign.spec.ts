@@ -48,8 +48,11 @@ test("Stage 5 scope, financial separation, filters and drawer work together", as
     page.getByText("Open late-stage work, current-period wins and active delivery."),
   ).toBeVisible();
   const table = page.getByRole("table");
+  await expect(table.locator("th", { hasText: "Business unit" })).toBeVisible();
   await expect(table).toContainText("Stage Five Account");
   await expect(table).toContainText("Stage Six Account");
+  await expect(table.getByRole("cell", { name: "ST21" })).toBeVisible();
+  await expect(table.getByRole("cell", { name: "IT Avalon" })).toBeVisible();
   await expect(table).not.toContainText("Stage Four Account");
   await expect(table).not.toContainText("Historical Won Account");
 
@@ -58,9 +61,11 @@ test("Stage 5 scope, financial separation, filters and drawer work together", as
   await expect(outlook).toContainText("$224,000");
   await expect(page.getByText("62.5%", { exact: true }).first()).toBeVisible();
 
-  await page.getByLabel("Business unit").selectOption("ST21");
+  await page.getByRole("combobox", { name: "Filter accounts by business unit" }).selectOption("ST21");
   await expect(page).toHaveURL(/bu=ST21/);
   await expect(page.getByRole("button", { name: "ST21" })).toBeVisible();
+  await expect(table).toContainText("Stage Five Account");
+  await expect(table).not.toContainText("Stage Six Account");
   await page.getByRole("button", { name: "Reset user filters" }).click();
   await expect(page).not.toHaveURL(/bu=ST21/);
   await expect(page.getByTestId("stage5-scope")).toBeVisible();
