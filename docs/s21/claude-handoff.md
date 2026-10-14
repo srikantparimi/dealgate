@@ -2,6 +2,37 @@
 
 ## RESUME HERE
 
+**2026-10-13 21:11 PDT — COMMAND CENTER FORECAST/PORTFOLIO INTEGRATION STARTED;
+LIVE DATA BOUNDARY VERIFIED BEFORE APPLICATION EDITS.** Authoritative tree
+`/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
+`feat/command-center-redesign`, full starting SHA
+`e803f6d37d486fd2eaa5a6a752019b8cd2d3e867`. Main remains isolated in
+`/Users/srikanthparimi/OfficeApp/dealgate` and must not be merged before owner
+staging acceptance. Current task: implement the attached Command Center
+Forecast/Portfolio integration from the committed source map. Exact next command:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git status --short && sed -n '1,220p' docs/reports/command-center-integration.md
+```
+
+Read-only ECS diagnostic task `7b4d03ccd5e34aa6b56fbef2ed4faee0` ran on
+staging task definition `officeapp-dev-api:110` and exited 0. It found 83
+engagement rows (78 open), 420 current allocations, 370 active resources and
+3,444 allocation actuals through 2026-09. It also proved that zero engagement
+rows are linked to Opportunities. This is the concrete reason the current
+Command Center loses data that Portfolio can show: `build_command_overview`
+starts from HubSpot opportunities and restricts financials to joined
+engagements. The verified mapping and implementation order are in
+`docs/reports/command-center-integration.md`; the governing directive is
+`docs/directives/command-center-forecast-portfolio-integration.md`.
+
+Active operations: none. The diagnostic ECS task completed successfully; do
+not rerun it unless the staging dataset changes. No application files are
+modified at this checkpoint. Existing API revision 110 and SPA
+`assets/index-D6YIm2ot.js` remain the deployed state. No secrets are present in
+the evidence; runtime secrets remain in the ECS task-definition references.
+
 **2026-10-13 21:08 PDT — BUSINESS-UNIT TABLE FILTER DEPLOYED TO STAGING;
 FOCUSED DEPLOYED JOURNEY GREEN; OWNER CLICK-THROUGH NEXT.** Authoritative tree
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
