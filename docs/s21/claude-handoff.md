@@ -2,6 +2,46 @@
 
 ## RESUME HERE
 
+**2026-10-13 21:00 PDT — BUSINESS-UNIT TABLE FILTER IMPLEMENTED AND CONNECTED
+LOCALLY; STATIC STAGING DEPLOY NEXT.** Authoritative tree
+`/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
+`feat/command-center-redesign`, application commit
+`580d1a012d3c6a01b555bf5c4ce67262a977b742`, baseline `origin/main`
+`03b76e62b154eb25fbac8b918112214f4e32543f`. Current task: commit this handoff,
+push the feature branch, publish the frontend-only bundle through the existing
+S3/CloudFront staging path, and run the focused deployed Command Center journey.
+Do not merge `main` before explicit product-owner acceptance.
+
+The Accounts & engagements section now has a dedicated Business unit column
+and selector. It reuses the established `bu` URL/API scope, so overview totals,
+table rows, paging and CSV operate on the same server-filtered population.
+Local evidence: Command Center unit suite 6/6, web TypeScript clean, production
+build clean (`index-D6YIm2ot.js`, `index-BIpYOz_b.css`), fixture Ruff clean,
+connected desktop/mobile Playwright 2/2. The guarded fixture proves ST21 and IT
+Avalon rows, ST21 filtering and reset. Repository-wide E2E TypeScript still has
+four inherited failures in unchanged S14/S17 specs; see
+`docs/reports/command-center-redesign.md`.
+
+Owned runtime at this checkpoint: local API PID 89645 on 8230 against guarded
+database `dealgate_command_center`; Vite session 13871 on 5230; no browser test,
+deployment, migration or Terraform operation is active. Uncommitted work is
+only this report/handoff update. The application commit is not yet pushed or
+deployed. Exact next commands:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git status --short && git diff --check
+git add docs/reports/command-center-redesign.md docs/s21/claude-handoff.md
+git commit -m "docs(command-center): record business-unit filter proof"
+git push origin feat/command-center-redesign
+```
+
+Then publish the already-built static bundle only after confirming it still
+contains `assets/index-D6YIm2ot.js`; do not build or apply a Terraform plan for
+this frontend-only change. Stop the owned local API/Vite after deployed proof.
+The prior entry below is deployment history and remains the current staging
+state until publication completes.
+
 **2026-10-13 13:19 PDT — COMMAND CENTER HISTORICAL CLOSED-WON DEFECT DEPLOYED;
 AUTOMATED STAGING GATES GREEN; OWNER REAL-DATA CLICK REQUIRED.**
 Authoritative tree `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`,

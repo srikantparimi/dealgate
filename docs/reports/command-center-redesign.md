@@ -1,5 +1,33 @@
 # Command Center redesign evidence
 
+## Business-unit account filter follow-up
+
+Status at 2026-10-13 21:00 PDT: application commit
+`580d1a012d3c6a01b555bf5c4ce67262a977b742` adds a dedicated **Business unit**
+column and an Accounts & engagements business-unit selector. The selector uses
+the existing `bu` URL parameter and authoritative API scope, so the overview,
+table population, pagination and CSV export stay aligned. It does not perform
+client-side-only row hiding and introduces no backend, schema or infrastructure
+change.
+
+Local proof on that application revision:
+
+- Command Center unit suite: 6 passed, including API and CSV scope assertions.
+- Web TypeScript: passed; production build passed as
+  `assets/index-D6YIm2ot.js` and `assets/index-BIpYOz_b.css`.
+- Connected desktop/mobile Playwright: 2 passed. The synthetic table contains
+  `ST21` and `IT Avalon`; selecting `ST21` retains Stage Five and removes Stage
+  Six; reset restores both; mobile has no page-width overflow.
+- Guarded fixture lint and `git diff --check`: passed.
+- Repository-wide E2E TypeScript remains red on four inherited errors in
+  `22-integration-browser-proofs.spec.ts`,
+  `23-s14b-two-user-approval.spec.ts` and
+  `24-s17-simplify-delete.spec.ts`. None is in or changed by this follow-up.
+
+Staging publication and deployed verification are pending. Existing staging
+identifiers below still describe the historical closed-won correction until
+this section is updated with the new static bundle and CloudFront invalidation.
+
 Status at 2026-10-13 13:19 PDT: **owner-reported population defect fixed,
 deployed to staging, and verified through the automated staging gates**. The
 product owner's real-data click-through remains required because the isolated
