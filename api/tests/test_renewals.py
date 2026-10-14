@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -18,7 +19,6 @@ from sqlalchemy import select
 from app.audit import verify_chain
 from app.db import get_session
 from app.main import app as main_app
-from app.models.audit import AuditEvent
 from app.models.notification import Notification
 from app.models.opportunity import Opportunity
 from app.models.renewal import Renewal
@@ -327,7 +327,7 @@ async def test_escalation_at_30_and_14_days(session, sales_leader):
     session.add(renewal)
     await session.commit()
 
-    result_30 = await run_tick(session)
+    await run_tick(session)
 
     esc_30 = list(
         (
@@ -349,7 +349,7 @@ async def test_escalation_at_30_and_14_days(session, sales_leader):
     import os as _os
     _os.environ["DEALGATE_NOW"] = later.isoformat()
 
-    result_14 = await run_tick(session)
+    await run_tick(session)
     total_esc = list(
         (
             await session.execute(
@@ -486,6 +486,27 @@ async def test_router_list_and_patch_owner_only(
         )
         assert r.status_code == 200, r.text
         assert r.json()["outcome_summary"] == "Client agreed to extend by 12 months"
+
+        # Renewal forecast remains excluded until explicit evidence is saved.
+        r = await client.patch(
+            f"/renewals/{renewal.id}",
+            json={
+                "likelihood": "likely",
+                "proposed_amount": "240000",
+                "currency": "USD",
+                "proposed_start": "2026-12-01",
+                "proposed_end": "2027-11-30",
+                "probability": "0.75",
+                "probability_basis": "Client requested a priced extension proposal",
+            },
+            headers={"X-Test-User": owner.email},
+        )
+        assert r.status_code == 200, r.text
+        evidence = r.json()
+        assert evidence["likelihood"] == "likely"
+        assert Decimal(evidence["proposed_amount"]) == Decimal("240000")
+        assert Decimal(evidence["probability"]) == Decimal("0.75")
+        assert evidence["probability_basis"] == "Client requested a priced extension proposal"
 
     # Non-owner PATCH is 403.
     other = await _seed_owner(session, email="stranger@smartek21.com")

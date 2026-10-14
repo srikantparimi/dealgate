@@ -293,6 +293,15 @@ class ForecastPolicy(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     hours_per_day: Mapped[Decimal] = mapped_column(ExactNumeric, nullable=False)
     project_floor_pct: Mapped[Decimal] = mapped_column(ExactNumeric, nullable=False)
+    billing_loss_threshold_amount: Mapped[Decimal | None] = mapped_column(
+        ExactNumeric, nullable=True
+    )
+    renewal_likely_probability: Mapped[Decimal | None] = mapped_column(
+        ExactNumeric, nullable=True
+    )
+    renewal_unlikely_probability: Mapped[Decimal | None] = mapped_column(
+        ExactNumeric, nullable=True
+    )
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("user.id", ondelete="SET NULL"), nullable=True
     )

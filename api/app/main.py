@@ -25,6 +25,7 @@ from app.routers import (
     ceo_exception,
     client_rate_cards,
     clients,
+    command_center,
     dashboards,
     deal_comments,
     deals,
@@ -175,6 +176,7 @@ app.include_router(deals.router)
 app.include_router(audit.router)
 app.include_router(admin_users.router)
 app.include_router(clients.router)
+app.include_router(command_center.router)
 app.include_router(client_rate_cards.router)
 app.include_router(agreements.router)
 app.include_router(projects.router)

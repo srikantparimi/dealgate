@@ -198,8 +198,8 @@ describe("S22 · route table and navigation", () => {
     expect(appTsx).toContain('path="/engagements/new"');
     expect(appTsx).toContain('path="/engagements/:id/:tab"');
   });
-  it("puts Portfolio forecast in the Operations group", () => {
-    expect(nav).toMatch(/to: "\/portfolio", label: "Portfolio forecast"/);
+  it("preserves the approved Portfolio navigation label", () => {
+    expect(nav).toMatch(/to: "\/portfolio", label: "Portfolio"/);
   });
 });
 

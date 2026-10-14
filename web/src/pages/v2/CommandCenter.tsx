@@ -1,771 +1,373 @@
-/**
- * Command center — DealGate flagship executive screen (spec §5).
- *
- * Assembly:
- *   1. Executive banner            → ExecutiveBanner
- *   2. Priority signals            → PrioritySignals (CEO exception + MSA + renewal)
- *   3. Pipeline client readiness   → PipelineReadinessTable
- *   4. SOW approval preview        → ApprovalPreview
- *   5. Delivery economics          → DeliveryEconomics
- *
- * Role gating (spec §5 last paragraph + agent brief): CEO / SystemAdmin
- * see the full board; other roles get the Sales dashboard fall-back and
- * we hide the CEO-only widgets. The client-side gate is UX only — the
- * API still enforces (CLAUDE.md rule 5).
- *
- * No math in the browser: every money and margin string comes from the
- * server pre-formatted; a missing value renders as "Unavailable"
- * (spec §4 state copy, MoneyCell + MarginCell primitives).
- */
-
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
-  CalendarClock,
+  ArrowRight,
+  BriefcaseBusiness,
+  CheckCircle2,
+  Download,
+  RefreshCw,
+  Search,
+  Users,
+  X,
 } from "lucide-react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
+
+import { getPipelineFacets, type PipelineFacets } from "../../api/client";
+import {
+  downloadCommandAccounts,
+  getCommandAccounts,
+  getCommandOverview,
+  type CommandAccountRow,
+  type CommandAccountsPage,
+  type CommandFocus,
+  type CommandOverview,
+  type CommandPeriod,
+  type CommandScope,
+} from "../../api/commandCenter";
 import { useAuth } from "../../auth/AuthProvider";
+import { cn } from "../../lib/cn";
 import {
-  ApiError,
-  getCeoDashboard,
-  getDeals,
-  getFinanceDashboard,
-  getPipelineSummary,
-  getSalesDashboard,
-  listAgreements,
-  listPipelineClients,
-  listRenewals,
-  type AgreementRow,
-  type ApprovalPackage,
-  type CeoDashboard,
-  type DealRow,
-  type FinanceDashboard,
-  type PipelineClientRow,
-  type PipelineSummary,
-  type RenewalRow,
-  type SalesDashboard,
-} from "../../api/client";
-import { loadApprovalPopulation } from "../../api/approvalPopulation";
-import { ErrorState } from "../../ui-v2/ErrorState";
-import { SourceFreshness } from "../../ui-v2/SourceFreshness";
-import { ExecutiveBanner, type BannerMetric } from "./command/ExecutiveBanner";
-import {
-  PrioritySignals,
-  type PrioritySignal,
-} from "./command/PrioritySignals";
-import {
-  PipelineReadinessTable,
-  type ReadinessRow,
-} from "./command/PipelineReadinessTable";
-import {
-  ApprovalPreview,
-  type ApprovalLane,
-  type ApprovalCard,
-  type FunctionalReviewMarker,
-  type FunctionalReviewMarkers,
-} from "./command/ApprovalPreview";
-import {
-  DeliveryEconomics,
-  type EconomicsRow,
-} from "./command/DeliveryEconomics";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "../../ui-v2/primitives/sheet";
 
-const CEO_ROLES = new Set(["CEO", "SystemAdmin"]);
-const READINESS_LIMIT = 10;
+const button = "inline-flex min-h-9 items-center justify-center gap-2 rounded-control border border-border bg-surface px-3 text-body font-medium text-text transition-motion hover:border-primary focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50";
+const panel = "min-w-0 overflow-hidden rounded-card border border-border bg-surface";
 
-// -----------------------------------------------------------------------------
-// Formatters — pure display, no math (blueprint §2 + CLAUDE.md rule 2).
-// The server sends money as Decimal strings; here we only shape them for
-// human eyes. `null` in → `null` out so the caller renders "Unavailable".
-// -----------------------------------------------------------------------------
-
-const USD = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-
-function formatMoney(value: string | null | undefined): string | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  return USD.format(n);
+function money(value: string | null | undefined, currency: string, missing = "Not recorded"): string {
+  if (value === null || value === undefined || value === "") return missing;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return missing;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+    notation: Math.abs(number) >= 1_000_000 ? "compact" : "standard",
+  }).format(number);
 }
 
-function formatCount(n: number | null | undefined): string | null {
-  if (n === null || n === undefined) return null;
-  return new Intl.NumberFormat("en-US").format(n);
+function percentage(value: string | null | undefined, missing = "Not calculated"): string {
+  if (value === null || value === undefined || value === "") return missing;
+  const number = Number(value);
+  return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : missing;
 }
 
-// -----------------------------------------------------------------------------
-// Async loader — every module is independent so a failure in one keeps the
-// others live (spec §4 state copy: "Errors in one module never hide healthy
-// ones"). React Query is not installed; a plain effect + AbortController is
-// enough for a read-only executive board.
-// -----------------------------------------------------------------------------
-
-interface CommandData {
-  ceo: CeoDashboard | null;
-  sales: SalesDashboard | null;
-  finance: FinanceDashboard | null;
-  // S20 L01/T39: Pipeline summary is the single source of truth for
-  // open-count + open-value-by-currency. Command centre reads the same
-  // aggregate so the two screens reconcile row-for-row.
-  pipelineSummary: PipelineSummary | null;
-  deals: DealRow[];
-  clients: PipelineClientRow[];
-  agreements: AgreementRow[];
-  renewals: RenewalRow[];
-  approvalsDelivery: ApprovalPackage[];
-  approvalsFinance: ApprovalPackage[];
-  approvalsCeo: ApprovalPackage[];
-  inReviewTotal: number | null;
-  inReviewRevision: string | null;
-  fetchedAt: Date;
+function shortDate(value: string | null): string {
+  if (!value) return "No due date recorded";
+  const parsed = new Date(`${value}${value.length === 10 ? "T12:00:00" : ""}`);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/**
- * Fetch one module, and never let it take the page down.
- *
- * This used to re-throw anything that was not a 403. Since all ten calls run
- * inside one `Promise.all`, a single failing endpoint rejected the lot and
- * the whole command centre rendered an error — which is exactly what
- * happened when `GET /deals` started 500ing on SOW-first opportunities: one
- * broken list blanked a board of nine healthy ones.
- *
- * This file's own header promises "errors in one module never hide healthy
- * ones". It does now. A module that fails contributes null, the rest render,
- * and `failures` carries what went wrong so the page can say so instead of
- * pretending everything is fine.
- */
-async function safe<T>(
-  p: Promise<T>,
-  label: string,
-  failures: string[],
-): Promise<T | null> {
-  try {
-    return await p;
-  } catch (err) {
-    // A 403 on a role-only endpoint is expected — degrade silently.
-    if (err instanceof ApiError && err.status === 403) return null;
-    failures.push(
-      `${label}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
+function monthLabel(value: string | null): string {
+  if (!value) return "No actual month recorded";
+  const [year, month] = value.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
+    month: "short",
+    year: "numeric",
+  });
 }
 
-// -----------------------------------------------------------------------------
-// Derivations — pure functions that turn API shapes into view models.
-// Keeping them out of the render body makes them easy to reason about
-// and (later) unit-test in isolation.
-// -----------------------------------------------------------------------------
-
-function marker(status: string | null | undefined): FunctionalReviewMarker {
-  if (status === "approve") return "approved";
-  if (status === "reject") return "rejected";
-  return "pending";
-}
-
-function packageMarkers(pkg: ApprovalPackage): FunctionalReviewMarkers {
-  const byFn: Record<string, string> = {};
-  for (const a of pkg.approvals) byFn[a.function] = a.decision;
-  return {
-    delivery: marker(byFn.delivery),
-    hr: marker(byFn.hr),
-    sales: pkg.required_functions?.includes("sales") ? marker(byFn.sales) : undefined,
-    finance: marker(byFn.finance),
-    legal: marker(byFn.legal),
-  };
-}
-
-function bannerMetrics(
-  data: CommandData,
-  isCeo: boolean,
-): BannerMetric[] {
-  // L01/T39: reconcile pipeline value with the Pipeline screen.
-  //
-  // Order of preference:
-  //   1. `pipelineSummary` (same query base as /pipeline)
-  //   2. `ceo.pipeline_value` (CEO dashboard rollup)
-  //   3. null → banner tile renders "Unavailable" with an error reason.
-  //
-  // If both are non-null but disagree by more than $1, we still display
-  // the Pipeline-summary value (it is the authoritative row set). A
-  // future story surfaces the disagreement in the freshness pill.
-  const pipelineFromSummary = (() => {
-    const byCurr = data.pipelineSummary?.open_value_by_currency;
-    if (!byCurr) return null;
-    // USD-only for the tile — the summary carries the currency breakdown
-    // separately for the Pipeline page's own header.
-    return byCurr.USD ?? null;
-  })();
-  const pipelineValue = isCeo
-    ? formatMoney(pipelineFromSummary ?? data.ceo?.pipeline_value ?? null)
-    : formatMoney(pipelineFromSummary);
-  const sowsInProgress = data.inReviewRevision ? data.inReviewTotal : null;
-  const agreementsCount =
-    data.pipelineSummary?.agreements_uploaded ?? data.agreements.length;
-  const ceoPendingFromSummary = data.pipelineSummary?.ceo_pending ?? null;
-  const ceoPending =
-    ceoPendingFromSummary !== null
-      ? ceoPendingFromSummary
-      : isCeo
-        ? data.ceo?.ceo_exceptions_pending.length ?? null
-        : data.approvalsCeo.length;
-
-  return [
-    {
-      id: "pipeline_value",
-      label: "Open pipeline, proposed value",
-      value: pipelineValue,
-      href: "/pipeline",
-      description:
-        pipelineValue === null
-          ? // L01/T39: honest state when the Pipeline source is unreachable.
-            "Unavailable — Pipeline summary did not respond. Retry to refetch."
-          : isCeo
-            ? "Reconciles with Pipeline"
-            : "Reconciles with Pipeline (role-scoped)",
-    },
-    {
-      id: "sows_in_progress",
-      label: "SOW packages in progress",
-      value: formatCount(sowsInProgress),
-      href: `/sows?status=in_review${data.inReviewRevision ? `&population_revision=${encodeURIComponent(data.inReviewRevision)}` : ""}`,
-      description: "Across every approval lane",
-    },
-    {
-      id: "agreements_uploaded",
-      label: "NDA & MSA documents on file",
-      value: formatCount(agreementsCount),
-      href: "/agreements",
-      description: "Signed docs stored per client",
-    },
-    {
-      id: "ceo_pending",
-      label: "CEO decisions pending",
-      value: formatCount(ceoPending),
-      // Deep-link: /pipeline?readiness=ceo_exception — exact filter
-      // that yields `summary.ceo_pending`.
-      href: "/pipeline?readiness=ceo_exception",
-      description: "Awaiting exception decision",
-      alert: (ceoPending ?? 0) > 0,
-    },
-  ];
-}
-
-function firstPrioritySignals(data: CommandData): PrioritySignal[] {
-  const out: PrioritySignal[] = [];
-
-  const exc = data.ceo?.ceo_exceptions_pending?.[0] ?? null;
-  if (exc) {
-    // The CEO exception carries package_id; we route through /sows/:pkg/exception
-    // which the SOW workspace resolves.
-    out.push({
-      id: `ceo-${exc.id}`,
-      kind: "ceo_exception",
-      title: "CEO exception",
-      reason: exc.has_rationale
-        ? "Rationale drafted. Ready for a decision."
-        : "Below-floor package needs a rationale.",
-      deadline: exc.drafted_at ? `Drafted ${exc.drafted_at.slice(0, 10)}` : null,
-      href: `/sows/${exc.package_id}/exception`,
-      statusLabel: exc.has_rationale ? "Ready" : "Draft rationale",
-      statusTone: exc.has_rationale ? "warning" : "danger",
-      icon: AlertTriangle,
-      iconTone: "bad",
-      testId: "signal-ceo-exception",
+function dateTimeLabel(value: string | null): string {
+  if (!value) return "cutoff not recorded";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString(undefined, {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
     });
-  } else {
-    // Fall back to any pending_ceo_exception package we saw.
-    const pkg = data.approvalsCeo[0];
-    if (pkg) {
-      out.push({
-        id: `ceo-${pkg.id}`,
-        kind: "ceo_exception",
-        title: "CEO exception",
-        reason: "Below-floor package awaiting a decision.",
-        deadline: pkg.submitted_at ? `Submitted ${pkg.submitted_at.slice(0, 10)}` : null,
-        href: `/sows/${pkg.id}/exception`,
-        statusLabel: "Awaiting decision",
-        statusTone: "warning",
-        icon: AlertTriangle,
-        iconTone: "bad",
-        testId: "signal-ceo-exception",
-      });
-    }
-  }
-
-  // S17: no MSA-awaiting-signature signal — agreements are a flat doc store.
-
-  const nextRenewal = [...data.renewals]
-    .filter((r) => r.status === "open")
-    .sort((a, b) => a.days_until_end - b.days_until_end)[0];
-  if (nextRenewal) {
-    out.push({
-      id: `renewal-${nextRenewal.id}`,
-      kind: "renewal",
-      title: "Renewal review",
-      reason:
-        nextRenewal.days_until_end <= 0
-          ? "Term has ended. Confirm outcome now."
-          : `Term ends in ${nextRenewal.days_until_end} day(s).`,
-      deadline: nextRenewal.term_end ? `Ends ${nextRenewal.term_end}` : null,
-      href: `/renewals-v2`,
-      statusLabel:
-        nextRenewal.days_until_end <= 14 ? "Due soon" : "On watch",
-      statusTone: nextRenewal.days_until_end <= 14 ? "danger" : "progress",
-      icon: CalendarClock,
-      iconTone: nextRenewal.days_until_end <= 14 ? "bad" : "prog",
-      testId: "signal-renewal",
-    });
-  }
-
-  return out;
 }
 
-function readinessRows(data: CommandData): ReadinessRow[] {
-  // S19 slice 1 E13: single source-of-truth for the pipeline card.
-  // `listPipelineClients` already aggregates open opp count, has_nda,
-  // has_msa, worst_sow_approval_state and per-stage breakdown, so we no
-  // longer join client + deal + agreement client-side.
-  const rows: ReadinessRow[] = [];
-  for (const c of data.clients.slice(0, READINESS_LIMIT)) {
-    const topStage = Object.entries(c.stage_breakdown).sort(
-      (a, b) => b[1] - a[1],
-    )[0];
-    rows.push({
-      id: c.client_id,
-      clientName: c.client_name,
-      clientHref: `/clients/${c.client_id}`,
-      ownerName: c.owner_name,
-      commercialStage: topStage ? topStage[0] : null,
-      nda: {
-        label: c.has_nda ? "NDA on file" : "None",
-        tone: c.has_nda ? "ok" : "primarySubtle",
-        href: `/agreements`,
-      },
-      msa: {
-        label: c.has_msa ? "MSA on file" : "None",
-        tone: c.has_msa ? "ok" : "primarySubtle",
-        href: `/agreements`,
-      },
-      sowGate:
-        c.worst_sow_approval_state !== "none"
-          ? {
-              label: c.worst_sow_approval_state.replace(/_/g, " "),
-              tone:
-                c.worst_sow_approval_state === "signed"
-                  ? "ok"
-                  : c.worst_sow_approval_state === "changes_requested"
-                    ? "danger"
-                    : "primarySubtle",
-              href: `/sows`,
-            }
-          : null,
-      packageVersion: null,
-      nextAction: {
-        text:
-          c.next_action_open_count > 0
-            ? `${c.next_action_open_count} open action${c.next_action_open_count === 1 ? "" : "s"}`
-            : null,
-        date: c.next_action_min_due,
-      },
-    });
-  }
-  return rows;
+function moneyChange(value: string | null, currency: string, basis: string): string {
+  if (value === null) return basis;
+  const amount = Number(value);
+  return `${amount > 0 ? "+" : ""}${money(value, currency)} ${basis}`;
 }
 
-function packageToCard(pkg: ApprovalPackage, deals: DealRow[]): ApprovalCard {
-  const deal = deals.find((d) => d.id === pkg.opportunity_id) ?? null;
-  const ageMs = pkg.submitted_at
-    ? Date.now() - new Date(pkg.submitted_at).getTime()
-    : null;
-  const ageDays =
-    ageMs != null && !Number.isNaN(ageMs)
-      ? Math.max(0, Math.floor(ageMs / (1000 * 60 * 60 * 24)))
-      : null;
-  const stripe = pkg.floors?.requires_ceo
-    ? "blocked"
-    : pkg.status === "pending_finance_legal"
-      ? "at-risk"
-      : pkg.status === "pending_delivery_hr"
-        ? "in-progress"
-        : null;
-  return {
-    id: pkg.id,
-    href: `/sows/${pkg.opportunity_id}/approvals`,
-    client: deal?.client_name ?? deal?.hubspot_deal_id ?? "Package",
-    engagement: deal?.engagement_type ?? null,
-    // We deliberately do not fabricate a value. The SOW workspace shows
-    // the real approved figures; the command preview mirrors what the
-    // package listing exposes today.
-    value: null,
-    margin: null,
-    gmVersion: pkg.gm_version,
-    marginOutcome: pkg.floors?.requires_ceo ? "fail" : undefined,
-    ndaLabel: "See client",
-    ndaTone: "progress",
-    msaLabel: "See client",
-    msaTone: "progress",
-    markers: packageMarkers(pkg),
-    owner: pkg.owner?.name ?? null,
-    ageDays,
-    stripe,
-    nextAction:
-      pkg.routing_blockers?.length ? pkg.routing_blockers.join("; ") : pkg.pending_with?.length ? `Pending with ${pkg.pending_with.join(", ")}` : pkg.status === "pending_delivery_hr"
-        ? pkg.required_functions?.includes("sales") ? "Delivery + HR + Sales review" : "Delivery + HR review"
-        : pkg.status === "pending_finance_legal"
-          ? "Finance + Legal review"
-          : pkg.status === "pending_ceo_exception"
-            ? "CEO decision"
-            : pkg.status.replace(/_/g, " "),
-  };
+function SectionState({ text }: { text: string }) {
+  return <div className="px-5 py-8 text-center text-body text-text-muted">{text}</div>;
 }
 
-function approvalLanes(data: CommandData): ApprovalLane[] {
-  return [
-    {
-      id: "scope",
-      title: "Scope & GM",
-      description: "Delivery + HR sign-off on cost model and staffing.",
-      cards: data.approvalsDelivery.map((p) => packageToCard(p, data.deals)),
-    },
-    {
-      id: "functional",
-      title: "Functional review",
-      description: "Finance + Legal sign-off on margins and paper.",
-      cards: data.approvalsFinance.map((p) => packageToCard(p, data.deals)),
-    },
-    {
-      id: "ceo",
-      title: "CEO exception",
-      description: "Below-floor packages requiring a CEO decision.",
-      cards: data.approvalsCeo.map((p) => packageToCard(p, data.deals)),
-    },
-  ];
-}
-
-function economicsRows(
-  finance: FinanceDashboard | null,
-): EconomicsRow[] {
-  if (!finance) return [];
-  const items: EconomicsRow[] = [];
-  const asPct = (v: string | number | null | undefined) => {
-    if (v == null || v === "") return null;
-    const n = typeof v === "number" ? v : Number(v);
-    if (!Number.isFinite(n)) return null;
-    return n <= 1 ? n * 100 : n;
-  };
-  const perSow = finance.gm_by_sow ?? [];
-  for (const row of perSow.slice(0, 6)) {
-    const gm = row.gm_blended ?? row.gm_us ?? row.gm_india;
-    // The dashboard exposes one GM figure per SOW; use it as both approved
-    // and forecast so the two-bar layout stays readable when the API does
-    // not distinguish. Floor derives from the geography split.
-    const floor =
-      row.gm_us != null && row.gm_india == null
-        ? 35
-        : row.gm_india != null && row.gm_us == null
-          ? 50
-          : row.gm_us != null && row.gm_india != null
-            ? 40
-            : null;
-    const geo: "US" | "India" | "Mixed" =
-      row.gm_us != null && row.gm_india != null
-        ? "Mixed"
-        : row.gm_india != null
-          ? "India"
-          : "US";
-    items.push({
-      name: row.hubspot_deal_id ?? row.opportunity_id.slice(-6),
-      approved: asPct(gm),
-      forecast: asPct(gm),
-      floor,
-      geography: geo,
-    });
-  }
-  if (items.length === 0) {
-    const approvedGp =
-      finance.approved_vs_forecast_vs_actual.approved_gp ?? null;
-    const forecastGp =
-      finance.approved_vs_forecast_vs_actual.forecast_gp ?? null;
-    items.push({
-      name: "Portfolio",
-      approved: asPct(approvedGp),
-      forecast: asPct(forecastGp),
-      floor: null,
-      geography: null,
-    });
-  }
-  return items;
-}
-
-// -----------------------------------------------------------------------------
-// Loading skeletons — match the final geometry so a slow network doesn't
-// shift layout (spec §4). Each block reserves the same area as the module
-// it foreshadows.
-// -----------------------------------------------------------------------------
-
-function BannerSkeleton() {
+function PanelHeader({ id, title, note, action }: { id?: string; title: string; note?: string; action?: ReactNode }) {
   return (
-    <div
-      className="h-56 rounded-hero bg-executive/90 animate-pulse"
-      aria-hidden
-    />
+    <div className="flex flex-wrap items-start justify-between gap-3 px-5 pb-3 pt-5">
+      <div>
+        <h2 id={id} className="text-section font-semibold text-text">{title}</h2>
+        {note ? <p className="mt-1 text-secondary text-text-muted">{note}</p> : null}
+      </div>
+      {action}
+    </div>
   );
 }
-function RowSkeleton({ height = "h-32" }: { height?: string }) {
-  return (
-    <div
-      className={`${height} rounded-panel bg-surface border border-divider animate-pulse`}
-      aria-hidden
-    />
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Component
-// -----------------------------------------------------------------------------
 
 export function CommandCenterPage() {
   const { user } = useAuth();
-  const groups = user?.groups ?? [];
-  const isCeo = groups.some((g) => CEO_ROLES.has(g));
+  const location = useLocation();
+  const [url, setUrl] = useSearchParams();
+  const businessUnit = url.get("bu") ?? "";
+  const ownerId = url.get("owner") ?? "";
+  const period = (url.get("period") ?? "this_quarter") as CommandPeriod;
+  const currency = url.get("currency") ?? "USD";
+  const focus = (url.get("focus") ?? "leadership") as CommandFocus;
+  const health = url.get("health") ?? "all";
+  const search = url.get("search") ?? "";
+  const pageNumber = Math.max(1, Number(url.get("page") ?? "1"));
+  const scope = useMemo<CommandScope>(
+    () => ({ business_unit: businessUnit || undefined, owner_id: ownerId || undefined, period, currency, focus }),
+    [businessUnit, ownerId, period, currency, focus],
+  );
 
-  const [data, setData] = useState<CommandData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<unknown>(null);
-  const [partialFailures, setPartialFailures] = useState<string[]>([]);
+  const [overview, setOverview] = useState<CommandOverview | null>(null);
+  const [accounts, setAccounts] = useState<CommandAccountsPage | null>(null);
+  const [facets, setFacets] = useState<PipelineFacets | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [selected, setSelected] = useState<CommandAccountRow | null>(null);
+  const [queueMode, setQueueMode] = useState<"team" | "mine">("team");
+  const [scenario, setScenario] = useState<"committed" | "expected" | "upside">("expected");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Collected per load, not module-level: a shared array would leak
-      // stale failures across reloads.
-      const failures: string[] = [];
+  const setParam = useCallback((key: string, value: string) => {
+    const next = new URLSearchParams(url);
+    if (value) next.set(key, value); else next.delete(key);
+    if (key !== "page") next.delete("page");
+    setUrl(next, { replace: true });
+  }, [setUrl, url]);
 
-      const [
-        ceo,
-        sales,
-        finance,
-        pipelineSummary,
-        dealsPage,
-        clientsPage,
-        agreementsList,
-        renewalsPage,
-        inReview,
-      ] = await Promise.all([
-        // Never call /dashboards/ceo from a non-CEO/SysAdmin role
-        // (agent brief). Roles without access get null and the CEO-only
-        // widgets degrade to "Unavailable" or hide.
-        isCeo
-          ? safe(getCeoDashboard(), "CEO dashboard", failures)
-          : Promise.resolve(null),
-        !isCeo
-          ? safe(getSalesDashboard(), "Sales dashboard", failures)
-          : Promise.resolve(null),
-        safe(getFinanceDashboard(), "Finance dashboard", failures),
-        // L01/T39: same query base as Pipeline. The tile falls back to
-        // ceo.pipeline_value if this call fails, and to "Unavailable"
-        // with the error message if both fail — never a fake zero.
-        safe(getPipelineSummary(), "Pipeline summary", failures),
-        safe(getDeals({ size: 25 }), "Pipeline", failures),
-        safe(
-          listPipelineClients({ page_size: 25 }),
-          "Clients",
-          failures,
-        ),
-        safe(listAgreements(), "Agreements", failures),
-        safe(listRenewals({ status: "open", size: 25 }), "Renewals", failures),
-        safe(loadApprovalPopulation({ status: "in_review" }), "In-review packages", failures),
-      ]);
+  const loadOverview = useCallback(() => {
+    setOverviewLoading(true);
+    setOverviewError(null);
+    getCommandOverview(scope)
+      .then(setOverview)
+      .catch((error) => setOverviewError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setOverviewLoading(false));
+  }, [scope]);
+  const loadAccounts = useCallback(() => {
+    setAccountsLoading(true);
+    setAccountsError(null);
+    getCommandAccounts(scope, { search: search || undefined, health, page: pageNumber, page_size: 25 })
+      .then(setAccounts)
+      .catch((error) => setAccountsError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setAccountsLoading(false));
+  }, [scope, search, health, pageNumber]);
 
-      setData({
-        ceo: ceo,
-        sales: sales,
-        finance: finance,
-        pipelineSummary: pipelineSummary,
-        deals: dealsPage?.items ?? [],
-        clients: clientsPage?.items ?? [],
-        agreements: agreementsList?.items ?? [],
-        renewals: renewalsPage?.items ?? [],
-        approvalsDelivery: inReview?.items.filter(p => p.status === "pending_delivery_hr").slice(0, 10) ?? [],
-        approvalsFinance: inReview?.items.filter(p => p.status === "pending_finance_legal").slice(0, 10) ?? [],
-        approvalsCeo: inReview?.items.filter(p => p.status === "pending_ceo_exception").slice(0, 10) ?? [],
-        inReviewTotal: inReview?.total ?? null,
-        inReviewRevision: inReview?.population_revision ?? null,
-        fetchedAt: new Date(),
-      });
-      // A module that failed no longer blanks the board, but it must not
-      // pass silently either — a stale-looking number with no explanation is
-      // worse than a visible gap.
-      setPartialFailures(failures);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [isCeo]);
-
+  useEffect(loadOverview, [loadOverview]);
+  useEffect(loadAccounts, [loadAccounts]);
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  // S20 W6 Session 4b item 7 · Watching metric card on the banner.
-  // S21-1d · item 1: the card is always on the banner — honest zero
-  // when the watchlist is empty or the fetch fails. The link stays
-  // live so a user with no watched rows can still open the surface.
-  // The old `null` sentinel hid the card on empty-watchlist, which
-  // failed `s20/t39-w4-session5.spec.ts:33` (W6-7 regression on an
-  // empty staging DB).
-  const [watchingCount, setWatchingCount] = useState<number>(0);
-  useEffect(() => {
-    import("../../api/client").then(({ listWatchlist }) =>
-      listWatchlist()
-        .then((r) =>
-          setWatchingCount(r.matching_deal_count ?? ((r.counts.opportunity || 0) + (r.counts.client || 0))),
-        )
-        .catch(() => setWatchingCount(0)),
-    );
+    getPipelineFacets({ include_closed: true })
+      .then(setFacets)
+      .catch(() => setFacets({ owners: [], business_units: [] }));
   }, []);
-  const metrics = useMemo(() => {
-    const base = data ? bannerMetrics(data, isCeo) : [];
-    return [
-      ...base,
-      {
-        id: "watching",
-        label: "Watching",
-        value: String(watchingCount),
-        href: "/pipeline?watching=true",
-      },
-    ];
-  }, [data, isCeo, watchingCount]);
-  const signals = useMemo(
-    () => (data ? firstPrioritySignals(data) : []),
-    [data],
-  );
-  const rows = useMemo(() => (data ? readinessRows(data) : []), [data]);
-  const lanes = useMemo(() => (data ? approvalLanes(data) : []), [data]);
-  const economics = useMemo(
-    () => economicsRows(data?.finance ?? null),
-    [data],
-  );
 
-  if (loading && !data) {
-    return (
-      <div className="flex flex-col gap-8">
-        <BannerSkeleton />
-        <RowSkeleton height="h-40" />
-        <RowSkeleton height="h-64" />
-        <RowSkeleton height="h-56" />
-        <RowSkeleton height="h-48" />
-      </div>
-    );
-  }
-
-  if (error && !data) {
-    return (
-      <div className="flex flex-col gap-6">
-        <ErrorState
-          title="We couldn't load the command center."
-          description="The team has been notified. Retry to try again — filters are preserved."
-          onRetry={() => void load()}
-        />
-      </div>
-    );
-  }
-
-  const freshness = data ? (
-    <div className="space-y-2">
-      <SourceFreshness
-        source="DealGate governance"
-        asOf={data.fetchedAt.toLocaleString()}
-        basis="Server-computed. Missing values render as Unavailable."
-      />
-      {/* One failing module no longer blanks the board — but it must not
-       * pass silently either. A section rendering empty with no explanation
-       * reads as "nothing to do here", which is the opposite of the truth. */}
-      {partialFailures.length > 0 ? (
-        <div
-          className="rounded-md border border-warning/40 bg-warning/5 p-2 text-secondary"
-          data-testid="partial-failures"
-        >
-          <p className="font-medium">
-            {partialFailures.length} section(s) could not be loaded — the rest
-            of this page is current.
-          </p>
-          <ul className="text-text-secondary">
-            {partialFailures.map((f) => (
-              <li key={f}>{f}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
-  ) : null;
-
-  const eyebrow = data
-    ? `${data.fetchedAt.toLocaleDateString(undefined, {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      })} · Data as of ${data.fetchedAt.toLocaleTimeString(undefined, {
-        hour: "2-digit",
-        minute: "2-digit",
-      })}`
-    : undefined;
+  const activeChips = [
+    businessUnit ? { key: "bu", label: businessUnit } : null,
+    ownerId ? { key: "owner", label: facets?.owners.find((owner) => owner.id === ownerId)?.name ?? "Selected owner" } : null,
+    period !== "this_quarter" ? { key: "period", label: "Next two quarters" } : null,
+    currency !== "USD" ? { key: "currency", label: currency } : null,
+    focus !== "leadership" ? { key: "focus", label: `${focus} focus` } : null,
+  ].filter(Boolean) as Array<{ key: string; label: string }>;
+  const queue = (overview?.actions ?? []).filter((item) => queueMode === "team" || item.owner === user?.name);
+  const maximumRevenue = Math.max(1, ...(overview?.revenue.months ?? []).map((row) => Number(
+    scenario === "committed" ? row.committed_total : scenario === "expected" ? row.expected_total : row.upside_total,
+  )));
+  const returnTo = `${location.pathname}${location.search}`;
 
   return (
-    <div className="flex flex-col gap-6">
-      <ExecutiveBanner
-        eyebrow={eyebrow}
-        title={
-          <>
-            Command center.
-            <br />
-            <em className="italic text-lime">Every commitment in view.</em>
-          </>
-        }
-        metrics={metrics}
-        freshness={freshness}
-        actionHref="/sows"
-        actionLabel="Open approval pipeline"
-        secondaryLabel="Pipeline readiness"
-        secondaryHref="/pipeline"
-        subtitle={
-          isCeo
-            ? "Every open commitment across pipeline, contracts and delivery."
-            : "Your view of pipeline, contracts and delivery — role-scoped."
-        }
-      />
+    <div className="flex flex-col gap-5 pb-8" data-testid="command-center">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase text-primary">
+            {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+          </p>
+          <h1 className="mt-1 text-[28px] font-semibold text-text">Command Center</h1>
+          <p className="mt-1 text-body text-text-secondary">Know what needs you. See what comes next.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link className={button} to="/settings/system-health">Data status</Link>
+          <Link className={cn(button, "border-primary bg-primary text-white hover:text-white")} to="/sows/new">New SOW</Link>
+        </div>
+      </header>
 
-      <PrioritySignals
-        signals={signals}
-        emptyMessage="No exceptions, MSA signatures or renewals are urgent right now."
-      />
+      <section className={cn(panel, "overflow-visible p-3")} aria-label="Dashboard scope">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1.25fr_1.25fr_1.4fr_1fr_1fr_auto]">
+          <Filter label="Business unit" value={businessUnit} onChange={(value) => setParam("bu", value)}>
+            <option value="">All business units</option>
+            {(facets?.business_units ?? []).map((value) => <option key={value}>{value}</option>)}
+          </Filter>
+          <Filter label="Account owner" value={ownerId} onChange={(value) => setParam("owner", value)}>
+            <option value="">All owners</option>
+            {(facets?.owners ?? []).map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
+          </Filter>
+          <Filter label="Financial period" value={period} onChange={(value) => setParam("period", value)}>
+            <option value="this_quarter">This quarter</option><option value="next_two_quarters">Next two quarters</option>
+          </Filter>
+          <Filter label="Currency" value={currency} onChange={(value) => setParam("currency", value)}>
+            <option value="USD">USD</option><option value="INR">INR</option><option value="EUR">EUR</option><option value="GBP">GBP</option>
+          </Filter>
+          <Filter label="Focus" value={focus} onChange={(value) => setParam("focus", value)}>
+            <option value="leadership">Leadership</option><option value="delivery">Delivery</option><option value="sales">Sales</option><option value="finance">Finance</option>
+          </Filter>
+          <button className={button} onClick={() => { loadOverview(); loadAccounts(); }} aria-label="Refresh Command Center">
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </button>
+        </div>
+      </section>
 
-      <PipelineReadinessTable
-        rows={rows}
-        caption="First 10 pipeline clients"
-        moreLabel="All clients →"
-        moreHref="/pipeline"
-      />
+      <div className="flex min-h-7 flex-wrap items-center gap-2">
+        {activeChips.map((chip) => (
+          <button key={chip.key} className="inline-flex min-h-7 items-center gap-1 rounded-control bg-primary-subtle px-2 text-secondary font-medium text-primary" onClick={() => setParam(chip.key, "")}>
+            {chip.label}<X className="h-3 w-3" aria-hidden />
+          </button>
+        ))}
+        {activeChips.length ? (
+          <button className="text-secondary font-medium text-primary" onClick={() => setUrl(new URLSearchParams(), { replace: true })}>Reset user filters</button>
+        ) : <span className="text-secondary text-text-muted">All authorized business records</span>}
+      </div>
 
-      <ApprovalPreview
-        lanes={lanes}
-        viewAllHref="/sows"
-        caption="3 of 6 stages shown"
-      />
+      {overviewLoading ? <SectionState text="Loading business evidence…" /> : overviewError ? (
+        <div className={panel}><SectionState text={`Could not load actions: ${overviewError}`} /></div>
+      ) : overview ? <ActionTiles overview={overview} currency={currency} /> : null}
 
-      {isCeo || data?.finance ? (
-        <DeliveryEconomics
-          rows={economics}
-          caption="Active signed SOWs · approved vs forecast GM"
-          drillLabel="Delivery & actuals →"
-          drillHref="/projects"
-        />
-      ) : null}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
+        <section className={panel} aria-labelledby="attention-title">
+          <PanelHeader id="attention-title" title="Needs attention" note="Financial actions ranked by comparable impact, urgency and category" action={<Segment options={[["team", "Team"], ["mine", "Assigned to me"]]} value={queueMode} onChange={(value) => setQueueMode(value as "team" | "mine")} />} />
+          {queue.length === 0 ? <SectionState text="No actions need attention in this scope." /> : (
+            <div className="divide-y divide-divider">
+              {queue.slice(0, 8).map((item) => (
+                <Link key={item.id} to={item.href} state={{ from: returnTo }} className="grid grid-cols-[4px_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 hover:bg-canvas">
+                  <span className={cn("h-10 rounded-full", item.rank <= 3 ? "bg-danger" : "bg-warning")} aria-hidden />
+                  <span className="min-w-0">
+                    <strong className="block truncate text-body text-text">{item.account} · {item.title}</strong>
+                    <span className="block text-secondary text-text-secondary">{item.detail}</span>
+                    <small className="mt-1 block text-text-muted">{item.owner ?? "Owner not recorded"} · {shortDate(item.due)}{item.period ? ` · ${item.period}` : ""}</small>
+                  </span>
+                  <span className="text-right">
+                    <strong className="block text-body text-text">{item.impact ? money(item.impact, currency) : item.missing_input ?? "Impact not calculable"}</strong>
+                    <small className="block text-text-muted">{item.impact_label ?? item.category}</small>
+                    <span className="mt-1 inline-flex items-center gap-1 text-secondary font-medium text-primary">{item.action}<ArrowRight className="h-3 w-3" /></span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+        <aside className="rounded-card border border-primary/20 bg-primary-subtle p-5">
+          <p className="text-[11px] font-semibold uppercase text-primary">Operating brief</p>
+          <h2 className="mt-2 text-[18px] font-semibold text-text">Three facts to act on</h2>
+          <div className="mt-5 space-y-4 text-body">
+            {(overview?.brief ?? []).map((item) => (
+              <Link key={item.kind} to={item.href} className="grid grid-cols-[20px_1fr] gap-2 rounded-control p-1 hover:bg-surface">
+                <span className="text-primary">{item.kind === "risk" ? <AlertTriangle className="h-4 w-4" /> : item.kind === "opportunity" ? <BriefcaseBusiness className="h-4 w-4" /> : <Users className="h-4 w-4" />}</span>
+                <span><strong className="block text-body text-text">{item.title}</strong><small className="text-text-secondary">{item.detail}</small></span>
+              </Link>
+            ))}
+          </div>
+        </aside>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,1fr)]">
+        <RevenueOutlook overview={overview} currency={currency} scenario={scenario} onScenario={setScenario} maximum={maximumRevenue} period={period} />
+        <CapacityPanel capacity={overview?.capacity ?? null} />
+      </div>
+
+      <section aria-labelledby="lifecycle-title">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 id="lifecycle-title" className="text-section font-semibold">From opportunity to delivery</h2>
+          <span className="text-secondary text-text-muted">Overlapping entity populations, not an additive funnel</span>
+        </div>
+        <div className="grid overflow-hidden rounded-card border border-border bg-surface sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {(overview?.lifecycle_items ?? []).map((item) => (
+            <Link key={item.key} to={item.href} state={{ from: returnTo }} className="min-h-24 border-b border-r border-divider p-3 hover:bg-primary-subtle">
+              <span className="block min-h-8 text-secondary text-text-muted">{item.label}</span>
+              <strong className="mt-1 block text-[22px] text-text">{item.count}</strong>
+              <small className="text-text-muted">{item.entity}</small>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className={panel} aria-labelledby="accounts-title">
+        <PanelHeader id="accounts-title" title="Accounts & engagements" note="Open late-stage work, current-period wins and active delivery." action={<button className="inline-flex min-h-8 items-center gap-1 text-secondary font-medium text-primary" onClick={() => void downloadCommandAccounts(scope, search || undefined, health)}><Download className="h-4 w-4" /> Export this view</button>} />
+        <div className="flex flex-wrap items-center gap-2 px-5 pb-3">
+          <span className="rounded-control bg-primary-subtle px-2 py-1 text-[11px] font-semibold text-primary" data-testid="stage5-scope">HubSpot deals · Stage 5 and above</span>
+          <Segment options={[["all", "All"], ["at_risk", "At risk"], ["watching", "Watching"]]} value={health} onChange={(value) => setParam("health", value)} />
+          <select aria-label="Filter accounts by business unit" className="h-9 min-w-44 rounded-control border border-border bg-surface px-2 text-body text-text focus-visible:outline-focus" value={businessUnit} onChange={(event) => setParam("bu", event.target.value)}>
+            <option value="">All business units</option>{(facets?.business_units ?? []).map((value) => <option key={value}>{value}</option>)}
+          </select>
+          <label className="relative min-w-56 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
+            <span className="sr-only">Find an account or engagement</span>
+            <input className="h-9 w-full rounded-control border border-border bg-surface pl-9 pr-3 text-body focus-visible:outline-focus" type="search" value={search} onChange={(event) => setParam("search", event.target.value)} placeholder="Find an account or engagement…" />
+          </label>
+        </div>
+        {accounts?.configuration_gaps.length ? <div className="mx-5 mb-3 rounded-control border border-warning/30 bg-warning-surface px-3 py-2 text-secondary text-warning">{accounts.configuration_gaps.join(" · ")}</div> : null}
+        {accountsLoading ? <SectionState text="Loading eligible HubSpot deals…" /> : accountsError ? <SectionState text={`Could not load accounts: ${accountsError}`} /> : !accounts?.items.length ? <SectionState text="No current Stage 5 or later HubSpot deals match these filters." /> : <AccountsTable rows={accounts.items} currency={currency} onSelect={setSelected} />}
+        <div className="flex items-center justify-between border-t border-divider px-5 py-3 text-secondary text-text-muted">
+          <span>{accounts ? `${accounts.total} eligible deal${accounts.total === 1 ? "" : "s"}` : "Loading count"}</span>
+          <div className="flex items-center gap-2">
+            <button className={button} disabled={pageNumber <= 1} onClick={() => setParam("page", String(pageNumber - 1))}>Previous</button>
+            <span>Page {pageNumber} of {Math.max(1, Math.ceil((accounts?.total ?? 0) / 25))}</span>
+            <button className={button} disabled={!accounts || pageNumber * 25 >= accounts.total} onClick={() => setParam("page", String(pageNumber + 1))}>Next</button>
+          </div>
+        </div>
+      </section>
+
+      <section className={panel}>
+        <PanelHeader title="Data & operational health" note="Source status is separate from business performance." action={<Link className="text-secondary font-medium text-primary" to="/settings/system-health">Inspect</Link>} />
+        {overview?.configuration_gaps.length ? <div className="mx-5 mb-3 rounded-control border border-warning/30 bg-warning-surface px-3 py-2 text-secondary text-warning">{overview.configuration_gaps.join(" · ")}</div> : null}
+        {overview?.sources.map((source) => (
+          <div key={source.name} className="flex items-center justify-between gap-4 border-t border-divider px-5 py-3">
+            <span><strong className="block text-body">{source.name}</strong><small className="text-text-muted">{source.detail}</small></span>
+            <span className={cn("inline-flex items-center gap-1 rounded-control px-2 py-1 text-[11px] font-medium", source.status === "current" ? "bg-success-surface text-success" : source.status === "attention" ? "bg-warning-surface text-warning" : "bg-canvas text-text-muted")}><span className="h-1.5 w-1.5 rounded-full bg-current" />{source.status}</span>
+          </div>
+        ))}
+      </section>
+      {selected ? <AccountDrawer row={selected} currency={currency} returnTo={returnTo} onClose={() => setSelected(null)} /> : null}
     </div>
   );
 }
+
+function ActionTiles({ overview, currency }: { overview: CommandOverview; currency: string }) {
+  const { revenue, gm, backlog, pipeline, people } = overview.tiles;
+  return (
+    <section aria-labelledby="questions-title">
+      <div className="mb-2 flex items-center justify-between"><h2 id="questions-title" className="text-section font-semibold">Business now</h2><span className="text-secondary text-text-muted">{overview.scope.months[0]} reporting basis · {currency}</span></div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <Tile href={revenue.href} label="Revenue this month" value={money(revenue.forecast, currency)} note={revenue.actual_to_date === null ? `No current-month actuals · latest ${monthLabel(revenue.latest_actual_month)} ${money(revenue.latest_actual, currency)}` : `${money(revenue.actual_to_date, currency)} actual through ${dateTimeLabel(revenue.actual_cutoff)}`} comparison={moneyChange(revenue.comparison.value, currency, revenue.comparison.basis)} detail={revenue.last_closed_billing_loss === null ? "Billing loss not recorded" : `${money(revenue.last_closed_billing_loss, currency)} billing loss in latest actual month`} />
+        <Tile href={gm.href} label="GM this month" value={percentage(gm.value)} note={`${gm.covered_engagements} of ${gm.total_engagements} engagements have complete financial inputs`} comparison={gm.comparison.value === null ? gm.comparison.basis : `${(Number(gm.comparison.value) * 100).toFixed(1)} pp ${gm.comparison.basis}`} detail={`${percentage(gm.revenue_coverage_pct)} revenue covered · ${gm.confirmed_cost_engagements} confirmed · ${gm.estimated_cost_engagements} default estimate`} warning={gm.missing_cost_engagements > 0} />
+        <Tile href={backlog.href} label="Signed backlog" value={money(backlog.amount, currency)} note={`${backlog.engagements} engagement${backlog.engagements === 1 ? "" : "s"} through effective end dates`} comparison={backlog.comparison.basis} detail="Recognized revenue excluded" />
+        <Tile href={pipeline.href} label="Weighted pipeline" value={money(pipeline.weighted, currency)} note={`${pipeline.eligible_deals} eligible open deal${pipeline.eligible_deals === 1 ? "" : "s"} · ${money(pipeline.gross, currency)} gross`} comparison={pipeline.comparison.basis} detail={`${money(pipeline.unscheduled_weighted, currency)} unscheduled · ${pipeline.closed_won_gaps} closed-won gap${pipeline.closed_won_gaps === 1 ? "" : "s"}`} warning={pipeline.missing.length > 0} />
+        <div className="min-h-40 rounded-card border border-border bg-surface p-4">
+          <span className="block text-secondary text-text-muted">People</span><strong className="my-2 block text-[23px] text-text">{people.billable_people} billable</strong>
+          <div className="space-y-1 text-secondary"><Link className="block text-primary" to={people.billable_href}>{people.billable_fte} FTE allocated</Link><Link className="block text-primary" to={people.bench_href}>{people.bench_people === null ? "Bench not attributable in this scope" : `${people.bench_people} on bench`}</Link><Link className="block text-primary" to={people.rolloff_href}>{people.rolloffs_60_days} roll-offs in 60 days</Link><span className="block text-text-muted">{people.open_seats} open seats · {people.open_seat_fte} FTE</span><small className="block font-medium text-primary">{people.comparison.value > 0 ? "+" : ""}{people.comparison.value} {people.comparison.basis}</small></div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Tile({ href, label, value, note, comparison, detail, warning = false }: { href: string; label: string; value: string; note: string; comparison: string; detail: string; warning?: boolean }) {
+  return <Link to={href} className={cn("min-h-40 rounded-card border bg-surface p-4 hover:border-primary", warning ? "border-warning/40" : "border-border")}><span className="block text-secondary text-text-muted">{label}</span><strong className="my-2 block text-[23px] text-text">{value}</strong><span className="block text-secondary text-text-secondary">{note}</span><small className="mt-2 block text-text-muted">{detail}</small><small className="mt-2 block font-medium text-primary">{comparison}</small></Link>;
+}
+
+function RevenueOutlook({ overview, currency, scenario, onScenario, maximum, period }: { overview: CommandOverview | null; currency: string; scenario: "committed" | "expected" | "upside"; onScenario: (value: "committed" | "expected" | "upside") => void; maximum: number; period: CommandPeriod }) {
+  return <section className={panel} aria-labelledby="revenue-title"><PanelHeader id="revenue-title" title="Revenue outlook" note={`${period === "this_quarter" ? "3-month" : "6-month"} cumulative scenarios`} action={<Segment options={[["committed", "Committed"], ["expected", "+ Expected renewal"], ["upside", "+ Pipeline upside"]]} value={scenario} onChange={(value) => onScenario(value as typeof scenario)} />} /><div className="flex h-52 items-end gap-4 border-b border-divider px-5" role="img" aria-label="Cumulative revenue outlook by month">{(overview?.revenue.months ?? []).map((row) => { const total = Number(scenario === "committed" ? row.committed_total : scenario === "expected" ? row.expected_total : row.upside_total); const committed = Number(row.committed); const renewal = scenario === "committed" ? 0 : Number(row.expected_renewal); const pipeline = scenario === "upside" ? Number(row.pipeline_upside) : 0; return <div key={row.month} className="flex h-full min-w-0 flex-1 flex-col justify-end"><div className="mb-1 truncate text-center text-[10px] font-medium text-text">{money(String(total), currency)}</div><div className="mx-auto flex w-full max-w-12 flex-col-reverse overflow-hidden rounded-t-control" style={{ height: `${Math.max(2, (total / maximum) * 100)}%` }}><span className="bg-primary" style={{ height: `${(committed / Math.max(1, total)) * 100}%` }} /><span className="bg-success" style={{ height: `${(renewal / Math.max(1, total)) * 100}%` }} /><span className="bg-warning/70" style={{ height: `${(pipeline / Math.max(1, total)) * 100}%` }} /></div><span className="mt-2 truncate text-center text-[10px] text-text-muted">{monthLabel(row.month)}</span></div>; })}</div><div className="flex flex-wrap gap-4 px-5 py-3 text-[11px] text-text-muted"><Legend color="bg-primary" label="Committed" /><Legend color="bg-success" label="Expected renewal" /><Legend color="bg-warning/70" label="Pipeline upside" /><span className="ml-auto">{money(overview?.revenue.unscheduled_weighted_pipeline, currency)} unscheduled weighted pipeline excluded from bars</span></div></section>;
+}
+
+function CapacityPanel({ capacity }: { capacity: CommandOverview["capacity"] | null }) {
+  return <section className={panel} aria-labelledby="capacity-title"><PanelHeader id="capacity-title" title="Capacity by location" note={capacity ? `Next month · ${monthLabel(capacity.month)}` : "Next month"} action={<Link className="text-secondary font-medium text-primary" to="/people/demand">People</Link>} />{capacity?.locations.length ? <div className="overflow-x-auto"><table className="w-full text-left text-secondary"><thead className="bg-canvas text-[11px] uppercase text-text-muted"><tr><th className="px-4 py-2">Location</th><th className="px-2 py-2 text-right">People</th><th className="px-2 py-2 text-right">Allocated</th><th className="px-2 py-2 text-right">Open</th><th className="px-4 py-2 text-right">Roll-offs</th></tr></thead><tbody>{capacity.locations.map((row) => <tr key={row.location} className="border-t border-divider"><td className="px-4 py-3 font-medium text-text">{row.location}</td><td className="px-2 py-3 text-right">{row.people}</td><td className="px-2 py-3 text-right">{row.allocated_fte} FTE</td><td className="px-2 py-3 text-right text-warning">{row.open_seat_fte} FTE</td><td className="px-4 py-3 text-right">{row.rolloffs}</td></tr>)}</tbody></table></div> : <SectionState text="No dated allocations overlap next month in this scope." />}<div className="border-t border-divider px-5 py-4 text-secondary text-text-secondary">{capacity?.message ?? "Loading dated allocation evidence…"}</div></section>;
+}
+
+function Filter({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode }) { return <label className="grid gap-1 text-[11px] font-medium text-text-muted">{label}<select className="h-9 min-w-0 rounded-control border border-border bg-surface px-2 text-body text-text focus-visible:outline-focus" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select></label>; }
+function Segment({ options, value, onChange }: { options: ReadonlyArray<readonly [string, string]>; value: string; onChange: (value: string) => void }) { return <div className="inline-flex rounded-control border border-border bg-canvas p-0.5" role="group">{options.map(([key, label]) => <button key={key} className={cn("min-h-7 rounded-[4px] px-2 text-[11px] font-medium", value === key ? "bg-surface text-primary shadow-sm" : "text-text-muted")} aria-pressed={value === key} onClick={() => onChange(key)}>{label}</button>)}</div>; }
+function Summary({ label, value }: { label: string; value: string }) { return <div className="min-w-0"><span className="block truncate text-text-muted">{label}</span><strong className="mt-1 block truncate text-[18px] text-text">{value}</strong></div>; }
+function Legend({ color, label }: { color: string; label: string }) { return <span className="inline-flex items-center gap-1"><i className={cn("h-2 w-2 rounded-[2px]", color)} />{label}</span>; }
+
+function AccountsTable({ rows, currency, onSelect }: { rows: CommandAccountRow[]; currency: string; onSelect: (row: CommandAccountRow) => void }) { return <div className="overflow-x-auto"><table className="w-full min-w-[1100px] border-collapse text-left text-secondary"><thead className="bg-canvas text-[11px] uppercase text-text-muted"><tr><th className="px-5 py-2.5">Account / engagement</th><th className="px-3 py-2.5">Business unit</th><th className="px-3 py-2.5">Sales stage</th><th className="px-3 py-2.5 text-right">Period revenue</th><th className="px-3 py-2.5 text-right">Forecast GM</th><th className="px-3 py-2.5">Staffing</th><th className="px-3 py-2.5">Owner</th><th className="px-5 py-2.5">Next action / due</th></tr></thead><tbody>{rows.map((row) => <tr key={row.opportunity_id} className="border-t border-divider hover:bg-canvas"><td className="px-5 py-3"><button className="text-left font-semibold text-text hover:text-primary" onClick={() => onSelect(row)}>{row.account_name}</button><small className="block text-text-muted">{row.engagement_name}</small></td><td className="px-3 py-3 font-medium text-text">{row.business_unit ?? "Not assigned"}</td><td className="px-3 py-3"><span className="rounded-control bg-primary-subtle px-2 py-1 text-[11px] text-primary">{row.stage_label}</span><small className="mt-1 block text-text-muted">{row.sow_stage.replaceAll("_", " ")}</small></td><td className="px-3 py-3 text-right font-medium">{money(row.period_revenue, row.currency ?? currency, "No linked forecast")}</td><td className="px-3 py-3 text-right"><span className={row.forecast_gm_pct === null ? "text-warning" : "text-text"}>{percentage(row.forecast_gm_pct, "Costs incomplete")}</span>{row.financial_status !== "complete" ? <small className="block text-warning">Review cost setup</small> : null}</td><td className="px-3 py-3">{row.assigned_fte ?? "No linked allocation"}<small className="block text-text-muted">Required {row.required_fte ?? "not published"}</small></td><td className="px-3 py-3">{row.owner_name ?? "Not assigned"}</td><td className="px-5 py-3">{row.next_action ?? "No recorded action"}<small className="block text-text-muted">{shortDate(row.next_action_due)}</small></td></tr>)}</tbody></table></div>; }
+
+function AccountDrawer({ row, currency, returnTo, onClose }: { row: CommandAccountRow; currency: string; returnTo: string; onClose: () => void }) { return <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}><SheetContent side="right" className="w-full max-w-lg overflow-y-auto sm:max-w-lg"><SheetHeader className="pr-8"><p className="text-[11px] font-semibold uppercase text-primary">HubSpot deal · Stage 5+</p><SheetTitle className="text-[22px] font-semibold">{row.account_name}</SheetTitle><SheetDescription>{row.engagement_name}</SheetDescription></SheetHeader><div className="mt-6 grid grid-cols-2 gap-4 border-y border-divider py-5"><Summary label="Sales stage" value={row.stage_label} /><Summary label="Deal value" value={money(row.deal_value, row.currency ?? currency)} /><Summary label="Period revenue" value={money(row.period_revenue, row.currency ?? currency, "No linked forecast")} /><Summary label="Forecast GM" value={percentage(row.forecast_gm_pct, "Costs incomplete")} /><Summary label="Assigned staffing" value={row.assigned_fte == null ? "No linked allocation" : `${row.assigned_fte} FTE`} /><Summary label="Owner" value={row.owner_name ?? "Not assigned"} /></div>{row.financial_blockers.length ? <div className="mt-5 rounded-control border border-warning/30 bg-warning-surface p-3 text-body text-warning"><strong>Financial inputs still needed</strong><ul className="mt-1 list-disc pl-5">{row.financial_blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></div> : <div className="mt-5 flex items-center gap-2 rounded-control bg-success-surface p-3 text-body text-success"><CheckCircle2 className="h-4 w-4" /> Financial calculation is complete.</div>}<div className="mt-6 flex flex-wrap gap-2"><Link className={cn(button, "border-primary bg-primary text-white")} to={`/deals/${row.opportunity_id}`} state={{ from: returnTo }}>Open deal</Link>{row.engagement_id ? <Link className={button} to={`/engagements/${row.engagement_id}`} state={{ from: returnTo }}>Open engagement</Link> : null}{row.account_id ? <Link className={button} to={`/clients/${row.account_id}`} state={{ from: returnTo }}>Open account</Link> : null}</div></SheetContent></Sheet>; }

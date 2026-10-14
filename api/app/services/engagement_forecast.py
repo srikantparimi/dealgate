@@ -166,6 +166,9 @@ class CalendarBundle:
     locations: tuple[CalendarLocation, ...]
     holidays: dict[str, tuple[date, ...]]
     rate_card: dict[tuple[str, str, str], Decimal]  # (seniority, location, employment_type)
+    billing_loss_threshold_amount: Decimal | None = None
+    renewal_likely_probability: Decimal | None = None
+    renewal_unlikely_probability: Decimal | None = None
 
     def engine_calendar(self) -> engine.Calendar:
         burden: dict[tuple[str, str], Decimal] = {}
@@ -202,6 +205,9 @@ class CalendarBundle:
         return {
             "hours_per_day": num(self.hours_per_day),
             "project_floor_pct": pct(self.project_floor_pct),
+            "billing_loss_threshold_amount": money(self.billing_loss_threshold_amount),
+            "renewal_likely_probability": pct(self.renewal_likely_probability),
+            "renewal_unlikely_probability": pct(self.renewal_unlikely_probability),
             "locations": [
                 {
                     "name": loc.name,
@@ -261,6 +267,9 @@ async def load_calendar(session: AsyncSession) -> CalendarBundle:
         locations=locations,
         holidays={name: tuple(days) for name, days in holidays.items()},
         rate_card=rate_card,
+        billing_loss_threshold_amount=policy.billing_loss_threshold_amount,
+        renewal_likely_probability=policy.renewal_likely_probability,
+        renewal_unlikely_probability=policy.renewal_unlikely_probability,
     )
 
 
@@ -271,10 +280,18 @@ async def save_calendar(session: AsyncSession, *, actor: AuthUser, body: dict[st
     problems: list[str] = []
     hours = _dec(body.get("hours_per_day"))
     floor = _dec(body.get("project_floor_pct"))
+    threshold = _dec(body.get("billing_loss_threshold_amount"))
+    likely_probability = _dec(body.get("renewal_likely_probability"))
+    unlikely_probability = _dec(body.get("renewal_unlikely_probability"))
     if hours is None or hours <= 0:
         problems.append("hours per working day must be greater than 0")
     if floor is None or not (Decimal("0") <= floor <= Decimal("1")):
         problems.append("project GM floor must be a fraction between 0 and 1")
+    if threshold is not None and threshold < 0:
+        problems.append("billing-loss threshold must be a nonnegative currency amount")
+    for label, value in (("likely", likely_probability), ("unlikely", unlikely_probability)):
+        if value is not None and not (Decimal("0") <= value <= Decimal("1")):
+            problems.append(f"default {label} renewal probability must be between 0 and 1")
     locations_in = body.get("locations") or []
     if not locations_in:
         problems.append("at least one location is required")
@@ -315,6 +332,9 @@ async def save_calendar(session: AsyncSession, *, actor: AuthUser, body: dict[st
         session.add(policy)
     policy.hours_per_day = hours
     policy.project_floor_pct = floor
+    policy.billing_loss_threshold_amount = threshold
+    policy.renewal_likely_probability = likely_probability
+    policy.renewal_unlikely_probability = unlikely_probability
     policy.updated_by = actor.id
 
     existing = {loc.name: loc for loc in (await session.execute(select(CalendarLocation))).scalars().all()}

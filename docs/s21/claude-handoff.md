@@ -2,6 +2,307 @@
 
 ## RESUME HERE
 
+**2026-10-13 22:40 PDT — COMMAND CENTER FORECAST/PORTFOLIO CANDIDATE DEPLOYED
+AND VERIFIED ON STAGING; PRODUCT-OWNER CLICK-THROUGH IS THE NEXT GATE.** The
+authoritative tree is
+`/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
+`feat/command-center-redesign`, application commit
+`a5f3445a8d99c762559426e499f6cd366779592f`; the last committed documentation
+checkpoint before this incremental proof is
+`fd96ead93b1670af3e82dadbe75aa7b8102024eb`. `main` remains isolated at
+`3ef55e576508af70e5c34d8593eec09db1d01560`; no merge is authorized before
+explicit product-owner staging acceptance. Current task: owner validates the
+deployed Command Center with their real identity. Exact next command:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git status --short --branch
+curl -fsS https://app.dealgateapp.com/ | rg 'assets/index-cy26KtjL.js'
+curl -fsS https://app.dealgateapp.com/api/healthz
+```
+
+The approved Terraform plan `/tmp/ccint-a5f3445.tfplan` (SHA-256
+`29bb4ea49ea75499f982e7dae160c9a547ebe2a064d029d2080ca44d3cae1e2d`)
+applied exactly **12 add / 14 change / 12 destroy**. Migration task
+`520ea85209474600b8a9565af4ee6530` exited 0 on
+`officeapp-dev-api-migrate:49`; its log explicitly ran
+`20261013_0067_import_key -> 20261013_0068_cc_rules`. API service revision
+`officeapp-dev-api:111`, task `b649c06de9c94d65802e742c4dd64e80`, is stable
+1/1. The API, migration and all nine scheduled worker task definitions resolve
+to immutable AMD64 image `officeapp-dev-api:ccint-a5f3445`, digest
+`sha256:a5c3020afad1ec8fd11e3da9d515ba0e16c4d0ee67a08313e8aad786bee861f0`.
+
+The matching SPA serves `assets/index-cy26KtjL.js` and
+`assets/index-B8R_pDti.css`; CloudFront invalidation
+`IBTP7QMC3BDVTV4ELZKJ311O2G` completed. `/api/healthz` is green. Deploy smoke
+run `smoke 20261014T052838Z` passed real extraction, confirmation and draft API
+steps, then deleted its owned client
+`9d6859de-c72d-42ed-88bb-be4cbd3c8681`; the final clean gate found zero
+test-tagged clients, e2e approvers on real SOWs, tagged people or tagged
+engagements. Focused deployed Playwright passed 2/2 in 25.2 seconds. Screens:
+`docs/evidence/command-center/command-center-staging-desktop.png` and
+`command-center-staging-mobile.png`. The first browser run failed only because
+two valid People links and two valid eligible-deal texts made loose locators
+ambiguous; selectors were scoped to primary navigation and exact count text,
+with no product assertion or timeout weakened.
+
+The E2E Cognito identity `officeapp-e2e` is deliberately isolated from real
+business data, so its screenshots prove structure and interactions, not live
+financial values. A read-only ECS task on API revision 111 under the existing
+authorized user `srikanthp@smartek21.com` provided the real-data receipt:
+task `95370e23db3e41f8bf810eb3e4659d6b`, exit 0, log
+`/tmp/ccint-staging-proof.log` and CloudWatch stream
+`/officeapp/dev/api api/api/95370e23db3e41f8bf810eb3e4659d6b`.
+It returned October forecast $2,295,695.73; latest actual month September 2026
+$1,560,783.52; September billing loss $862,375.90; GM 44.12% with complete
+cost inputs for 2/43 engagements; signed backlog $20,407,361.86 across 43
+engagements; weighted pipeline $7,667,736.36 from 109 eligible deals; 224
+billable people / 224.14 FTE, 141 bench, 26 roll-offs and 11 open seats; 50
+ranked actions; exactly three brief facts; and six lifecycle populations.
+Next-month capacity showed 212.2 required / 201.2 allocated / 11 open FTE.
+
+Known staging data/configuration gaps are shown honestly by the product: the
+company billing-loss threshold is not configured, only 2/43 engagements have
+complete cost evidence, and Notifications reports 23 failed deliveries. These
+do not invalidate the deployed aggregation but need business/operational
+follow-up. Earlier diagnostic task
+`54ec3695c9c7433fadf8b78e84b09d01` failed before database access because
+literal newlines were passed in inline Python; the corrected read-only task
+above supersedes it and had no business-data mutation.
+
+Local verification on the application revision: Command Center API 15/15,
+affected frontend 41/41, current Command Center UI 6/6, renewal route 1/1,
+TypeScript/Ruff/build green, and isolated PostgreSQL fresh upgrade -> 0068,
+downgrade -> 0067, re-upgrade -> 0068 green with exact constraint
+`ck_renewal_likelihood`. Repository-wide E2E TypeScript remains blocked by
+four inherited errors in unchanged S14/S17 specs; none is in the changed
+Command Center spec. A fresh whole-root Terraform plan with the deployed image
+and approved inputs returned detailed exit code 0: **No changes**. No
+Terraform, migration, deployment, test, browser or worker process is active.
+The only pending files at the start of this handoff update are the focused
+staging spec and refreshed desktop/mobile evidence; they are intentional proof
+artifacts and must be committed with this update.
+
+**2026-10-13 22:01 PDT — COMMAND CENTER FORECAST/PORTFOLIO APPLICATION
+CANDIDATE IMPLEMENTED LOCALLY; STAGING PLAN IS NEXT.** Authoritative tree
+`/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
+`feat/command-center-redesign`, current committed checkpoint
+`8db42d3c4e2496f7f8e1061bbb5306352315271d` plus the application changes listed
+below. Main remains isolated and must not be merged before owner staging
+acceptance. Exact next command:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git diff --check && git status --short
+```
+
+Implemented locally: a permission-aware Command Center read model begins with
+the Portfolio engagement ledger instead of opportunity links, while the
+Accounts table retains its Stage 5+ HubSpot contract. It supplies five
+reconcilable tiles, seven financial action categories plus renewal-needed,
+exactly three deterministic brief items, cumulative 3/6-month revenue, six
+lifecycle populations and next-month location capacity. It uses
+`forecast_payload`, Forecast plan schedules, renewal evidence and published
+people allocation; it does not introduce a second financial formula.
+
+New migration `20261013_0068_cc_rules` adds the USD billing-loss threshold,
+renewal policy defaults and explicit per-renewal likelihood/proposal evidence.
+The revision identifier is within Alembic's 32-character limit. PostgreSQL
+offline DDL generation from 0067 to 0068 passes. A clean SQLite migration from
+revision zero remains impossible because historical migration 0028 calls
+unsupported SQLite `ALTER CONSTRAINT`; this failure predates 0068 and is not a
+new migration defect. The required staging migration must run on PostgreSQL.
+
+Focused evidence on the working candidate: Command Center backend 15/15;
+Command Center/Renewal/S22 frontend 41/41; renewal planning route 1/1;
+TypeScript clean; Ruff clean; production Vite build clean with
+`assets/index-cy26KtjL.js` and `assets/index-B8R_pDti.css`. Tests prove an
+unlinked imported engagement contributes, September-only actuals do not become
+October actuals, partial/TBC staffing is normalized, missing future rates do
+not hide current-month GM, incomplete workforce publications withhold derived
+capacity, likely renewal value is allocated over its full proposed term, and
+forecast beyond SOW end creates a contract-coverage action.
+
+Dirty application files are the Command Center service/UI/API types, renewal
+model/service/router/workspace, Forecast settings/calendar contract, migration
+0068 and their focused tests. No other worktree's files were changed. No local
+server, browser run, deployment, migration, Terraform operation or worker is
+active. Staging still runs API revision 110 and SPA
+`assets/index-D6YIm2ot.js`; none of this candidate is deployed yet. Next work:
+commit this tested checkpoint, build immutable API/static artifacts, prepare a
+reviewable staging Terraform plan, then request the existing infrastructure
+approval boundary before apply.
+
+**2026-10-13 21:11 PDT — COMMAND CENTER FORECAST/PORTFOLIO INTEGRATION STARTED;
+LIVE DATA BOUNDARY VERIFIED BEFORE APPLICATION EDITS.** Authoritative tree
+`/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
+`feat/command-center-redesign`, full starting SHA
+`e803f6d37d486fd2eaa5a6a752019b8cd2d3e867`. Main remains isolated in
+`/Users/srikanthparimi/OfficeApp/dealgate` and must not be merged before owner
+staging acceptance. Current task: implement the attached Command Center
+Forecast/Portfolio integration from the committed source map. Exact next command:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git status --short && sed -n '1,220p' docs/reports/command-center-integration.md
+```
+
+Read-only ECS diagnostic task `7b4d03ccd5e34aa6b56fbef2ed4faee0` ran on
+staging task definition `officeapp-dev-api:110` and exited 0. It found 83
+engagement rows (78 open), 420 current allocations, 370 active resources and
+3,444 allocation actuals through 2026-09. It also proved that zero engagement
+rows are linked to Opportunities. This is the concrete reason the current
+Command Center loses data that Portfolio can show: `build_command_overview`
+starts from HubSpot opportunities and restricts financials to joined
+engagements. The verified mapping and implementation order are in
+`docs/reports/command-center-integration.md`; the governing directive is
+`docs/directives/command-center-forecast-portfolio-integration.md`.
+
+Active operations: none. The diagnostic ECS task completed successfully; do
+not rerun it unless the staging dataset changes. No application files are
+modified at this checkpoint. Existing API revision 110 and SPA
+`assets/index-D6YIm2ot.js` remain the deployed state. No secrets are present in
+the evidence; runtime secrets remain in the ECS task-definition references.
+
+**2026-10-13 21:08 PDT — BUSINESS-UNIT TABLE FILTER DEPLOYED TO STAGING;
+FOCUSED DEPLOYED JOURNEY GREEN; OWNER CLICK-THROUGH NEXT.** Authoritative tree
+`/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
+`feat/command-center-redesign`, application commit
+`580d1a012d3c6a01b555bf5c4ce67262a977b742`, baseline `origin/main`
+`03b76e62b154eb25fbac8b918112214f4e32543f`. Last pushed documentation
+checkpoint is `578d6dc8e2fc35c236f8bcbfe6c229d4f13ed90e`. Current task: product owner
+verifies the Business unit column and selector against authorized real rows.
+Do not merge `main` before explicit product-owner acceptance.
+
+The Accounts & engagements section now has a dedicated Business unit column
+and selector. It reuses the established `bu` URL/API scope, so overview totals,
+table rows, paging and CSV operate on the same server-filtered population.
+Local evidence: Command Center unit suite 6/6, web TypeScript clean, production
+build clean (`index-D6YIm2ot.js`, `index-BIpYOz_b.css`), fixture Ruff clean,
+connected desktop/mobile Playwright 2/2. The guarded fixture proves ST21 and IT
+Avalon rows, ST21 filtering and reset. Repository-wide E2E TypeScript still has
+four inherited failures in unchanged S14/S17 specs; see
+`docs/reports/command-center-redesign.md`.
+
+Deployed proof: staging serves `assets/index-D6YIm2ot.js` and
+`assets/index-BIpYOz_b.css`; CloudFront invalidation
+`I3FT4JVP7HC59TX4YF7SNAMA3I` completed; authenticated staging Playwright passed
+2/2; API health is green. ECS API remains unchanged and stable at revision 110,
+1/1. No backend image, migration or Terraform operation was needed or run.
+
+Owned runtime at this checkpoint: no local API, Vite, browser test, deployment,
+migration or Terraform process is active. PostgreSQL container `dg-s22-pg`
+retains the isolated `dealgate_command_center` fixture on loopback 55432. The
+only uncommitted files are this incremental documentation update and the
+refreshed staging mobile evidence screenshot. Exact resume:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git status --short && git diff --check
+curl -fsS https://app.dealgateapp.com/ | rg 'assets/index-D6YIm2ot.js'
+curl -fsS https://app.dealgateapp.com/api/healthz
+```
+
+Next gate: obtain the product owner's real-data click-through. After acceptance,
+merge only with explicit permission and verify the resulting main-image/static
+deployment. The prior entry below is deployment history.
+
+**2026-10-13 13:19 PDT — COMMAND CENTER HISTORICAL CLOSED-WON DEFECT DEPLOYED;
+AUTOMATED STAGING GATES GREEN; OWNER REAL-DATA CLICK REQUIRED.**
+Authoritative tree `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`,
+branch `feat/command-center-redesign`, pre-deploy approval checkpoint
+`408d68507fbc93f36e425e2526a73f361b2fd34a`. Current application checkpoint is
+`c606d763273ffa40379e4f4d39c8677e390045d5`; previous staging application is
+`eac3ee1faec7a55209a37907a6332c29b2d7714b`; staging verification checkpoint is
+`8deaf3f6f195bb41ce0062d55a3d8794b150140a`. Baseline is `origin/main`
+`03b76e62b154eb25fbac8b918112214f4e32543f`. Current task: obtain the product
+owner's real-data click-through on the deployed correction. Do not merge
+`main` before explicit acceptance.
+
+Owner acceptance found that the deployed page was dominated by old Closed Won
+deals, including an October 2025 win with no SOW. Root cause:
+`list_command_accounts` and `build_command_overview` requested all closed rows
+without a current-work relevance boundary. Lifecycle classified every no-SOW
+row as Pipeline, attention retained `closed_won_not_released` indefinitely,
+and potential totals accumulated outside the selected period. Commit `c606d76`
+keeps open deals, current-period wins and selected-period active delivery;
+removes stale historical wins from table/action/lifecycle/activity populations;
+and period-scopes potential revenue. The mandatory per-pipeline Stage-5 rule,
+permissions, search, paging and CSV remain server-side and unchanged.
+
+Latest focused evidence on `c606d76`: Ruff clean; changed backend 11 passed;
+changed frontend 5 passed; TypeScript clean; production build passed with
+`assets/index-BPc0sdEg.js`. The guarded local database contains current Stage
+4/5/6 opportunities plus one 2025 Closed Won opportunity; the connected API
+returns only Stage 5 and 6. The dev-browser desktop run reached every business
+assertion but exceeded the unchanged 30-second limit during final Escape after
+a cold Vite transform; mobile passed. A production-preview attempt correctly
+rejected the dev-only identity. No timeout/assertion was weakened and no blind
+retry remains. Failure traces are under `tests/e2e/test-results/`. Detailed
+status is `docs/reports/command-center-redesign.md`.
+
+Previous staging ran API service `officeapp-dev-api:109`, image
+`officeapp-dev-api:cc-eac3ee1f`, digest
+`sha256:30421cd6b245a98b41de3cf4defe0a1ed52e9c93660e41913b7c3c2dc0f97cdf`,
+SPA `index-ezj6RfOC.js`, and migration head
+`20261013_0067_import_key`. That deployment does **not** contain `c606d76` and
+the owner-visible defect remained there. The prior smoke, browser and no-drift
+results are deployment history only.
+
+Current staging runs immutable image `officeapp-dev-api:ccfix-c606d76` at ECR
+digest
+`sha256:c84f1f49a62b5b2b3d7e859cf26926ea11dab97a655f3e4b0a74bccf1d69f980`.
+The owner approved and Terraform applied reviewed plan
+`/tmp/ccfix-c606d76.tfplan` exactly:
+12 add / 14 change / 12 destroy, limited to eleven image-bearing ECS task
+definitions, the migration trigger and their API service/EventBridge/RunTask
+policy references. It has no data, auth, storage, network, CDN or DNS changes.
+Checksums: plan
+`945741933d94bd7ca9c28beb53946ddc6db65891efc9ea3f6296f62595a51524`, text
+`491c47a9b18968b17e52991f03ebd828ea9ba279edf8ecce48da900bc59dfa62`, JSON
+`2a790fa475612f32a914914e593ee00e74afa04b5e3fbcdbb0af4eb99ed0b440`.
+Matching SPA build: `assets/index-BPc0sdEg.js` and
+`assets/index-CZ_B4MrY.css`.
+
+Deployment proof: migration task `e56a87f1c7cf467aae95adad1d02eac5`
+(`api-migrate:48`) succeeded; API `officeapp-dev-api:110` is stable 1/1 on task
+`d7ed7048876e4063b2738f600ea70fbe` and the exact ECR digest; every scheduler
+family resolves to `ccfix-c606d76`; CloudFront invalidation
+`I4F7087D1UPI68V5QH1DDJFWA0` completed; deploy smoke
+`smoke 20261013T201315Z` GREEN with cleanup; deployed Command Center Playwright
+2/2 passed; separate leak gate clean; post-apply Terraform reports No changes.
+The isolated staging identity has zero owner business records, so automation
+cannot assert the owner's 2025 Closed Won row is absent. That final condition
+is a product-owner click, not an engineering failure or hidden skip.
+
+Runtime: no local API, Vite, preview, browser test, Terraform plan/apply,
+migration, deployment or background job is active. The isolated PostgreSQL container is
+available on port 55432; `dealgate_command_center` was rebuilt at schema head
+0067 and contains only the four guarded test opportunities. No worker/subagent
+owns this branch. Secrets remain in the established AWS/Terraform references;
+none are recorded here.
+
+Application changes are committed at `c606d76`; the staging spec wording,
+refreshed mobile screenshot and deployment evidence belong to the documentation
+checkpoint containing this text. No other feature-tree work is uncommitted. The
+separate main tree remains at
+`3ef55e576508af70e5c34d8593eec09db1d01560` with the owner's six existing
+modified `docs/reports/s19-1/*.png` files untouched. Exact resume:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git status --short && git diff --check
+curl -fsS https://app.dealgateapp.com/ | rg 'assets/index-BPc0sdEg.js'
+curl -fsS https://app.dealgateapp.com/api/healthz
+```
+
+Next release gate: product owner opens `/command` in a fresh session and
+confirms the reported October 2025 Closed Won/no-SOW deal is absent while
+current open work and current-period/active-delivery wins remain. No main merge
+before explicit acceptance. Do not rerun unchanged local browser paths merely
+to obtain green. Older S21/S22 entries below are historical and do not describe
+this branch.
+
 **2026-10-13 — S22-P5 MERGED TO MAIN AND ROLLED.** Kanna accepted the staging
 click-through ("push and merge the changes looks good"); `feat/s22-p5` @ 48e46d0
 squashed → `origin/main` = `3598e3b` (release worktree `dealgate-s22-release`,
