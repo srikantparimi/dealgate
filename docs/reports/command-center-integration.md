@@ -27,6 +27,36 @@ passed 2/2 in 29.0 seconds. A fresh whole-root Terraform plan returned detailed
 exit code 0: no drift. Public health is green at
 `https://app.dealgateapp.com/api/healthz`.
 
+### Post-deploy approval reconciliation — 2026-10-13 23:56 PDT
+
+Follow-up commit `10702d218f6a8f463b9deabf0e5cc20ce815f996` repairs CO-04 at the
+new server-authoritative Command Center boundary. The lifecycle count had been
+derived from one CRM opportunity state per deal, while the destination counts
+distinct current in-review SOW packages. Its link also used the unsupported
+`state` parameter, and the personal action queue stopped after 200 packages.
+
+The follow-up now shares the approvals route's reader policy, loads the full
+revision-pinned authorized population, counts distinct SOW packages, links to
+`/sows?status=in_review&population_revision=...`, and batches current-user
+assignments so an older CEO exception remains visible. No approval state,
+permission, or financial calculation is duplicated in the frontend.
+
+Verification on the follow-up revision:
+
+```text
+api: test_command_center_accounts + test_s21_approval_card -> passed
+api: canonical two-SOW count and 201-package later-page CEO boundary -> passed
+web: CommandCenter + S21ApprovalCard -> 11 passed
+web: typecheck -> passed
+web: combined suite -> 580 passed / 1 unrelated Portfolio timing failure
+web: focused Portfolio confirmation -> 16 passed without timeout or assertion changes
+ruff: all changed Python files -> passed
+```
+
+The follow-up is source-verified but is not labeled deployed until its new
+immutable image and SPA are applied and checked. The existing main-image
+receipt above remains the currently deployed runtime.
+
 ## Deployed staging candidate
 
 Application commit `a5f3445a8d99c762559426e499f6cd366779592f` is packaged as
