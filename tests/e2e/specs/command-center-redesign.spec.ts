@@ -23,6 +23,16 @@ type AccountsPage = {
   configuration_gaps: string[];
 };
 
+type CommandOverview = {
+  tiles: Record<string, unknown>;
+  actions: unknown[];
+  brief: unknown[];
+  revenue: { months: unknown[] };
+  lifecycle_items: Array<{ key: string }>;
+  capacity: { month: string; status: string };
+  sources: Array<{ name: string; status: string }>;
+};
+
 test.beforeEach(async ({ page }) => {
   await authStaging(page, BASE);
 });
@@ -41,8 +51,31 @@ test("deployed Command Center serves the canonical scope and connected operation
   expect(overviewResponse.status()).toBe(200);
 
   const accounts = (await accountsResponse.json()) as AccountsPage;
+  const overview = (await overviewResponse.json()) as CommandOverview;
   expect(accounts.scope_label).toBe("HubSpot deals · Stage 5 and above");
   expect(accounts.configuration_gaps).toEqual(expect.any(Array));
+  expect(Object.keys(overview.tiles).sort()).toEqual(
+    ["backlog", "gm", "people", "pipeline", "revenue"],
+  );
+  expect(overview.brief).toHaveLength(3);
+  expect(overview.revenue.months).toHaveLength(3);
+  expect(overview.lifecycle_items.map((item) => item.key)).toEqual([
+    "pipeline",
+    "sow_in_approval",
+    "signed",
+    "engagement_created",
+    "active",
+    "renewal_due",
+  ]);
+  expect(overview.capacity.month).toMatch(/^\d{4}-\d{2}$/);
+  expect(overview.sources.map((source) => source.name)).toEqual(
+    expect.arrayContaining([
+      "Portfolio engagement ledger",
+      "Forecast calculation service",
+      "Workforce supply",
+      "HubSpot pipeline mirror",
+    ]),
+  );
   expect(new Set(accounts.items.map((row) => row.opportunity_id)).size).toBe(
     accounts.items.length,
   );
@@ -70,17 +103,31 @@ test("deployed Command Center serves the canonical scope and connected operation
   await expect(page.getByTestId("stage5-scope")).toHaveText(
     "HubSpot deals · Stage 5 and above",
   );
+  await expect(page.getByRole("heading", { name: "Business now" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Business pulse" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Three facts to act on" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "From opportunity to delivery" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Revenue outlook" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Delivery capacity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Capacity by location" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Accounts & engagements" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Data & operational health" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Filter accounts by business unit" })).toBeVisible();
   await expect(page.getByText(/Could not load (actions|accounts):/)).toHaveCount(0);
+  for (const label of [
+    "Revenue this month",
+    "GM this month",
+    "Signed backlog",
+    "Weighted pipeline",
+    "People",
+  ]) {
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  }
+  await expect(page.getByText("Unknown", { exact: true })).toHaveCount(0);
 
   for (const label of ["Pipeline", "SOWs & approvals", "Projects", "Forecast", "Portfolio", "People"]) {
-    await expect(page.getByRole("link", { name: label, exact: true })).toBeVisible();
+    await expect(
+      page.getByLabel("Primary navigation").getByRole("link", { name: label, exact: true }),
+    ).toBeVisible();
   }
 
   if (accounts.items.length === 0) {
@@ -131,9 +178,11 @@ test("deployed Command Center contains every surface at mobile width", async ({ 
   await page.goto(`${BASE}/command`);
   await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
   await expect(page.getByTestId("stage5-scope")).toBeVisible();
-  await expect(page.getByText(/\d+ eligible deals?/)).toBeVisible();
-  await expect(page.getByText("Loading ranked work…")).toHaveCount(0);
-  await expect(page.getByText("Loading source health…")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Business now" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Three facts to act on" })).toBeVisible();
+  await expect(page.getByText(/^\d+ eligible deals?$/)).toBeVisible();
+  await expect(page.getByText("Loading business evidence…")).toHaveCount(0);
+  await expect(page.getByText("Loading eligible HubSpot deals…")).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(

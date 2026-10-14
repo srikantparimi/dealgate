@@ -1,6 +1,6 @@
 # Command Center Forecast and Portfolio Integration
 
-## Staging candidate
+## Deployed staging candidate
 
 Application commit `a5f3445a8d99c762559426e499f6cd366779592f` is packaged as
 immutable AMD64 image `officeapp-dev-api:ccint-a5f3445`, digest
@@ -8,9 +8,44 @@ immutable AMD64 image `officeapp-dev-api:ccint-a5f3445`, digest
 The exact saved Terraform plan `/tmp/ccint-a5f3445.tfplan` is 12 add / 14
 change / 12 destroy and contains only revisioned ECS task definitions, the
 migration trigger, and references that follow those revisions. It contains no
-persistent-data, identity, storage, network, DNS or CDN change. The plan awaits
-the required human infrastructure approval; staging still runs API revision
-110 and the prior SPA.
+persistent-data, identity, storage, network, DNS or CDN change. The owner
+approved this exact plan and it applied successfully.
+
+Staging now runs API service revision `officeapp-dev-api:111`, stable 1/1, and
+all image-bearing API/migration/worker definitions resolve to the recorded
+digest. Migration task `520ea85209474600b8a9565af4ee6530` exited 0 after
+running `20261013_0067_import_key -> 20261013_0068_cc_rules`. The matching SPA
+serves `assets/index-cy26KtjL.js` and `assets/index-B8R_pDti.css`; CloudFront
+invalidation `IBTP7QMC3BDVTV4ELZKJ311O2G` completed. Deploy smoke
+`smoke 20261014T052838Z` passed and deleted its owned fixture. Focused deployed
+Playwright passed 2/2 in 25.2 seconds with the refreshed desktop and mobile
+evidence under `docs/evidence/command-center/`. A fresh whole-root Terraform
+plan with the deployed image and approved inputs returned detailed exit code
+0: **No changes**.
+
+The automated browser identity is intentionally business-data isolated. A
+separate read-only ECS reconciliation used the deployed revision and the
+existing authorized production user without mutating business data. Receipt:
+task `95370e23db3e41f8bf810eb3e4659d6b`, exit 0,
+`/tmp/ccint-staging-proof.log`, CloudWatch stream
+`/officeapp/dev/api api/api/95370e23db3e41f8bf810eb3e4659d6b`.
+
+| Display | Deployed result | Reconciliation evidence |
+| --- | --- | --- |
+| Revenue this month | $2,295,695.73 forecast; no October actual; latest actual September 2026 $1,560,783.52 | Forecast schedule plus allocation actuals; September billing loss $862,375.90 |
+| GM this month | 44.12% | 2/43 engagements have complete cost inputs; 2 confirmed, 0 estimated, 34 missing-cost engagements |
+| Signed backlog | $20,407,361.86 across 43 engagements | Remaining permitted open-engagement schedules |
+| Weighted pipeline | $7,667,736.36; $21,596,444.14 gross; 109 eligible deals | Saved HubSpot stage probabilities; all currently unscheduled and therefore outside monthly bars |
+| People | 224 billable people / 224.14 FTE; 141 bench; 26 roll-offs; 11 open seats / 11 FTE | Published people allocation and demand |
+| Needs attention / brief | 50 ranked actions; exactly 3 brief facts | Financial/action categories and deterministic ranking |
+| Lifecycle | Pipeline 109, approval 0, signed 0, engagement created 45, active 38, renewal due 0 | Distinct stage populations |
+| Next-month capacity | 212.2 required / 201.2 allocated / 11 open FTE | India-Chennai 6/6; India-Pune 117/117; South Africa 3.2/3.2; US 86/75/11 |
+| Accounts | 22 Stage-5+ rows | Business units South Africa, US, US - IT Avalon, US - IT Avalon (Staffing) |
+
+Visible data-quality/operations gaps remain: company billing-loss threshold is
+not configured, current GM cost evidence is complete for only 2/43
+engagements, and Notifications has 23 failed deliveries. These are surfaced
+as source-health evidence rather than replaced with invented values.
 
 ## Verified baseline
 
@@ -42,9 +77,18 @@ The earlier reported 81 is the workbook dry-run population, not the current data
 
 ## Root cause before implementation
 
-`build_command_overview` currently begins with the HubSpot opportunity list and then reads only `Engagement` rows linked to those opportunities. The live database has zero such links, while Portfolio intentionally reads all permitted open engagements. The Command Center therefore drops the authoritative imported engagement population before any financial calculation runs. The old overview also treats its HubSpot Stage-5 table scope as a company-financial scope, which incorrectly applies the table-only restriction to tiles, risk detection and capacity.
+The previous `build_command_overview` began with the HubSpot opportunity list
+and then read only `Engagement` rows linked to those opportunities. The live
+database had zero such links, while Portfolio intentionally read all permitted
+open engagements. Command Center therefore dropped the authoritative imported
+engagement population before any financial calculation ran. The old overview
+also treated its HubSpot Stage-5 table scope as a company-financial scope,
+incorrectly applying the table-only restriction to tiles, risk detection and
+capacity.
 
-The fix will compose existing Portfolio/Forecast/Pipeline services into one permission-aware read model. It will not add a second calculator or require imported engagements to be republished.
+The deployed fix composes the existing Portfolio/Forecast/Pipeline services
+into one permission-aware read model. It does not add a second calculator or
+require imported engagements to be republished.
 
 ## Implementation order
 

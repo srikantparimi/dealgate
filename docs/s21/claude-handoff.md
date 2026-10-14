@@ -2,59 +2,86 @@
 
 ## RESUME HERE
 
-**2026-10-13 22:15 PDT — COMMAND CENTER INTEGRATION CANDIDATE COMMITTED,
-IMMUTABLE IMAGE PUBLISHED, EXACT STAGING PLAN AWAITS HUMAN APPROVAL.** The
+**2026-10-13 22:40 PDT — COMMAND CENTER FORECAST/PORTFOLIO CANDIDATE DEPLOYED
+AND VERIFIED ON STAGING; PRODUCT-OWNER CLICK-THROUGH IS THE NEXT GATE.** The
 authoritative tree is
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
-`feat/command-center-redesign`, full application commit
-`a5f3445a8d99c762559426e499f6cd366779592f`. Main remains isolated and no merge
-is authorized before staging acceptance.
-
-Local gates on that revision: PostgreSQL fresh upgrade -> 0068 downgrade ->
-0068 re-upgrade succeeded in isolated database `dealgate_cc_verify`, leaving
-head `20261013_0068_cc_rules` and constraint `ck_renewal_likelihood`; Command
-Center backend tests 15/15; current Command Center UI tests 6/6; TypeScript and
-Ruff clean. The broader affected frontend set was 41/41 before the final
-migration-name correction, which did not touch frontend code.
-
-Immutable AMD64 image
-`669810405473.dkr.ecr.us-east-2.amazonaws.com/officeapp-dev-api:ccint-a5f3445`
-is published at digest
-`sha256:a5c3020afad1ec8fd11e3da9d515ba0e16c4d0ee67a08313e8aad786bee861f0`.
-The refreshed whole-root Terraform plan is
-`/tmp/ccint-a5f3445.tfplan` (SHA-256
-`29bb4ea49ea75499f982e7dae160c9a547ebe2a064d029d2080ca44d3cae1e2d`);
-text and JSON renderings are `/tmp/ccint-a5f3445.plan.txt` and
-`/tmp/ccint-a5f3445.plan.json` with checksums
-`7b5caa855bb44ddf512a7fdb7f592c7863115b6dbb651cfb19d5795c1f74cb55` and
-`2c546982faa70ef8614f96330275aec2569f6ee3c616030248d5ce6dc03f0020`.
-
-The plan is exactly **12 add / 14 change / 12 destroy**. Eleven replacements
-are the API, migration and nine scheduled-worker ECS task definitions; the
-twelfth is the Terraform migration trigger. Updates are the API service, nine
-EventBridge targets and four RunTask policies following the new task
-revisions. Every container changes only from `ccfix-c606d76` to
-`ccint-a5f3445`. There are zero RDS, storage, Cognito, SES, secret, network,
-DNS, CloudFront, schedule-rule or business-data changes. Inputs preserve
-America/Los_Angeles, USD, S21 jobs enabled, production approver identities
-enabled, and optional cleanup/continuous HubSpot/operational hardening
-disabled.
-
-Required human action: approve only the exact saved Terraform plan identified
-above. After approval, resume with:
+`feat/command-center-redesign`, application commit
+`a5f3445a8d99c762559426e499f6cd366779592f`; the last committed documentation
+checkpoint before this incremental proof is
+`fd96ead93b1670af3e82dadbe75aa7b8102024eb`. `main` remains isolated at
+`3ef55e576508af70e5c34d8593eec09db1d01560`; no merge is authorized before
+explicit product-owner staging acceptance. Current task: owner validates the
+deployed Command Center with their real identity. Exact next command:
 
 ```bash
 cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
-env AWS_PROFILE=lm-arbiter-poc AWS_REGION=us-east-2 terraform -chdir=infra-tf apply /tmp/ccint-a5f3445.tfplan
+git status --short --branch
+curl -fsS https://app.dealgateapp.com/ | rg 'assets/index-cy26KtjL.js'
+curl -fsS https://app.dealgateapp.com/api/healthz
 ```
 
-Then verify the migration task reaches 0068, the API and all worker task
-definitions resolve to the recorded digest, publish the matching production
-SPA, invalidate CloudFront, run deploy smoke and the focused connected Command
-Center reconciliation. No Terraform, migration, deployment, test or browser
-process is active. Current staging remains API revision 110 on
-`ccfix-c606d76` and SPA `assets/index-D6YIm2ot.js`; the candidate is not yet
-deployed.
+The approved Terraform plan `/tmp/ccint-a5f3445.tfplan` (SHA-256
+`29bb4ea49ea75499f982e7dae160c9a547ebe2a064d029d2080ca44d3cae1e2d`)
+applied exactly **12 add / 14 change / 12 destroy**. Migration task
+`520ea85209474600b8a9565af4ee6530` exited 0 on
+`officeapp-dev-api-migrate:49`; its log explicitly ran
+`20261013_0067_import_key -> 20261013_0068_cc_rules`. API service revision
+`officeapp-dev-api:111`, task `b649c06de9c94d65802e742c4dd64e80`, is stable
+1/1. The API, migration and all nine scheduled worker task definitions resolve
+to immutable AMD64 image `officeapp-dev-api:ccint-a5f3445`, digest
+`sha256:a5c3020afad1ec8fd11e3da9d515ba0e16c4d0ee67a08313e8aad786bee861f0`.
+
+The matching SPA serves `assets/index-cy26KtjL.js` and
+`assets/index-B8R_pDti.css`; CloudFront invalidation
+`IBTP7QMC3BDVTV4ELZKJ311O2G` completed. `/api/healthz` is green. Deploy smoke
+run `smoke 20261014T052838Z` passed real extraction, confirmation and draft API
+steps, then deleted its owned client
+`9d6859de-c72d-42ed-88bb-be4cbd3c8681`; the final clean gate found zero
+test-tagged clients, e2e approvers on real SOWs, tagged people or tagged
+engagements. Focused deployed Playwright passed 2/2 in 25.2 seconds. Screens:
+`docs/evidence/command-center/command-center-staging-desktop.png` and
+`command-center-staging-mobile.png`. The first browser run failed only because
+two valid People links and two valid eligible-deal texts made loose locators
+ambiguous; selectors were scoped to primary navigation and exact count text,
+with no product assertion or timeout weakened.
+
+The E2E Cognito identity `officeapp-e2e` is deliberately isolated from real
+business data, so its screenshots prove structure and interactions, not live
+financial values. A read-only ECS task on API revision 111 under the existing
+authorized user `srikanthp@smartek21.com` provided the real-data receipt:
+task `95370e23db3e41f8bf810eb3e4659d6b`, exit 0, log
+`/tmp/ccint-staging-proof.log` and CloudWatch stream
+`/officeapp/dev/api api/api/95370e23db3e41f8bf810eb3e4659d6b`.
+It returned October forecast $2,295,695.73; latest actual month September 2026
+$1,560,783.52; September billing loss $862,375.90; GM 44.12% with complete
+cost inputs for 2/43 engagements; signed backlog $20,407,361.86 across 43
+engagements; weighted pipeline $7,667,736.36 from 109 eligible deals; 224
+billable people / 224.14 FTE, 141 bench, 26 roll-offs and 11 open seats; 50
+ranked actions; exactly three brief facts; and six lifecycle populations.
+Next-month capacity showed 212.2 required / 201.2 allocated / 11 open FTE.
+
+Known staging data/configuration gaps are shown honestly by the product: the
+company billing-loss threshold is not configured, only 2/43 engagements have
+complete cost evidence, and Notifications reports 23 failed deliveries. These
+do not invalidate the deployed aggregation but need business/operational
+follow-up. Earlier diagnostic task
+`54ec3695c9c7433fadf8b78e84b09d01` failed before database access because
+literal newlines were passed in inline Python; the corrected read-only task
+above supersedes it and had no business-data mutation.
+
+Local verification on the application revision: Command Center API 15/15,
+affected frontend 41/41, current Command Center UI 6/6, renewal route 1/1,
+TypeScript/Ruff/build green, and isolated PostgreSQL fresh upgrade -> 0068,
+downgrade -> 0067, re-upgrade -> 0068 green with exact constraint
+`ck_renewal_likelihood`. Repository-wide E2E TypeScript remains blocked by
+four inherited errors in unchanged S14/S17 specs; none is in the changed
+Command Center spec. A fresh whole-root Terraform plan with the deployed image
+and approved inputs returned detailed exit code 0: **No changes**. No
+Terraform, migration, deployment, test, browser or worker process is active.
+The only pending files at the start of this handoff update are the focused
+staging spec and refreshed desktop/mobile evidence; they are intentional proof
+artifacts and must be committed with this update.
 
 **2026-10-13 22:01 PDT — COMMAND CENTER FORECAST/PORTFOLIO APPLICATION
 CANDIDATE IMPLEMENTED LOCALLY; STAGING PLAN IS NEXT.** Authoritative tree
