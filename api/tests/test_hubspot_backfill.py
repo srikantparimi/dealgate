@@ -124,37 +124,37 @@ async def test_backfill_handles_deal_with_no_company(factory):
     assert opp.client_id is not None  # never null — always the sentinel
 
 
-async def test_backfill_skips_archive_sweep_when_a_deal_errored(factory, monkeypatch):
-    """S18 §2 · F8 backend half: partial failure never archives stale rows."""
+async def test_a_deal_that_errors_is_never_archived(factory, monkeypatch):
+    """S18 §2 · F8, revised by S23-PL1 item 4: a deal HubSpot still lists but
+    the run failed to write is marked seen, so it is never archived; a deal
+    HubSpot explicitly confirms deleted is still archived in the same run."""
 
-    # Seed a live deal so a "stale" row exists.
-    stub = StubHubSpotClient(deals={"555": _deal("555")}, owners={"42": _owner()})
+    stub = StubHubSpotClient(deals={"555": _deal("555"), "777": _deal("777")}, owners={"42": _owner()})
     await run_backfill(stub, session_factory=factory)
 
-    # Next run: the previous deal has "disappeared" (would normally be
-    # archived) but a new deal errors during processing. Injecting the
-    # error at `_process_deal` — the boundary the run loop catches — is
-    # the cleanest way to exercise the error path without polluting the
-    # domain logic with test-only failure modes.
-    stub.deals.clear()
-    stub.deals["666"] = _deal("666")
+    # Next run: 555 is gone from HubSpot (the stub confirms it archived) and
+    # 777 is still listed but errors while being written.
+    del stub.deals["555"]
 
     from app.services import hubspot_backfill as hb
 
-    async def _boom(*_a, **_k):
-        raise RuntimeError("simulated deal-processing failure")
+    real = hb._process_deal
+
+    async def _boom(session, client, payload, *a, **k):
+        if payload["id"] == "777":
+            raise RuntimeError("simulated deal-processing failure")
+        return await real(session, client, payload, *a, **k)
 
     monkeypatch.setattr(hb, "_process_deal", _boom)
 
     counts = await run_backfill(stub, session_factory=factory)
 
-    assert counts.errors >= 1
-    assert counts.deals_archived == 0, "archive sweep must be skipped on error"
-
-    # The original deal is still live locally.
+    assert counts.record_errors == [{"hubspot_id": "777", "reason": "deal: RuntimeError"}]
+    assert counts.deals_archived == 1
     async with factory() as s:
-        opp = (await s.execute(select(Opportunity).where(Opportunity.hubspot_deal_id == "555"))).scalar_one()
-    assert opp.archived_at is None
+        rows = {o.hubspot_deal_id: o for o in (await s.execute(select(Opportunity))).scalars()}
+    assert rows["777"].archived_at is None
+    assert rows["555"].archived_at is not None
 
 
 async def test_backfill_skips_archive_when_pagination_fails(factory):

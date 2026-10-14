@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy import event
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
@@ -30,6 +31,65 @@ from app import models  # noqa: F401 — register mappers
 
 # Keep the auth stub in "local" mode for the test session.
 os.environ.setdefault("DEALGATE_ENV", "local")
+
+
+def _sqlite_transactions_like_postgres(eng) -> None:
+    """SQLAlchemy's documented aiosqlite recipe for real SAVEPOINT semantics.
+
+    pysqlite/aiosqlite only emit BEGIN before the first write. A SAVEPOINT
+    issued first therefore starts the transaction itself, and releasing it
+    COMMITS everything, so per-record savepoints (S23-PL1 item 4) would leak
+    out of a page that is later rolled back. Emitting our own BEGIN makes the
+    test engine behave like PostgreSQL, which staging runs.
+    """
+
+    @event.listens_for(eng.sync_engine, "connect")
+    def _disable_driver_begin(dbapi_connection, _record):  # noqa: ANN001
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(eng.sync_engine, "begin")
+    def _explicit_begin(conn):  # noqa: ANN001
+        dbapi = conn.connection.dbapi_connection
+        # StaticPool shares one connection between sessions; when another
+        # session already opened the transaction, join it as before.
+        if dbapi._connection.in_transaction:
+            return
+        # Straight to the driver, so statement-count budgets in tests do not
+        # see it.
+        dbapi.execute("BEGIN")
+
+
+async def _memory_engine(*, postgres_like_transactions: bool = False):
+    eng = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    if postgres_like_transactions:
+        _sqlite_transactions_like_postgres(eng)
+    async with eng.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    return eng
+
+
+@pytest_asyncio.fixture
+async def savepoint_engine():
+    """Opt-in engine for tests that rely on SAVEPOINT rollback (S23-PL1).
+
+    A module opts in by overriding ``engine``::
+
+        @pytest_asyncio.fixture
+        async def engine(savepoint_engine):
+            return savepoint_engine
+
+    The default ``engine`` keeps the driver's own transaction handling, which
+    some app code (e.g. the SQLite branch of the Pipeline export) relies on.
+    """
+    eng = await _memory_engine(postgres_like_transactions=True)
+    try:
+        yield eng
+    finally:
+        await eng.dispose()
 
 
 @pytest_asyncio.fixture

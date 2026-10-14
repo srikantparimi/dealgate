@@ -15,6 +15,7 @@ from app.models.user import User
 from app.services.hubspot_intake import _resolve_client, _upsert_opportunity, handle_event
 from app.services.hubspot_properties import HubspotPropertyMapping
 from app.services.hubspot_backfill import run_backfill
+from app.services.hubspot_stage_mirror import StageMap
 
 
 @pytest_asyncio.fixture
@@ -34,7 +35,9 @@ def deal(properties=None, version="2026-10-02T01:00:00Z"):
 
 
 async def write(session, records, payload):
-    return (await _upsert_opportunity(session, "deal-1", payload, *records, "adapter-test"))[0]
+    # S23-PL1: every deal write carries a stage map; these payloads have no stage.
+    return (await _upsert_opportunity(session, "deal-1", payload, *records, "adapter-test",
+        stage_map=StageMap()))[0]
 
 
 async def mapping(session, object_type="deal", state="configured"):

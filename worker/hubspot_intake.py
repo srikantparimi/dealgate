@@ -11,9 +11,11 @@ heartbeat proves liveness separately from the CRM processed watermark.
   another consumer sees a redelivery.
 - Poison messages hit the DLQ after 3 receive attempts (queue's
   ``maxReceiveCount=3``). This worker does NOT decide DLQ; SQS does.
-- Every processed batch (success OR fatal) writes ``sync_status``
-  (source='hubspot_webhook') so the Pipeline UI's amber banner has a
-  live signal.
+- Every run (success OR fatal, data or not) writes ``sync_status``
+  (source='hubspot_webhook'), and every poll writes 'hubspot_consumer'.
+  Both are liveness heartbeats only. S23-PL1: they are never a freshness
+  input; deal freshness comes from the sync run records
+  (``GET /hubspot/sync-health``).
 
 For local dev the poll runs against ``StubHubSpotEventsQueue`` when
 ``HUBSPOT_EVENT_QUEUE_URL`` is unset, so smoke tests keep working

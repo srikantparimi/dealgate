@@ -2,16 +2,18 @@
 
 Every worker (backfill, webhook consumer, nightly reconcile, owner
 mirror, pipeline mirror, property mirror) calls :func:`touch_source` at
-the end of each run. The Pipeline UI's amber banner and the settings
-integration health page read the ``last_success_at`` and typed
-watermarks (``received_at`` / ``processed_at`` / ``reconciled_at``).
+the end of each run. The settings integration health page reads the
+``last_success_at`` and typed watermarks (``received_at`` /
+``processed_at`` / ``reconciled_at``). S23-PL1: deal freshness (the
+Pipeline label, ``meta.freshness`` and ``GET /hubspot/sync-health``) comes
+from the ``hubspot_sync_run`` records, never from these heartbeats.
 
 S20 W1 replaces the "worker heartbeat means freshness" story with typed
 watermarks per D4. Callers name the exact clock they want to advance:
 
 - ``received_at`` — webhook accepted + row durably enqueued.
 - ``processed_at`` — event fully handled + audit committed (D7 atomic
-  boundary; this is the value the Pipeline UI shows as "Synced N ago").
+  boundary; an event watermark, not deal freshness).
 - ``reconciled_at`` — nightly full-scan pass completed.
 - ``scan_generation`` / ``scan_started_at`` / ``scan_completed_at`` —
   A3/T33 scan-generation persistence (a mid-scan failure never
@@ -273,7 +275,7 @@ async def record_scan_attempt_failure(session: AsyncSession, *, source: str, sco
 
 
 async def acquire_scan(session: AsyncSession, *, source: str, context: dict,
-    lease_seconds: int = 120) -> ScanLease:
+    lease_seconds: int = 120, max_resume_age: timedelta | None = None) -> ScanLease:
     """Acquire or resume under a row lock; caller commits before provider I/O."""
     if not isinstance(lease_seconds, int) or isinstance(lease_seconds, bool) or not 1 <= lease_seconds <= 3600:
         raise ValueError("Scan lease must be between 1 and 3600 seconds")
@@ -286,7 +288,9 @@ async def acquire_scan(session: AsyncSession, *, source: str, context: dict,
     if row.scan_lease_token and row.scan_lease_expires_at and _utc(row.scan_lease_expires_at) > now:
         raise ScanConflict("Scan is already leased")
     resumable = (row.scan_phase in {"scanning", "finalizing", "failed"}
-        and row.scan_context == context and row.scan_started_at is not None)
+        and row.scan_context == context and row.scan_started_at is not None
+        # S23-PL1: a scan whose first pages are older than this restarts at page 1.
+        and (max_resume_age is None or now - _utc(row.scan_started_at) <= max_resume_age))
     if not resumable:
         row.scan_generation = (row.scan_generation or 0) + 1
         row.scan_started_at = now
@@ -321,8 +325,12 @@ async def _owned_scan(session: AsyncSession, lease: ScanLease, phases: set[str])
 
 
 async def checkpoint_scan(session: AsyncSession, lease: ScanLease, *,
-    expected_cursor: str | None, next_cursor: str | None) -> None:
-    """Commit record effects and the cursor in the caller's SAME transaction."""
+    expected_cursor: str | None, next_cursor: str | None, record_errors: int = 0) -> None:
+    """Commit record effects and the cursor in the caller's SAME transaction.
+
+    S23-PL1: ``record_errors`` (records the page refused) is kept in the page's
+    audit so a later run can tell that this generation is not clean.
+    """
     if next_cursor is not None and (not isinstance(next_cursor, str) or not next_cursor
         or len(next_cursor) > 255 or next_cursor == expected_cursor):
         raise ValueError("Invalid or nonadvancing scan cursor")
@@ -340,12 +348,36 @@ async def checkpoint_scan(session: AsyncSession, lease: ScanLease, *,
     await append_audit(session, actor_id=None, action="hubspot.scan_page_committed",
         entity="sync_status", entity_id=lease.source,
         before={"cursor": expected_cursor},
-        after={"scan_generation": lease.generation, "next_cursor": next_cursor},
+        after={"scan_generation": lease.generation, "next_cursor": next_cursor,
+            **({"record_errors": int(record_errors)} if record_errors else {})},
         correlation_id=f"hubspot:scan:{lease.source}:{lease.generation}")
     row.cursor = next_cursor
     row.scan_phase = "finalizing" if next_cursor is None else "scanning"
     row.scan_lease_expires_at = now + timedelta(seconds=lease.lease_seconds)
     row.last_attempt_at = now
+    await session.flush()
+
+
+async def refused_in_open_scan(session: AsyncSession, *, source: str) -> int:
+    """Records refused by the committed pages of the scan a new run would resume.
+
+    S23-PL1: a resumed run starts with empty counts, so refusals on the earlier
+    pages would vanish and the run could end "ok". Callers restart instead.
+    """
+    row = await session.get(SyncStatus, source)
+    if row is None or row.scan_generation is None or row.scan_phase not in {"scanning", "finalizing", "failed"}:
+        return 0
+    payloads = (await session.scalars(select(AuditEvent.after).where(
+        AuditEvent.entity == "sync_status", AuditEvent.entity_id == source,
+        AuditEvent.action == "hubspot.scan_page_committed",
+        AuditEvent.after["scan_generation"].as_integer() == row.scan_generation))).all()
+    return sum(int((after or {}).get("record_errors") or 0) for after in payloads)
+
+
+async def renew_scan_lease(session: AsyncSession, lease: ScanLease) -> None:
+    """Extend an owned lease while the finalizer is still checking deletions (S23-PL1)."""
+    row, now = await _owned_scan(session, lease, {"finalizing"})
+    row.scan_lease_expires_at = now + timedelta(seconds=lease.lease_seconds)
     await session.flush()
 
 
@@ -360,16 +392,27 @@ async def fail_scan(session: AsyncSession, lease: ScanLease, *, error: str) -> N
     await session.flush()
 
 
-async def complete_scan(session: AsyncSession, lease: ScanLease) -> None:
-    """Call after validated finalization effects, before the same transaction commits."""
+async def complete_scan(session: AsyncSession, lease: ScanLease, *,
+                        error: str | None = None) -> None:
+    """Call after validated finalization effects, before the same transaction commits.
+
+    S23-PL1 item 3: the scan protocol completes either way, but only a clean
+    run (``error`` None) records success. A run that refused records stores
+    ``error`` ("partial: …" / "failed: …") and keeps the previous success time.
+    """
     row, now = await _owned_scan(session, lease, {"finalizing"})
     row.scan_phase = "completed"
     row.scan_completed_at = now
     row.reconciled_at = now
-    row.last_success_at = now
     row.last_attempt_at = now
-    row.last_error = None
-    row.lag_seconds = 0
     row.scan_lease_token = None
     row.scan_lease_expires_at = None
+    if error is None:
+        row.last_success_at = now
+        row.last_error = None
+        row.lag_seconds = 0
+    else:
+        row.last_error = error[:1024]
+        if row.last_success_at is not None:
+            row.lag_seconds = max(0, int((now - _utc(row.last_success_at)).total_seconds()))
     await session.flush()

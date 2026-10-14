@@ -199,12 +199,31 @@ class HubSpotClient:
         )
 
 
+def _default_stub_pipelines() -> list[dict[str, Any]]:
+    """HubSpot's default sales pipeline, with labels equal to the stage ids.
+
+    S23-PL1: every deal write needs a stage map, so a stub built without
+    ``pipelines=`` still serves the stages tests use. Pass ``pipelines=[]`` for
+    an empty portal.
+    """
+    stages = [("appointmentscheduled", "0.2"), ("qualifiedtobuy", "0.4"),
+        ("presentationscheduled", "0.6"), ("decisionmakerboughtin", "0.8"),
+        ("contractsent", "0.9"), ("closedwon", "1.0"), ("closedlost", "0.0")]
+    return [{"id": "default", "label": "Sales Pipeline", "displayOrder": 0, "archived": False,
+        "stages": [{"id": sid, "label": sid, "displayOrder": order, "archived": False,
+            "metadata": {"isClosed": "true" if probability in ("1.0", "0.0") else "false",
+                "probability": probability}}
+            for order, (sid, probability) in enumerate(stages)]}]
+
+
 class StubHubSpotClient(HubSpotClient):
     """In-memory HubSpot client for tests and local dev.
 
     Set `deals`, `owners`, `companies` on construction (or mutate them) to
     control what each `get_*` method returns. Missing keys raise
-    `KeyError` so tests fail loudly on unexpected lookups.
+    `KeyError` so tests fail loudly on unexpected lookups. ``pipelines``
+    defaults to HubSpot's default sales pipeline (see
+    :func:`_default_stub_pipelines`).
     """
 
     def __init__(
@@ -220,7 +239,8 @@ class StubHubSpotClient(HubSpotClient):
         self.deals: dict[str, dict[str, Any]] = deals or {}
         self.owners: dict[str, dict[str, Any] | None] = owners or {}
         self.companies: dict[str, dict[str, Any]] = companies or {}
-        self.pipelines: list[dict[str, Any]] = pipelines or []
+        self.pipelines: list[dict[str, Any]] = (
+            _default_stub_pipelines() if pipelines is None else pipelines)
         # Records every ``update_deal`` call so write-back tests can assert
         # on the exact HubSpot payload the service sent.
         self.updates: list[dict[str, Any]] = []

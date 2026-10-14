@@ -1,0 +1,283 @@
+openapi: 3.0.3
+info:
+  title: DealGate Pipeline workspace
+  version: "1.0"
+  description: >-
+    Target shape for the redesigned Pipeline page (S23-PL2) and the sync-health endpoint (S23-PL1).
+    Where a route already exists, extend it and keep its name; where this file names a new route, use that name.
+    Report every difference between this file and what you built in the PL2 report. "Today" always means the calendar
+    date in America/Los_Angeles. Dates are calendar dates (YYYY-MM-DD) with no time zone. Money is USD; there is no
+    currency conversion anywhere, so every amount row carries its currency and totals sum USD deals only.
+paths:
+  /api/pipeline/workspace:
+    get:
+      summary: Everything the Pipeline page needs in one request
+      description: >-
+        One request replaces the six the old page makes. Every number in the response is computed from the same
+        filtered population, so a card, a stage count, a focus count and the list a card opens always agree.
+      parameters:
+        - {name: tab, in: query, schema: {type: string, enum: [deals, clients], default: deals}}
+        - {name: status, in: query, schema: {type: string, enum: [open, all, won, lost, hold], default: open}, description: "open means not Closed Won and not Closed Lost, so it INCLUDES stage Hold. hold means stage Hold only."}
+        - {name: stage, in: query, style: form, explode: true, schema: {type: array, items: {type: integer, minimum: 1, maximum: 9}}, description: "HubSpot stage ids as stored. 9 is Hold. When stage is given the caller sends status=all."}
+        - {name: owner, in: query, style: form, explode: true, schema: {type: array, items: {type: string}}, description: "Deal owner ids. The literal none means no HubSpot owner. The literal former means an archived HubSpot owner."}
+        - {name: account_owner, in: query, style: form, explode: true, schema: {type: array, items: {type: string}}, description: "Client account owner ids. Literal none allowed. Applies to the clients tab."}
+        - {name: bu, in: query, style: form, explode: true, schema: {type: array, items: {type: string, enum: [ST21, IT Avalon, Retro Rabbit, unmapped]}}}
+        - {name: q, in: query, schema: {type: string, maxLength: 120}, description: "Searches deal name, client name, deal owner name and next-action text."}
+        - {name: sow, in: query, schema: {type: string}, description: "One SOW state value, or the literal pending (SOW in review or CEO exception)."}
+        - {name: attention, in: query, schema: {type: string, enum: [overdue, past_close, no_owner, inactive, pending_approval, any]}}
+        - {name: missing, in: query, schema: {type: string, enum: [owner, close, activity, next_action, nda, msa, agreements]}}
+        - {name: group, in: query, schema: {type: string}, description: "Tracking group id."}
+        - {name: watching, in: query, schema: {type: boolean}}
+        - {name: mine, in: query, schema: {type: boolean}, description: "Deals whose HubSpot owner is the caller's linked HubSpot owner. If the caller has no link the response says so in focus.mine_available."}
+        - {name: date_field, in: query, schema: {type: string, enum: [close, created, activity], default: close}}
+        - {name: date_preset, in: query, schema: {type: string, enum: [any, passed, next7, next30, next90, last7, last30, last90, month, quarter, custom], default: any}, description: "Relative to today in America/Los_Angeles. passed means before today. nextN is today through today+N. lastN is today-(N-1) through today. month and quarter are the current calendar month and quarter."}
+        - {name: date_from, in: query, schema: {type: string, format: date}}
+        - {name: date_to, in: query, schema: {type: string, format: date}}
+        - {name: include_unmatched_clients, in: query, schema: {type: boolean, default: false}}
+        - {name: sort, in: query, schema: {type: string, enum: [value, close, activity, name], default: value}, description: "Valid on both tabs. activity sorts oldest first. Nulls sort last."}
+        - {name: layout, in: query, schema: {type: string, enum: [list, board], default: list}, description: "board returns at most 6 cards per stage lane in rows_by_stage, with each lane's full count."}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, enum: [25, 50, 100], default: 25}, description: "Any other value returns 422 with a message naming the allowed sizes."}
+      responses:
+        "200":
+          description: The workspace
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Workspace"}
+        "422": {description: Invalid filter value}
+  /api/pipeline/export:
+    get:
+      summary: CSV of the entire filtered view, every row
+      description: >-
+        Same query parameters as the workspace except page, page_size and layout. Streams text/csv, UTF-8 with BOM.
+        Deals tab columns, in order: Opportunity, Client, Deal owner, Account owner, Business unit, HubSpot region,
+        Sales stage, Amount, Currency, Close date, Created, Last activity, SOW state, NDA on file, MSA on file, Next action,
+        Next action due. Clients tab columns: Client, Account owner, Matching deals, Open deals, Matching value USD,
+        NDA on file, MSA on file, Last matching activity. Any cell that begins with = + - @ tab or carriage return is
+        prefixed with an apostrophe. The same neutralisation applies to every other CSV export in the product.
+      responses:
+        "200": {description: CSV, content: {text/csv: {schema: {type: string}}}}
+  /api/pipeline/views:
+    get: {summary: The caller's saved views, responses: {"200": {description: Views, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/SavedView"}}}}}}}
+    post:
+      summary: Save a view
+      description: Names are unique per user, case-insensitive. A second, third or tenth view saves normally. A duplicate name returns 409 with a message.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SavedViewIn"}}}}
+      responses: {"201": {description: Saved}, "409": {description: Name already used}}
+  /api/pipeline/views/{id}:
+    delete: {summary: Delete a saved view, parameters: [{name: id, in: path, required: true, schema: {type: string}}], responses: {"204": {description: Deleted}}}
+  /api/pipeline/groups:
+    get: {summary: The caller's tracking groups, responses: {"200": {description: Groups, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Group"}}}}}}}
+    post:
+      summary: Create a group, optionally with deals
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string, maxLength: 60}, deal_ids: {type: array, items: {type: string}}}}}}}
+      responses: {"201": {description: Created}, "409": {description: Name already used}}
+  /api/pipeline/groups/{id}/deals:
+    put: {summary: Add deals to a group, parameters: [{name: id, in: path, required: true, schema: {type: string}}], requestBody: {required: true, content: {application/json: {schema: {type: object, required: [deal_ids], properties: {deal_ids: {type: array, items: {type: string}}}}}}}, responses: {"204": {description: Added}}}
+    delete: {summary: Remove deals from a group, parameters: [{name: id, in: path, required: true, schema: {type: string}}], requestBody: {required: true, content: {application/json: {schema: {type: object, required: [deal_ids], properties: {deal_ids: {type: array, items: {type: string}}}}}}}, responses: {"204": {description: Removed}}}
+  /api/pipeline/watching/{deal_id}:
+    put: {summary: Watch a deal, parameters: [{name: deal_id, in: path, required: true, schema: {type: string}}], responses: {"204": {description: Watching}}}
+    delete: {summary: Stop watching, parameters: [{name: deal_id, in: path, required: true, schema: {type: string}}], responses: {"204": {description: Not watching}}}
+  /api/settings/business-units:
+    get:
+      summary: HubSpot region value to business unit mapping
+      description: Admin read. Seeded with the four values below. Unmapped values that appear on deals are listed with their deal counts so an admin can map them.
+      responses: {"200": {description: Mapping, content: {application/json: {schema: {$ref: "#/components/schemas/RegionMap"}}}}}
+    put:
+      summary: Replace the mapping
+      description: Admin only. Changing a row changes the business unit shown on every deal with that HubSpot region, immediately, with no resync.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RegionMapIn"}}}}
+      responses: {"200": {description: Saved}, "403": {description: Not an admin}}
+  /api/users/{id}/hubspot-owner:
+    put:
+      summary: Link a DealGate user to a HubSpot owner
+      description: Admin only. Automatic linking by exact email match happens first; this overrides it. Send hubspot_owner_id null to unlink.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [hubspot_owner_id], properties: {hubspot_owner_id: {type: string, nullable: true}}}}}}
+      responses: {"204": {description: Linked}}
+  /api/config:
+    get:
+      summary: Web-visible configuration
+      description: Adds hubspot_portal_id, read from the configuration the Terraform already provides. The three hard-coded copies in the web app are removed.
+      responses: {"200": {description: Config, content: {application/json: {schema: {type: object, properties: {hubspot_portal_id: {type: string}}}}}}}
+  /api/hubspot/sync-health:
+    get:
+      summary: Freshness of deal data, based on the last SUCCESSFUL deal sync
+      description: >-
+        last_success_at is the finish time of the last nightly deal reconcile that completed without a fatal error.
+        It never comes from the intake heartbeat. state is fresh when last_success_at is within 36 hours and the last
+        attempt succeeded; failed when the last attempt failed or ended partial; stale when the last success is older
+        than 36 hours and no newer attempt exists.
+      responses: {"200": {description: Sync health, content: {application/json: {schema: {$ref: "#/components/schemas/Freshness"}}}}}
+components:
+  schemas:
+    Freshness:
+      type: object
+      required: [state, last_success_at, last_attempt_at, last_status, schedule]
+      properties:
+        state: {type: string, enum: [fresh, stale, failed]}
+        last_success_at: {type: string, format: date-time, nullable: true}
+        last_attempt_at: {type: string, format: date-time, nullable: true}
+        last_status: {type: string, enum: [ok, partial, failed]}
+        schedule: {type: string, example: nightly}
+        deals_seen: {type: integer}
+        deals_written: {type: integer}
+        error_count: {type: integer}
+        errors: {type: array, maxItems: 5, items: {type: object, properties: {hubspot_id: {type: string}, reason: {type: string}}}, description: "HubSpot ids and a short reason. No names."}
+        recovery: {type: object, properties: {available: {type: boolean}, admin_only: {type: boolean}}}
+    Workspace:
+      type: object
+      required: [freshness, metrics, stages, focus, rows, page]
+      properties:
+        freshness: {$ref: "#/components/schemas/Freshness"}
+        metrics: {$ref: "#/components/schemas/Metrics"}
+        stages:
+          type: array
+          description: "All nine stages. Counts ignore the stage and status filters and respect every other filter, so the navigator is an all-status overview of the same population."
+          items: {$ref: "#/components/schemas/StageCount"}
+        focus:
+          type: object
+          properties:
+            all_open: {type: integer}
+            closing_this_month: {type: integer}
+            mine: {type: integer, nullable: true}
+            mine_available: {type: boolean, description: "False when the caller has no linked HubSpot owner."}
+            needs_attention: {type: integer, description: "Open deals with any of: overdue next action, close date passed, no HubSpot owner, 14 or more days since last activity."}
+            watching: {type: integer}
+        unmapped_regions: {type: integer, description: "Deals in the filtered population whose HubSpot region has no business unit."}
+        rows:
+          oneOf:
+            - {type: array, items: {$ref: "#/components/schemas/DealRow"}}
+            - {type: array, items: {$ref: "#/components/schemas/ClientRow"}}
+        rows_by_stage:
+          type: object
+          description: "Only when layout=board. Keys are stage ids; each value holds the lane's total and at most 6 deals."
+          additionalProperties: {type: object, properties: {total: {type: integer}, value_usd: {type: number}, deals: {type: array, items: {$ref: "#/components/schemas/DealRow"}}}}
+        page: {type: object, properties: {number: {type: integer}, size: {type: integer}, total_rows: {type: integer}, total_value_usd: {type: number, nullable: true}}}
+    Metrics:
+      type: object
+      description: >-
+        Computed over the filtered population. Every metric carries drill, the exact query parameters that open the list
+        it counts, so the list length always equals the number on the card.
+      properties:
+        open_deals: {$ref: "#/components/schemas/Metric"}
+        open_value_usd: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Sum of amounts of open deals in USD, unweighted. includes_on_hold says how many of the open deals are on hold."}
+        closing_this_month: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Open deals whose expected close date is in the current calendar month, including dates already passed."}
+        overdue_next_actions: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Count of DEALS (not actions) with an open next action due before today. with_next_action is the denominator."}
+        pending_approvals: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Count of DEALS whose SOW state is in review or CEO exception. The agent confirms this matches what the SOW board calls pending and reports any difference."}
+        agreement_gap_clients: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Count of CLIENTS (of those with deals in the population) missing an NDA file or an MSA file. clients_total is the denominator; when no client anywhere has a file the UI says no agreement files have been uploaded yet."}
+    Metric:
+      type: object
+      required: [value, drill]
+      properties:
+        value: {type: number}
+        accounts: {type: integer}
+        includes_on_hold: {type: integer}
+        with_next_action: {type: integer}
+        clients_total: {type: integer}
+        value_usd: {type: number}
+        drill: {type: object, additionalProperties: true, description: "Query parameters to add to the current filters, e.g. {status: open, date_field: close, date_preset: month}."}
+    StageCount:
+      type: object
+      required: [stage_id, label, deals, known_value_usd]
+      properties:
+        stage_id: {type: integer}
+        label: {type: string}
+        deals: {type: integer}
+        known_value_usd: {type: number}
+        deals_without_amount: {type: integer}
+    Owner:
+      type: object
+      properties:
+        name: {type: string, nullable: true}
+        state: {type: string, enum: [active, archived, none], description: "archived renders as Former HubSpot user. none renders as Not assigned and is a warning only on OPEN deals."}
+    DealRow:
+      type: object
+      required: [id, title, client, stage_id, sow_state]
+      properties:
+        id: {type: string, description: "Stable across syncs. Groups and watches key on it."}
+        title: {type: string}
+        client: {type: object, properties: {id: {type: string}, name: {type: string}}}
+        stage_id: {type: integer}
+        amount: {type: number, nullable: true}
+        currency: {type: string, example: USD}
+        business_unit: {type: string, nullable: true, enum: [ST21, IT Avalon, Retro Rabbit]}
+        region: {type: string, nullable: true, example: US, description: "Display region: US or South Africa."}
+        region_note: {type: string, nullable: true, example: Staffing}
+        hubspot_region: {type: string, description: "The raw HubSpot value, shown in the preview panel."}
+        bu_unmapped: {type: boolean}
+        deal_owner: {$ref: "#/components/schemas/Owner"}
+        account_owner: {$ref: "#/components/schemas/Owner"}
+        close_date: {type: string, format: date, nullable: true}
+        created_date: {type: string, format: date, nullable: true}
+        last_activity_date: {type: string, format: date, nullable: true}
+        sow_state: {type: string, description: "One of the real SOW states the code derives (nine today). The PL2 report lists them and how each is labelled. Scope & GM is not one of them."}
+        sow_count: {type: integer, description: "Number of SOWs linked to the deal. sow_state is that of the most recently updated one."}
+        agreements: {type: object, properties: {nda_on_file: {type: boolean}, msa_on_file: {type: boolean}}}
+        next_action: {type: object, nullable: true, properties: {text: {type: string}, due_on: {type: string, format: date, nullable: true}}}
+        flags: {type: array, items: {type: string, enum: [action_overdue, close_passed, no_owner, inactive_14d]}, description: "inactive_14d only when a last-activity date exists and the deal is open. no_owner only for open deals."}
+        watching: {type: boolean}
+    ClientRow:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        account_owner: {$ref: "#/components/schemas/Owner"}
+        matching_deals: {type: integer}
+        open_deals: {type: integer}
+        matching_value_usd: {type: number, nullable: true}
+        earliest_close_date: {type: string, format: date, nullable: true}
+        last_activity_date: {type: string, format: date, nullable: true}
+        agreements: {type: object, properties: {nda_on_file: {type: boolean}, msa_on_file: {type: boolean}}}
+        flags: {type: array, items: {type: string, enum: [no_owner, action_overdue, close_passed]}, description: "Computed from the client's matching open deals only. A client with no open deals is never flagged."}
+    SavedView:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        tab: {type: string, enum: [deals, clients]}
+        layout: {type: string, enum: [list, board]}
+        filters: {type: object, additionalProperties: true, description: "The workspace query parameters, stored as sent."}
+    SavedViewIn:
+      type: object
+      required: [name, tab, layout, filters]
+      properties:
+        name: {type: string, maxLength: 60}
+        tab: {type: string, enum: [deals, clients]}
+        layout: {type: string, enum: [list, board]}
+        filters: {type: object, additionalProperties: true}
+    Group:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        deal_ids: {type: array, items: {type: string}}
+    RegionMap:
+      type: object
+      properties:
+        rows:
+          type: array
+          items: {$ref: "#/components/schemas/RegionRow"}
+        unmapped_on_deals:
+          type: array
+          items: {type: object, properties: {hubspot_value: {type: string}, deals: {type: integer}}}
+    RegionRow:
+      type: object
+      required: [hubspot_value, business_unit, region]
+      properties:
+        hubspot_value: {type: string}
+        business_unit: {type: string, enum: [ST21, IT Avalon, Retro Rabbit]}
+        region: {type: string, description: "Shown beside the business unit everywhere. US holds two different business units, so a business unit is never shown without its region."}
+        note: {type: string, nullable: true}
+    RegionMapIn:
+      type: object
+      required: [rows]
+      properties:
+        rows: {type: array, items: {$ref: "#/components/schemas/RegionRow"}}
+      example:
+        rows:
+          - {hubspot_value: South Africa, business_unit: Retro Rabbit, region: South Africa}
+          - {hubspot_value: "US - IT Avalon (Staffing)", business_unit: IT Avalon, region: US, note: Staffing}
+          - {hubspot_value: "US - IT Avalon", business_unit: IT Avalon, region: US}
+          - {hubspot_value: US, business_unit: ST21, region: US}

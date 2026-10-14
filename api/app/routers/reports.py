@@ -245,7 +245,9 @@ async def portfolio_basis_endpoint(
                         (
                             "hubspot_reconcile",
                             "hubspot_backfill",
-                            "hubspot_webhook",
+                            # S23-PL1 item 8: the intake heartbeat
+                            # (hubspot_webhook) is no longer part of any
+                            # freshness basis.
                         )
                     )
                 )

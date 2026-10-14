@@ -14,9 +14,11 @@ contracts §3:
 - ``Stale`` — the gap > 2 min.
 - ``Failed`` — the last worker run had a non-null error.
 
-W4 (settings integrations page) is the primary read consumer. W2's
-pipeline list responses embed the same object in their meta.freshness
-key.
+S23-PL1: no route reads this module any more (only its tests do). Deal
+freshness — ``meta.freshness`` on the Pipeline lists and
+``GET /hubspot/sync-health`` — comes from the sync run records in
+:mod:`app.services.hubspot_sync_runs`. Webhook event lag is not deal
+freshness, so do not wire :func:`get_hubspot_freshness` back in.
 """
 
 from __future__ import annotations
@@ -192,7 +194,7 @@ async def get_hubspot_freshness(
     """Compute the ``meta.freshness`` object for a HubSpot-sourced list.
 
     Rolls up the webhook/reconcile watermarks into the contract §3 shape.
-    Called from W2's pipeline endpoints and W4's health page.
+    Not called by any route (S23-PL1); see the module docstring.
     """
 
     now = now or datetime.now(tz=UTC)

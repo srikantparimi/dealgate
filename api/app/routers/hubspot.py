@@ -187,18 +187,29 @@ async def run_hubspot_backfill(
     client: HubSpotClient = Depends(get_hubspot_client),
     user: AuthUser = Depends(require_role("SystemAdmin")),
 ) -> dict[str, object]:
-    """Trigger a synchronous backfill. SystemAdmin only.
+    """Trigger a synchronous deal sync. SystemAdmin only.
 
-    Runs the full pagination loop inline — for the staging portal (a few
-    dozen deals) this returns in under a minute. Prod-scale portals would
-    dispatch to a background worker; that is a later slice.
+    Runs the full pagination loop inline. S23-PL1: the run is recorded like the
+    nightly one (kind ``manual``) and ``status`` is the run's real outcome:
+    ``ok``, ``partial`` or ``failed``. The run keeps going if the caller's
+    connection is cut (CloudFront gives up after 30 s); read the outcome from
+    ``GET /hubspot/sync-health``.
     """
 
-    from app.services.hubspot_backfill import run_backfill
+    from app.services.hubspot_sync_runs import run_deal_sync
 
-    counts = await run_backfill(client)
-    log.info("hubspot_backfill_router_complete", user=user.email)
-    return {"status": "complete", "counts": counts.as_dict()}
+    outcome = await run_deal_sync("manual", client)
+    log.info("hubspot_backfill_router_complete", user=user.email, status=outcome.status,
+        run_id=str(outcome.run_id))
+    return {
+        "status": outcome.status,
+        "run_id": str(outcome.run_id),
+        "deals_seen": outcome.deals_seen,
+        "deals_written": outcome.deals_written,
+        "error_count": outcome.error_count,
+        "errors": outcome.errors,
+        "counts": outcome.counts,
+    }
 
 
 @router.post("/events/{event_id}/replay")
