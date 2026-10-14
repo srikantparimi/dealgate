@@ -34,7 +34,11 @@ from app.models.opportunity import Opportunity
 from app.models.renewal import Renewal
 from app.models.user import User
 from app.services.approval_workflow import active_functions
-from app.services.approvals import ListFilters, list_in_review_packages
+from app.services.approvals import (
+    ListFilters,
+    approval_reader_id,
+    list_in_review_packages,
+)
 from app.services.engagement_forecast import (
     allocation_rows,
     effective_cost_per_hour,
@@ -947,27 +951,94 @@ async def build_command_overview(
             missing_input="Signed renewal or documented renewal coverage",
         )
 
+    approval_packages = []
+    approval_total = None
+    approval_revision = None
     if actor is not None:
         try:
-            packages, _, _ = await list_in_review_packages(
-                session,
-                ListFilters(reader_id=actor.id, actor_id=actor.id, page=1, size=200),
-            )
-        except HTTPException:
-            packages = []
-        for package in packages:
-            assignment = await session.scalar(
-                select(ApprovalAssignment).where(
-                    ApprovalAssignment.package_id == package.id,
-                    ApprovalAssignment.approver_id == actor.id,
-                    ApprovalAssignment.function.in_(active_functions(package)),
+            page = 1
+            while True:
+                packages, approval_total, current_revision = await list_in_review_packages(
+                    session,
+                    ListFilters(
+                        reader_id=approval_reader_id(actor),
+                        actor_id=actor.id,
+                        page=page,
+                        size=200,
+                    ),
+                    expected_population_revision=approval_revision,
                 )
+                approval_revision = current_revision
+                approval_packages.extend(packages)
+                if len(approval_packages) >= approval_total:
+                    break
+                page += 1
+        except HTTPException:
+            approval_packages = []
+            approval_total = None
+            approval_revision = None
+
+        package_ids = [package.id for package in approval_packages]
+        assignments = (
+            list(
+                (
+                    await session.scalars(
+                        select(ApprovalAssignment).where(
+                            ApprovalAssignment.package_id.in_(package_ids),
+                            ApprovalAssignment.approver_id == actor.id,
+                        )
+                    )
+                ).all()
+            )
+            if package_ids
+            else []
+        )
+        assignments_by_package: dict[uuid.UUID, list[ApprovalAssignment]] = {}
+        for assignment in assignments:
+            assignments_by_package.setdefault(assignment.package_id, []).append(assignment)
+        approval_opportunity_ids = {package.opportunity_id for package in approval_packages}
+        approval_opportunities = (
+            {
+                row.id: row
+                for row in (
+                    await session.scalars(
+                        select(Opportunity).where(Opportunity.id.in_(approval_opportunity_ids))
+                    )
+                ).all()
+            }
+            if approval_opportunity_ids
+            else {}
+        )
+        approval_client_ids = {
+            opportunity.client_id
+            for opportunity in approval_opportunities.values()
+            if opportunity.client_id is not None
+        }
+        approval_clients = (
+            {
+                row.id: row
+                for row in (
+                    await session.scalars(select(Client).where(Client.id.in_(approval_client_ids)))
+                ).all()
+            }
+            if approval_client_ids
+            else {}
+        )
+
+        for package in approval_packages:
+            assignment = next(
+                (
+                    row
+                    for row in assignments_by_package.get(package.id, [])
+                    if row.function in active_functions(package)
+                ),
+                None,
             )
             if assignment is None:
                 continue
-            opportunity = await session.get(Opportunity, package.opportunity_id)
+            opportunity = approval_opportunities.get(package.opportunity_id)
             client = (
-                await session.get(Client, opportunity.client_id)
+                approval_clients.get(opportunity.client_id)
                 if opportunity and opportunity.client_id
                 else None
             )
@@ -1038,6 +1109,12 @@ async def build_command_overview(
         },
     ]
 
+    derived_approval_count = sum(
+        1
+        for row in opportunities
+        if row.sow_approval_state
+        in {"in_review_delivery_hr", "in_review_finance_legal", "ceo_exception"}
+    )
     lifecycle_counts = {
         "pipeline": sum(
             1
@@ -1048,12 +1125,9 @@ async def build_command_overview(
             and row.opportunity_id not in linked_opportunity_ids
             and row.hubspot_deal_id not in linked_hubspot_ids
         ),
-        "sow_in_approval": sum(
-            1
-            for row in opportunities
-            if row.sow_approval_state
-            in {"in_review_delivery_hr", "in_review_finance_legal", "ceo_exception"}
-        ),
+        "sow_in_approval": approval_total
+        if approval_total is not None
+        else derived_approval_count,
         "signed": sum(1 for row in opportunities if row.sow_approval_state == "signed"),
         "engagement_created": len(engagements),
         "active": sum(1 for row in engagements if row.start <= anchor <= row.end),
@@ -1078,7 +1152,11 @@ async def build_command_overview(
             "label": "SOW in approval",
             "count": lifecycle_counts["sow_in_approval"],
             "entity": "SOWs",
-            "href": "/sows?state=in_review",
+            "href": (
+                f"/sows?status=in_review&population_revision={approval_revision}"
+                if approval_revision
+                else "/sows?status=in_review"
+            ),
         },
         {
             "key": "signed",
@@ -1263,7 +1341,9 @@ async def build_command_overview(
         "brief": brief,
         "metrics": {
             "open_opportunity_value": _money(gross_pipeline) if open_pipeline else None,
-            "sows_in_progress": sum(
+            "sows_in_progress": approval_total
+            if approval_total is not None
+            else sum(
                 1 for row in opportunities if row.sow_approval_state not in {"none", "signed"}
             ),
             "committed_revenue": _money(signed_backlog),

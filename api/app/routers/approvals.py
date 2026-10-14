@@ -30,6 +30,7 @@ from app.models.opportunity import Opportunity
 from app.services.redact import redact_costs
 from app.services.user_provisioning import ensure_user
 from app.services.approvals import (
+    APPROVAL_READ_ROLES,
     ApprovalError,
     ListFilters,
     decide,
@@ -37,6 +38,7 @@ from app.services.approvals import (
     list_in_review_packages,
     load_package,
     manual_void,
+    approval_reader_id,
     serialize_package_with_floors,
     submit_package,
 )
@@ -52,9 +54,7 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 # Every governance function that reads packages. Kept broad — the story
 # says "any governance role reads".
-_READ_ROLES: frozenset[str] = frozenset(
-    {"Delivery", "HR", "Finance", "Legal", "CEO", "SalesLeader", "SystemAdmin"}
-)
+_READ_ROLES = APPROVAL_READ_ROLES
 
 # Functions → the role that owns each decision (blueprint §6.5).
 _FUNCTION_ROLES: dict[str, frozenset[str]] = {
@@ -287,7 +287,7 @@ async def list_endpoint(
     _user = await _canonical_user(session, _user)
     filters = ListFilters(
         status=status_, opportunity_id=opportunity_id, page=page, size=size,
-        reader_id=None if _has_any(_user, _READ_ROLES) else _user.id,
+        reader_id=approval_reader_id(_user),
         actor_id=_user.id,
     )
     revision = None

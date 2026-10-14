@@ -62,6 +62,13 @@ from app.services.policy import active_policy
 # Terminal statuses cannot receive decisions or new voids.
 _TERMINAL_STATUSES: frozenset[str] = frozenset({"ready_to_sign", "voided", "rejected"})
 
+# Governance roles see the full authorized approval population. Other readers
+# see only packages they own or are assigned to. Keep this policy here so
+# summary surfaces and the approvals destination cannot drift apart.
+APPROVAL_READ_ROLES: frozenset[str] = frozenset(
+    {"Delivery", "HR", "Finance", "Legal", "CEO", "SalesLeader", "SystemAdmin"}
+)
+
 # The two "pending review" states + which functions must land in each.
 _STATE_TO_FUNCTIONS: dict[str, frozenset[str]] = {
     "pending_delivery_hr": frozenset({"delivery", "hr"}),
@@ -74,6 +81,12 @@ _STATE_TO_FUNCTIONS: dict[str, frozenset[str]] = {
 
 class ApprovalError(HTTPException):
     """Base error the router turns into a JSON response."""
+
+
+def approval_reader_id(user) -> uuid.UUID | None:
+    """Return the row-level reader scope used by the in-review population."""
+
+    return None if any(group in APPROVAL_READ_ROLES for group in user.groups) else user.id
 
 
 # ---- helpers -------------------------------------------------------------
@@ -1313,9 +1326,11 @@ async def mark_released(
 
 
 __all__ = [
+    "APPROVAL_READ_ROLES",
     "ApprovalError",
     "ListFilters",
     "active_package_for",
+    "approval_reader_id",
     "decide",
     "latest_package_summary",
     "list_packages",

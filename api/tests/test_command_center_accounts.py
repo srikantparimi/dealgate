@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -10,6 +11,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.models.client import Client
+from app.models.approval import ApprovalPackage
+from app.models.approval_routing import ApprovalAssignment
 from app.models.engagement import (
     Allocation,
     AllocationActual,
@@ -19,8 +22,10 @@ from app.models.engagement import (
     Resource,
 )
 from app.models.hubspot_pipeline import HubspotPipeline, HubspotStage
+from app.models.gm_model import GmModel
 from app.models.opportunity import Opportunity
 from app.models.renewal import Renewal
+from app.models.sow import Sow, SowVersion
 from app.models.user import User
 from app.auth import AuthUser, current_user
 from app.db import get_session
@@ -148,6 +153,48 @@ async def _fixed_fee_engagement(
     )
     await session.flush()
     return engagement
+
+
+async def _approval_package(
+    session,
+    *,
+    opportunity: Opportunity,
+    submitter: User,
+    status: str,
+    submitted_at: datetime,
+) -> ApprovalPackage:
+    sow = Sow(opportunity_id=opportunity.id)
+    session.add(sow)
+    await session.flush()
+    version = SowVersion(
+        sow_id=sow.id,
+        uploaded_by=submitter.id,
+        file_s3_key=f"command-center/{uuid.uuid4()}.pdf",
+        file_hash="a" * 64,
+    )
+    session.add(version)
+    await session.flush()
+    model = GmModel(
+        opportunity_id=opportunity.id,
+        sow_id=sow.id,
+        sow_version_id=version.id,
+        engagement_type="fixed_assignment",
+    )
+    session.add(model)
+    await session.flush()
+    package = ApprovalPackage(
+        opportunity_id=opportunity.id,
+        sow_version_id=version.id,
+        gm_model_id=model.id,
+        package_hash=uuid.uuid4().hex * 2,
+        routing_policy_version=2,
+        status=status,
+        submitted_by=submitter.id,
+        submitted_at=submitted_at,
+    )
+    session.add(package)
+    await session.flush()
+    return package
 
 
 @pytest.mark.asyncio
@@ -419,6 +466,171 @@ async def test_overview_keeps_stage4_in_its_population_while_accounts_do_not(ses
     )
     assert overview["lifecycle"]["pipeline"] == 2
     assert [row.opportunity_id for row in accounts.items] == [included.id]
+
+
+@pytest.mark.asyncio
+async def test_overview_uses_canonical_distinct_sow_approval_population(session):
+    actor = User(
+        email="command-approvals@example.test",
+        name="Command Approver",
+        groups=["SystemAdmin"],
+    )
+    client = Client(name="Approval account", hubspot_company_id="approval-account")
+    session.add_all([actor, client])
+    await session.flush()
+    stages = await _pipeline(session, "approval-overview")
+    deal = await _deal(
+        session,
+        client=client,
+        owner=actor,
+        pipeline="approval-overview",
+        stage=stages[4],
+        name="Two SOW approval packages",
+    )
+    first = await _approval_package(
+        session,
+        opportunity=deal,
+        submitter=actor,
+        status="pending_delivery_hr",
+        submitted_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    second = await _approval_package(
+        session,
+        opportunity=deal,
+        submitter=actor,
+        status="pending_ceo_exception",
+        submitted_at=datetime(2026, 10, 2, tzinfo=UTC),
+    )
+    await _approval_package(
+        session,
+        opportunity=deal,
+        submitter=actor,
+        status="ready_to_sign",
+        submitted_at=datetime(2026, 10, 3, tzinfo=UTC),
+    )
+    session.add_all(
+        [
+            ApprovalAssignment(
+                package_id=first.id,
+                function=function,
+                approver_id=actor.id,
+                due_date=date(2026, 10, 20),
+            )
+            for function in ("delivery", "hr")
+        ]
+        + [
+            ApprovalAssignment(
+                package_id=second.id,
+                function="executive",
+                approver_id=actor.id,
+                due_date=date(2026, 10, 21),
+            )
+        ]
+    )
+    await session.commit()
+
+    overview = await build_command_overview(
+        session,
+        scope=PipelineFilters(include_closed=True),
+        actor=AuthUser(actor.id, actor.email, actor.name, tuple(actor.groups)),
+    )
+
+    lifecycle = next(
+        row for row in overview["lifecycle_items"] if row["key"] == "sow_in_approval"
+    )
+    assert lifecycle["count"] == overview["metrics"]["sows_in_progress"] == 2
+    assert lifecycle["href"].startswith(
+        "/sows?status=in_review&population_revision="
+    )
+    revision = lifecycle["href"].rsplit("=", 1)[-1]
+    assert len(revision) == 64 and int(revision, 16) >= 0
+    approval_actions = [
+        row for row in overview["actions"] if row["category"] == "Your SOW approval"
+    ]
+    assert {row["id"].split(":")[1] for row in approval_actions} == {
+        str(first.id),
+        str(second.id),
+    }
+
+
+@pytest.mark.asyncio
+async def test_overview_keeps_later_page_ceo_approval_visible(session, monkeypatch):
+    actor = User(
+        email="older-ceo@example.test",
+        name="Older CEO Approver",
+        groups=["SystemAdmin"],
+    )
+    client = Client(name="Older approval account", hubspot_company_id="older-approval")
+    session.add_all([actor, client])
+    await session.flush()
+    stages = await _pipeline(session, "older-approval")
+    deal = await _deal(
+        session,
+        client=client,
+        owner=actor,
+        pipeline="older-approval",
+        stage=stages[4],
+        name="Older CEO package",
+    )
+    older = await _approval_package(
+        session,
+        opportunity=deal,
+        submitter=actor,
+        status="pending_ceo_exception",
+        submitted_at=datetime(2026, 9, 1, tzinfo=UTC),
+    )
+    session.add(
+        ApprovalAssignment(
+            package_id=older.id,
+            function="executive",
+            approver_id=actor.id,
+            due_date=date(2026, 10, 20),
+        )
+    )
+    await session.commit()
+
+    newer = [
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            opportunity_id=deal.id,
+            status="pending_delivery_hr",
+            routing_policy_version=2,
+        )
+        for _ in range(200)
+    ]
+    revision = "c" * 64
+    calls = []
+
+    async def paged_packages(_session, filters, *, expected_population_revision=None):
+        calls.append((filters.page, expected_population_revision))
+        rows = newer if filters.page == 1 else [older]
+        return rows, 201, revision
+
+    monkeypatch.setattr(
+        "app.services.command_center_overview.list_in_review_packages",
+        paged_packages,
+    )
+
+    overview = await build_command_overview(
+        session,
+        scope=PipelineFilters(include_closed=True),
+        actor=AuthUser(actor.id, actor.email, actor.name, tuple(actor.groups)),
+    )
+
+    assert calls == [(1, None), (2, revision)]
+    lifecycle = next(
+        row for row in overview["lifecycle_items"] if row["key"] == "sow_in_approval"
+    )
+    assert lifecycle == {
+        "key": "sow_in_approval",
+        "label": "SOW in approval",
+        "count": 201,
+        "entity": "SOWs",
+        "href": f"/sows?status=in_review&population_revision={revision}",
+    }
+    assert any(
+        row["id"] == f"approval:{older.id}:executive" for row in overview["actions"]
+    )
 
 
 @pytest.mark.asyncio

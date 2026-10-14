@@ -30,7 +30,7 @@ const overview: commandApi.CommandOverview = {
   lifecycle: { pipeline: 1, sow_in_approval: 1, signed: 0, engagement_created: 1, active: 1, renewal_due: 0 },
   lifecycle_items: [
     { key: "pipeline", label: "Pipeline", count: 1, entity: "open deals", href: "/pipeline" },
-    { key: "sow_in_approval", label: "SOW in approval", count: 1, entity: "SOWs", href: "/sows?state=in_review" },
+    { key: "sow_in_approval", label: "SOW in approval", count: 2, entity: "SOWs", href: "/sows?status=in_review&population_revision=revision-a" },
     { key: "signed", label: "Signed", count: 0, entity: "signed SOWs", href: "/sows?state=signed" },
     { key: "engagement_created", label: "Engagement created", count: 1, entity: "engagements", href: "/portfolio" },
     { key: "active", label: "Active", count: 1, entity: "engagements", href: "/projects" },
@@ -130,6 +130,45 @@ describe("Command Center redesign", () => {
     expect(screen.getByText("rate missing")).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Acme" })).not.toBeInTheDocument();
+  });
+
+  it("opens the canonical in-review population from the lifecycle count", async () => {
+    renderPage();
+    const link = await screen.findByRole("link", { name: /SOW in approval 2 SOWs/ });
+    expect(link).toHaveAttribute(
+      "href",
+      "/sows?status=in_review&population_revision=revision-a",
+    );
+  });
+
+  it("renders an assigned CEO approval supplied by the authoritative action queue", async () => {
+    vi.mocked(commandApi.getCommandOverview).mockResolvedValueOnce({
+      ...overview,
+      actions: [
+        ...overview.actions,
+        {
+          id: "approval:older-ceo:ceo",
+          rank: 6,
+          category: "Your SOW approval",
+          account: "Older account",
+          title: "Older CEO package",
+          detail: "Ceo approval is waiting for you.",
+          owner: "Avery Owner",
+          due: "2026-10-20",
+          href: "/sows/44444444-4444-4444-4444-444444444444/approvals",
+          action: "Review SOW",
+          impact: null,
+          impact_label: null,
+          period: "Current approval stage",
+          missing_input: null,
+        },
+      ],
+    });
+    renderPage();
+    expect(await screen.findByRole("link", { name: /Older account.*Older CEO package/ })).toHaveAttribute(
+      "href",
+      "/sows/44444444-4444-4444-4444-444444444444/approvals",
+    );
   });
 
   it("keeps the Stage 5 account table available when the overview source fails", async () => {
