@@ -96,7 +96,9 @@ async def start_run(factory: async_sessionmaker[AsyncSession], kind: str,
             HubspotSyncRun.started_at < now - ABANDONED_AFTER))).all()
         for row in abandoned:
             row.status = "failed"
-            row.finished_at = now  # when the death was recorded; it stays a visible failed attempt
+            # It died at an unknown time; rank it at its start, so any run that
+            # ended after that supersedes it.
+            row.finished_at = row.started_at
             row.fatal_error = "run did not finish"
             row.error_count = (row.error_count or 0) + 1
             row.errors = [{"hubspot_id": "", "reason": "run did not finish"},

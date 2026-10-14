@@ -14,7 +14,7 @@ from typing import Any
 
 import structlog
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.audit import append_audit
 from app.integrations.hubspot import HubSpotClient
@@ -822,7 +822,14 @@ async def _stage_map_for_deal(
     stage_map = await load_stage_map(session)
     stage = props.get("dealstage")
     if stage and stage_map.resolve(stage, props.get("pipeline")) is None:
-        stage_map = await sync_stage_mirror(session, client)
+        # Refresh in its own short transaction: it locks every stage row and may
+        # take the audit lock, which must not be held across this event's
+        # HubSpot reads or taken before the property-mapping lock the nightly
+        # page takes first.
+        refresh = async_sessionmaker(bind=session.bind, expire_on_commit=False, class_=AsyncSession)
+        async with refresh() as side:
+            stage_map = await sync_stage_mirror(side, client)
+            await side.commit()
     return stage_map
 
 

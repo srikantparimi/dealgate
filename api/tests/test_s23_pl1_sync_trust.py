@@ -351,6 +351,18 @@ async def test_stage_errors_mark_the_pipeline_mirror_row(factory):
     assert row.last_success_at is None and row.last_error == "1 stage errors"
 
 
+async def test_a_closed_dead_run_does_not_outrank_a_later_recovery(session, factory):
+    # Nightly A died at T; admin run B recovered at T+1h; the next night closes A.
+    session.add(HubspotSyncRun(id=uuid.uuid4(), kind="nightly", status="running", started_at=T0, errors=[]))
+    await session.commit()
+    await _add_run(session, kind="manual", started=T0 + timedelta(hours=1), finished=T0 + timedelta(hours=1, minutes=3))
+    await session.rollback()
+    await start_run(factory, "nightly", now=T0 + timedelta(hours=24))
+    async with factory() as s:
+        health = await compute_sync_health(s, now=T0 + timedelta(hours=24, minutes=1))
+    assert (health["state"], health["last_status"]) == ("fresh", "ok")
+
+
 async def test_before_any_run_the_last_completed_scan_is_used(session):
     session.add(SyncStatus(source="hubspot_backfill", scan_phase="completed",
         scan_completed_at=T0, last_success_at=T0, last_attempt_at=T0))
@@ -456,6 +468,49 @@ async def test_an_unavailable_secondary_company_blocks_the_deal_and_keeps_its_se
     counts = await run_backfill(stub, session_factory=factory)
     assert {"hubspot_id": "d1", "reason": "deal: company c2 unavailable (HTTP 500)"} in counts.record_errors
     assert (await _opps(factory))["d1"].hubspot_secondary_client_ids == stored
+
+
+async def test_long_standing_unconfirmable_absences_cannot_starve_real_deletions(factory):
+    class Provider(StubHubSpotClient):
+        unconfirmable: set = set()
+        async def get_archived_deal(self, deal_id):
+            return None if deal_id in self.unconfirmable else {"id": deal_id, "archived": True}
+
+    stub = Provider(deals={f"d{i}": _deal(f"d{i}", "qualifiedtobuy") for i in range(1, 8)})
+    await run_backfill(stub, session_factory=factory)
+    # Night 2: five deals vanish and HubSpot never confirms them (merged, purged).
+    stub.unconfirmable = {f"d{i}" for i in range(1, 6)}
+    for i in range(1, 6):
+        del stub.deals[f"d{i}"]
+    await run_backfill(stub, session_factory=factory)
+    # Night 3: two more deals are really deleted.
+    del stub.deals["d6"], stub.deals["d7"]
+    counts = await run_backfill(stub, session_factory=factory)
+    assert counts.deals_archived == 2
+    opps = await _opps(factory)
+    assert opps["d6"].archived_at is not None and opps["d7"].archived_at is not None
+    assert all(opps[f"d{i}"].archived_at is None for i in range(1, 6))
+
+
+async def test_a_failed_scan_older_than_twelve_hours_restarts_at_page_one(factory):
+    class FailsOnPageTwo(StubHubSpotClient):
+        fail = True
+        async def list_deals_page(self, *, after=None, limit=100, **kwargs):
+            if after and self.fail:
+                self.fail = False
+                raise _http_error(500)
+            return await super().list_deals_page(after=after, limit=limit, **kwargs)
+
+    stub = FailsOnPageTwo(deals={"a": _deal("a", "qualifiedtobuy"), "b": _deal("b", "qualifiedtobuy")})
+    first = await run_backfill(stub, session_factory=factory, page_size=1)
+    assert first.fatal_error == "deal scan: HTTP 500"
+    async with factory() as s:
+        row = await s.get(SyncStatus, "hubspot_backfill")
+        row.scan_started_at = datetime.now(UTC) - timedelta(hours=13)
+        await s.commit()
+    second = await run_backfill(stub, session_factory=factory, page_size=1)
+    assert second.scan_completed and second.scan_generation == first.scan_generation + 1
+    assert second.deals_seen == 2  # page one was read again, not trusted from 13 h ago
 
 
 async def test_bad_stage_is_listed_and_the_rest_of_the_pipeline_maps(factory):
@@ -564,6 +619,23 @@ async def test_webhook_maps_a_new_stage_by_refreshing_the_mirror_once(factory):
         await handle_event(s, _event(3, "103"), stub)
     row = (await _opps(factory))["103"]
     assert (row.stage_label, row.is_closed_won, row.is_closed_lost) == ("Hold", False, False)
+
+
+async def test_webhook_stage_refresh_commits_in_its_own_transaction(factory, monkeypatch):
+    from app.services import hubspot_intake
+
+    async def fail_after_refresh(*_args, **_kwargs):
+        raise RuntimeError("deal write failed")
+
+    monkeypatch.setattr(hubspot_intake, "_upsert_opportunity", fail_after_refresh)
+    stub = StubHubSpotClient(pipelines=[STAGING_PIPELINE], deals={"105": _deal("105", HOLD, pipeline="710688094")})
+    async with factory() as s:
+        with pytest.raises(RuntimeError):
+            await handle_event(s, _event(5, "105"), stub)
+        await s.rollback()
+    async with factory() as s:
+        assert (await load_stage_map(s)).resolve(HOLD, "710688094").label == "Hold"
+    assert await _opps(factory) == {}
 
 
 async def test_webhook_keeps_secondary_companies(factory):

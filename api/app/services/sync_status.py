@@ -275,7 +275,7 @@ async def record_scan_attempt_failure(session: AsyncSession, *, source: str, sco
 
 
 async def acquire_scan(session: AsyncSession, *, source: str, context: dict,
-    lease_seconds: int = 120) -> ScanLease:
+    lease_seconds: int = 120, max_resume_age: timedelta | None = None) -> ScanLease:
     """Acquire or resume under a row lock; caller commits before provider I/O."""
     if not isinstance(lease_seconds, int) or isinstance(lease_seconds, bool) or not 1 <= lease_seconds <= 3600:
         raise ValueError("Scan lease must be between 1 and 3600 seconds")
@@ -288,7 +288,9 @@ async def acquire_scan(session: AsyncSession, *, source: str, context: dict,
     if row.scan_lease_token and row.scan_lease_expires_at and _utc(row.scan_lease_expires_at) > now:
         raise ScanConflict("Scan is already leased")
     resumable = (row.scan_phase in {"scanning", "finalizing", "failed"}
-        and row.scan_context == context and row.scan_started_at is not None)
+        and row.scan_context == context and row.scan_started_at is not None
+        # S23-PL1: a scan whose first pages are older than this restarts at page 1.
+        and (max_resume_age is None or now - _utc(row.scan_started_at) <= max_resume_age))
     if not resumable:
         row.scan_generation = (row.scan_generation or 0) + 1
         row.scan_started_at = now

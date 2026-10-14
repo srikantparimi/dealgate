@@ -41,7 +41,7 @@ import uuid
 import copy
 import httpx
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import or_, select
@@ -142,8 +142,13 @@ def _merge_counts(target: BackfillCounts, source: BackfillCounts) -> None:
 
 
 _SYSTEMIC_HTTP = {401, 403}
-# Unconfirmed deletions tolerated before the archive check stops asking HubSpot.
+# Unconfirmed deletions (among deals present at the previous scan) tolerated
+# before the archive check stops asking HubSpot, and a hard cap per run.
 _MAX_UNCONFIRMED_ABSENCES = 5
+_MAX_ARCHIVE_CHECKS = 25
+# A failed scan is resumed only while its first pages are recent; older ones
+# restart from page 1 so a "fresh" run never rests on days-old pages.
+SCAN_RESUME_MAX_AGE = timedelta(hours=12)
 
 
 def short_reason(error: BaseException) -> str:
@@ -305,20 +310,30 @@ async def _finalize_scan(factory, hub, lease, correlation_id, business_unit,
             Opportunity.source == "hubspot", Opportunity.archived_at.is_(None),
             or_(Opportunity.hubspot_seen_generation.is_(None),
                 Opportunity.hubspot_seen_generation < lease.generation)))).all()
-        snapshots = {row.id: (row.hubspot_deal_id, row.hubspot_last_modified_at,
-            row.hubspot_last_seen_at, row.updated_at) for row in candidates
+        eligible = [row for row in candidates
             if _utc(row.created_at) <= started and
-            (row.hubspot_last_seen_at is None or _utc(row.hubspot_last_seen_at) <= started)}
+            (row.hubspot_last_seen_at is None or _utc(row.hubspot_last_seen_at) <= started)]
+        # S23-PL1: deals that vanished since the previous scan are checked first,
+        # most recently seen first; long-standing absences HubSpot never confirms
+        # (merged, purged) come after them, so they cannot starve real deletions.
+        fresh_ids = {row.id for row in eligible
+            if (row.hubspot_seen_generation or 0) == lease.generation - 1}
+        eligible.sort(key=lambda row: (row.id not in fresh_ids,
+            -(_utc(row.hubspot_last_seen_at).timestamp() if row.hubspot_last_seen_at else 0), str(row.id)))
+        snapshots = {row.id: (row.hubspot_deal_id, row.hubspot_last_modified_at,
+            row.hubspot_last_seen_at, row.updated_at) for row in eligible}
     counts = counts if counts is not None else BackfillCounts()
     unconfirmed = set()
+    fresh_unconfirmed = 0
     for position, (identity, snapshot) in enumerate(snapshots.items()):
         # S23-PL1 item 4: an absence HubSpot will not confirm is listed and left
-        # alone (never archived); the rest of the scan still completes. After
-        # a handful of unconfirmed absences the live list itself is suspect (an
-        # empty page during an outage), so stop asking HubSpot and archive
-        # nothing that was not checked.
-        if len(unconfirmed) >= _MAX_UNCONFIRMED_ABSENCES:
-            remaining = [key for key in list(snapshots)[position:]]
+        # alone (never archived); the rest of the scan still completes. When
+        # several deals that were present last scan all vanish unconfirmed, the
+        # live list itself is suspect (an empty page during an outage): stop
+        # asking HubSpot and archive nothing that was not checked. A hard cap
+        # keeps long-standing absences from outrunning the scan lease.
+        if fresh_unconfirmed >= _MAX_UNCONFIRMED_ABSENCES or position >= _MAX_ARCHIVE_CHECKS:
+            remaining = list(snapshots)[position:]
             unconfirmed.update(remaining)
             counts.record_error("", f"deal: {len(remaining)} more deals missing from HubSpot were not checked")
             break
@@ -329,10 +344,12 @@ async def _finalize_scan(factory, hub, lease, correlation_id, business_unit,
                 raise
             counts.record_error(snapshot[0], f"deal: archive check failed ({short_reason(error)})")
             unconfirmed.add(identity)
+            fresh_unconfirmed += identity in fresh_ids
             continue
         if not isinstance(evidence, dict) or str(evidence.get("id")) != snapshot[0] or evidence.get("archived") is not True:
             counts.record_error(snapshot[0], "deal: missing from HubSpot but deletion not confirmed")
             unconfirmed.add(identity)
+            fresh_unconfirmed += identity in fresh_ids
     snapshots = {identity: snapshot for identity, snapshot in snapshots.items()
         if identity not in unconfirmed}
     async with factory() as session:
@@ -526,7 +543,8 @@ async def run_backfill(
             "mapping": asdict(business_unit) if business_unit else None,
             "coverage_mode": "all_active_deals_with_explicit_archive_revalidation"}
         async with factory() as session:
-            lease = await acquire_scan(session, source="hubspot_backfill", context=context)
+            lease = await acquire_scan(session, source="hubspot_backfill", context=context,
+                max_resume_age=SCAN_RESUME_MAX_AGE)
             counts.scan_generation = lease.generation
             await session.commit()
         after = lease.cursor
