@@ -24,6 +24,12 @@ from app.services.hubspot_intake import handle_event
 from app.services.hubspot_pipeline import PipelineFilters, list_opportunities
 
 
+# S23-PL1: deal writes need the deal's stage in the stage map.
+_PIPELINES = [{"id": "710688094", "label": "SmarTek21 Global Pipeline", "displayOrder": 2,
+    "archived": False, "stages": [{"id": "1038193692", "label": "1-Initial Contact/Prospecting",
+        "displayOrder": 0, "archived": False, "metadata": {"isClosed": "false", "probability": "0.1"}}]}]
+
+
 def _sample_deal(deal_id: str, dealname: str, stage: str = "1038193692") -> dict:
     return {
         "id": deal_id,
@@ -39,6 +45,7 @@ def _sample_deal(deal_id: str, dealname: str, stage: str = "1038193692") -> dict
 @pytest.mark.asyncio
 async def test_backfill_writes_dealname_to_name(session):
     stub = StubHubSpotClient(
+        pipelines=_PIPELINES,
         deals={
             "500": _sample_deal("500", "BSC Staffing - UX/UI Designer"),
             "501": _sample_deal("501", "Momentum - Extension - GIAP (1 Month)"),
@@ -60,6 +67,7 @@ async def test_backfill_writes_dealname_to_name(session):
 @pytest.mark.asyncio
 async def test_intake_writes_dealname_on_create(session):
     stub = StubHubSpotClient(
+        pipelines=_PIPELINES,
         deals={"800": _sample_deal("800", "Blue Shield of California - Pilot")},
         owners={"77": {"id": "77", "email": "rep@smartek21.com", "firstName": "Sam", "lastName": "Rep"}},
     )
@@ -79,6 +87,7 @@ async def test_intake_writes_dealname_on_create(session):
 @pytest.mark.asyncio
 async def test_intake_updates_dealname_on_change(session):
     stub = StubHubSpotClient(
+        pipelines=_PIPELINES,
         deals={"801": _sample_deal("801", "Old dealname")},
         owners={"77": {"id": "77", "email": "rep@smartek21.com", "firstName": "Sam", "lastName": "Rep"}},
     )
@@ -106,6 +115,7 @@ async def test_intake_updates_dealname_on_change(session):
 @pytest.mark.asyncio
 async def test_search_matches_dealname(session):
     stub = StubHubSpotClient(
+        pipelines=_PIPELINES,
         deals={
             "900": _sample_deal("900", "BSC Staffing - UX/UI Designer"),
             "901": _sample_deal("901", "Momentum - GIAP Extension"),
@@ -129,6 +139,7 @@ async def test_search_matches_dealname(session):
 @pytest.mark.asyncio
 async def test_list_returns_dealname_not_stage_fallback(session):
     stub = StubHubSpotClient(
+        pipelines=_PIPELINES,
         deals={"902": _sample_deal("902", "Venetian - Direct Placement/System Engineer")},
         owners={"77": {"id": "77", "email": "rep@smartek21.com", "firstName": "Sam", "lastName": "Rep"}},
     )

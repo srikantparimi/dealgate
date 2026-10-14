@@ -29,12 +29,28 @@ from app.services.clients import (
 )
 from app.services.sync_status import touch_source
 from app.services.hubspot_properties import HubspotPropertyMapping
+from app.services.hubspot_stage_mirror import StageMap, load_stage_map, sync_stage_mirror
 
 log = structlog.get_logger("hubspot_intake")
 
 
 INTAKE_SUBJECT = "Confirm engagement type and next client check-in"
 INTAKE_DUE_BUSINESS_DAYS = 1
+
+
+class StageMapRequiredError(RuntimeError):
+    """S23-PL1 item 5: every deal write must carry a stage map."""
+
+
+class UnmappedStageError(ValueError):
+    """S23-PL1 item 5: the deal's stage is not in the stage map, so the deal is
+    not written. Writing it would guess its closed flags (and could reopen a
+    closed deal). The message carries HubSpot ids only."""
+
+    def __init__(self, deal_id: str, stage_id: str | None) -> None:
+        self.deal_id = deal_id
+        self.stage_id = stage_id
+        super().__init__(f"stage {stage_id or 'missing'} not mapped")
 
 
 @dataclass(frozen=True)
@@ -420,7 +436,7 @@ async def _upsert_opportunity(
     owner: User,
     client_row: Client,
     correlation_id: str,
-    stage_map: Any | None = None,
+    stage_map: StageMap | None = None,
     secondary_client_ids: list[str] | None = None,
     business_unit: BusinessUnitSelection | None = None,
 ) -> tuple[Opportunity, bool]:
@@ -429,8 +445,16 @@ async def _upsert_opportunity(
     Returns `(opportunity, created)` where `created` is True on insert.
     Emits `opportunity.created` or `opportunity.updated` audit inside the
     caller's transaction.
+
+    S23-PL1 item 5: the stage map is mandatory and a deal whose stage it cannot
+    resolve raises :class:`UnmappedStageError` before anything is written, so
+    no path can store a raw stage id with guessed closed flags. Secondary
+    companies are only replaced when the caller resolved them (a list); ``None``
+    keeps what is stored.
     """
 
+    if stage_map is None:
+        raise StageMapRequiredError("deal writes require a stage map")
     props = _deal_props(deal_payload)
     if not await _selection_current(session, business_unit):
         business_unit = None
@@ -444,7 +468,9 @@ async def _upsert_opportunity(
     dealname = raw_dealname.strip() if isinstance(raw_dealname, str) and raw_dealname.strip() else None
     seen_at = datetime.now(UTC)
     # S19 slice 1 B2 — resolve label + closed flags + order from the mirror.
-    stage_info = stage_map.resolve(stage, props.get("pipeline")) if stage_map is not None else None
+    stage_info = stage_map.resolve(stage, props.get("pipeline")) if stage else None
+    if "dealstage" in props and stage_info is None:
+        raise UnmappedStageError(deal_id, stage)
     stage_label = stage_info.label if stage_info else stage
     is_closed_won = bool(stage_info.is_closed_won) if stage_info else False
     is_closed_lost = bool(stage_info.is_closed_lost) if stage_info else False
@@ -606,7 +632,7 @@ async def _upsert_opportunity(
         opp.primary_client_id = client_row.id
         changed = True
     existing_secondary = list(opp.hubspot_secondary_client_ids or [])
-    if secondary_ids != existing_secondary:
+    if secondary_client_ids is not None and secondary_ids != existing_secondary:
         opp.hubspot_secondary_client_ids = secondary_ids or None
         changed = True
     # A HubSpot event on an archived opportunity un-archives it — the deal
@@ -788,6 +814,18 @@ async def store_events(
     return stored
 
 
+async def _stage_map_for_deal(
+    session: AsyncSession, client: HubSpotClient, props: dict[str, Any]
+) -> StageMap:
+    """Stored mirror first; refresh from HubSpot once if the deal's stage is new."""
+
+    stage_map = await load_stage_map(session)
+    stage = props.get("dealstage")
+    if stage and stage_map.resolve(stage, props.get("pipeline")) is None:
+        stage_map = await sync_stage_mirror(session, client)
+    return stage_map
+
+
 async def handle_event(
     session: AsyncSession,
     event: dict[str, Any],
@@ -880,13 +918,17 @@ async def handle_event(
     props = _deal_props(deal_payload)
     hubspot_owner_id = props.get("hubspot_owner_id")
 
+    # S23-PL1 item 6: the webhook writer goes through the same stage-mapping
+    # writer as the nightly sync. An unmapped stage raises before any write,
+    # so a webhook can never reopen a closed deal.
+    stage_map = await _stage_map_for_deal(session, client, props)
     owner = await _resolve_owner(session, client, hubspot_owner_id)
     client_row = await _resolve_client(
         session, client, deal_id, deal_payload, correlation_id
     )
     opportunity, created = await _upsert_opportunity(
         session, deal_id, deal_payload, owner, client_row, correlation_id,
-        business_unit=business_unit,
+        stage_map=stage_map, business_unit=business_unit,
     )
     # T28 · property-clear / owner-clear / association-change / merge /
     # delete-on-remote are all handled by ``_upsert_opportunity`` (it

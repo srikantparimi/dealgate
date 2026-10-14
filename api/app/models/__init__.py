@@ -40,6 +40,7 @@ from app.models.forecast import ForecastPeriod
 from app.models.function_owner import FunctionOwner
 from app.models.gm_model import CostLine, GmModel, ResourceLine
 from app.models.hubspot_pipeline import HubspotPipeline, HubspotStage
+from app.models.hubspot_sync_run import HubspotSyncRun
 from app.models.hubspot_writeback import HubspotWritebackJob
 from app.models.integration import IntegrationEvent
 from app.models.deal_comment import DealComment
@@ -117,6 +118,7 @@ __all__ = [
     "AutomationRule", "AutomationRuleVersion", "AutomationJob",
     "HubspotPipeline",
     "HubspotStage",
+    "HubspotSyncRun",
     "HubspotWritebackJob",
     "IntegrationEvent",
     "LegacyImportBatch",

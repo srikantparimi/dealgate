@@ -4530,6 +4530,26 @@ export function getSyncStatus(): Promise<{ items: SyncStatusRow[] }> {
   return request<{ items: SyncStatusRow[] }>(`/sync-status`);
 }
 
+// S23-PL1 · GET /hubspot/sync-health — freshness from the last successful deal
+// sync run (docs/reference/openapi-pipeline.yaml `Freshness`). Never the intake
+// heartbeat.
+export interface SyncHealth {
+  state: "fresh" | "stale" | "failed";
+  last_success_at: ISODateTime | null;
+  last_attempt_at: ISODateTime | null;
+  last_status: "ok" | "partial" | "failed";
+  schedule: string;
+  deals_seen?: number;
+  deals_written?: number;
+  error_count?: number;
+  errors?: { hubspot_id: string; reason: string }[];
+  recovery?: { available: boolean; admin_only: boolean };
+}
+
+export function getSyncHealth(): Promise<SyncHealth> {
+  return request<SyncHealth>(`/hubspot/sync-health`);
+}
+
 // -----------------------------------------------------------------------------
 // S20 · reports (owner: W4)
 //

@@ -27,6 +27,12 @@ def isolated_scope(monkeypatch):
 
 
 @pytest_asyncio.fixture
+async def engine(savepoint_engine):
+    # S23-PL1: per-deal SAVEPOINTs must roll back with their page, as on PostgreSQL.
+    return savepoint_engine
+
+
+@pytest_asyncio.fixture
 async def factory(engine):
     return async_sessionmaker(engine, expire_on_commit=False)
 
@@ -94,7 +100,12 @@ async def test_archived_owner_fetch_failure_is_not_a_successful_complete_scan(fa
             return await super()._get(path, params)
 
     result = await run_backfill(OwnerFailure(deals={"a": deal()}), session_factory=factory)
-    assert result.errors and not result.scan_completed
+    # S23-PL1 item 4: the owner list is display data, so the deals still sync,
+    # but the failure is listed and the run is partial, never a success.
+    assert result.fatal_error is None and result.scan_completed
+    assert result.record_errors == [{"hubspot_id": "owners", "reason": "owner mirror: owner list fetch failed"}]
+    state, _ = await persisted(factory)
+    assert state.last_success_at is None and state.last_error == "partial: 1 record errors"
     async with factory() as session:
         state = await session.get(SyncStatus, "hubspot_owner_mirror")
         assert state is None or (state.last_success_at is None and state.last_error)
@@ -135,8 +146,11 @@ async def test_archive_requires_exact_identity_and_explicit_boolean_evidence(fac
     result = await run_backfill(hub, session_factory=factory)
     state, rows = await persisted(factory)
     assert (rows[0].archived_at is not None) is allowed
-    assert result.scan_completed is allowed and result.deals_archived == int(allowed)
-    assert (state.scan_phase == "completed") is allowed
+    assert result.deals_archived == int(allowed)
+    # S23-PL1 item 4: without exact evidence the deal is listed and left alone,
+    # and the scan still completes instead of failing every night.
+    assert result.scan_completed and state.scan_phase == "completed"
+    assert (result.record_errors == []) is allowed
 
 
 @pytest.mark.asyncio

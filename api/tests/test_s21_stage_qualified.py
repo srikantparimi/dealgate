@@ -62,31 +62,36 @@ async def test_outcome_uses_probability_not_label_or_order(session, probability,
     ("0.5", "true"), ("1", "false"), ("0", "false"), ("0.5", "invalid"),
     ("0.999", "false"),
 ])
-async def test_invalid_classification_fails_before_any_write(session, probability, closed):
-    with pytest.raises(ValueError, match="stage_metadata"):
-        await sync_stage_mirror(session, StubHubSpotClient(pipelines=[pipeline(stages=[
-            stage(probability=probability, closed=closed)])]))
+async def test_invalid_classification_is_listed_and_never_written(session, probability, closed):
+    # S23-PL1 item 4: one bad stage no longer aborts the refresh; it is listed
+    # with its id, stays out of the map, and is never written.
+    result = await sync_stage_mirror(session, StubHubSpotClient(pipelines=[pipeline(stages=[
+        stage(probability=probability, closed=closed)])]))
     await session.flush()
-    assert list((await session.scalars(select(HubspotPipeline))).all()) == []
+    assert [e["hubspot_id"] for e in result.errors] == ["shared"]
+    assert result.errors[0]["reason"].startswith("stage: stage_metadata")
+    assert result.resolve("shared") is None
     assert list((await session.scalars(select(HubspotStage))).all()) == []
 
 
-async def test_duplicate_id_in_different_pipelines_fails_closed_before_writes(session):
-    with pytest.raises(ValueError, match="stage_identity"):
-        await sync_stage_mirror(session, StubHubSpotClient(pipelines=[pipeline("a"), pipeline("b")]))
+async def test_duplicate_id_in_different_pipelines_fails_closed(session):
+    result = await sync_stage_mirror(session, StubHubSpotClient(pipelines=[pipeline("a"), pipeline("b")]))
     await session.flush()
-    assert list((await session.scalars(select(HubspotPipeline))).all()) == []
+    assert result.errors == ({"hubspot_id": "shared", "reason": "stage: stage_identity_duplicate"},)
+    assert result.resolve("shared") is None
+    assert list((await session.scalars(select(HubspotStage))).all()) == []
 
 
 async def test_existing_binding_is_not_reassigned_even_when_original_pipeline_omitted(session):
     await sync_stage_mirror(session, StubHubSpotClient(pipelines=[pipeline("a")]))
     await session.commit()
-    with pytest.raises(ValueError, match="stage_identity"):
-        await sync_stage_mirror(session, StubHubSpotClient(pipelines=[pipeline("b")]))
+    result = await sync_stage_mirror(session, StubHubSpotClient(pipelines=[pipeline("b")]))
     await session.flush()
     row = await session.get(HubspotStage, "shared")
     assert row.pipeline_id == "a"
-    assert await session.get(HubspotPipeline, "b") is None
+    assert result.errors == ({"hubspot_id": "shared", "reason": "stage: stage_identity_pipeline_conflict"},)
+    # The moved stage is out of the map, so its deals are refused, not remapped.
+    assert result.resolve("shared") is None
 
 
 @pytest.mark.parametrize("payload", [None, {}, {"results": None}, {"results": {}},

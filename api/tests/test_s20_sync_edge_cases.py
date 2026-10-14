@@ -342,6 +342,9 @@ async def test_association_change_no_double_count(session):
     from app.models.opportunity import Opportunity
 
     stub = StubHubSpotClient(
+        pipelines=[{"id": "710688094", "label": "Pipeline", "displayOrder": 0, "archived": False,
+            "stages": [{"id": "STAGE1", "label": "3-Discovery", "displayOrder": 2, "archived": False,
+                "metadata": {"isClosed": "false", "probability": "0.3"}}]}],
         deals={
             "2001": {
                 "id": "2001",

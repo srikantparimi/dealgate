@@ -399,38 +399,38 @@ def _filters_echo(filters: PipelineFilters) -> dict[str, Any]:
     }
 
 
+_FRESHNESS_STATE = {"fresh": "verified working", "stale": "Stale", "failed": "Failed"}
+
+
 async def _load_freshness(session: AsyncSession, *, now: datetime | None = None) -> FreshnessOut:
     """Compose the freshness watermark object per contracts §3.
 
-    Reads ``sync_status`` (W1 owns the writer) and folds the three
-    HubSpot watermarks into a single record for the SPA. When W1 has
-    not yet landed rows (fresh worktree), returns ``state='Unknown'``.
+    S23-PL1 item 8: ``state`` and ``reconciled_at`` come from the last deal
+    sync run (:func:`app.services.hubspot_sync_runs.compute_sync_health`), the
+    same source as ``GET /hubspot/sync-health``. The intake heartbeat
+    (``hubspot_webhook`` / ``hubspot_consumer`` rows) is no longer read.
+    ``received_at`` and ``processed_at`` remain the per-event webhook
+    watermarks, reported for information only.
     """
 
     from app.models.sync_status import SyncStatus
+    from app.services.hubspot_sync_runs import compute_sync_health
 
+    health = await compute_sync_health(session, now=now)
     rows = (
-        await session.execute(_select(SyncStatus).where(SyncStatus.source.like("hubspot%")))
+        await session.execute(_select(SyncStatus).where(SyncStatus.source.in_(
+            ("hubspot_webhook_received", "hubspot_webhook_processed"))))
     ).scalars().all()
     by_source = {r.source: r for r in rows}
-    received = by_source.get("hubspot_webhook_received") or by_source.get("hubspot_webhook")
-    processed = by_source.get("hubspot_webhook_processed") or by_source.get("hubspot_webhook")
-    reconciled = by_source.get("hubspot_reconcile") or by_source.get("hubspot_backfill")
-    state = "Unknown"
-    if processed and processed.last_success_at:
-        lag = processed.lag_seconds or 0
-        if processed.last_error:
-            state = "Failed"
-        elif lag > 120:
-            state = "Stale"
-        else:
-            state = "verified working"
+    received = by_source.get("hubspot_webhook_received")
+    processed = by_source.get("hubspot_webhook_processed")
+    last_success = health["last_success_at"]
     return FreshnessOut(
         source="hubspot_mirror",
         received_at=received.last_success_at if received else None,
         processed_at=processed.last_success_at if processed else None,
-        reconciled_at=reconciled.last_success_at if reconciled else None,
-        state=state,
+        reconciled_at=datetime.fromisoformat(last_success.replace("Z", "+00:00")) if last_success else None,
+        state=_FRESHNESS_STATE[health["state"]],
     )
 
 
@@ -926,9 +926,10 @@ async def list_pipeline_facets_endpoint(
     )
 
 
-# S19 slice 1 H1/H2: sync_status feed for the amber banner. Every worker
-# writes a row here; the UI reads it to show "Synced N min ago" + the amber
-# state when lag > 30 min OR last_error is set.
+# S19 slice 1 H1/H2: raw sync_status feed (one row per source). S23-PL1: the
+# Pipeline "Last synced" label now comes from GET /hubspot/sync-health; the old
+# page still reads lag_seconds / last_error from these rows for its amber chip
+# until S23-PL2 replaces it. Settings > Integrations reads them for liveness.
 sync_router = APIRouter(prefix="/sync-status", tags=["sync-status"])
 
 
@@ -942,6 +943,47 @@ class SyncStatusRowOut(BaseModel):
 
 class SyncStatusListOut(BaseModel):
     items: list[SyncStatusRowOut]
+
+
+# S23-PL1 item 2: GET /hubspot/sync-health — the ``Freshness`` schema in
+# docs/reference/openapi-pipeline.yaml. Freshness comes from the last deal
+# sync run, never from the intake heartbeat. Readable by every Pipeline role.
+sync_health_router = APIRouter(prefix="/hubspot", tags=["hubspot"])
+
+
+class SyncHealthErrorOut(BaseModel):
+    hubspot_id: str
+    reason: str
+
+
+class SyncHealthRecoveryOut(BaseModel):
+    available: bool
+    admin_only: bool
+
+
+class SyncHealthOut(BaseModel):
+    state: str = Field(pattern="^(fresh|stale|failed)$")
+    last_success_at: str | None
+    last_attempt_at: str | None
+    last_status: str = Field(pattern="^(ok|partial|failed)$")
+    schedule: str
+    deals_seen: int | None = None
+    deals_written: int | None = None
+    error_count: int | None = None
+    errors: list[SyncHealthErrorOut] = Field(default_factory=list, max_length=5)
+    recovery: SyncHealthRecoveryOut | None = None
+
+
+@sync_health_router.get("/sync-health", response_model=SyncHealthOut,
+                        response_model_exclude_unset=True)
+async def get_sync_health(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> SyncHealthOut:
+    _require_reader(user)
+    from app.services.hubspot_sync_runs import compute_sync_health
+
+    return SyncHealthOut(**await compute_sync_health(session))
 
 
 @sync_router.get("", response_model=SyncStatusListOut)

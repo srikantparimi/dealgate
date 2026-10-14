@@ -37,6 +37,7 @@ import {
   downloadPipelineCsv,
   getPipelineFacets,
   getPipelineSummary,
+  getSyncHealth,
   getSyncStatus,
   getUserPreference,
   listPipelineClients,
@@ -52,6 +53,7 @@ import {
   type PipelineStageCount,
   type PipelineSummary,
   type SavedView,
+  type SyncHealth,
   type SyncStatusRow,
   type TrackingGroup,
 } from "../../api/client";
@@ -186,15 +188,16 @@ function formatAgo(iso: string | null): string {
   return `${days}d ago`;
 }
 
-function summariseSync(rows: SyncStatusRow[]): {
+// S23-PL1 item 8: the label reads `last_success_at` from GET /hubspot/sync-health
+// (the last successful deal sync), never the intake heartbeat row. Lag and error
+// still come from the sync-status rows until S23-PL2 replaces this page.
+function summariseSync(rows: SyncStatusRow[], health: SyncHealth | null): {
   label: string;
   lag: number | null;
   error: string | null;
 } {
-  if (rows.length === 0) return { label: "no recorded sync", lag: null, error: null };
-  const backfill = rows.find((r) => r.source === "hubspot_backfill");
-  const webhook = rows.find((r) => r.source === "hubspot_webhook");
-  const primary = webhook?.last_success_at ? webhook : backfill;
+  const label = health ? formatAgo(health.last_success_at) : "no recorded sync";
+  if (rows.length === 0) return { label, lag: null, error: null };
   const lag =
     rows
       .map((r) => r.lag_seconds ?? Number.MAX_SAFE_INTEGER)
@@ -202,7 +205,7 @@ function summariseSync(rows: SyncStatusRow[]): {
     Number.MAX_SAFE_INTEGER;
   const error = rows.map((r) => r.last_error).find((e) => e) ?? null;
   return {
-    label: formatAgo(primary?.last_success_at ?? null),
+    label,
     lag: lag === Number.MAX_SAFE_INTEGER ? null : lag,
     error,
   };
@@ -327,6 +330,7 @@ export function PipelinePage() {
   const [oppsPage, setOppsPage] = useState<PipelineListPage<PipelineOpportunityRow> | null>(null);
   const [summary, setSummary] = useState<PipelineSummary | null>(null);
   const [sync, setSync] = useState<SyncStatusRow[]>([]);
+  const [syncHealth, setSyncHealth] = useState<SyncHealth | null>(null);
   const [facets, setFacets] = useState<PipelineFacets>({ owners: [], business_units: [] });
   const [groups, setGroups] = useState<TrackingGroup[]>([]);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
@@ -414,19 +418,21 @@ export function PipelinePage() {
       const watched = filters.watching ? opportunities : listPipelineOpportunities({
         ...filters, watching: true, page: 1, page_size: 25,
       });
-      const [clientRes, oppRes, summaryRes, syncRes, facetsRes, watchedRes] = await Promise.all([
+      const [clientRes, oppRes, summaryRes, syncRes, facetsRes, watchedRes, healthRes] = await Promise.all([
         listPipelineClients(filters),
         opportunities,
         getPipelineSummary(filters),
         getSyncStatus().catch(() => ({ items: [] as SyncStatusRow[] })),
         getPipelineFacets(filters),
         watched,
+        getSyncHealth().catch(() => null),
       ]);
       if (version !== requestVersion.current) return;
       setClientsPage(clientRes);
       setOppsPage(oppRes);
       setSummary(summaryRes);
       setSync(syncRes.items);
+      setSyncHealth(healthRes);
       setFacets(facetsRes);
       setWatchCount(watchedRes.total);
     } catch (err) {
@@ -487,7 +493,7 @@ export function PipelinePage() {
   const freshness = oppsPage?.meta?.freshness ?? clientsPage?.meta?.freshness;
   const businessTz = oppsPage?.meta?.business_timezone ?? "America/Los_Angeles";
 
-  const syncSummary = useMemo(() => summariseSync(sync), [sync]);
+  const syncSummary = useMemo(() => summariseSync(sync, syncHealth), [sync, syncHealth]);
   const showAmberBanner =
     (syncSummary.lag ?? 0) > 30 * 60 ||
     syncSummary.error !== null ||

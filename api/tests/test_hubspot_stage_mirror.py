@@ -192,21 +192,23 @@ async def test_backfill_leaves_open_deal_closed_flags_false(factory):
     assert opp.stage_label == "1-Initial Contact/Prospecting"
 
 
-async def test_backfill_falls_back_gracefully_when_stage_unknown(factory):
-    """G11: an unknown stage id should not crash; the row keeps the id in
-    stage_label so the drift is visible."""
+async def test_backfill_lists_an_unknown_stage_and_does_not_guess(factory):
+    """G11, revised by S23-PL1 items 4-5: an unknown stage id does not crash the
+    run, and the drift is visible as a listed error with the deal's HubSpot id.
+    The deal is not written: storing the raw id with guessed (open) closed flags
+    is exactly how a closed deal would be reopened."""
 
     stub = StubHubSpotClient(
         pipelines=[_pipeline()],
-        deals={"deal-drift": _deal("deal-drift", "999999_unmirrored")},
+        deals={"deal-drift": _deal("deal-drift", "999999_unmirrored"),
+               "deal-open": _deal("deal-open", "1038193692")},
         owners={"42": _owner()},
         companies={"555": _company()},
     )
     counts = await run_backfill(stub, session_factory=factory)
-    assert counts.errors == 0
+    assert counts.fatal_error is None and counts.scan_completed
+    assert counts.record_errors == [
+        {"hubspot_id": "deal-drift", "reason": "deal: stage 999999_unmirrored not mapped"}]
     async with factory() as s:
-        opp = (await s.execute(select(Opportunity))).scalar_one()
-    # Unknown stage_id falls through: label = raw id, closed flags stay false.
-    assert opp.stage_label == "999999_unmirrored"
-    assert opp.is_closed_won is False
-    assert opp.is_closed_lost is False
+        opps = (await s.execute(select(Opportunity))).scalars().all()
+    assert [opp.hubspot_deal_id for opp in opps] == ["deal-open"]

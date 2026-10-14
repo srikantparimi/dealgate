@@ -17,6 +17,7 @@ beforeEach(() => {
   vi.spyOn(api, "getUserPreference").mockResolvedValue(null);
   vi.spyOn(api, "listWatchlist").mockResolvedValue({ items: [], counts: {} });
   vi.spyOn(api, "getSyncStatus").mockResolvedValue({ items: [] });
+  vi.spyOn(api, "getSyncHealth").mockResolvedValue({ state: "fresh", last_success_at: null, last_attempt_at: null, last_status: "ok", schedule: "nightly" });
 });
 
 it("requests facets with the identical active query as rows and refreshes on filter changes", async () => {

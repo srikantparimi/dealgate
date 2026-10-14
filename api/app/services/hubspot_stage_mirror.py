@@ -2,6 +2,14 @@
 
 Deal outcomes follow provider probability, never labels or display order.
 Validate the complete response and legacy global-ID bindings before writes.
+
+S23-PL1 item 4: one bad stage no longer aborts the sync. A stage whose
+metadata is invalid or contradictory is skipped, listed in ``StageMap.errors``
+with its HubSpot id, and left out of the map, so deals in it are refused by
+the deal writer instead of being written with guessed closed flags. A
+malformed response as a whole is still fatal. :func:`load_stage_map` builds
+the same map from the stored mirror for writers that must not call HubSpot
+(the webhook path, item 6).
 """
 
 from __future__ import annotations
@@ -40,6 +48,9 @@ class StageMap:
 
     by_id: dict[str, StageInfo] = field(default_factory=dict)
     by_pipeline_stage: dict[tuple[str, str], StageInfo] = field(default_factory=dict)
+    # S23-PL1: per-stage problems found while refreshing, as
+    # ``{"hubspot_id": stage id, "reason": short code}``. Never payload text.
+    errors: tuple[dict[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.by_pipeline_stage:
@@ -90,12 +101,25 @@ def _identity_fields(raw: Any, prefix: str) -> tuple[str, str, int, bool]:
     return identifier, label, order, archived
 
 
-def _validated(payload: Any) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
+def _stage_error(raw: Any, reason: str) -> dict[str, str]:
+    identifier = raw.get("id") if isinstance(raw, dict) else None
+    hubspot_id = identifier[:32] if isinstance(identifier, str) and identifier else "unknown"
+    return {"hubspot_id": hubspot_id, "reason": f"stage: {reason}"}
+
+
+def _validated(payload: Any) -> tuple[list[tuple[dict[str, Any], list[dict[str, Any]]]], list[dict[str, str]]]:
+    """Validate pipelines strictly and stages one by one.
+
+    A malformed response or pipeline raises (the sync cannot map anything).
+    A bad stage is skipped and reported, so the rest of the pipeline still maps.
+    """
     if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
         raise ValueError("pipeline_metadata_invalid_response")
     pipelines = []
+    errors: list[dict[str, str]] = []
     seen_pipelines: set[str] = set()
     seen_stages: set[str] = set()
+    duplicates: set[str] = set()
     for raw in payload["results"]:
         pid, label, order, archived = _identity_fields(raw, "pipeline_metadata")
         if pid in seen_pipelines:
@@ -105,19 +129,31 @@ def _validated(payload: Any) -> list[tuple[dict[str, Any], list[dict[str, Any]]]
             raise ValueError("pipeline_metadata_invalid_stages")
         stages = []
         for stage in raw["stages"]:
-            sid, stage_label, stage_order, stage_archived = _identity_fields(stage, "stage_metadata")
+            try:
+                sid, stage_label, stage_order, stage_archived = _identity_fields(stage, "stage_metadata")
+            except ValueError as exc:
+                errors.append(_stage_error(stage, str(exc)))
+                continue
             if sid in seen_stages:
-                raise ValueError(f"stage_identity_duplicate:{sid}")
+                duplicates.add(sid)
+                continue
             seen_stages.add(sid)
             try:
                 probability, closed = _classification(stage.get("metadata"))
             except ValueError as exc:
-                raise ValueError(f"{exc}:{pid}:{sid}") from None
+                errors.append(_stage_error(stage, str(exc)))
+                continue
             stages.append({"id": sid, "pipeline_id": pid, "label": stage_label,
                 "display_order": stage_order, "archived": stage_archived,
                 "probability": probability, "is_closed": closed})
         pipelines.append(({"id": pid, "label": label, "display_order": order, "archived": archived}, stages))
-    return pipelines
+    # An id in two pipelines is ambiguous: fail closed and map neither copy.
+    for sid in sorted(duplicates):
+        errors.append({"hubspot_id": sid[:32], "reason": "stage: stage_identity_duplicate"})
+    if duplicates:
+        pipelines = [(fields, [s for s in stages if s["id"] not in duplicates])
+            for fields, stages in pipelines]
+    return pipelines, errors
 
 
 def _snapshot(row: HubspotPipeline | HubspotStage) -> dict[str, Any]:
@@ -137,18 +173,52 @@ async def _record_change(session: AsyncSession, row: HubspotPipeline | HubspotSt
             entity=entity, entity_id=row.id, before=before, after=after)
 
 
+def _map_from_rows(rows: Any, *, exclude: frozenset[str] = frozenset(),
+                   errors: tuple[dict[str, str], ...] = ()) -> StageMap:
+    by_key = {}
+    for row in rows:
+        if row.id in exclude:
+            continue
+        try:
+            probability, closed = _classification({"probability": row.probability, "isClosed": row.is_closed})
+        except ValueError:
+            log.warning("hubspot_stage_unresolved", pipeline_id=row.pipeline_id, stage_id=row.id)
+            continue
+        by_key[(row.pipeline_id, row.id)] = StageInfo(
+            row.id, row.label, row.pipeline_id, row.display_order, closed,
+            probability == Decimal("1"), probability == Decimal("0"), probability)
+    by_id = {info.stage_id: info for info in by_key.values()}
+    return StageMap(by_id=by_id, by_pipeline_stage=by_key, errors=errors)
+
+
+async def load_stage_map(session: AsyncSession) -> StageMap:
+    """The stored mirror as a map, without calling HubSpot (S23-PL1 item 6)."""
+    return _map_from_rows((await session.scalars(select(HubspotStage))).all())
+
+
 async def sync_stage_mirror(session: AsyncSession, client: HubSpotClient) -> StageMap:
-    """Refresh atomically; callers commit or roll back metadata and audits."""
-    pipelines = _validated(await client.list_pipelines())
+    """Refresh atomically; callers commit or roll back metadata and audits.
+
+    Bad stages are skipped and reported in ``StageMap.errors``; they stay out of
+    the returned map even when an older copy of them is stored.
+    """
+    pipelines, errors = _validated(await client.list_pipelines())
     existing_stages = {row.id: row for row in (await session.scalars(
         select(HubspotStage).with_for_update().execution_options(populate_existing=True)
     )).all()}
     # During expansion id is still a global PK. Never silently move a stage.
-    for _, stages in pipelines:
+    kept = []
+    for pipeline_fields, stages in pipelines:
+        valid = []
         for fields in stages:
             existing = existing_stages.get(fields["id"])
             if existing and existing.pipeline_id != fields["pipeline_id"]:
-                raise ValueError(f"stage_identity_pipeline_conflict:{fields['id']}")
+                errors.append({"hubspot_id": fields["id"],
+                    "reason": "stage: stage_identity_pipeline_conflict"})
+                continue
+            valid.append(fields)
+        kept.append((pipeline_fields, valid))
+    pipelines = kept
     now = datetime.now(UTC)
     for fields, stages in pipelines:
         row = await session.get(HubspotPipeline, fields["id"], populate_existing=True, with_for_update=True)
@@ -175,16 +245,8 @@ async def sync_stage_mirror(session: AsyncSession, client: HubSpotClient) -> Sta
             await _record_change(session, stage_row, before)
     await session.flush()
 
-    by_key = {}
-    for row in existing_stages.values():
-        try:
-            probability, closed = _classification({"probability": row.probability, "isClosed": row.is_closed})
-        except ValueError:
-            log.warning("hubspot_stage_unresolved", pipeline_id=row.pipeline_id, stage_id=row.id)
-            continue
-        by_key[(row.pipeline_id, row.id)] = StageInfo(
-            row.id, row.label, row.pipeline_id, row.display_order, closed,
-            probability == Decimal("1"), probability == Decimal("0"), probability)
-    by_id = {info.stage_id: info for info in by_key.values()}
-    log.info("hubspot_stage_mirror_synced", pipelines=len(pipelines), total_mapped=len(by_key))
-    return StageMap(by_id=by_id, by_pipeline_stage=by_key)
+    stage_map = _map_from_rows(existing_stages.values(),
+        exclude=frozenset(error["hubspot_id"] for error in errors), errors=tuple(errors))
+    log.info("hubspot_stage_mirror_synced", pipelines=len(pipelines),
+        total_mapped=len(stage_map.by_pipeline_stage), stage_errors=len(errors))
+    return stage_map

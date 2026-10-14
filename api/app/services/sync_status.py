@@ -2,16 +2,18 @@
 
 Every worker (backfill, webhook consumer, nightly reconcile, owner
 mirror, pipeline mirror, property mirror) calls :func:`touch_source` at
-the end of each run. The Pipeline UI's amber banner and the settings
-integration health page read the ``last_success_at`` and typed
-watermarks (``received_at`` / ``processed_at`` / ``reconciled_at``).
+the end of each run. The settings integration health page reads the
+``last_success_at`` and typed watermarks (``received_at`` /
+``processed_at`` / ``reconciled_at``). S23-PL1: deal freshness (the
+Pipeline label, ``meta.freshness`` and ``GET /hubspot/sync-health``) comes
+from the ``hubspot_sync_run`` records, never from these heartbeats.
 
 S20 W1 replaces the "worker heartbeat means freshness" story with typed
 watermarks per D4. Callers name the exact clock they want to advance:
 
 - ``received_at`` — webhook accepted + row durably enqueued.
 - ``processed_at`` — event fully handled + audit committed (D7 atomic
-  boundary; this is the value the Pipeline UI shows as "Synced N ago").
+  boundary; an event watermark, not deal freshness).
 - ``reconciled_at`` — nightly full-scan pass completed.
 - ``scan_generation`` / ``scan_started_at`` / ``scan_completed_at`` —
   A3/T33 scan-generation persistence (a mid-scan failure never
@@ -360,16 +362,27 @@ async def fail_scan(session: AsyncSession, lease: ScanLease, *, error: str) -> N
     await session.flush()
 
 
-async def complete_scan(session: AsyncSession, lease: ScanLease) -> None:
-    """Call after validated finalization effects, before the same transaction commits."""
+async def complete_scan(session: AsyncSession, lease: ScanLease, *,
+                        error: str | None = None) -> None:
+    """Call after validated finalization effects, before the same transaction commits.
+
+    S23-PL1 item 3: the scan protocol completes either way, but only a clean
+    run (``error`` None) records success. A run that refused records stores
+    ``error`` ("partial: …" / "failed: …") and keeps the previous success time.
+    """
     row, now = await _owned_scan(session, lease, {"finalizing"})
     row.scan_phase = "completed"
     row.scan_completed_at = now
     row.reconciled_at = now
-    row.last_success_at = now
     row.last_attempt_at = now
-    row.last_error = None
-    row.lag_seconds = 0
     row.scan_lease_token = None
     row.scan_lease_expires_at = None
+    if error is None:
+        row.last_success_at = now
+        row.last_error = None
+        row.lag_seconds = 0
+    else:
+        row.last_error = error[:1024]
+        if row.last_success_at is not None:
+            row.lag_seconds = max(0, int((now - _utc(row.last_success_at)).total_seconds()))
     await session.flush()

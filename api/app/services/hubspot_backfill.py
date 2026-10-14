@@ -15,10 +15,24 @@ Counts (returned by :func:`run_backfill`):
     companies_created    — deals whose company resolved to a new client
     owners_matched       — deals whose owner mapped to an existing user
     owners_unassigned    — deals with no owner or an unmatched owner
-    errors               — deals that failed and were logged
+    errors               — every error of the run (per-record and fatal)
 
 The routing endpoint (``POST /integrations/hubspot/backfill``) is
 SystemAdmin only. The staging smoke calls it once end-to-end.
+
+S23-PL1 items 3 and 4 — the run reports what really happened:
+
+- Per-record isolation. A bad stage, company, owner lookup or deal is caught,
+  listed in ``record_errors`` with its HubSpot id and a short reason (never a
+  name or payload text), and the run continues. Each deal is written inside its
+  own SAVEPOINT, so one failure cannot roll back the rest of the page. A deal
+  that was listed by HubSpot but not written is still marked seen, so the
+  archive pass never mistakes it for a deletion.
+- Fatal errors. When HubSpot cannot be read at all (the deal list, the stage
+  metadata, an authorization failure) or the scan protocol refuses to
+  continue, ``fatal_error`` names the phase and the reason.
+
+:mod:`app.services.hubspot_sync_runs` turns these counts into the run record.
 """
 
 from __future__ import annotations
@@ -52,6 +66,7 @@ from app.services.hubspot_intake import (
 from app.services.hubspot_owners import sync_owner_mirror
 from app.services.hubspot_properties import HubspotPropertyMapping, discover_business_unit
 from app.services.hubspot_stage_mirror import StageMap, sync_stage_mirror
+from app.services.hubspot_intake import UnmappedStageError
 from app.services.sync_status import (
     ScanConflict,
     acquire_scan,
@@ -88,9 +103,64 @@ class BackfillCounts:
     owners_mirror_active: int = 0
     owners_mirror_archived: int = 0
     business_unit_property_found: bool = False
+    # S23-PL1 — every per-record error as {"hubspot_id", "reason"} (ids and
+    # short codes only) and the reason the run stopped, when it stopped.
+    record_errors: list[dict[str, str]] = field(default_factory=list)
+    fatal_error: str | None = None
+
+    @property
+    def deals_written(self) -> int:
+        """Deals saved from HubSpot by this run (created, changed or re-confirmed)."""
+        return self.deals_created + self.deals_updated + self.deals_unchanged
+
+    def record_error(self, hubspot_id: str, reason: str) -> None:
+        entry = {"hubspot_id": str(hubspot_id)[:64], "reason": reason[:200]}
+        if entry in self.record_errors:
+            return
+        self.record_errors.append(entry)
+        self.errors += 1
 
     def as_dict(self) -> dict[str, int | list[str] | bool | None]:
-        return asdict(self)
+        values = asdict(self)
+        values["deals_written"] = self.deals_written
+        return values
+
+
+_MERGED_COUNTS = ("deals_seen", "deals_created", "deals_updated", "deals_unchanged",
+    "companies_matched", "companies_created", "owners_matched", "owners_unassigned",
+    "multi_company_deals")
+
+
+def _merge_counts(target: BackfillCounts, source: BackfillCounts) -> None:
+    for key in _MERGED_COUNTS:
+        setattr(target, key, getattr(target, key) + getattr(source, key))
+    for entry in source.record_errors:
+        target.record_error(entry["hubspot_id"], entry["reason"])
+    for deal_id in source.error_deal_ids:
+        if deal_id not in target.error_deal_ids:
+            target.error_deal_ids.append(deal_id)
+
+
+_SYSTEMIC_HTTP = {401, 403}
+# Unconfirmed deletions tolerated before the archive check stops asking HubSpot.
+_MAX_UNCONFIRMED_ABSENCES = 5
+
+
+def short_reason(error: BaseException) -> str:
+    """A reason safe to store and show: status codes, ids and type names only."""
+    if isinstance(error, UnmappedStageError):
+        return str(error)
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"HTTP {error.response.status_code}"
+    if isinstance(error, ScanConflict):
+        return f"ScanConflict: {error}"[:200]
+    if isinstance(error, KeyError):
+        return "not found"
+    return type(error).__name__
+
+
+def _systemic(error: BaseException) -> bool:
+    return isinstance(error, httpx.HTTPStatusError) and error.response.status_code in _SYSTEMIC_HTTP
 
 
 def _extract_deal_id(deal_payload: dict) -> str:
@@ -137,6 +207,26 @@ class _FetchedPage:
         self.additional = additional
         self.companies = {}
         self.owners = {}
+        # S23-PL1 — dependencies HubSpot would not return: (kind, id) -> reason.
+        self.unavailable: dict[tuple[str, str], str] = {}
+
+    def blocking_reason(self, payload) -> str | None:
+        """Why this deal cannot be written safely from this page, if it cannot."""
+        owner_id = _deal_props(payload).get("hubspot_owner_id")
+        if owner_id is not None and not isinstance(owner_id, str):
+            return "invalid owner identity"
+        if owner_id and ("owner", owner_id) in self.unavailable:
+            return f"owner {owner_id} unavailable ({self.unavailable[('owner', owner_id)]})"
+        companies = _dedup_company_ids(payload)
+        primary = _extract_company_id(payload)
+        if primary and primary not in companies:
+            companies.append(primary)
+        # Secondary companies too: writing the deal without one would replace
+        # its stored secondary list with a shorter one.
+        for company in companies:
+            if ("company", company) in self.unavailable:
+                return f"company {company} unavailable ({self.unavailable[('company', company)]})"
+        return None
 
     async def get_company(self, identity, *, additional_properties=()):
         if tuple(additional_properties) != self.additional:
@@ -150,30 +240,53 @@ class _FetchedPage:
         return copy.deepcopy(value)
 
 
-async def _fetch_dependencies(hub, payloads, business_unit):
+async def _fetch_dependencies(hub, payloads, business_unit, counts: BackfillCounts | None = None):
+    """Fetch owners and companies for a page.
+
+    S23-PL1 item 4: a company or owner HubSpot will not return is recorded with
+    its id and the deals that need it are skipped; the page continues. A 401 or
+    403 means HubSpot cannot be read at all and stays fatal. A missing owner
+    (404) keeps its existing meaning: the deal falls back to the Unassigned
+    owner.
+    """
+    counts = counts if counts is not None else BackfillCounts()
     additional = business_unit.properties("company") if business_unit else ()
     fetched = _FetchedPage(additional)
     for payload in payloads:
         owner_id = _deal_props(payload).get("hubspot_owner_id")
         if owner_id is not None and not isinstance(owner_id, str):
-            raise ValueError("Invalid HubSpot owner identity")
-        if owner_id and owner_id not in fetched.owners:
+            continue  # the deal is refused by blocking_reason and listed there
+        if owner_id and owner_id not in fetched.owners and ("owner", owner_id) not in fetched.unavailable:
             try:
                 fetched.owners[owner_id] = await hub.get_deal_owner(owner_id)
             except KeyError as error:
                 fetched.owners[owner_id] = error
             except httpx.HTTPStatusError as error:
-                if error.response.status_code != 404:
+                if error.response.status_code == 404:
+                    fetched.owners[owner_id] = error
+                elif _systemic(error):
                     raise
-                fetched.owners[owner_id] = error
+                else:
+                    fetched.unavailable[("owner", owner_id)] = short_reason(error)
+                    counts.record_error(owner_id, f"owner: {short_reason(error)}")
+            except Exception as error:
+                fetched.unavailable[("owner", owner_id)] = short_reason(error)
+                counts.record_error(owner_id, f"owner: {short_reason(error)}")
         company_ids = _dedup_company_ids(payload)
         primary = _extract_company_id(payload)
         if primary and primary not in company_ids:
             company_ids.append(primary)
         for identity in company_ids:
-            if identity not in fetched.companies:
+            if identity in fetched.companies or ("company", identity) in fetched.unavailable:
+                continue
+            try:
                 fetched.companies[identity] = await hub.get_company(identity, **(
                     {"additional_properties": additional} if additional else {}))
+            except Exception as error:
+                if _systemic(error):
+                    raise
+                fetched.unavailable[("company", identity)] = short_reason(error)
+                counts.record_error(identity, f"company: {short_reason(error)}")
     return fetched
 
 
@@ -183,7 +296,8 @@ async def _assert_mapping(session, business_unit):
         raise ScanConflict("Business Unit mapping changed during source fetch")
 
 
-async def _finalize_scan(factory, hub, lease, correlation_id, business_unit):
+async def _finalize_scan(factory, hub, lease, correlation_id, business_unit,
+                         counts: BackfillCounts | None = None):
     async with factory() as session:
         state = await session.get(SyncStatus, lease.source)
         started = _utc(state.scan_started_at)
@@ -195,10 +309,32 @@ async def _finalize_scan(factory, hub, lease, correlation_id, business_unit):
             row.hubspot_last_seen_at, row.updated_at) for row in candidates
             if _utc(row.created_at) <= started and
             (row.hubspot_last_seen_at is None or _utc(row.hubspot_last_seen_at) <= started)}
-    for identity, snapshot in snapshots.items():
-        evidence = await hub.get_archived_deal(snapshot[0])
+    counts = counts if counts is not None else BackfillCounts()
+    unconfirmed = set()
+    for position, (identity, snapshot) in enumerate(snapshots.items()):
+        # S23-PL1 item 4: an absence HubSpot will not confirm is listed and left
+        # alone (never archived); the rest of the scan still completes. After
+        # a handful of unconfirmed absences the live list itself is suspect (an
+        # empty page during an outage), so stop asking HubSpot and archive
+        # nothing that was not checked.
+        if len(unconfirmed) >= _MAX_UNCONFIRMED_ABSENCES:
+            remaining = [key for key in list(snapshots)[position:]]
+            unconfirmed.update(remaining)
+            counts.record_error("", f"deal: {len(remaining)} more deals missing from HubSpot were not checked")
+            break
+        try:
+            evidence = await hub.get_archived_deal(snapshot[0])
+        except Exception as error:
+            if _systemic(error):
+                raise
+            counts.record_error(snapshot[0], f"deal: archive check failed ({short_reason(error)})")
+            unconfirmed.add(identity)
+            continue
         if not isinstance(evidence, dict) or str(evidence.get("id")) != snapshot[0] or evidence.get("archived") is not True:
-            raise ValueError("Source deletion unconfirmed; live-list absence is insufficient")
+            counts.record_error(snapshot[0], "deal: missing from HubSpot but deletion not confirmed")
+            unconfirmed.add(identity)
+    snapshots = {identity: snapshot for identity, snapshot in snapshots.items()
+        if identity not in unconfirmed}
     async with factory() as session:
         await _owned_scan(session, lease, {"finalizing"})
         await _assert_mapping(session, business_unit)
@@ -219,7 +355,11 @@ async def _finalize_scan(factory, hub, lease, correlation_id, business_unit):
                     "scan_generation": lease.generation, "evidence": "explicit_provider_archived"},
                 correlation_id=correlation_id)
             archived += 1
-        await complete_scan(session, lease)
+        problem = None
+        if counts.errors:
+            outcome = "failed" if counts.deals_written == 0 else "partial"
+            problem = f"{outcome}: {counts.errors} record errors"
+        await complete_scan(session, lease, error=problem)
         await session.commit()
         return archived
 
@@ -312,6 +452,11 @@ async def run_backfill(
     Provider page/dependency reads happen before the page transaction. Record,
     audit, seen-generation and cursor writes commit together. A failed page
     preserves its previous cursor; finalization and watermark share a transaction.
+
+    S23-PL1: never raises for a sync failure. Per-record problems land in
+    ``record_errors``; a run that cannot continue sets ``fatal_error`` (phase
+    and reason). The caller (:func:`app.services.hubspot_sync_runs.run_deal_sync`)
+    turns both into the run record and the exit status.
     """
 
     hub = client or HubSpotClient()
@@ -320,58 +465,59 @@ async def run_backfill(
     correlation_id = f"hubspot:backfill:{run_started.isoformat()}"
     counts = BackfillCounts()
 
-    # S19 B1: sync pipeline / stage mirror before any deal upsert. The map
-    # feeds every _upsert_opportunity so label / closed flags are resolved
-    # from the same source every time.
-    stage_map: StageMap | None = None
+    lease = None
+    after = None
+    phase = "stage metadata"
     try:
+        # S19 B1: sync pipeline / stage mirror before any deal upsert. The map
+        # feeds every _upsert_opportunity so label / closed flags are resolved
+        # from the same source every time. S23-PL1: without a map nothing can be
+        # written safely, so a failed refresh is fatal; one bad stage is not.
         async with factory() as session:
-            stage_map = await sync_stage_mirror(session, hub)
+            stage_map: StageMap = await sync_stage_mirror(session, hub)
             await touch_source(
                 session,
                 source="hubspot_pipeline_mirror",
-                success=True,
-                error=None,
+                success=not stage_map.errors,
+                error=f"{len(stage_map.errors)} stage errors" if stage_map.errors else None,
             )
             await session.commit()
-    except Exception:
-        log.exception("hubspot_stage_mirror_sync_failed")
-        # A stage-map failure isn't fatal — intake falls back to the naked
-        # stage id (mapper bug degrades gracefully). Continue but count the
-        # error.
-        counts.errors += 1
+        for error in stage_map.errors:
+            counts.record_error(error["hubspot_id"], error["reason"])
 
-    # S20 W1 D2 — refresh owner mirror (active + archived).
-    try:
+        # S20 W1 D2 — refresh owner mirror (active + archived). Display-only:
+        # a failed owner list is recorded and the deals still sync.
+        phase = "owner mirror"
         async with factory() as session:
             owner_counts = await sync_owner_mirror(session, hub)
             counts.owners_mirror_active = owner_counts.active_seen
             counts.owners_mirror_archived = owner_counts.archived_seen
-            counts.errors += owner_counts.errors
             await session.commit()
-    except Exception:
-        log.exception("hubspot_owner_mirror_sync_failed")
-        counts.errors += 1
+        if owner_counts.errors:
+            counts.record_error("owners", "owner mirror: owner list fetch failed")
 
-    business_unit: BusinessUnitSelection | None = None
-    # S20 W1 D10 — discover the Business Unit custom property.
-    try:
+        # S20 W1 D10 — discover the Business Unit custom property. A failed or
+        # unusable discovery is recorded; deals keep the stored mapping, and
+        # the writer never clears a value it did not observe.
+        phase = "business unit property"
+        business_unit: BusinessUnitSelection | None = None
+        try:
+            async with factory() as session:
+                discovery = await discover_business_unit(session, hub)
+                counts.business_unit_property_found = discovery.found
+                if discovery.availability_state not in {"configured", "absent"}:
+                    counts.record_error("business_unit",
+                        f"business unit property: {discovery.availability_state}"[:120])
+                await session.commit()
+        except Exception as error:
+            if _systemic(error):
+                raise
+            log.exception("hubspot_bu_discovery_failed")
+            counts.record_error("business_unit", f"business unit property: {short_reason(error)}")
         async with factory() as session:
-            discovery = await discover_business_unit(session, hub)
-            counts.business_unit_property_found = discovery.found
-            if discovery.availability_state not in {"configured", "absent"}:
-                counts.errors += 1
             business_unit = await _business_unit_selection(session)
-            await session.commit()
-    except Exception:
-        log.exception("hubspot_bu_discovery_failed")
-        counts.errors += 1
 
-    lease = None
-    after = None
-    try:
-        if counts.errors:
-            raise ValueError("Source metadata refresh failed")
+        phase = "deal scan"
         if not isinstance(page_size, int) or isinstance(page_size, bool) or not 1 <= page_size <= 100:
             raise ValueError("HubSpot page size must be between 1 and 100")
         additional = business_unit.properties("deal") if business_unit else ()
@@ -388,31 +534,30 @@ async def run_backfill(
             page = await hub.list_deals_page(after=after, limit=page_size, **(
                 {"additional_properties": additional} if additional else {}))
             results, next_after = _validate_page(page, after)
-            fetched = await _fetch_dependencies(hub, results, business_unit)
             page_counts = BackfillCounts()
+            fetched = await _fetch_dependencies(hub, results, business_unit, page_counts)
             async with factory() as session:
                 await _owned_scan(session, lease, {"scanning"})
                 await _assert_mapping(session, business_unit)
                 for payload in results:
-                    await _process_deal(session, fetched, payload, page_counts,
-                        correlation_id, stage_map=stage_map, business_unit=business_unit)
-                    row = await session.scalar(select(Opportunity).where(
-                        Opportunity.hubspot_deal_id == _extract_deal_id(payload)))
-                    row.hubspot_seen_generation = max(row.hubspot_seen_generation or 0, lease.generation)
+                    await _sync_one_deal(session, fetched, payload, page_counts, correlation_id,
+                        stage_map, business_unit, lease.generation)
                 await _assert_mapping(session, business_unit)
                 await checkpoint_scan(session, lease, expected_cursor=after, next_cursor=next_after)
                 await session.commit()
-            for key in ("deals_seen", "deals_created", "deals_updated", "deals_unchanged",
-                "companies_matched", "companies_created", "owners_matched", "owners_unassigned", "multi_company_deals"):
-                setattr(counts, key, getattr(counts, key) + getattr(page_counts, key))
+            _merge_counts(counts, page_counts)
             if next_after is None:
                 break
             after = next_after
-        counts.deals_archived = await _finalize_scan(factory, hub, lease, correlation_id, business_unit)
+        phase = "archive check"
+        counts.deals_archived = await _finalize_scan(factory, hub, lease, correlation_id,
+            business_unit, counts)
         counts.scan_completed = True
     except Exception as error:
         counts.errors += 1
-        log.exception("hubspot_backfill_failed", generation=counts.scan_generation, after=after)
+        counts.fatal_error = f"{phase}: {short_reason(error)}"[:255]
+        log.exception("hubspot_backfill_failed", generation=counts.scan_generation, after=after,
+            phase=phase)
         if lease is not None:
             async with factory() as session:
                 try:
@@ -425,7 +570,7 @@ async def run_backfill(
         else:
             try:
                 scope = hub.scan_scope()
-            except ValueError:
+            except Exception:
                 scope = None
             if scope is not None:
                 async with factory() as session:
@@ -433,8 +578,50 @@ async def run_backfill(
                         scope=scope, error=type(error).__name__)
                     await session.commit()
 
-    log.info(
-        "hubspot_backfill_complete",
-        **{k: v for k, v in counts.as_dict().items() if isinstance(v, (int, bool))},
-    )
+    summary = {k: v for k, v in counts.as_dict().items() if isinstance(v, (int, bool))}
+    if counts.fatal_error:
+        log.error("hubspot_backfill_stopped", **summary, fatal_error=counts.fatal_error)
+    elif counts.errors:
+        log.warning("hubspot_backfill_completed_with_errors", **summary)
+    else:
+        log.info("hubspot_backfill_complete", **summary)
     return counts
+
+
+async def _sync_one_deal(session: AsyncSession, fetched: _FetchedPage, payload: dict,
+                         page_counts: BackfillCounts, correlation_id: str,
+                         stage_map: StageMap, business_unit: BusinessUnitSelection | None,
+                         generation: int) -> None:
+    """Write one deal inside its own SAVEPOINT (S23-PL1 item 4).
+
+    A failure rolls back only this deal, is listed with its HubSpot id, and the
+    page continues. The row (if it exists) is still marked seen in this
+    generation: HubSpot listed it, so the archive pass must not treat it as
+    deleted.
+    """
+    deal_id = _extract_deal_id(payload)
+    blocked = fetched.blocking_reason(payload)
+    if blocked is not None:
+        page_counts.deals_seen += 1
+        page_counts.error_deal_ids.append(deal_id)
+        page_counts.record_error(deal_id, f"deal: {blocked}")
+    else:
+        deal_counts = BackfillCounts()
+        try:
+            async with session.begin_nested():
+                await _process_deal(session, fetched, payload, deal_counts, correlation_id,
+                    stage_map=stage_map, business_unit=business_unit)
+        except ScanConflict:
+            raise
+        except Exception as error:
+            if _systemic(error):
+                raise
+            page_counts.deals_seen += 1
+            page_counts.error_deal_ids.append(deal_id)
+            page_counts.record_error(deal_id, f"deal: {short_reason(error)}")
+            log.warning("hubspot_deal_record_refused", deal_id=deal_id, reason=short_reason(error))
+        else:
+            _merge_counts(page_counts, deal_counts)
+    row = await session.scalar(select(Opportunity).where(Opportunity.hubspot_deal_id == deal_id))
+    if row is not None:
+        row.hubspot_seen_generation = max(row.hubspot_seen_generation or 0, generation)
