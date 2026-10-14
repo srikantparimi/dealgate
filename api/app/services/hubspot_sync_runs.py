@@ -253,27 +253,28 @@ def _state(last_status: str, last_success_at: datetime | None, now: datetime) ->
 
 
 async def _legacy_health(session: AsyncSession, now: datetime) -> dict[str, Any]:
-    """Before the first recorded run: the last COMPLETED deal scan.
+    """Before the first recorded run: the last CLEAN deal scan.
 
-    ``hubspot_backfill.scan_completed_at`` is written only when a full deal scan
-    finished (never by the intake heartbeat), so it is an honest success time
-    until the first run row exists.
+    ``hubspot_backfill.last_success_at`` is moved only by a scan that completed
+    without refusing a record (``complete_scan``; never by the intake
+    heartbeat), so it is an honest success time until the first run row exists.
+    Any ``last_error`` on the row means the latest attempt was not clean.
     """
     row = await session.get(SyncStatus, "hubspot_backfill")
-    completed = _utc(row.scan_completed_at) if row is not None else None
+    success = _utc(row.last_success_at) if row is not None else None
     attempted = _utc(row.last_attempt_at) if row is not None else None
     errors: list[dict[str, str]] = []
-    if completed is None:
-        last_status = "failed"
-        errors = [{"hubspot_id": "", "reason": "no completed deal sync recorded"}]
-    elif row.scan_phase == "failed" or (row.last_error is not None and attempted and attempted > completed):
+    if row is not None and (row.last_error is not None or row.scan_phase == "failed"):
         last_status = "failed"
         errors = [{"hubspot_id": "", "reason": f"deal scan: {row.last_error or 'failed'}"[:200]}]
+    elif success is None:
+        last_status = "failed"
+        errors = [{"hubspot_id": "", "reason": "no completed deal sync recorded"}]
     else:
         last_status = "ok"
     return {
-        "state": _state(last_status, completed, now),
-        "last_success_at": _iso(completed),
+        "state": _state(last_status, success, now),
+        "last_success_at": _iso(success),
         "last_attempt_at": _iso(attempted),
         "last_status": last_status,
         "schedule": SCHEDULE,

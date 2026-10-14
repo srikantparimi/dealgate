@@ -325,8 +325,12 @@ async def _owned_scan(session: AsyncSession, lease: ScanLease, phases: set[str])
 
 
 async def checkpoint_scan(session: AsyncSession, lease: ScanLease, *,
-    expected_cursor: str | None, next_cursor: str | None) -> None:
-    """Commit record effects and the cursor in the caller's SAME transaction."""
+    expected_cursor: str | None, next_cursor: str | None, record_errors: int = 0) -> None:
+    """Commit record effects and the cursor in the caller's SAME transaction.
+
+    S23-PL1: ``record_errors`` (records the page refused) is kept in the page's
+    audit so a later run can tell that this generation is not clean.
+    """
     if next_cursor is not None and (not isinstance(next_cursor, str) or not next_cursor
         or len(next_cursor) > 255 or next_cursor == expected_cursor):
         raise ValueError("Invalid or nonadvancing scan cursor")
@@ -344,13 +348,30 @@ async def checkpoint_scan(session: AsyncSession, lease: ScanLease, *,
     await append_audit(session, actor_id=None, action="hubspot.scan_page_committed",
         entity="sync_status", entity_id=lease.source,
         before={"cursor": expected_cursor},
-        after={"scan_generation": lease.generation, "next_cursor": next_cursor},
+        after={"scan_generation": lease.generation, "next_cursor": next_cursor,
+            **({"record_errors": int(record_errors)} if record_errors else {})},
         correlation_id=f"hubspot:scan:{lease.source}:{lease.generation}")
     row.cursor = next_cursor
     row.scan_phase = "finalizing" if next_cursor is None else "scanning"
     row.scan_lease_expires_at = now + timedelta(seconds=lease.lease_seconds)
     row.last_attempt_at = now
     await session.flush()
+
+
+async def refused_in_open_scan(session: AsyncSession, *, source: str) -> int:
+    """Records refused by the committed pages of the scan a new run would resume.
+
+    S23-PL1: a resumed run starts with empty counts, so refusals on the earlier
+    pages would vanish and the run could end "ok". Callers restart instead.
+    """
+    row = await session.get(SyncStatus, source)
+    if row is None or row.scan_generation is None or row.scan_phase not in {"scanning", "finalizing", "failed"}:
+        return 0
+    payloads = (await session.scalars(select(AuditEvent.after).where(
+        AuditEvent.entity == "sync_status", AuditEvent.entity_id == source,
+        AuditEvent.action == "hubspot.scan_page_committed",
+        AuditEvent.after["scan_generation"].as_integer() == row.scan_generation))).all()
+    return sum(int((after or {}).get("record_errors") or 0) for after in payloads)
 
 
 async def fail_scan(session: AsyncSession, lease: ScanLease, *, error: str) -> None:

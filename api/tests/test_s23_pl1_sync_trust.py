@@ -372,6 +372,15 @@ async def test_before_any_run_the_last_completed_scan_is_used(session):
     assert health["last_success_at"] == "2026-10-14T04:02:00Z"
 
 
+async def test_before_any_run_a_refused_completed_scan_reads_failed(session):
+    session.add(SyncStatus(source="hubspot_backfill", scan_phase="completed", scan_completed_at=T0,
+        last_success_at=None, last_attempt_at=T0, last_error="failed: 1 record errors"))
+    await session.commit()
+    health = await compute_sync_health(session, now=T0 + timedelta(minutes=5))
+    assert (health["state"], health["last_status"]) == ("failed", "failed")
+    assert health["last_success_at"] is None
+
+
 async def test_with_no_history_state_is_failed_with_a_reason(session):
     health = await compute_sync_health(session, now=T0)
     assert health["state"] == "failed" and health["last_success_at"] is None
@@ -511,6 +520,28 @@ async def test_a_failed_scan_older_than_twelve_hours_restarts_at_page_one(factor
     second = await run_backfill(stub, session_factory=factory, page_size=1)
     assert second.scan_completed and second.scan_generation == first.scan_generation + 1
     assert second.deals_seen == 2  # page one was read again, not trusted from 13 h ago
+
+
+async def test_a_scan_whose_earlier_pages_refused_records_is_restarted_not_resumed(factory):
+    class FailsOnPageTwo(StubHubSpotClient):
+        fail = True
+        async def list_deals_page(self, *, after=None, limit=100, **kwargs):
+            if after and self.fail:
+                self.fail = False
+                raise _http_error(503)
+            return await super().list_deals_page(after=after, limit=limit, **kwargs)
+
+    stub = FailsOnPageTwo(deals={"a": _deal("a", "renamed-stage"), "b": _deal("b", "qualifiedtobuy")})
+    first = await run_backfill(stub, session_factory=factory, page_size=1)
+    assert first.fatal_error == "deal scan: HTTP 503"
+    assert {"hubspot_id": "a", "reason": "deal: stage renamed-stage not mapped"} in first.record_errors
+    # The recovery run must not resume at page two and forget the refusal.
+    second = await run_deal_sync("manual", stub, session_factory=factory)
+    assert second.status == "partial" and second.deals_seen == 2
+    assert {"hubspot_id": "a", "reason": "deal: stage renamed-stage not mapped"} in second.errors
+    async with factory() as s:
+        row = await s.get(SyncStatus, "hubspot_backfill")
+    assert row.last_success_at is None and row.last_error == "partial: 1 record errors"
 
 
 async def test_bad_stage_is_listed_and_the_rest_of_the_pipeline_maps(factory):

@@ -74,6 +74,7 @@ from app.services.sync_status import (
     complete_scan,
     fail_scan,
     record_scan_attempt_failure,
+    refused_in_open_scan,
     _owned_scan,
     touch_source,
 )
@@ -543,8 +544,11 @@ async def run_backfill(
             "mapping": asdict(business_unit) if business_unit else None,
             "coverage_mode": "all_active_deals_with_explicit_archive_revalidation"}
         async with factory() as session:
+            # A scan whose committed pages refused records is restarted, never
+            # resumed: the refusals live only in that earlier run's counts.
+            refused_before = await refused_in_open_scan(session, source="hubspot_backfill")
             lease = await acquire_scan(session, source="hubspot_backfill", context=context,
-                max_resume_age=SCAN_RESUME_MAX_AGE)
+                max_resume_age=SCAN_RESUME_MAX_AGE if not refused_before else timedelta(0))
             counts.scan_generation = lease.generation
             await session.commit()
         after = lease.cursor
@@ -561,7 +565,8 @@ async def run_backfill(
                     await _sync_one_deal(session, fetched, payload, page_counts, correlation_id,
                         stage_map, business_unit, lease.generation)
                 await _assert_mapping(session, business_unit)
-                await checkpoint_scan(session, lease, expected_cursor=after, next_cursor=next_after)
+                await checkpoint_scan(session, lease, expected_cursor=after, next_cursor=next_after,
+                    record_errors=len(page_counts.record_errors))
                 await session.commit()
             _merge_counts(counts, page_counts)
             if next_after is None:
