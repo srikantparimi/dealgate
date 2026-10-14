@@ -175,6 +175,16 @@ async def run_deal_sync(kind: str, client: HubSpotClient | None = None, *,
             await touch_source(session, source="hubspot_reconcile",
                 success=outcome.status == "ok", error=problem)
             await session.commit()
+    elif kind == "manual" and outcome.status == "ok":
+        # A clean SystemAdmin recovery clears a failed night's error on the
+        # legacy row (the old page's chip reads it) without claiming that the
+        # nightly itself succeeded.
+        async with factory() as session:
+            row = await session.get(SyncStatus, "hubspot_reconcile")
+            if row is not None and row.last_error is not None:
+                row.last_error = None
+                row.lag_seconds = 0
+                await session.commit()
 
     event = {"ok": "hubspot_deal_sync_ok", "partial": "hubspot_deal_sync_partial",
         "failed": "hubspot_deal_sync_failed"}[outcome.status]

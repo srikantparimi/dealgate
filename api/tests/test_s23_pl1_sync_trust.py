@@ -544,6 +544,38 @@ async def test_a_scan_whose_earlier_pages_refused_records_is_restarted_not_resum
     assert row.last_success_at is None and row.last_error == "partial: 1 record errors"
 
 
+async def test_a_bulk_deletion_is_archived_in_full_and_the_run_stays_ok(factory):
+    stub = StubHubSpotClient(deals={f"d{i:02d}": _deal(f"d{i:02d}", "qualifiedtobuy") for i in range(60)})
+    await run_deal_sync("nightly", stub, session_factory=factory)
+    for i in range(40):
+        del stub.deals[f"d{i:02d}"]  # the stub confirms every one archived
+    outcome = await run_deal_sync("nightly", stub, session_factory=factory)
+    assert outcome.status == "ok" and outcome.counts["deals_archived"] == 40
+    opps = await _opps(factory)
+    assert sum(row.archived_at is not None for row in opps.values()) == 40
+
+
+async def test_an_ok_manual_recovery_clears_a_failed_nights_legacy_error(factory):
+    class Down(StubHubSpotClient):
+        async def list_deals_page(self, **_kwargs):
+            raise _http_error(500)
+
+    assert (await run_deal_sync("nightly", Down(), session_factory=factory)).status == "failed"
+    async with factory() as s:
+        assert (await s.get(SyncStatus, "hubspot_reconcile")).last_error.startswith("failed")
+    healthy = StubHubSpotClient(deals={"d1": _deal("d1", "qualifiedtobuy")})
+    assert (await run_deal_sync("manual", healthy, session_factory=factory)).status == "ok"
+    async with factory() as s:
+        rows = (await s.scalars(select(SyncStatus))).all()
+    # The sync rows the old page's amber chip reads carry no error any more
+    # (the stub's absent business-unit property records its availability
+    # reason by design, before and after PL1).
+    sync_rows = {"hubspot_reconcile", "hubspot_backfill", "hubspot_pipeline_mirror", "hubspot_owner_mirror"}
+    assert [r.source for r in rows if r.source in sync_rows and r.last_error] == []
+    reconcile = next(r for r in rows if r.source == "hubspot_reconcile")
+    assert reconcile.last_success_at is None  # the nightly itself never succeeded
+
+
 async def test_bad_stage_is_listed_and_the_rest_of_the_pipeline_maps(factory):
     pipeline = {**STAGING_PIPELINE, "stages": [
         *STAGING_PIPELINE["stages"],

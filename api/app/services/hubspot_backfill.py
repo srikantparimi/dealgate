@@ -75,6 +75,7 @@ from app.services.sync_status import (
     fail_scan,
     record_scan_attempt_failure,
     refused_in_open_scan,
+    renew_scan_lease,
     _owned_scan,
     touch_source,
 )
@@ -144,9 +145,10 @@ def _merge_counts(target: BackfillCounts, source: BackfillCounts) -> None:
 
 _SYSTEMIC_HTTP = {401, 403}
 # Unconfirmed deletions (among deals present at the previous scan) tolerated
-# before the archive check stops asking HubSpot, and a hard cap per run.
+# before the archive check stops asking HubSpot; the lease is renewed every
+# so many checks so a long list of real deletions is not cut short.
 _MAX_UNCONFIRMED_ABSENCES = 5
-_MAX_ARCHIVE_CHECKS = 25
+_LEASE_RENEW_EVERY = 20
 # A failed scan is resumed only while its first pages are recent; older ones
 # restart from page 1 so a "fresh" run never rests on days-old pages.
 SCAN_RESUME_MAX_AGE = timedelta(hours=12)
@@ -331,9 +333,13 @@ async def _finalize_scan(factory, hub, lease, correlation_id, business_unit,
         # alone (never archived); the rest of the scan still completes. When
         # several deals that were present last scan all vanish unconfirmed, the
         # live list itself is suspect (an empty page during an outage): stop
-        # asking HubSpot and archive nothing that was not checked. A hard cap
-        # keeps long-standing absences from outrunning the scan lease.
-        if fresh_unconfirmed >= _MAX_UNCONFIRMED_ABSENCES or position >= _MAX_ARCHIVE_CHECKS:
+        # asking HubSpot and archive nothing that was not checked. A long list
+        # of real deletions keeps the lease alive instead of being cut short.
+        if position and position % _LEASE_RENEW_EVERY == 0:
+            async with factory() as session:
+                await renew_scan_lease(session, lease)
+                await session.commit()
+        if fresh_unconfirmed >= _MAX_UNCONFIRMED_ABSENCES:
             remaining = list(snapshots)[position:]
             unconfirmed.update(remaining)
             counts.record_error("", f"deal: {len(remaining)} more deals missing from HubSpot were not checked")

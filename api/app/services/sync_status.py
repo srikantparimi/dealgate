@@ -374,6 +374,13 @@ async def refused_in_open_scan(session: AsyncSession, *, source: str) -> int:
     return sum(int((after or {}).get("record_errors") or 0) for after in payloads)
 
 
+async def renew_scan_lease(session: AsyncSession, lease: ScanLease) -> None:
+    """Extend an owned lease while the finalizer is still checking deletions (S23-PL1)."""
+    row, now = await _owned_scan(session, lease, {"finalizing"})
+    row.scan_lease_expires_at = now + timedelta(seconds=lease.lease_seconds)
+    await session.flush()
+
+
 async def fail_scan(session: AsyncSession, lease: ScanLease, *, error: str) -> None:
     row, now = await _owned_scan(session, lease, {"scanning", "finalizing"})
     row.scan_phase = "failed"
