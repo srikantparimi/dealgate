@@ -1,5 +1,32 @@
 # Command Center Forecast and Portfolio Integration
 
+## Main-image deployment — 2026-10-13 23:30 PDT
+
+The accepted feature was squash-merged and pushed to `main` as
+`6a3c63f9ece8697a8a508732788044f53b21fb07`. The resulting tree is identical
+to the accepted feature proof head `a79f3eec1ee0621752243d550bdee350db42b591`.
+
+The deployed immutable AMD64 image is
+`officeapp-dev-api:ccmain-6a3c63f9`, digest
+`sha256:99fcb44b27e81a4bcbe8f667f60e891510f3aa707f47c4440b64d577c4526ef4`.
+The owner-approved saved Terraform plan had SHA-256
+`2966ceeda17426b587cc7c4eba72343414a573e496f03ceacb4e87936d87eef9`
+and applied exactly 12 additions, 14 changes and 12 replacements/removals.
+Migration task `3540c47b46474a5083fe17d067bfb031` exited 0. API task definition
+`officeapp-dev-api:112` is stable at 1/1 on task
+`848f5a28c0ed4901a7b6ef0b8c5d01c2`; the API, migration and nine scheduled
+worker task families all reference the same immutable main image.
+
+The matching SPA serves `assets/index-cy26KtjL.js` and
+`assets/index-B8R_pDti.css`. `index.html` is `no-cache,must-revalidate`,
+hashed assets are `public,max-age=31536000,immutable`, and CloudFront
+invalidation `I5GF3CJ3N1QOTOUB1TTKMZUZNW` completed. Deploy smoke run
+`smoke 20261014T062452Z` passed upload, extraction, list and cleanup, with a
+zero-leak gate. The deployed Command Center desktop/mobile Playwright journey
+passed 2/2 in 29.0 seconds. A fresh whole-root Terraform plan returned detailed
+exit code 0: no drift. Public health is green at
+`https://app.dealgateapp.com/api/healthz`.
+
 ## Deployed staging candidate
 
 Application commit `a5f3445a8d99c762559426e499f6cd366779592f` is packaged as
