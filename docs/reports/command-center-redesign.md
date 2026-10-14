@@ -24,9 +24,18 @@ Local proof on that application revision:
   `23-s14b-two-user-approval.spec.ts` and
   `24-s17-simplify-delete.spec.ts`. None is in or changed by this follow-up.
 
-Staging publication and deployed verification are pending. Existing staging
-identifiers below still describe the historical closed-won correction until
-this section is updated with the new static bundle and CloudFront invalidation.
+The frontend-only follow-up is deployed on staging. CloudFront invalidation
+`I3FT4JVP7HC59TX4YF7SNAMA3I` completed, and
+`https://app.dealgateapp.com/` serves the exact assets above. The served bundle
+contains the Business unit column and filter labels. The focused deployed
+Command Center journey passed 2/2 through Cognito, CloudFront and the real API,
+including desktop integration, filter presence, CSV, settled empty state and
+mobile containment. The staging test identity has zero authorized business
+rows, so the populated two-BU filter assertion remains connected local proof
+and the owner's real-data view remains the final click-through.
+
+The backend was intentionally not redeployed: ECS remains healthy at
+`officeapp-dev-api:110`, 1/1, and no migration or Terraform operation ran.
 
 Status at 2026-10-13 13:19 PDT: **owner-reported population defect fixed,
 deployed to staging, and verified through the automated staging gates**. The

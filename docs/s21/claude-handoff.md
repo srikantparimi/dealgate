@@ -2,14 +2,14 @@
 
 ## RESUME HERE
 
-**2026-10-13 21:00 PDT — BUSINESS-UNIT TABLE FILTER IMPLEMENTED AND CONNECTED
-LOCALLY; STATIC STAGING DEPLOY NEXT.** Authoritative tree
+**2026-10-13 21:08 PDT — BUSINESS-UNIT TABLE FILTER DEPLOYED TO STAGING;
+FOCUSED DEPLOYED JOURNEY GREEN; OWNER CLICK-THROUGH NEXT.** Authoritative tree
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
 `feat/command-center-redesign`, application commit
 `580d1a012d3c6a01b555bf5c4ce67262a977b742`, baseline `origin/main`
-`03b76e62b154eb25fbac8b918112214f4e32543f`. Current task: commit this handoff,
-push the feature branch, publish the frontend-only bundle through the existing
-S3/CloudFront staging path, and run the focused deployed Command Center journey.
+`03b76e62b154eb25fbac8b918112214f4e32543f`. Last pushed documentation
+checkpoint is `578d6dc8e2fc35c236f8bcbfe6c229d4f13ed90e`. Current task: product owner
+verifies the Business unit column and selector against authorized real rows.
 Do not merge `main` before explicit product-owner acceptance.
 
 The Accounts & engagements section now has a dedicated Business unit column
@@ -22,25 +22,28 @@ Avalon rows, ST21 filtering and reset. Repository-wide E2E TypeScript still has
 four inherited failures in unchanged S14/S17 specs; see
 `docs/reports/command-center-redesign.md`.
 
-Owned runtime at this checkpoint: local API PID 89645 on 8230 against guarded
-database `dealgate_command_center`; Vite session 13871 on 5230; no browser test,
-deployment, migration or Terraform operation is active. Uncommitted work is
-only this report/handoff update. The application commit is not yet pushed or
-deployed. Exact next commands:
+Deployed proof: staging serves `assets/index-D6YIm2ot.js` and
+`assets/index-BIpYOz_b.css`; CloudFront invalidation
+`I3FT4JVP7HC59TX4YF7SNAMA3I` completed; authenticated staging Playwright passed
+2/2; API health is green. ECS API remains unchanged and stable at revision 110,
+1/1. No backend image, migration or Terraform operation was needed or run.
+
+Owned runtime at this checkpoint: no local API, Vite, browser test, deployment,
+migration or Terraform process is active. PostgreSQL container `dg-s22-pg`
+retains the isolated `dealgate_command_center` fixture on loopback 55432. The
+only uncommitted files are this incremental documentation update and the
+refreshed staging mobile evidence screenshot. Exact resume:
 
 ```bash
 cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
 git status --short && git diff --check
-git add docs/reports/command-center-redesign.md docs/s21/claude-handoff.md
-git commit -m "docs(command-center): record business-unit filter proof"
-git push origin feat/command-center-redesign
+curl -fsS https://app.dealgateapp.com/ | rg 'assets/index-D6YIm2ot.js'
+curl -fsS https://app.dealgateapp.com/api/healthz
 ```
 
-Then publish the already-built static bundle only after confirming it still
-contains `assets/index-D6YIm2ot.js`; do not build or apply a Terraform plan for
-this frontend-only change. Stop the owned local API/Vite after deployed proof.
-The prior entry below is deployment history and remains the current staging
-state until publication completes.
+Next gate: obtain the product owner's real-data click-through. After acceptance,
+merge only with explicit permission and verify the resulting main-image/static
+deployment. The prior entry below is deployment history.
 
 **2026-10-13 13:19 PDT — COMMAND CENTER HISTORICAL CLOSED-WON DEFECT DEPLOYED;
 AUTOMATED STAGING GATES GREEN; OWNER REAL-DATA CLICK REQUIRED.**
