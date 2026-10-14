@@ -82,11 +82,25 @@ export function RenewalWorkspaceSheet({
     "discussion_in_progress",
   );
   const [saving, setSaving] = useState(false);
+  const [likelihood, setLikelihood] = useState<NonNullable<RenewalRow["likelihood"]>>("unassessed");
+  const [proposedAmount, setProposedAmount] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [proposedStart, setProposedStart] = useState("");
+  const [proposedEnd, setProposedEnd] = useState("");
+  const [probability, setProbability] = useState("");
+  const [probabilityBasis, setProbabilityBasis] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setUpdate("");
     setOutcome("discussion_in_progress");
+    setLikelihood(renewal?.likelihood ?? "unassessed");
+    setProposedAmount(renewal?.proposed_amount ?? "");
+    setCurrency(renewal?.currency ?? "USD");
+    setProposedStart(renewal?.proposed_start ?? "");
+    setProposedEnd(renewal?.proposed_end ?? "");
+    setProbability(renewal?.probability == null ? "" : String(Number(renewal.probability) * 100));
+    setProbabilityBasis(renewal?.probability_basis ?? "");
     setError(null);
   }, [renewal?.id]);
 
@@ -123,6 +137,29 @@ export function RenewalWorkspaceSheet({
       setError(
         err instanceof ApiError ? err.message : (err as Error).message,
       );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveForecastEvidence(e: FormEvent) {
+    e.preventDefault();
+    if (!renewal) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const patched = await patchRenewal(renewal.id as UUID, {
+        likelihood,
+        proposed_amount: proposedAmount.trim() || null,
+        currency: proposedAmount.trim() ? currency.trim().toUpperCase() : null,
+        proposed_start: proposedStart || null,
+        proposed_end: proposedEnd || null,
+        probability: probability.trim() === "" ? null : String(Number(probability) / 100),
+        probability_basis: probabilityBasis.trim() || null,
+      });
+      onSaved?.(patched);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : (err as Error).message);
     } finally {
       setSaving(false);
     }
@@ -207,6 +244,41 @@ export function RenewalWorkspaceSheet({
             </p>
           )}
         </section>
+
+        <form onSubmit={saveForecastEvidence} className="flex flex-col gap-3 rounded-panel border border-divider p-3">
+          <div>
+            <h3 className="text-section text-text">Renewal forecast evidence</h3>
+            <p className="mt-1 text-secondary text-text-secondary">
+              Unassessed renewals stay out of Forecast. Likely renewals contribute only when amount, term, probability and its basis are recorded.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="grid gap-1 text-secondary text-text-secondary">Likelihood
+              <select className="h-10 rounded-control border border-input-border bg-surface px-3 text-body text-text" value={likelihood} onChange={(e) => setLikelihood(e.target.value as NonNullable<RenewalRow["likelihood"]>)}>
+                <option value="unassessed">Unassessed</option><option value="likely">Likely</option><option value="unlikely">Unlikely</option>
+              </select>
+            </label>
+            <label className="grid gap-1 text-secondary text-text-secondary">Proposed amount
+              <input type="number" min={0} className="h-10 rounded-control border border-input-border bg-surface px-3 text-body text-text" value={proposedAmount} onChange={(e) => setProposedAmount(e.target.value)} />
+            </label>
+            <label className="grid gap-1 text-secondary text-text-secondary">Currency
+              <input maxLength={8} className="h-10 rounded-control border border-input-border bg-surface px-3 text-body text-text" value={currency} onChange={(e) => setCurrency(e.target.value)} />
+            </label>
+            <label className="grid gap-1 text-secondary text-text-secondary">Probability %
+              <input type="number" min={0} max={100} className="h-10 rounded-control border border-input-border bg-surface px-3 text-body text-text" value={probability} onChange={(e) => setProbability(e.target.value)} />
+            </label>
+            <label className="grid gap-1 text-secondary text-text-secondary">Proposed start
+              <input type="date" className="h-10 rounded-control border border-input-border bg-surface px-3 text-body text-text" value={proposedStart} onChange={(e) => setProposedStart(e.target.value)} />
+            </label>
+            <label className="grid gap-1 text-secondary text-text-secondary">Proposed end
+              <input type="date" className="h-10 rounded-control border border-input-border bg-surface px-3 text-body text-text" value={proposedEnd} onChange={(e) => setProposedEnd(e.target.value)} />
+            </label>
+          </div>
+          <label className="grid gap-1 text-secondary text-text-secondary">Probability basis
+            <input className="h-10 rounded-control border border-input-border bg-surface px-3 text-body text-text" value={probabilityBasis} onChange={(e) => setProbabilityBasis(e.target.value)} placeholder="For example: client confirmed budget on Oct 10" />
+          </label>
+          <div className="flex justify-end"><Button type="submit" variant="secondary" disabled={saving}>Save forecast evidence</Button></div>
+        </form>
 
         <form onSubmit={save} className="flex flex-col gap-3">
           <h3 className="text-section text-text">Record update</h3>

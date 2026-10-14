@@ -33,6 +33,9 @@ import { Panel, Problems, SETTINGS_WRITE_ROLES, cellInput, errorText, hasAny, he
 interface Draft {
   hours_per_day: string;
   project_floor_pct: string;
+  billing_loss_threshold_amount: string;
+  renewal_likely_probability: string;
+  renewal_unlikely_probability: string;
   locations: { name: string; burden_pct_w2: string; burden_pct_1099: string; resource_floor_pct: string }[];
   rate_card: Record<string, string>; // `${seniority}|${location}|${employment}` -> cost text
   holidays: Record<string, string>; // location -> one date per line
@@ -42,6 +45,9 @@ function toDraft(calendar: ForecastCalendar): Draft {
   return {
     hours_per_day: String(calendar.hours_per_day),
     project_floor_pct: fractionToPercentText(calendar.project_floor_pct),
+    billing_loss_threshold_amount: calendar.billing_loss_threshold_amount ?? "",
+    renewal_likely_probability: calendar.renewal_likely_probability == null ? "" : fractionToPercentText(calendar.renewal_likely_probability),
+    renewal_unlikely_probability: calendar.renewal_unlikely_probability == null ? "" : fractionToPercentText(calendar.renewal_unlikely_probability),
     locations: calendar.locations.map((l) => ({
       name: l.name,
       burden_pct_w2: fractionToPercentText(l.burden_pct_w2),
@@ -63,6 +69,9 @@ function fromDraft(draft: Draft): ForecastCalendar {
   return {
     hours_per_day: Number(draft.hours_per_day),
     project_floor_pct: Number(draft.project_floor_pct) / 100,
+    billing_loss_threshold_amount: draft.billing_loss_threshold_amount.trim() || null,
+    renewal_likely_probability: draft.renewal_likely_probability.trim() === "" ? null : Number(draft.renewal_likely_probability) / 100,
+    renewal_unlikely_probability: draft.renewal_unlikely_probability.trim() === "" ? null : Number(draft.renewal_unlikely_probability) / 100,
     locations: draft.locations.map((l) => ({
       name: l.name.trim(),
       burden_pct_w2: Number(l.burden_pct_w2) / 100,
@@ -197,6 +206,18 @@ export function ForecastSettingsSection() {
               Project GM floor %
             </label>
             <input id="fc-floor" type="number" min={0} max={100} step="0.5" className={cn(cellInput, "w-24 text-right")} disabled={disabled} value={draft.project_floor_pct} onChange={(e) => edit({ ...draft, project_floor_pct: e.target.value })} />
+            <label className="text-secondary text-text-secondary" htmlFor="fc-billing-loss">
+              Billing-loss alert threshold (USD per engagement / closed month)
+            </label>
+            <input id="fc-billing-loss" type="number" min={0} step="100" className={cn(cellInput, "w-32 text-right")} disabled={disabled} value={draft.billing_loss_threshold_amount} onChange={(e) => edit({ ...draft, billing_loss_threshold_amount: e.target.value })} placeholder="Not configured" />
+            <label className="text-secondary text-text-secondary" htmlFor="fc-renewal-likely">
+              Likely renewal default probability %
+            </label>
+            <input id="fc-renewal-likely" type="number" min={0} max={100} step="1" className={cn(cellInput, "w-24 text-right")} disabled={disabled} value={draft.renewal_likely_probability} onChange={(e) => edit({ ...draft, renewal_likely_probability: e.target.value })} placeholder="None" />
+            <label className="text-secondary text-text-secondary" htmlFor="fc-renewal-unlikely">
+              Unlikely renewal default probability %
+            </label>
+            <input id="fc-renewal-unlikely" type="number" min={0} max={100} step="1" className={cn(cellInput, "w-24 text-right")} disabled={disabled} value={draft.renewal_unlikely_probability} onChange={(e) => edit({ ...draft, renewal_unlikely_probability: e.target.value })} placeholder="None" />
           </div>
         </Panel>
 

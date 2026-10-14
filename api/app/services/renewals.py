@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 try:  # Python 3.9+
@@ -493,6 +494,7 @@ async def patch_renewal(
     to_status: str | None = None,
     replacement_sow_version_id: uuid.UUID | None = None,
     outcome: str | None = None,
+    planning: dict[str, Any] | None = None,
     _summary_provided: bool = True,
 ) -> Renewal:
     """Router-friendly PATCH — update outcome_summary + optionally status.
@@ -532,6 +534,13 @@ async def patch_renewal(
             if renewal.replacement_sow_version_id
             else None
         ),
+        "likelihood": renewal.likelihood,
+        "proposed_amount": str(renewal.proposed_amount) if renewal.proposed_amount is not None else None,
+        "currency": renewal.currency,
+        "proposed_start": renewal.proposed_start.isoformat() if renewal.proposed_start else None,
+        "proposed_end": renewal.proposed_end.isoformat() if renewal.proposed_end else None,
+        "probability": str(renewal.probability) if renewal.probability is not None else None,
+        "probability_basis": renewal.probability_basis,
     }
     changed = False
     if _summary_provided and outcome_summary != renewal.outcome_summary:
@@ -551,6 +560,24 @@ async def patch_renewal(
             )
         renewal.status = to_status
         changed = True
+    if planning:
+        likelihood = planning.get("likelihood", renewal.likelihood)
+        if likelihood not in {"likely", "unlikely", "unassessed"}:
+            raise RenewalError(422, "likelihood must be likely, unlikely or unassessed")
+        amount = planning.get("proposed_amount", renewal.proposed_amount)
+        probability = planning.get("probability", renewal.probability)
+        proposed_start = planning.get("proposed_start", renewal.proposed_start)
+        proposed_end = planning.get("proposed_end", renewal.proposed_end)
+        if amount is not None and amount < 0:
+            raise RenewalError(422, "proposed amount must be nonnegative")
+        if probability is not None and not Decimal("0") <= probability <= Decimal("1"):
+            raise RenewalError(422, "renewal probability must be between 0 and 1")
+        if proposed_start and proposed_end and proposed_end < proposed_start:
+            raise RenewalError(422, "proposed renewal end must be on or after its start")
+        for field, value in planning.items():
+            if getattr(renewal, field) != value:
+                setattr(renewal, field, value)
+                changed = True
 
     if not changed:
         return renewal
@@ -618,6 +645,13 @@ async def patch_renewal(
                 if renewal.replacement_sow_version_id
                 else None
             ),
+            "likelihood": renewal.likelihood,
+            "proposed_amount": str(renewal.proposed_amount) if renewal.proposed_amount is not None else None,
+            "currency": renewal.currency,
+            "proposed_start": renewal.proposed_start.isoformat() if renewal.proposed_start else None,
+            "proposed_end": renewal.proposed_end.isoformat() if renewal.proposed_end else None,
+            "probability": str(renewal.probability) if renewal.probability is not None else None,
+            "probability_basis": renewal.probability_basis,
         },
     )
     return renewal
@@ -693,6 +727,13 @@ def serialize_renewal(
             if renewal.replacement_sow_version_id
             else None
         ),
+        "likelihood": renewal.likelihood,
+        "proposed_amount": str(renewal.proposed_amount) if renewal.proposed_amount is not None else None,
+        "currency": renewal.currency,
+        "proposed_start": renewal.proposed_start.isoformat() if renewal.proposed_start else None,
+        "proposed_end": renewal.proposed_end.isoformat() if renewal.proposed_end else None,
+        "probability": str(renewal.probability) if renewal.probability is not None else None,
+        "probability_basis": renewal.probability_basis,
         "opened_at": renewal.opened_at.isoformat() if renewal.opened_at else None,
         "updated_at": renewal.updated_at.isoformat() if renewal.updated_at else None,
         "days_until_end": _days_until(renewal.term_end, ref_today),

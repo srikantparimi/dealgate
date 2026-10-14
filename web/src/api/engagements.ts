@@ -376,6 +376,9 @@ export interface RateCardCell {
 export interface ForecastCalendar {
   hours_per_day: number;
   project_floor_pct: number;
+  billing_loss_threshold_amount?: Money | null;
+  renewal_likely_probability?: number | null;
+  renewal_unlikely_probability?: number | null;
   locations: CalendarLocation[];
   rate_card: RateCardCell[];
   holidays: Record<string, ISODate[]>;

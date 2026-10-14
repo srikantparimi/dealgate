@@ -42,3 +42,49 @@ The fix will compose existing Portfolio/Forecast/Pipeline services into one perm
 4. Revenue outlook and capacity/location views.
 5. Minimal renewal-likelihood and billing-loss policy configuration.
 6. Focused local checks, one combined regression, staged migration/deploy, and connected proof.
+
+## Local candidate checkpoint — 2026-10-13 22:01 PDT
+
+The integrated read model is implemented in
+`api/app/services/command_center_overview.py`. It starts from permitted open
+engagements, including imported rows with no Opportunity link, and composes the
+existing Portfolio forecast engine, Forecast schedules, renewal records,
+approval assignments and People allocation publication. The Stage 5+ rule is
+still confined to `Accounts & engagements`.
+
+Implemented behaviors:
+
+- Five first-row tiles with explicit current/closed-month evidence, cost
+  coverage, signed-term backlog, saved-probability pipeline and distinct
+  people/FTE/open-seat counts.
+- Ranked financial actions for closed-won gaps, roll-offs, GM floor failures,
+  uncovered post-SOW forecast, billing loss, user approvals, missing current
+  costs and SOWs nearing end without a renewal item.
+- Three deterministic brief statements derived from the queue and aggregates.
+- Cumulative committed / expected-renewal / pipeline-upside monthly views.
+  Proposed renewal value is allocated over its full proposed term before the
+  selected window is sliced; unscheduled weighted pipeline remains outside the
+  bars.
+- Next-month location allocation plus authoritative managed demand/supply.
+  Incomplete publications expose required demand but withhold allocated/gap
+  conclusions. TBC rows count as open seats, never people.
+- Renewal likelihood/proposal evidence and billing-loss/default probability
+  settings through migration `20261013_0068_cc_rules`.
+
+Focused evidence on this working candidate:
+
+```text
+api: pytest -q tests/test_command_center_accounts.py -x -> 15 passed
+api: pytest renewal owner/planning route -> 1 passed
+web: CommandCenter + RenewalBoard + S22 Portfolio/P5 -> 41 passed
+web: npm run typecheck -- --pretty false -> passed
+web: npm run build -> passed (index-cy26KtjL.js, index-B8R_pDti.css)
+ruff: changed backend and focused tests -> passed
+alembic: PostgreSQL offline 0067:0068 DDL -> passed
+```
+
+The full clean-SQLite migration path stops at historical migration 0028 because
+that old revision uses an unsupported SQLite constraint alteration. PostgreSQL
+migration parity tests require `DEALGATE_POSTGRES_URL`; they were skipped
+locally and remain a staging preflight gate. No staging artifact contains this
+candidate yet.

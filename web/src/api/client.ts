@@ -2818,6 +2818,13 @@ export interface RenewalRow {
   hubspot_deal_id: string | null;
   owner_id: UUID | null;
   client_id: UUID | null;
+  likelihood?: "likely" | "unlikely" | "unassessed";
+  proposed_amount?: string | null;
+  currency?: string | null;
+  proposed_start?: ISODate | null;
+  proposed_end?: ISODate | null;
+  probability?: string | null;
+  probability_basis?: string | null;
 }
 
 export interface RenewalListResponse {
@@ -2841,6 +2848,13 @@ export interface PatchRenewalBody {
   /** S21-16 (T14.06): explicit decision kind; `not_renewing` files
    * closeout/roll-off tasks on the account owner server-side. */
   outcome?: string;
+  likelihood?: "likely" | "unlikely" | "unassessed";
+  proposed_amount?: string | null;
+  currency?: string | null;
+  proposed_start?: ISODate | null;
+  proposed_end?: ISODate | null;
+  probability?: string | null;
+  probability_basis?: string | null;
 }
 
 export function listRenewals(

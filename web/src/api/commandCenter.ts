@@ -12,7 +12,7 @@ export interface CommandScope {
 }
 
 export interface CommandAction {
-  id: UUID;
+  id: string;
   rank: number;
   category: string;
   account: string;
@@ -22,11 +22,21 @@ export interface CommandAction {
   due: string | null;
   href: string;
   action: string;
+  impact: DecimalStr | null;
+  impact_label: string | null;
+  period: string | null;
+  missing_input: string | null;
 }
 
 export interface CommandRevenueMonth {
   month: string;
-  actual: DecimalStr;
+  actual: DecimalStr | null;
+  committed: DecimalStr;
+  expected_renewal: DecimalStr;
+  pipeline_upside: DecimalStr;
+  committed_total: DecimalStr;
+  expected_total: DecimalStr;
+  upside_total: DecimalStr;
   remaining_signed: DecimalStr;
   potential_expected: DecimalStr;
   potential_upside: DecimalStr;
@@ -40,6 +50,55 @@ export interface CommandOverview {
     focus: CommandFocus;
   };
   actions: CommandAction[];
+  brief: Array<{ kind: "risk" | "opportunity" | "blocker"; title: string; detail: string; href: string }>;
+  tiles: {
+    revenue: {
+      forecast: DecimalStr;
+      actual_to_date: DecimalStr | null;
+      actual_cutoff: string | null;
+      latest_actual_month: string | null;
+      latest_actual: DecimalStr | null;
+      last_closed_billing_loss: DecimalStr | null;
+      comparison: { value: DecimalStr | null; basis: string };
+      href: string;
+    };
+    gm: {
+      value: DecimalStr | null;
+      covered_engagements: number;
+      total_engagements: number;
+      revenue_coverage_pct: DecimalStr | null;
+      confirmed_cost_engagements: number;
+      estimated_cost_engagements: number;
+      missing_cost_engagements: number;
+      comparison: { value: DecimalStr | null; basis: string };
+      href: string;
+      fix_href: string;
+    };
+    backlog: { amount: DecimalStr; engagements: number; comparison: { value: null; basis: string }; href: string };
+    pipeline: {
+      weighted: DecimalStr;
+      gross: DecimalStr;
+      eligible_deals: number;
+      unscheduled_weighted: DecimalStr;
+      closed_won_gaps: number;
+      missing: string[];
+      comparison: { value: null; basis: string };
+      href: string;
+    };
+    people: {
+      billable_people: number;
+      billable_fte: DecimalStr;
+      bench_people: number | null;
+      bench_basis: string;
+      rolloffs_60_days: number;
+      open_seats: number;
+      open_seat_fte: DecimalStr;
+      comparison: { value: number; basis: string };
+      billable_href: string;
+      bench_href: string;
+      rolloff_href: string;
+    };
+  };
   metrics: {
     open_opportunity_value: DecimalStr | null;
     sows_in_progress: number;
@@ -48,17 +107,29 @@ export interface CommandOverview {
     planned_people: number | null;
   };
   lifecycle: Record<string, number>;
+  lifecycle_items: Array<{ key: string; label: string; count: number; entity: string; href: string }>;
   revenue: {
     actual: DecimalStr | null;
     remaining_signed: DecimalStr | null;
     potential_expected: DecimalStr | null;
     potential_upside: DecimalStr | null;
+    unscheduled_weighted_pipeline: DecimalStr;
     currency: string;
     months: CommandRevenueMonth[];
     cost_coverage_complete: boolean;
     financial_blockers: string[];
   };
   capacity: {
+    month: string;
+    locations: Array<{
+      location: string;
+      required_fte: DecimalStr;
+      allocated_fte: DecimalStr;
+      open_seat_fte: DecimalStr;
+      people: number;
+      open_seats: number;
+      rolloffs: number;
+    }>;
     required_fte: DecimalStr | null;
     allocated_fte: DecimalStr | null;
     gap_fte: DecimalStr | null;

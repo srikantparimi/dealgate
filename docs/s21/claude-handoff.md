@@ -2,6 +2,56 @@
 
 ## RESUME HERE
 
+**2026-10-13 22:01 PDT — COMMAND CENTER FORECAST/PORTFOLIO APPLICATION
+CANDIDATE IMPLEMENTED LOCALLY; STAGING PLAN IS NEXT.** Authoritative tree
+`/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch
+`feat/command-center-redesign`, current committed checkpoint
+`8db42d3c4e2496f7f8e1061bbb5306352315271d` plus the application changes listed
+below. Main remains isolated and must not be merged before owner staging
+acceptance. Exact next command:
+
+```bash
+cd /Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign
+git diff --check && git status --short
+```
+
+Implemented locally: a permission-aware Command Center read model begins with
+the Portfolio engagement ledger instead of opportunity links, while the
+Accounts table retains its Stage 5+ HubSpot contract. It supplies five
+reconcilable tiles, seven financial action categories plus renewal-needed,
+exactly three deterministic brief items, cumulative 3/6-month revenue, six
+lifecycle populations and next-month location capacity. It uses
+`forecast_payload`, Forecast plan schedules, renewal evidence and published
+people allocation; it does not introduce a second financial formula.
+
+New migration `20261013_0068_cc_rules` adds the USD billing-loss threshold,
+renewal policy defaults and explicit per-renewal likelihood/proposal evidence.
+The revision identifier is within Alembic's 32-character limit. PostgreSQL
+offline DDL generation from 0067 to 0068 passes. A clean SQLite migration from
+revision zero remains impossible because historical migration 0028 calls
+unsupported SQLite `ALTER CONSTRAINT`; this failure predates 0068 and is not a
+new migration defect. The required staging migration must run on PostgreSQL.
+
+Focused evidence on the working candidate: Command Center backend 15/15;
+Command Center/Renewal/S22 frontend 41/41; renewal planning route 1/1;
+TypeScript clean; Ruff clean; production Vite build clean with
+`assets/index-cy26KtjL.js` and `assets/index-B8R_pDti.css`. Tests prove an
+unlinked imported engagement contributes, September-only actuals do not become
+October actuals, partial/TBC staffing is normalized, missing future rates do
+not hide current-month GM, incomplete workforce publications withhold derived
+capacity, likely renewal value is allocated over its full proposed term, and
+forecast beyond SOW end creates a contract-coverage action.
+
+Dirty application files are the Command Center service/UI/API types, renewal
+model/service/router/workspace, Forecast settings/calendar contract, migration
+0068 and their focused tests. No other worktree's files were changed. No local
+server, browser run, deployment, migration, Terraform operation or worker is
+active. Staging still runs API revision 110 and SPA
+`assets/index-D6YIm2ot.js`; none of this candidate is deployed yet. Next work:
+commit this tested checkpoint, build immutable API/static artifacts, prepare a
+reviewable staging Terraform plan, then request the existing infrastructure
+approval boundary before apply.
+
 **2026-10-13 21:11 PDT — COMMAND CENTER FORECAST/PORTFOLIO INTEGRATION STARTED;
 LIVE DATA BOUNDARY VERIFIED BEFORE APPLICATION EDITS.** Authoritative tree
 `/Users/srikanthparimi/OfficeApp/dealgate-command-center-redesign`, branch

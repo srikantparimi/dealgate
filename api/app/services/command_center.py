@@ -688,6 +688,19 @@ async def build_command_overview(
 ) -> dict:
     """Build the non-table sections from canonical pipeline and forecast data."""
 
+    from app.services.command_center_overview import (
+        build_command_overview as build_integrated_overview,
+    )
+
+    return await build_integrated_overview(
+        session,
+        scope=scope,
+        period=period,
+        currency=currency,
+        focus=focus,
+        actor=actor,
+    )
+
     months = _period_months(period)
     period_start, period_end = _period_bounds(months)
     scoped = replace(scope, include_closed=True, open_closed="any")

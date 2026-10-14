@@ -16,6 +16,8 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -97,6 +99,13 @@ class RenewalRow(BaseModel):
     hubspot_deal_id: str | None = None
     owner_id: uuid.UUID | None = None
     client_id: uuid.UUID | None = None
+    likelihood: str
+    proposed_amount: str | None = None
+    currency: str | None = None
+    proposed_start: str | None = None
+    proposed_end: str | None = None
+    probability: str | None = None
+    probability_basis: str | None = None
 
 
 class RenewalListResponse(BaseModel):
@@ -113,6 +122,13 @@ class RenewalPatch(BaseModel):
     # S21-16 (T14.06): the explicit decision kind. `not_renewing` files
     # closeout/roll-off tasks; other outcomes are recorded in the summary.
     outcome: str | None = Field(default=None, max_length=32)
+    likelihood: str | None = Field(default=None, pattern="^(likely|unlikely|unassessed)$")
+    proposed_amount: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
+    proposed_start: date | None = None
+    proposed_end: date | None = None
+    probability: Decimal | None = Field(default=None, ge=0, le=1)
+    probability_basis: str | None = Field(default=None, max_length=2000)
 
 
 def _wrap(exc: RenewalError) -> HTTPException:
@@ -197,6 +213,10 @@ async def patch_endpoint(
 
     provided = body.model_dump(exclude_unset=True)
     summary_provided = "outcome_summary" in provided
+    planning_fields = {
+        "likelihood", "proposed_amount", "currency", "proposed_start",
+        "proposed_end", "probability", "probability_basis",
+    }
     try:
         updated = await patch_renewal(
             session,
@@ -206,6 +226,7 @@ async def patch_endpoint(
             to_status=provided.get("status"),
             replacement_sow_version_id=provided.get("replacement_sow_version_id"),
             outcome=provided.get("outcome"),
+            planning={key: provided[key] for key in planning_fields if key in provided},
             _summary_provided=summary_provided,
         )
     except RenewalError as exc:

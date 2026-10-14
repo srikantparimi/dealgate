@@ -18,11 +18,14 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, func
+from decimal import Decimal
+
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
 
 from app.db.base import Base
+from app.db.decimal import ExactNumeric
 
 
 # Kept in lock-step with the alembic 0016 CHECK constraint and the
@@ -32,6 +35,12 @@ RENEWAL_STATUSES: tuple[str, ...] = ("open", "closed", "extended", "churn")
 
 class Renewal(Base):
     __tablename__ = "renewal"
+    __table_args__ = (
+        CheckConstraint(
+            "likelihood IN ('likely','unlikely','unassessed')",
+            name="ck_renewal_likelihood",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     opportunity_id: Mapped[uuid.UUID] = mapped_column(
@@ -44,6 +53,15 @@ class Renewal(Base):
     replacement_sow_version_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("sow_version.id"), nullable=True
     )
+    likelihood: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="unassessed", server_default="unassessed"
+    )
+    proposed_amount: Mapped[Decimal | None] = mapped_column(ExactNumeric, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    proposed_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    proposed_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    probability: Mapped[Decimal | None] = mapped_column(ExactNumeric, nullable=True)
+    probability_basis: Mapped[str | None] = mapped_column(Text, nullable=True)
     opened_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

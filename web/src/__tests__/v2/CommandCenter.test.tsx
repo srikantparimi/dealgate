@@ -13,15 +13,35 @@ vi.mock("../../auth/AuthProvider", () => ({
 
 const overview: commandApi.CommandOverview = {
   scope: { period: "this_quarter", months: ["2026-10", "2026-11", "2026-12"], currency: "USD", focus: "leadership" },
-  actions: [{ id: "11111111-1111-1111-1111-111111111111", rank: 1, category: "Overdue action", account: "Acme", title: "Expansion", detail: "Review terms", owner: "Avery Owner", due: "2026-10-10", href: "/deals/11111111-1111-1111-1111-111111111111", action: "Open record" }],
+  actions: [{ id: "11111111-1111-1111-1111-111111111111", rank: 1, category: "Closed-won without engagement", account: "Acme", title: "Expansion", detail: "Closed-won work has no linked delivery engagement.", owner: "Avery Owner", due: "2026-10-10", href: "/deals/11111111-1111-1111-1111-111111111111", action: "Create engagement from deal", impact: "500000", impact_label: "Contract value", period: "Closed-won deal", missing_input: null }],
+  brief: [
+    { kind: "risk", title: "Contract value: 500000.00", detail: "Acme · Closed-won work has no linked delivery engagement.", href: "/deals/11111111-1111-1111-1111-111111111111" },
+    { kind: "opportunity", title: "250000.00 weighted pipeline across 1 eligible deal(s)", detail: "250000.00 is unscheduled and remains outside monthly revenue.", href: "/pipeline" },
+    { kind: "blocker", title: "1 record needs financial inputs", detail: "Applicable staffing cost rate", href: "/engagements/one" },
+  ],
+  tiles: {
+    revenue: { forecast: "50000", actual_to_date: null, actual_cutoff: null, latest_actual_month: "2026-09", latest_actual: "20000", last_closed_billing_loss: null, comparison: { value: "5000", basis: "versus prior month" }, href: "/forecast?month=2026-10" },
+    gm: { value: null, covered_engagements: 0, total_engagements: 1, revenue_coverage_pct: "0", confirmed_cost_engagements: 0, estimated_cost_engagements: 0, missing_cost_engagements: 1, comparison: { value: null, basis: "Prior-month comparison not recorded" }, href: "/portfolio?cost_coverage=covered", fix_href: "/settings/forecast" },
+    backlog: { amount: "120000", engagements: 1, comparison: { value: null, basis: "Prior-month comparison not recorded" }, href: "/forecast?scenario=committed" },
+    pipeline: { weighted: "250000", gross: "500000", eligible_deals: 1, unscheduled_weighted: "250000", closed_won_gaps: 1, missing: [], comparison: { value: null, basis: "Prior-month comparison not recorded" }, href: "/pipeline" },
+    people: { billable_people: 4, billable_fte: "3.50", bench_people: 2, bench_basis: "active people without a current allocation", rolloffs_60_days: 1, open_seats: 1, open_seat_fte: "0.50", comparison: { value: 1, basis: "billable people versus prior month" }, billable_href: "/portfolio?people=billable", bench_href: "/people/supply?status=bench", rolloff_href: "/portfolio?view=rolloffs" },
+  },
   metrics: { open_opportunity_value: "500000", sows_in_progress: 2, committed_revenue: "120000", committed_gm_pct: null, planned_people: 4 },
-  lifecycle: { pipeline: 1, intake: 1, scope_gm: 0, function_reviews: 1, ceo_exception: 0, signature: 0, handoff: 0, active: 1 },
-  revenue: { actual: "20000", remaining_signed: "100000", potential_expected: "250000", potential_upside: "500000", currency: "USD", cost_coverage_complete: false, financial_blockers: ["rate missing"], months: [
-    { month: "2026-10", actual: "20000", remaining_signed: "30000", potential_expected: "0", potential_upside: "0" },
-    { month: "2026-11", actual: "0", remaining_signed: "35000", potential_expected: "100000", potential_upside: "200000" },
-    { month: "2026-12", actual: "0", remaining_signed: "35000", potential_expected: "150000", potential_upside: "300000" },
+  lifecycle: { pipeline: 1, sow_in_approval: 1, signed: 0, engagement_created: 1, active: 1, renewal_due: 0 },
+  lifecycle_items: [
+    { key: "pipeline", label: "Pipeline", count: 1, entity: "open deals", href: "/pipeline" },
+    { key: "sow_in_approval", label: "SOW in approval", count: 1, entity: "SOWs", href: "/sows?state=in_review" },
+    { key: "signed", label: "Signed", count: 0, entity: "signed SOWs", href: "/sows?state=signed" },
+    { key: "engagement_created", label: "Engagement created", count: 1, entity: "engagements", href: "/portfolio" },
+    { key: "active", label: "Active", count: 1, entity: "engagements", href: "/projects" },
+    { key: "renewal_due", label: "Renewal due", count: 0, entity: "renewal items", href: "/renewals?status=open" },
+  ],
+  revenue: { actual: null, remaining_signed: "120000", potential_expected: "250000", potential_upside: "250000", unscheduled_weighted_pipeline: "250000", currency: "USD", cost_coverage_complete: false, financial_blockers: ["rate missing"], months: [
+    { month: "2026-10", actual: null, committed: "30000", expected_renewal: "0", pipeline_upside: "0", committed_total: "30000", expected_total: "30000", upside_total: "30000", remaining_signed: "30000", potential_expected: "0", potential_upside: "0" },
+    { month: "2026-11", actual: null, committed: "35000", expected_renewal: "100000", pipeline_upside: "200000", committed_total: "35000", expected_total: "135000", upside_total: "335000", remaining_signed: "35000", potential_expected: "300000", potential_upside: "300000" },
+    { month: "2026-12", actual: null, committed: "35000", expected_renewal: "150000", pipeline_upside: "300000", committed_total: "35000", expected_total: "185000", upside_total: "485000", remaining_signed: "35000", potential_expected: "450000", potential_upside: "450000" },
   ] },
-  capacity: { required_fte: null, allocated_fte: null, gap_fte: null, status: "unknown", message: "Workforce supply is not current.", gaps: [], source_status: "unknown", source_as_of: null, source_detail: "No current workforce source" },
+  capacity: { month: "2026-11", locations: [{ location: "US", required_fte: "4", allocated_fte: "3.5", open_seat_fte: "0.5", people: 4, open_seats: 1, rolloffs: 1 }], required_fte: "4", allocated_fte: "3.5", gap_fte: "0.5", status: "attention", message: "0.50 FTE remains uncovered at peak demand.", gaps: [], source_status: "current", source_as_of: "2026-10-13T12:00:00Z", source_detail: "1 managed source reconciled with the allocation ledger" },
   recent_changes: [],
   sources: [{ name: "HubSpot pipeline mirror", status: "current", as_of: "2026-10-13T12:00:00Z", detail: "3 deals" }],
   configuration_gaps: [],
@@ -55,7 +75,10 @@ describe("Command Center redesign", () => {
     expect(await screen.findByText("Needs attention")).toBeInTheDocument();
     expect(screen.getByText("From opportunity to delivery")).toBeInTheDocument();
     expect(await screen.findByText("Acme", { selector: "button" })).toBeInTheDocument();
-    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+    expect(screen.getByText("Not calculated")).toBeVisible();
+    expect(screen.getByText(/No current-month actuals/)).toBeVisible();
+    expect(screen.queryAllByText("Unknown")).toHaveLength(0);
+    expect(screen.getAllByRole("link", { name: /Revenue this month|GM this month|Signed backlog|Weighted pipeline/ })).toHaveLength(4);
     expect(screen.getByTestId("stage5-scope")).toHaveTextContent("HubSpot deals · Stage 5 and above");
     expect(screen.getByText("Open late-stage work, current-period wins and active delivery.")).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Business unit" })).toBeVisible();
@@ -122,6 +145,6 @@ describe("Command Center redesign", () => {
     renderPage();
     expect(await screen.findByText("Could not load accounts: pipeline unavailable")).toBeInTheDocument();
     expect(await screen.findByText("$120,000")).toBeInTheDocument();
-    expect(screen.getByText("Protect delivery. Unlock growth.")).toBeVisible();
+    expect(screen.getByText("Three facts to act on")).toBeVisible();
   });
 });
