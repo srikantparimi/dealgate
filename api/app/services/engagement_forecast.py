@@ -1741,15 +1741,21 @@ async def _bench(session: AsyncSession, month_start: date, month_end: date) -> l
 
 
 def portfolio_csv(view: dict[str, Any]) -> str:
+    from app.services.csv_safety import safe_row
+
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(
+
+    def write(cells: list[Any]) -> None:  # S23-PL2 B10: no cell may run as a spreadsheet formula
+        writer.writerow(safe_row(cells))
+
+    write(
         ["Business unit", "Client", "Engagement", "Sales owner", "Delivery owner", "Type", "Start", "End", "People",
          "Revenue · month", "Cost · month", "GM % · month", "GM % · term", "Status"]
     )
     for group in view.get("groups", []):
         for row in (r for r in view["rows"] if r["business_unit"] == group["business_unit"]):
-            writer.writerow(
+            write(
                 [
                     row["business_unit"], row["client_name"], row["name"], row.get("sales_owner") or "", row.get("delivery_owner") or "",
                     row["type"], row["start"], row["end"], row["people"],
@@ -1759,12 +1765,12 @@ def portfolio_csv(view: dict[str, Any]) -> str:
                     row["status"],
                 ]
             )
-        writer.writerow(
+        write(
             [group["business_unit"], f"{group['business_unit']} subtotal · {view['month']}", "", "", "", "", "", "", group["people"],
              group["revenue"], group["cost"], "" if group["gm_pct"] is None else group["gm_pct"], "", ""]
         )
     totals = view["totals"]
-    writer.writerow(
+    write(
         ["", f"All business units · {view['month']}", "", "", "", "", "", "", totals["people"], totals["revenue"], totals["cost"],
          "" if totals["gm_pct"] is None else totals["gm_pct"], "", ""]
     )

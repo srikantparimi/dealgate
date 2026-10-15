@@ -34,6 +34,7 @@ test.describe("S19 slice 1 — J7 pre-deal screenshots", () => {
   test.setTimeout(2 * 60 * 1000);
 
   test("capture Pipeline + Command centre panels", async ({ page }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await authStaging(page, BASE);
     await page.goto(`${BASE}/pipeline`);
     await expect(

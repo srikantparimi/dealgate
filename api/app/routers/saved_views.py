@@ -2,6 +2,9 @@
 
 Seeds the seven built-ins on first list. Users add custom views via
 ``POST``. Filter/sort JSON matches ``contracts.md`` §4.
+
+S23-PL2 B11: every route acts as the caller's DealGate user id. Listing
+seeds rows, so it provisions the id like a write; reading one view does not.
 """
 
 from __future__ import annotations
@@ -15,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
+from app.services.canonical_user import canonical_actor
+from app.services.pipeline_personal import reading_actor
 from app.services.saved_view import (
     SavedViewCreate,
     SavedViewPatch,
@@ -72,6 +77,7 @@ async def list_views_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> SavedViewListResponse:
+    user = await canonical_actor(session, user)
     rows = await list_views(session, actor=user)
     await session.commit()  # persist any seeded built-ins
     return SavedViewListResponse(items=[_to_row(v) for v in rows])
@@ -85,6 +91,7 @@ async def create_view_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> SavedViewRow:
+    user = await canonical_actor(session, user)
     v = await create_view(
         session,
         actor=user,
@@ -105,6 +112,7 @@ async def get_view_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> SavedViewRow:
+    user = await reading_actor(session, user)
     v = await load_view(session, actor=user, view_id=view_id)
     return _to_row(v)
 
@@ -116,6 +124,7 @@ async def patch_view_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> SavedViewRow:
+    user = await canonical_actor(session, user)
     v = await load_view(session, actor=user, view_id=view_id)
     v = await patch_view(
         session,
@@ -140,6 +149,7 @@ async def archive_view_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> None:
+    user = await canonical_actor(session, user)
     v = await load_view(session, actor=user, view_id=view_id)
     await archive_view(session, actor=user, view=v)
     await session.commit()

@@ -32,6 +32,7 @@ import {
   type PipelineOpportunityRow,
   type TimelineEntry,
 } from "../../api/client";
+import { hubspotCompanyUrl, useAppConfig } from "../../api/appConfig";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
@@ -40,9 +41,6 @@ import { WatchStar } from "../../ui-v2/WatchStar";
 import { Badge } from "../../ui-v2/primitives/badge";
 import { Button } from "../../ui-v2/primitives/button";
 import { DeletionConfirmationDialog } from "../../ui-v2/DeletionConfirmationDialog";
-
-const HUBSPOT_COMPANY_URL =
-  "https://app.hubspot.com/contacts/48656168/record/0-2/";
 
 function formatMoneyMap(
   values: Record<string, string>,
@@ -115,6 +113,8 @@ export function ClientDetailPageV2() {
   const [loading, setLoading] = useState(true);
   const [canDelete, setCanDelete] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // S23-PL2 F19: the portal comes from GET /config; no portal, no HubSpot link.
+  const { hubspotPortalId } = useAppConfig();
 
   useEffect(() => {
     let cancelled = false;
@@ -254,9 +254,9 @@ export function ClientDetailPageV2() {
               <ArrowLeft className="mr-1 h-4 w-4" aria-hidden />
               Pipeline
             </Button>
-            {client.hubspot_company_id ? (
+            {client.hubspot_company_id && hubspotPortalId ? (
               <a
-                href={`${HUBSPOT_COMPANY_URL}${client.hubspot_company_id}`}
+                href={hubspotCompanyUrl(hubspotPortalId, client.hubspot_company_id)}
                 target="_blank"
                 rel="noopener noreferrer"
               >

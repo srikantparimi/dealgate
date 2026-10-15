@@ -18,13 +18,14 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   ApiError,
   listUsers,
-  type UserRow,
+  type AdminUserRow,
 } from "../../../api/client";
 import { EmptyState } from "../../../ui-v2/EmptyState";
 import { ErrorState } from "../../../ui-v2/ErrorState";
 import { PageHeader } from "../../../ui-v2/PageHeader";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
 import { ApprovalGroups } from "./ApprovalGroups";
+import { HubspotOwnerCell, HubspotOwnerDialog } from "./HubspotOwnerLink";
 import {
   Tabs,
   TabsContent,
@@ -144,9 +145,11 @@ export function PeopleSection() {
 }
 
 function UsersPanel() {
-  const [rows, setRows] = useState<UserRow[]>([]);
+  const [rows, setRows] = useState<AdminUserRow[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  // S23-PL2 F18: the user whose HubSpot owner link is being changed.
+  const [editingOwner, setEditingOwner] = useState<AdminUserRow | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -209,6 +212,9 @@ function UsersPanel() {
             <th scope="col" className="px-3 py-2 text-left text-secondary text-text-secondary uppercase tracking-wide">
               Last access
             </th>
+            <th scope="col" className="px-3 py-2 text-left text-secondary text-text-secondary uppercase tracking-wide">
+              HubSpot owner
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -236,10 +242,21 @@ function UsersPanel() {
               <td className="px-3 py-2 text-text-secondary tnum">
                 {u.last_login ?? "Never"}
               </td>
+              <td className="px-3 py-2">
+                <HubspotOwnerCell user={u} onChange={() => setEditingOwner(u)} />
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <HubspotOwnerDialog
+        user={editingOwner}
+        onClose={() => setEditingOwner(null)}
+        onSaved={() => {
+          setEditingOwner(null);
+          load();
+        }}
+      />
     </div>
   );
 }

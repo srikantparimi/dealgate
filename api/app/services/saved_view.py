@@ -6,16 +6,23 @@ calls ``list_views`` for the first time). Users can add more via
 
 The built-in filter shapes echo ``docs/reports/s20/contracts.md`` §4
 so W2's pipeline query interprets them without translation.
+
+S23-PL2 B11: a user's live custom views are unique by case-insensitive
+name (``ux_saved_view_owner_name``); a duplicate is a 409 with the
+Pipeline's copy. The Pipeline page's own views are ``key='pipeline'``;
+the S20 route keeps writing ``key='custom'``.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
@@ -30,6 +37,9 @@ from app.models.saved_view import (
 LEADER_ROLES: frozenset[str] = frozenset(
     {"SalesLeader", "HR", "SystemAdmin"}
 )
+
+DUPLICATE_VIEW_NAME = "You already have a view with this name."
+_NAME_INDEX = "ux_saved_view_owner_name"
 
 
 # --- Built-in shapes ------------------------------------------------------
@@ -123,6 +133,7 @@ class SavedViewCreate:
     filter_json: dict[str, Any]
     sort_json: dict[str, Any] | None = None
     visibility: str = "private"
+    key: str = "custom"
 
 
 @dataclass(frozen=True)
@@ -137,6 +148,38 @@ class SavedViewPatch:
 
 def _is_leader(user: AuthUser) -> bool:
     return any(r in LEADER_ROLES for r in user.groups)
+
+
+async def _name_taken(
+    session: AsyncSession, owner_id: uuid.UUID, name: str, *, exclude_id: uuid.UUID | None = None
+) -> bool:
+    """Whether ``owner_id`` has a live custom view named ``name`` in any letter case.
+
+    The comparison uses the database's ``lower()`` on both sides, the same
+    function the unique index uses.
+    """
+
+    stmt = select(SavedView.id).where(
+        SavedView.owner_id == owner_id,
+        SavedView.archived_at.is_(None),
+        SavedView.is_builtin.is_(False),
+        func.lower(SavedView.name) == func.lower(name),
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(SavedView.id != exclude_id)
+    return (await session.scalar(stmt.limit(1))) is not None
+
+
+async def _flush_or_duplicate(session: AsyncSession) -> None:
+    """Flush; a concurrent save of the same name becomes the same 409."""
+
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        if _NAME_INDEX not in str(exc.orig):
+            raise
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DUPLICATE_VIEW_NAME) from exc
 
 
 def _row_to_dict(v: SavedView) -> dict[str, Any]:
@@ -161,8 +204,8 @@ async def ensure_builtins(
 ) -> tuple[SavedView, ...]:
     """Idempotently seed the seven built-ins for a user.
 
-    Uses the ``uq_saved_view_owner_key_builtin`` unique constraint —
-    a re-run inserts nothing.
+    Skips keys the user already has; ``ux_saved_view_builtin_key`` keeps a
+    user to one built-in per key.
     """
 
     stmt = select(SavedView).where(
@@ -251,7 +294,10 @@ async def create_view(
     actor: AuthUser,
     payload: SavedViewCreate,
 ) -> SavedView:
-    if not payload.name.strip():
+    """Save a custom view for ``actor`` (who must be the DealGate user id)."""
+
+    name = payload.name.strip()[:255]
+    if not name:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="name is required",
@@ -261,20 +307,24 @@ async def create_view(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"visibility must be one of {sorted(VALID_VIEW_VISIBILITIES)}",
         )
+    if await _name_taken(session, actor.id, name):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DUPLICATE_VIEW_NAME)
 
     v = SavedView(
         id=uuid.uuid4(),
         owner_id=actor.id,
-        key="custom",
-        name=payload.name.strip()[:255],
+        key=payload.key,
+        name=name,
         filter_json=payload.filter_json,
         sort_json=payload.sort_json,
         visibility=payload.visibility,
         is_builtin=False,
         display_order=1000,
+        # Set here (not by the database clock) so views list in save order.
+        created_at=datetime.now(UTC),
     )
     session.add(v)
-    await session.flush()
+    await _flush_or_duplicate(session)
     after = _row_to_dict(v)
     await append_audit(
         session,
@@ -318,6 +368,10 @@ async def patch_view(
                 detail="name cannot be blank",
             )
         if stripped != view.name:
+            if not view.is_builtin and await _name_taken(
+                session, view.owner_id, stripped, exclude_id=view.id
+            ):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DUPLICATE_VIEW_NAME)
             view.name = stripped
             changed = True
 
@@ -353,6 +407,7 @@ async def patch_view(
     if not changed:
         return view
 
+    await _flush_or_duplicate(session)
     after = _row_to_dict(view)
     await append_audit(
         session,
@@ -377,7 +432,6 @@ async def archive_view(
         )
     if view.archived_at is not None:
         return view
-    from datetime import UTC, datetime
 
     before = _row_to_dict(view)
     view.archived_at = datetime.now(UTC)
@@ -396,6 +450,7 @@ async def archive_view(
 
 __all__ = [
     "BUILTIN_VIEW_KEYS",
+    "DUPLICATE_VIEW_NAME",
     "SavedViewCreate",
     "SavedViewPatch",
     "archive_view",

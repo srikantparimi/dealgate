@@ -141,13 +141,17 @@ def _can_read_clients(user: AuthUser) -> bool:
 async def _access_or_forbid(
     session: AsyncSession, user: AuthUser, client_id: uuid.UUID
 ) -> None:
-    """Non-leader users may read a client iff they own at least one of its
-    opportunities. Missing client → 404; missing access → 403.
+    """Leaders, Presales and Sales read any client page; anyone else only a
+    client they own at least one opportunity on. Missing client → 404;
+    missing access → 403. Fixture scoping applies to everyone.
+
+    S23-PL2 B12: the Pipeline lists every client to Sales and a row opens the
+    client page, so Sales reads client pages like Presales does.
     """
 
     if not user_allowed(user, await account_scope(session, client_id)):
         raise HTTPException(status_code=404, detail="client not found")
-    if is_leader(user) or "Presales" in user.groups:
+    if is_leader(user) or {"Presales", "Sales"} & set(user.groups):
         return
     accessible = await accessible_client_ids_for(session, owner_id=user.id)
     if client_id not in accessible:

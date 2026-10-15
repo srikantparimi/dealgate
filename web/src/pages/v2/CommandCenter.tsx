@@ -261,10 +261,10 @@ export function CommandCenterPage() {
           <h2 className="mt-2 text-[18px] font-semibold text-text">Three facts to act on</h2>
           <div className="mt-5 space-y-4 text-body">
             {(overview?.brief ?? []).map((item) => (
-              <Link key={item.kind} to={item.href} className="grid grid-cols-[20px_1fr] gap-2 rounded-control p-1 hover:bg-surface">
+              <MaybeLink key={item.kind} to={item.href} className="grid grid-cols-[20px_1fr] gap-2 rounded-control p-1" hoverClassName="hover:bg-surface">
                 <span className="text-primary">{item.kind === "risk" ? <AlertTriangle className="h-4 w-4" /> : item.kind === "opportunity" ? <BriefcaseBusiness className="h-4 w-4" /> : <Users className="h-4 w-4" />}</span>
                 <span><strong className="block text-body text-text">{item.title}</strong><small className="text-text-secondary">{item.detail}</small></span>
-              </Link>
+              </MaybeLink>
             ))}
           </div>
         </aside>
@@ -282,11 +282,11 @@ export function CommandCenterPage() {
         </div>
         <div className="grid overflow-hidden rounded-card border border-border bg-surface sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {(overview?.lifecycle_items ?? []).map((item) => (
-            <Link key={item.key} to={item.href} state={{ from: returnTo }} className="min-h-24 border-b border-r border-divider p-3 hover:bg-primary-subtle">
+            <MaybeLink key={item.key} to={item.href} state={{ from: returnTo }} className="min-h-24 border-b border-r border-divider p-3" hoverClassName="hover:bg-primary-subtle">
               <span className="block min-h-8 text-secondary text-text-muted">{item.label}</span>
               <strong className="mt-1 block text-[22px] text-text">{item.count}</strong>
               <small className="text-text-muted">{item.entity}</small>
-            </Link>
+            </MaybeLink>
           ))}
         </div>
       </section>
@@ -334,14 +334,19 @@ export function CommandCenterPage() {
 
 function ActionTiles({ overview, currency }: { overview: CommandOverview; currency: string }) {
   const { revenue, gm, backlog, pipeline, people } = overview.tiles;
+  const { open_opportunity_value: openValue, open_opportunity_count: openCount, open_opportunity_href: openHref, open_opportunity_business_units: openUnits } = overview.metrics;
+  // The Pipeline filters whole business units, so a Command Center region opens (and counts) its unit.
+  // (`?? []`: an API from before this field, during a deploy, still renders.)
+  const unitScope = businessUnitScope(openUnits ?? []);
   return (
     <section aria-labelledby="questions-title">
       <div className="mb-2 flex items-center justify-between"><h2 id="questions-title" className="text-section font-semibold">Business now</h2><span className="text-secondary text-text-muted">{overview.scope.months[0]} reporting basis · {currency}</span></div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Tile href={revenue.href} label="Revenue this month" value={money(revenue.forecast, currency)} note={revenue.actual_to_date === null ? `No current-month actuals · latest ${monthLabel(revenue.latest_actual_month)} ${money(revenue.latest_actual, currency)}` : `${money(revenue.actual_to_date, currency)} actual through ${dateTimeLabel(revenue.actual_cutoff)}`} comparison={moneyChange(revenue.comparison.value, currency, revenue.comparison.basis)} detail={revenue.last_closed_billing_loss === null ? "Billing loss not recorded" : `${money(revenue.last_closed_billing_loss, currency)} billing loss in latest actual month`} />
         <Tile href={gm.href} label="GM this month" value={percentage(gm.value)} note={`${gm.covered_engagements} of ${gm.total_engagements} engagements have complete financial inputs`} comparison={gm.comparison.value === null ? gm.comparison.basis : `${(Number(gm.comparison.value) * 100).toFixed(1)} pp ${gm.comparison.basis}`} detail={`${percentage(gm.revenue_coverage_pct)} revenue covered · ${gm.confirmed_cost_engagements} confirmed · ${gm.estimated_cost_engagements} default estimate`} warning={gm.missing_cost_engagements > 0} />
         <Tile href={backlog.href} label="Signed backlog" value={money(backlog.amount, currency)} note={`${backlog.engagements} engagement${backlog.engagements === 1 ? "" : "s"} through effective end dates`} comparison={backlog.comparison.basis} detail="Recognized revenue excluded" />
-        <Tile href={pipeline.href} label="Weighted pipeline" value={money(pipeline.weighted, currency)} note={`${pipeline.eligible_deals} eligible open deal${pipeline.eligible_deals === 1 ? "" : "s"} · ${money(pipeline.gross, currency)} gross`} comparison={pipeline.comparison.basis} detail={`${money(pipeline.unscheduled_weighted, currency)} unscheduled · ${pipeline.closed_won_gaps} closed-won gap${pipeline.closed_won_gaps === 1 ? "" : "s"}`} warning={pipeline.missing.length > 0} />
+        <Tile href={openHref} label="Open opportunity value" value={money(openValue, "USD")} note={`${openCount} open deal${openCount === 1 ? "" : "s"}${unitScope} · Hold included · unweighted`} comparison={openHref ? "Same number as the Pipeline" : "Not on the Pipeline: this owner has no HubSpot link"} detail="USD deals; other currencies are not converted" />
+        <Tile href={pipeline.href} label={pipeline.label} value={money(pipeline.weighted, currency)} note={`Weighted · ${pipeline.eligible_deals} open deal${pipeline.eligible_deals === 1 ? "" : "s"} · ${money(pipeline.gross, currency)} gross`} linkNote={pipeline.href ? `Pipeline list: open deals with no SOW${unitScope}. This tile is weighted and leaves out deals linked to an engagement.` : undefined} comparison={pipeline.comparison.basis} detail={`${money(pipeline.unscheduled_weighted, currency)} unscheduled · ${pipeline.closed_won_gaps} closed-won gap${pipeline.closed_won_gaps === 1 ? "" : "s"}`} warning={pipeline.missing.length > 0} />
         <div className="min-h-40 rounded-card border border-border bg-surface p-4">
           <span className="block text-secondary text-text-muted">People</span><strong className="my-2 block text-[23px] text-text">{people.billable_people} billable</strong>
           <div className="space-y-1 text-secondary"><Link className="block text-primary" to={people.billable_href}>{people.billable_fte} FTE allocated</Link><Link className="block text-primary" to={people.bench_href}>{people.bench_people === null ? "Bench not attributable in this scope" : `${people.bench_people} on bench`}</Link><Link className="block text-primary" to={people.rolloff_href}>{people.rolloffs_60_days} roll-offs in 60 days</Link><span className="block text-text-muted">{people.open_seats} open seats · {people.open_seat_fte} FTE</span><small className="block font-medium text-primary">{people.comparison.value > 0 ? "+" : ""}{people.comparison.value} {people.comparison.basis}</small></div>
@@ -351,8 +356,22 @@ function ActionTiles({ overview, currency }: { overview: CommandOverview; curren
   );
 }
 
-function Tile({ href, label, value, note, comparison, detail, warning = false }: { href: string; label: string; value: string; note: string; comparison: string; detail: string; warning?: boolean }) {
-  return <Link to={href} className={cn("min-h-40 rounded-card border bg-surface p-4 hover:border-primary", warning ? "border-warning/40" : "border-border")}><span className="block text-secondary text-text-muted">{label}</span><strong className="my-2 block text-[23px] text-text">{value}</strong><span className="block text-secondary text-text-secondary">{note}</span><small className="mt-2 block text-text-muted">{detail}</small><small className="mt-2 block font-medium text-primary">{comparison}</small></Link>;
+function Tile({ href, label, value, note, comparison, detail, linkNote, warning = false }: { href: string | null; label: string; value: string; note: string; comparison: string; detail: string; linkNote?: string; warning?: boolean }) {
+  return <MaybeLink to={href} testId="tile" className={cn("min-h-40 rounded-card border bg-surface p-4", warning ? "border-warning/40" : "border-border")} hoverClassName="hover:border-primary"><span className="block text-secondary text-text-muted">{label}</span><strong className="my-2 block text-[23px] text-text">{value}</strong><span className="block text-secondary text-text-secondary">{note}</span><small className="mt-2 block text-text-muted">{detail}</small>{linkNote ? <small className="mt-2 block text-text-muted">{linkNote}</small> : null}<small className={cn("mt-2 block font-medium", href ? "text-primary" : "text-text-muted")}>{comparison}</small></MaybeLink>;
+}
+
+/** A link when there is a list to open; the same content, unlinked, when the Pipeline cannot list the scope. */
+function MaybeLink({ to, state, testId, className, hoverClassName, children }: { to: string | null; state?: unknown; testId?: string; className: string; hoverClassName: string; children: ReactNode }) {
+  return to
+    ? <Link to={to} state={state} data-testid={testId} className={cn(className, hoverClassName)}>{children}</Link>
+    : <div data-testid={testId} className={className}>{children}</div>;
+}
+
+/** " in IT Avalon", " with no business unit": the Pipeline business units an open number covers. */
+function businessUnitScope(units: string[]): string {
+  const named = units.filter((unit) => unit !== "unmapped");
+  const parts = [...(named.length ? [`in ${named.join(" or ")}`] : []), ...(units.includes("unmapped") ? ["with no business unit"] : [])];
+  return parts.length ? ` ${parts.join(" or ")}` : "";
 }
 
 function RevenueOutlook({ overview, currency, scenario, onScenario, maximum, period }: { overview: CommandOverview | null; currency: string; scenario: "committed" | "expected" | "upside"; onScenario: (value: "committed" | "expected" | "upside") => void; maximum: number; period: CommandPeriod }) {

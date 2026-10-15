@@ -4768,3 +4768,90 @@ export function getWorkerHeartbeat(): Promise<WorkerHeartbeatStatus> {
     `/settings/integrations/worker-heartbeat`,
   );
 }
+
+// S23-PL2 · authenticated file download (CSV exports). Returns the body and
+// the filename the server named in Content-Disposition, when it named one.
+export async function requestBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(`${BASE_URL}${path}`, { headers: await authHeaders() });
+  if (!response.ok) {
+    const text = await response.text();
+    const body = text ? safeJson(text) : null;
+    throw new ApiError(response.status, body, errorMessage(body, response.status));
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  return { blob: await response.blob(), filename: match ? match[1] : null };
+}
+
+// S23-PL2 F3 · the SystemAdmin "Run sync now". The sync keeps running on the
+// server after CloudFront cuts the connection at 30 s, so callers fire this,
+// say "Sync started" and poll getSyncHealth() for the outcome.
+export function triggerHubspotSync(): Promise<unknown> {
+  return request<unknown>(`/integrations/hubspot/backfill`, { method: "POST" });
+}
+
+// S23-PL2 F18 · Settings → Users: each user's link to a HubSpot owner (B4).
+// `hubspot_owner_link` says how it was decided: "email" (matched
+// automatically), "admin" (set by an admin; with no owner it means "this user
+// has no HubSpot owner"), null (not decided yet).
+export type HubspotOwnerLinkState = "active" | "archived" | "none";
+
+export interface UserHubspotOwnerLink {
+  hubspot_owner_id: string | null;
+  hubspot_owner_name: string | null;
+  hubspot_owner_state: HubspotOwnerLinkState | null;
+  hubspot_owner_link: "email" | "admin" | null;
+}
+
+/** A `/admin/users` row; the owner-link fields arrive from S23-PL2 on. */
+export type AdminUserRow = UserRow & Partial<UserHubspotOwnerLink>;
+
+export interface HubspotOwnerOption {
+  id: string;
+  name: string | null;
+  email: string | null;
+  archived: boolean;
+  linked_user_id: UUID | null;
+  linked_user_name: string | null;
+}
+
+export function listHubspotOwners(): Promise<HubspotOwnerOption[]> {
+  return request<HubspotOwnerOption[]>(`/admin/hubspot-owners`);
+}
+
+/** Admin override; `null` records "no HubSpot owner" (never re-linked automatically). */
+export function setUserHubspotOwner(userId: UUID, hubspotOwnerId: string | null): Promise<void> {
+  return request<void>(`/users/${encodeURIComponent(userId)}/hubspot-owner`, {
+    method: "PUT",
+    body: JSON.stringify({ hubspot_owner_id: hubspotOwnerId }),
+  });
+}
+
+// S23-PL2 F18 · Settings → Business units: HubSpot region value → business
+// unit and the region shown beside it (B3). Deals read it live.
+export type RegionMapBusinessUnit = "ST21" | "IT Avalon" | "Retro Rabbit";
+
+export interface RegionMapRow {
+  hubspot_value: string;
+  business_unit: RegionMapBusinessUnit;
+  region: string;
+  note: string | null;
+}
+
+export interface RegionMap {
+  rows: RegionMapRow[];
+  unmapped_on_deals: { hubspot_value: string; deals: number }[];
+  deals_without_region: number;
+  business_units: RegionMapBusinessUnit[];
+}
+
+export function getBusinessUnitMap(): Promise<RegionMap> {
+  return request<RegionMap>(`/settings/business-units`);
+}
+
+export function saveBusinessUnitMap(rows: RegionMapRow[]): Promise<RegionMap> {
+  return request<RegionMap>(`/settings/business-units`, {
+    method: "PUT",
+    body: JSON.stringify({ rows }),
+  });
+}

@@ -50,7 +50,8 @@ export interface CommandOverview {
     focus: CommandFocus;
   };
   actions: CommandAction[];
-  brief: Array<{ kind: "risk" | "opportunity" | "blocker"; title: string; detail: string; href: string }>;
+  /** `href` is null when the Pipeline cannot list the scope (an owner with no HubSpot link). */
+  brief: Array<{ kind: "risk" | "opportunity" | "blocker"; title: string; detail: string; href: string | null }>;
   tiles: {
     revenue: {
       forecast: DecimalStr;
@@ -76,6 +77,8 @@ export interface CommandOverview {
     };
     backlog: { amount: DecimalStr; engagements: number; comparison: { value: null; basis: string }; href: string };
     pipeline: {
+      /** S23-PL2 B2: "Not yet in the SOW flow" — USD, weighted, no SOW and no engagement link. */
+      label: string;
       weighted: DecimalStr;
       gross: DecimalStr;
       eligible_deals: number;
@@ -83,7 +86,11 @@ export interface CommandOverview {
       closed_won_gaps: number;
       missing: string[];
       comparison: { value: null; basis: string };
-      href: string;
+      /**
+       * The closest Pipeline list: open deals with no SOW (the tile is also weighted and leaves out
+       * deals linked to an engagement). Null when the Pipeline cannot list the scope.
+       */
+      href: string | null;
     };
     people: {
       billable_people: number;
@@ -100,14 +107,24 @@ export interface CommandOverview {
     };
   };
   metrics: {
+    /**
+     * S23-PL2 B2: the Pipeline's own open number for this scope (USD, Hold included), counted over
+     * exactly the list `open_opportunity_href` opens. The href is null when the Pipeline cannot list
+     * the scope (an owner with no HubSpot link, or the Unassigned owner); the number is then the
+     * Command Center's own scope.
+     */
     open_opportunity_value: DecimalStr | null;
+    open_opportunity_count: number;
+    open_opportunity_href: string | null;
+    /** The Pipeline business units the number covers ("unmapped" = no business unit); [] = all. */
+    open_opportunity_business_units: string[];
     sows_in_progress: number;
     committed_revenue: DecimalStr | null;
     committed_gm_pct: DecimalStr | null;
     planned_people: number | null;
   };
   lifecycle: Record<string, number>;
-  lifecycle_items: Array<{ key: string; label: string; count: number; entity: string; href: string }>;
+  lifecycle_items: Array<{ key: string; label: string; count: number; entity: string; href: string | null }>;
   revenue: {
     actual: DecimalStr | null;
     remaining_signed: DecimalStr | null;

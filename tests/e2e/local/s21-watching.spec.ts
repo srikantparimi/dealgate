@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 test("T39 Watching is zero, one exact deal in three groups, then zero with access filtering", async ({ page, request }) => {
+  test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
   test.setTimeout(120_000);
   const run = randomUUID();
   const email = `s21-t39-${run}@example.test`;
@@ -101,6 +102,7 @@ test("T39 Watching is zero, one exact deal in three groups, then zero with acces
 });
 
 test("Watching count and exact client-group membership follow current search filters", async ({ page, request }) => {
+  test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
   test.setTimeout(90_000);
   const run = randomUUID();
   const headers = { "X-Test-User": `s21-watch-filter-${run}@example.test` };

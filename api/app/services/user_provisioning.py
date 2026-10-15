@@ -27,6 +27,12 @@ Provisioning a user is a state change, so it writes an ``audit_event`` in the
 same transaction. It is strictly idempotent: an existing user produces no audit
 row, or every upload would write one. A group change produces one
 ``user.groups_synced`` row recording the before/after.
+
+HubSpot owner link (S23-PL2 B4)
+-------------------------------
+While a user's link to a HubSpot owner is undecided, sign-in links them to the
+active owner with the same email (one extra SELECT until it is decided; one
+``user.hubspot_owner_linked`` audit row when it links).
 """
 
 from __future__ import annotations
@@ -41,6 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import append_audit
 from app.auth import AuthUser
 from app.models.user import User
+from app.services.hubspot_owners import link_by_email
 from app.services.user_identity import is_identity_placeholder
 
 __all__ = ["ensure_user", "hydrate_from_cognito"]
@@ -115,12 +122,25 @@ async def ensure_user(session: AsyncSession, actor: AuthUser) -> User:
         await session.execute(select(User).where(User.id == actor.id))
     ).scalar_one_or_none()
 
+    if existing is None:
+        # S23-PL2: a row adopted earlier remembers this login (see below).
+        existing = (
+            await session.execute(select(User).where(User.cognito_sub == str(actor.id)))
+        ).scalar_one_or_none()
+
     if existing is None and actor_email and not _looks_like_uuid(actor_email):
         existing = (
             await session.execute(
                 select(User).where(User.email == actor_email)
             )
         ).scalar_one_or_none()
+
+    if existing is not None and existing.id != actor.id and existing.cognito_sub != str(actor.id):
+        # S23-PL2: an invited or HubSpot-created row whose id is not this login's
+        # sub. Remember the login so reads (resolve_viewer) find the same row
+        # from an access token that carries no email. No other row holds this
+        # sub: the lookup above would have returned it.
+        existing.cognito_sub = str(actor.id)
 
     now = datetime.now(UTC)
 
@@ -168,6 +188,7 @@ async def ensure_user(session: AsyncSession, actor: AuthUser) -> User:
             existing.name = actor_name
         existing.last_login = now
         await session.flush()
+        await link_by_email(session, existing)
         return existing
 
     user = User(
@@ -193,4 +214,5 @@ async def ensure_user(session: AsyncSession, actor: AuthUser) -> User:
             "source": "cognito_jit",
         },
     )
+    await link_by_email(session, user)
     return user

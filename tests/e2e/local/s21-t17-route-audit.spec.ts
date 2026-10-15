@@ -74,8 +74,9 @@ test("T17.06/.08 released fixture route identity, counts and reader isolation", 
   expect(projects.items.filter((row: { provenance: { opportunity_id: string } }) => row.provenance.opportunity_id === deal)
     .map((row: { project_id: string }) => row.project_id)).toEqual([project]);
 
-  await page.goto("/pipeline");
-  if (before.open === 1) await expect(page.getByTestId(`client-row-${client}`)).toContainText(account.name);
+  // S23-PL2: the Pipeline's Clients tab lists the account by name (the old client-row test id is gone).
+  await page.goto("/pipeline?tab=clients&status=all");
+  if (before.open === 1) await expect(page.getByRole("button", { name: account.name, exact: true }).first()).toBeVisible();
   await page.goto(`/clients/${client}`);
   await expect(page.getByTestId("client-heading")).toHaveText(account.name);
   await expect(page.getByTestId("rollup-open")).toHaveText(String(before.open));

@@ -42,8 +42,8 @@ test(continuation ? "T17 diagnostic continuation from persisted confirmed scope"
   const zero = execFileSync("docker", ["exec", "dealgate-s21-lead-db", "psql", "-U", "s21", "-d", f.database,
     "-At", "-c", "SELECT json_build_object('sows',(SELECT count(*) FROM sow),'versions',(SELECT count(*) FROM sow_version),'packages',(SELECT count(*) FROM approval_package),'projects',(SELECT count(*) FROM project))"], { encoding: "utf8" });
   expect(JSON.parse(zero)).toEqual({ sows: 0, versions: 0, packages: 0, projects: 0 });
-  await page.goto("/pipeline");
-  await page.getByText(clientName, { exact: true }).click();
+  // S23-PL2: a client name on the Pipeline opens its preview, not the client page; go to the page directly.
+  await page.goto(`/clients/${client}`);
   await expect(page).toHaveURL(new RegExp(`/clients/${client}$`));
   await page.getByTestId(`client-deal-row-${deal}`).click();
   await expect(page).toHaveURL(new RegExp(`/deals/${deal}$`));

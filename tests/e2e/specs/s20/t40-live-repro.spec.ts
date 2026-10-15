@@ -30,6 +30,7 @@ test.describe("T40 · L02-L07 live reproductions (S20)", () => {
   test("L02: clicking a stage chip filters in place and updates the URL", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     await switchToOpportunities(page);
     const strip = page.getByTestId("stage-strip");
@@ -55,6 +56,7 @@ test.describe("T40 · L02-L07 live reproductions (S20)", () => {
   test("L03: pagination 25/50/100 + global totals reachable", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     await switchToOpportunities(page);
     const paginator = page.getByTestId("paginator");
@@ -70,6 +72,7 @@ test.describe("T40 · L02-L07 live reproductions (S20)", () => {
   });
 
   test("L04: deal column shows dealname, not stage label", async ({ page }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     await switchToOpportunities(page);
     const rows = page.getByTestId("opportunities-table").locator("tbody tr");
@@ -92,6 +95,7 @@ test.describe("T40 · L02-L07 live reproductions (S20)", () => {
   test("L05: client rows show owner + Open count + last activity", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     const rows = page.getByTestId("clients-table").locator("tbody tr");
     await expect(rows.first()).toBeVisible({ timeout: 15_000 });
@@ -104,6 +108,7 @@ test.describe("T40 · L02-L07 live reproductions (S20)", () => {
   });
 
   test("L06: stage chips exist with counts (D9 aggregation)", async ({ page }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     const strip = page.getByTestId("stage-strip");
     await expect(strip).toBeVisible({ timeout: 15_000 });
@@ -120,6 +125,7 @@ test.describe("T40 · L02-L07 live reproductions (S20)", () => {
   test("L06b: at least one chip with count > 0 also carries a value line (S3b Rev-2)", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     // Chip value is the "count + value per chip" review contract. On
     // staging portals with real deals, at least one non-closed chip has
     // count > 0 and a currency-formatted value line under it.
@@ -153,6 +159,7 @@ test.describe("T40 · L02-L07 live reproductions (S20)", () => {
   test("Owner + BU filter selects are present in the filter bar (S3b Rev-2)", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     await expect(page.getByTestId("filter-bar")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("filter-owner")).toBeVisible();

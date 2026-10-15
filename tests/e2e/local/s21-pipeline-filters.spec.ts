@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 
 test("T09 real filtered Pipeline population survives export, navigation and stale responses", async ({ page, request }, testInfo) => {
+  test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
   test.setTimeout(120_000);
   expect(process.env.S21_FILTER_MANIFEST, "Explicit isolated fixture manifest required").toBeTruthy();
   const fixture = JSON.parse(readFileSync(process.env.S21_FILTER_MANIFEST!, "utf8"));

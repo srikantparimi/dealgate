@@ -1,6 +1,9 @@
 """``/tracking-groups`` router (S20 · W6).
 
 Manual watchlists + dynamic groups derived from saved filters.
+
+S23-PL2 B11: every route acts as the caller's DealGate user id; reads
+resolve it without writing, writes provision it first.
 """
 
 from __future__ import annotations
@@ -14,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
+from app.services.canonical_user import canonical_actor
+from app.services.pipeline_personal import reading_actor
 from app.services.tracking_group import (
     GroupCreate,
     GroupPatch,
@@ -82,6 +87,7 @@ async def list_groups_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> GroupListResponse:
+    user = await reading_actor(session, user)
     groups = await list_groups(session, actor=user, member_kind=member_kind)
     return GroupListResponse(items=[_to_row(g) for g in groups])
 
@@ -92,6 +98,7 @@ async def create_group_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> GroupRow:
+    user = await canonical_actor(session, user)
     g = await create_group(
         session,
         actor=user,
@@ -113,6 +120,7 @@ async def get_group_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> GroupRow:
+    user = await reading_actor(session, user)
     g = await load_group(session, actor=user, group_id=group_id)
     return _to_row(g)
 
@@ -124,6 +132,7 @@ async def patch_group_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> GroupRow:
+    user = await canonical_actor(session, user)
     g = await load_group(session, actor=user, group_id=group_id)
     g = await patch_group(
         session,
@@ -147,6 +156,7 @@ async def archive_group_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> None:
+    user = await canonical_actor(session, user)
     g = await load_group(session, actor=user, group_id=group_id)
     await archive_group(session, actor=user, group=g)
     await session.commit()
@@ -159,6 +169,7 @@ async def list_members_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> MemberListResponse:
+    user = await reading_actor(session, user)
     g = await load_group(session, actor=user, group_id=group_id)
     members = await list_members(session, actor=user, group=g)
     return MemberListResponse(
@@ -173,6 +184,7 @@ async def add_members_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> MemberListResponse:
+    user = await canonical_actor(session, user)
     g = await load_group(session, actor=user, group_id=group_id)
     await add_members(session, actor=user, group=g, member_ids=tuple(body.member_ids))
     await session.commit()
@@ -191,6 +203,7 @@ async def remove_members_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> MemberListResponse:
+    user = await canonical_actor(session, user)
     g = await load_group(session, actor=user, group_id=group_id)
     await remove_members(
         session, actor=user, group=g, member_ids=tuple(body.member_ids)

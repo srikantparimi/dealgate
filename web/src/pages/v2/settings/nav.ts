@@ -10,6 +10,7 @@
 
 import {
   Activity,
+  Building2,
   CalendarRange,
   Cog,
   Database,
@@ -28,6 +29,7 @@ export type SectionId =
   | "policy"
   | "people"
   | "integrations"
+  | "business-units"
   | "imports"
   | "audit"
   | "system-health";
@@ -84,6 +86,14 @@ export const SECTIONS: SectionDef[] = [
     label: "Integrations",
     description: "HubSpot, identity, storage, finance, notifications.",
     icon: Plug,
+    requireAny: ["SystemAdmin"],
+  },
+  {
+    // S23-PL2 F18: HubSpot region value → business unit and region.
+    id: "business-units",
+    label: "Business units",
+    description: "Which business unit each HubSpot region belongs to.",
+    icon: Building2,
     requireAny: ["SystemAdmin"],
   },
   {

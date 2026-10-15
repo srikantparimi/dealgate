@@ -18,6 +18,7 @@ from app.services.command_center import (
     command_accounts_csv,
     list_command_accounts,
 )
+from app.services.canonical_user import resolve_viewer
 from app.services.hubspot_pipeline import PipelineFilters, scope_pipeline_filters
 from app.models.watchlist import WatchedItem
 
@@ -42,8 +43,13 @@ async def _scope(
 
 
 async def _watched(session: AsyncSession, user: AuthUser) -> tuple[tuple[uuid.UUID, ...], tuple[uuid.UUID, ...]]:
+    # S23-PL2: watches are keyed on the DealGate user id, which differs from the
+    # login id for HubSpot-created and invited users.
+    viewer = await resolve_viewer(session, user)
     rows = (
-        await session.scalars(select(WatchedItem).where(WatchedItem.user_id == user.id))
+        await session.scalars(
+            select(WatchedItem).where(WatchedItem.user_id == (viewer.user_id or user.id))
+        )
     ).all()
     return (
         tuple(row.item_id for row in rows if row.kind == "opportunity"),

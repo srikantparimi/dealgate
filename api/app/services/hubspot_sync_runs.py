@@ -25,8 +25,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import literal, select, true
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
 from app.audit import append_audit
 from app.db import session_factory as default_session_factory
@@ -212,26 +213,42 @@ async def compute_sync_health(session: AsyncSession, *, now: datetime | None = N
     # finishes after it. A run still "running" past ABANDONED_AFTER died at an
     # unknown time; it is the last attempt only if it started after the latest
     # finished run ended (any run that ended later superseded it).
-    finished = await session.scalar(
+    #
+    # S23-PL2 B1/B15: the three lookups and the legacy row are read in ONE
+    # statement (the Pipeline workspace has a statement budget): each lookup is
+    # a LIMIT-1 subquery outer-joined to a one-row anchor.
+    finished_q = (
         select(HubspotSyncRun).where(HubspotSyncRun.finished_at.is_not(None))
-        .order_by(HubspotSyncRun.finished_at.desc()).limit(1))
-    abandoned = await session.scalar(
+        .order_by(HubspotSyncRun.finished_at.desc()).limit(1).subquery("finished_run"))
+    abandoned_q = (
         select(HubspotSyncRun).where(HubspotSyncRun.status == "running",
             HubspotSyncRun.finished_at.is_(None),
             HubspotSyncRun.started_at < now - ABANDONED_AFTER)
-        .order_by(HubspotSyncRun.started_at.desc()).limit(1))
+        .order_by(HubspotSyncRun.started_at.desc()).limit(1).subquery("abandoned_run"))
+    success_q = (
+        select(HubspotSyncRun)
+        .where(HubspotSyncRun.status.in_(("ok", "partial")), HubspotSyncRun.deals_written > 0,
+               HubspotSyncRun.finished_at.is_not(None))
+        .order_by(HubspotSyncRun.finished_at.desc()).limit(1).subquery("success_run"))
+    finished_run = aliased(HubspotSyncRun, finished_q)
+    abandoned_run = aliased(HubspotSyncRun, abandoned_q)
+    success_run = aliased(HubspotSyncRun, success_q)
+    anchor = select(literal(1).label("one")).subquery("anchor")
+    finished, abandoned, success, legacy = (await session.execute(
+        select(finished_run, abandoned_run, success_run, SyncStatus)
+        .select_from(anchor)
+        .outerjoin(finished_run, true())
+        .outerjoin(abandoned_run, true())
+        .outerjoin(success_run, true())
+        .outerjoin(SyncStatus, SyncStatus.source == "hubspot_backfill")
+    )).one()
     attempt = finished
     if abandoned is not None and (finished is None or
             _utc(abandoned.started_at) > _utc(finished.finished_at)):
         attempt = abandoned
-    success = await session.scalar(
-        select(HubspotSyncRun)
-        .where(HubspotSyncRun.status.in_(("ok", "partial")), HubspotSyncRun.deals_written > 0,
-               HubspotSyncRun.finished_at.is_not(None))
-        .order_by(HubspotSyncRun.finished_at.desc()).limit(1))
 
     if attempt is None:
-        return await _legacy_health(session, now)
+        return _legacy_health(legacy, now)
 
     last_status = attempt.status if attempt.status in ("ok", "partial", "failed") else "failed"
     errors = list(attempt.errors or [])
@@ -262,15 +279,15 @@ def _state(last_status: str, last_success_at: datetime | None, now: datetime) ->
     return "stale"
 
 
-async def _legacy_health(session: AsyncSession, now: datetime) -> dict[str, Any]:
+def _legacy_health(row: SyncStatus | None, now: datetime) -> dict[str, Any]:
     """Before the first recorded run: the last CLEAN deal scan.
 
     ``hubspot_backfill.last_success_at`` is moved only by a scan that completed
     without refusing a record (``complete_scan``; never by the intake
     heartbeat), so it is an honest success time until the first run row exists.
     Any ``last_error`` on the row means the latest attempt was not clean.
+    ``row`` is the ``hubspot_backfill`` sync-status row (read with the runs).
     """
-    row = await session.get(SyncStatus, "hubspot_backfill")
     success = _utc(row.last_success_at) if row is not None else None
     attempted = _utc(row.last_attempt_at) if row is not None else None
     errors: list[dict[str, str]] = []

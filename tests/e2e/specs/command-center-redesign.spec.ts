@@ -117,7 +117,9 @@ test("deployed Command Center serves the canonical scope and connected operation
     "Revenue this month",
     "GM this month",
     "Signed backlog",
-    "Weighted pipeline",
+    // S23-PL2 B2: the Pipeline's own open number, and the stricter tile under its own label.
+    "Open opportunity value",
+    "Not yet in the SOW flow",
     "People",
   ]) {
     await expect(page.getByText(label, { exact: true }).first()).toBeVisible();

@@ -774,10 +774,12 @@ async def pipeline_export_csv(
             break
         page_number += 1
 
+    from app.services.csv_safety import safe_row
+
     def _iter_csv():
         buf = io.StringIO()
         w = csv.writer(buf)
-        # Header + totals row FIRST.
+        # Header + totals row FIRST. S23-PL2 B10: every cell neutralised.
         w.writerow(
             [
                 "deal",
@@ -798,12 +800,12 @@ async def pipeline_export_csv(
                 f"{v} {k}" for k, v in pre_summary.open_value_by_currency.items()
             )
         )
-        w.writerow([totals_label, "", "", "", "", "", "", "", "", ""])
+        w.writerow(safe_row([totals_label, "", "", "", "", "", "", "", "", ""]))
         yield buf.getvalue()
         buf.seek(0)
         buf.truncate()
         for row in rows:
-            w.writerow(
+            w.writerow(safe_row(
                 [
                     row.name or row.hubspot_deal_id or "",
                     row.client_name or "",
@@ -816,7 +818,7 @@ async def pipeline_export_csv(
                     "|".join(row.attention_flags),
                     row.source_origin,
                 ]
-            )
+            ))
             yield buf.getvalue()
             buf.seek(0)
             buf.truncate()

@@ -30,8 +30,15 @@ def runtime_scope():
     return os.environ.get("DEALGATE_ENV", "local"), os.environ.get("DEALGATE_TENANT_ID")
 
 
-async def create_fixture(session, *, actor_id, label, reviewer_ids, hours=4):
-    """Create isolated account/deal, never a SOW or approved state. Caller commits."""
+async def create_fixture(session, *, actor_id, label, reviewer_ids, hours=4, pipeline_deal=None):
+    """Create isolated account/deal, never an approved state. Caller commits.
+
+    ``pipeline_deal`` (S23-PL2 T12) fills the fields HubSpot owns on a real
+    deal — stage, amount, close/created/activity dates, region, HubSpot owner —
+    so the Pipeline specs exercise populated rows. With ``draft_sow`` it also
+    adds a SOW with no version or package (state "Draft"); it never creates an
+    approval package, so nothing is routed to a real approver.
+    """
     from app.routers.dev_seed import is_dev_seed_enabled
 
     actor = await session.get(User, actor_id)
@@ -59,6 +66,9 @@ async def create_fixture(session, *, actor_id, label, reviewer_ids, hours=4):
         governance_status="Intake",
     )
     session.add(deal)
+    populated = None
+    if pipeline_deal is not None:
+        populated = await _populate_pipeline_deal(session, deal, pipeline_deal, run_id=run_id)
     expires_at = datetime.now(UTC) + timedelta(hours=hours)
     await append_audit(
         session,
@@ -75,6 +85,7 @@ async def create_fixture(session, *, actor_id, label, reviewer_ids, hours=4):
             "participant_ids": sorted(str(i) for i in participants),
             "expires_at": expires_at.isoformat(),
             "opportunity_id": str(deal.id),
+            **({"pipeline_deal": populated} if populated is not None else {}),
         },
         correlation_id=str(run_id),
     )
@@ -83,6 +94,91 @@ async def create_fixture(session, *, actor_id, label, reviewer_ids, hours=4):
         "client_id": client.id,
         "opportunity_id": deal.id,
         "expires_at": expires_at,
+    }
+
+
+_FIXTURE_ZONE = "America/Los_Angeles"
+
+
+async def _populate_pipeline_deal(session, deal, spec, *, run_id):
+    """Give a fixture deal the HubSpot-owned fields of a real one (S23-PL2 T12).
+
+    The stage comes from the mirrored pipeline (its ``stage``-th live stage by
+    display order); the region is recorded the way intake records it, so the
+    business-unit map applies; the HubSpot owner is the first active mirrored
+    owner (``active``), an id no mirror holds (``former``) or none (``none``).
+    No HubSpot deal or company id is set: a fixture bound to a CRM identity
+    loses its grant (``account_scope``).
+    """
+
+    from decimal import Decimal
+    from zoneinfo import ZoneInfo
+
+    from app.models.hubspot_pipeline import HubspotPipeline, HubspotStage
+    from app.services.hubspot_owners import HubspotOwner
+    from app.services.hubspot_properties import HubspotPropertyMapping
+
+    pipeline = await session.scalar(
+        select(HubspotPipeline).where(HubspotPipeline.archived.is_(False))
+        .order_by(HubspotPipeline.display_order, HubspotPipeline.id).limit(1))
+    if pipeline is None:
+        raise HTTPException(409, "No HubSpot pipeline is mirrored to place a fixture deal in")
+    stages = list((await session.scalars(
+        select(HubspotStage).where(HubspotStage.pipeline_id == pipeline.id, HubspotStage.archived.is_(False))
+        .order_by(HubspotStage.display_order, HubspotStage.id))).all())
+    if not 1 <= spec["stage"] <= len(stages):
+        raise HTTPException(422, f"stage must be between 1 and {len(stages)}")
+    stage = stages[spec["stage"] - 1]
+    probability = Decimal(str(stage.probability)) if stage.probability is not None else None
+    deal.hubspot_pipeline_id = pipeline.id
+    deal.hubspot_stage_id = stage.id
+    deal.sales_stage = stage.id
+    deal.stage_label = stage.label
+    deal.stage_order = stage.display_order
+    deal.is_closed_won = bool(stage.is_closed and probability == Decimal("1"))
+    deal.is_closed_lost = bool(stage.is_closed and probability == Decimal("0"))
+
+    now = datetime.now(UTC)
+    today = now.astimezone(ZoneInfo(_FIXTURE_ZONE)).date()
+    if spec.get("amount") is not None:
+        deal.amount = Decimal(str(spec["amount"]))
+        deal.currency = "USD"
+    if spec.get("close_in_days") is not None:
+        deal.close_date = today + timedelta(days=spec["close_in_days"])
+    deal.hubspot_created_at = now - timedelta(days=spec.get("created_days_ago") or 0)
+    if spec.get("activity_days_ago") is not None:
+        deal.hubspot_last_activity_at = now - timedelta(days=spec["activity_days_ago"])
+
+    region = spec.get("region")
+    if region:
+        deal.business_unit_value = region
+        mapping = await session.get(HubspotPropertyMapping, "business_unit")
+        if mapping is not None and mapping.object_type == "deal" and mapping.availability_state == "configured":
+            deal.business_unit_mapping_version = mapping.mapping_version
+            deal.business_unit_observed_at = now
+
+    owner = spec.get("owner", "active")
+    if owner == "active":
+        active = await session.scalar(
+            select(HubspotOwner.id).where(HubspotOwner.archived.is_(False)).order_by(HubspotOwner.id).limit(1))
+        if active is None:
+            raise HTTPException(409, "No active HubSpot owner is mirrored to own a fixture deal")
+        deal.hubspot_owner_id = active
+    elif owner == "former":
+        deal.hubspot_owner_id = f"e2e-former-{run_id.hex[:12]}"
+    else:
+        deal.hubspot_owner_id = None
+
+    if spec.get("draft_sow"):
+        session.add(Sow(id=uuid.uuid4(), opportunity_id=deal.id))
+    await session.flush()
+    return {
+        "stage": spec["stage"],
+        "stage_id": stage.id,
+        "amount": str(deal.amount) if deal.amount is not None else None,
+        "region": region,
+        "owner": owner,
+        "draft_sow": bool(spec.get("draft_sow")),
     }
 
 

@@ -39,6 +39,7 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     String,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -62,6 +63,15 @@ class TrackingGroup(Base):
             name="ck_tracking_group_member_kind",
         ),
         Index("ix_tracking_group_owner", "owner_id"),
+        # S23-PL2 B11: a user's live groups are unique by case-insensitive name.
+        Index(
+            "ux_tracking_group_owner_name",
+            "owner_id",
+            text("lower(name)"),
+            unique=True,
+            postgresql_where=text("archived_at IS NULL"),
+            sqlite_where=text("archived_at IS NULL"),
+        ),
         Index("ix_tracking_group_visibility", "visibility"),
     )
 

@@ -23,7 +23,7 @@ export const SheetOverlay = forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-executive/50", className)}
+    className={cn("fixed inset-0 z-50 bg-executive opacity-50", className)}
     {...props}
   />
 ));

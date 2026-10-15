@@ -13,16 +13,22 @@ Permissions (T27):
   intersection of the caller's permission-aware base query with the
   group's own predicate, so a private client the caller cannot see
   never leaks into a shared count.
+
+S23-PL2 B11: a user's live groups are unique by case-insensitive name
+(``ux_tracking_group_owner_name``); a duplicate is a 409 with the
+Pipeline's copy. ``actor`` is always the DealGate user id.
 """
 
 from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import append_audit
@@ -33,12 +39,14 @@ from app.models.tracking_group import (
     TrackingGroup,
     TrackingGroupMember,
 )
-from app.models.user import User
 
 
 LEADER_ROLES: frozenset[str] = frozenset(
     {"SalesLeader", "HR", "SystemAdmin"}
 )
+
+DUPLICATE_GROUP_NAME = "A group with this name already exists."
+_NAME_INDEX = "ux_tracking_group_owner_name"
 
 
 @dataclass(frozen=True)
@@ -61,6 +69,34 @@ class GroupPatch:
 
 def _is_leader(user: AuthUser) -> bool:
     return any(r in LEADER_ROLES for r in user.groups)
+
+
+async def _name_taken(
+    session: AsyncSession, owner_id: uuid.UUID, name: str, *, exclude_id: uuid.UUID | None = None
+) -> bool:
+    """Whether ``owner_id`` has a live group named ``name`` in any letter case
+    (the database's ``lower()`` on both sides, as the unique index uses)."""
+
+    stmt = select(TrackingGroup.id).where(
+        TrackingGroup.owner_id == owner_id,
+        TrackingGroup.archived_at.is_(None),
+        func.lower(TrackingGroup.name) == func.lower(name),
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(TrackingGroup.id != exclude_id)
+    return (await session.scalar(stmt.limit(1))) is not None
+
+
+async def _flush_or_duplicate(session: AsyncSession) -> None:
+    """Flush; a concurrent create of the same name becomes the same 409."""
+
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        if _NAME_INDEX not in str(exc.orig):
+            raise
+        await session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DUPLICATE_GROUP_NAME) from exc
 
 
 def _row_to_dict(g: TrackingGroup) -> dict[str, Any]:
@@ -146,22 +182,27 @@ async def create_group(
     payload: GroupCreate,
 ) -> TrackingGroup:
     _validate_shape(member_kind=payload.member_kind, visibility=payload.visibility)
-    if not payload.name.strip():
+    name = payload.name.strip()[:255]
+    if not name:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="name is required",
         )
+    if await _name_taken(session, actor.id, name):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DUPLICATE_GROUP_NAME)
     g = TrackingGroup(
         id=uuid.uuid4(),
         owner_id=actor.id,
-        name=payload.name.strip()[:255],
+        name=name,
         visibility=payload.visibility,
         member_kind=payload.member_kind,
         filter_json=payload.filter_json,
         include_future_deals=payload.include_future_deals,
+        # Set here (not by the database clock) so groups list in creation order.
+        created_at=datetime.now(UTC),
     )
     session.add(g)
-    await session.flush()
+    await _flush_or_duplicate(session)
     after = _row_to_dict(g)
     await append_audit(
         session,
@@ -205,6 +246,8 @@ async def patch_group(
                 detail="name cannot be blank",
             )
         if stripped != group.name:
+            if await _name_taken(session, group.owner_id, stripped, exclude_id=group.id):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=DUPLICATE_GROUP_NAME)
             group.name = stripped
             changed = True
 
@@ -237,6 +280,7 @@ async def patch_group(
     if not changed:
         return group
 
+    await _flush_or_duplicate(session)
     after = _row_to_dict(group)
     await append_audit(
         session,
@@ -256,7 +300,6 @@ async def archive_group(
     await _authorize_mutation(group, actor)
     if group.archived_at is not None:
         return group
-    from datetime import UTC, datetime
 
     before = _row_to_dict(group)
     group.archived_at = datetime.now(UTC)
@@ -375,6 +418,7 @@ async def remove_members(
 
 
 __all__ = [
+    "DUPLICATE_GROUP_NAME",
     "GroupCreate",
     "GroupPatch",
     "add_members",

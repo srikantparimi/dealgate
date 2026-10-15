@@ -22,6 +22,7 @@ import { cn } from "../../lib/cn";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { PageHeader } from "../../ui-v2/PageHeader";
 import { AuditSection } from "./settings/AuditSection";
+import { BusinessUnitsSection } from "./settings/BusinessUnitsSection";
 import { GeneralSection } from "./settings/GeneralSection";
 import { ImportsSection } from "./settings/ImportsSection";
 import { IntegrationsSection } from "./settings/IntegrationsSection";
@@ -53,6 +54,8 @@ function renderSection(id: SectionId) {
       return <PeopleSection />;
     case "integrations":
       return <IntegrationsSection />;
+    case "business-units":
+      return <BusinessUnitsSection />;
     case "imports":
       return <ImportsSection />;
     case "audit":

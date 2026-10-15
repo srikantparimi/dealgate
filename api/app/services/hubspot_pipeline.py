@@ -822,8 +822,24 @@ class ListPage[R]:
 # --- SQL helpers ------------------------------------------------------------
 
 
-def _closed_condition() -> Any:
+def open_condition() -> Any:
+    """THE definition of an open deal, as SQL: not Closed Won and not Closed Lost.
+
+    Hold is open: it is a HubSpot stage, not a close. :func:`is_open` is the
+    same rule in Python. The Pipeline workspace, its export and the Command
+    Center's open number use these two and nothing else (S23-PL2 B2).
+    """
     return and_(Opportunity.is_closed_won.is_(False), Opportunity.is_closed_lost.is_(False))
+
+
+def is_open(row: Any) -> bool:
+    """THE definition of an open deal, in Python (see :func:`open_condition`)."""
+    return not row.is_closed_won and not row.is_closed_lost
+
+
+def _closed_condition() -> Any:
+    # Historical name (it returns the OPEN predicate); kept for existing callers.
+    return open_condition()
 
 
 def _opp_name_column():

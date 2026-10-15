@@ -59,6 +59,13 @@ from app.routers import (
     user_preferences,
     watchlist,
 )
+# S23-PL2 lane L2 (settings-identity)
+from app.routers import (
+    app_config,
+    pipeline_personal,
+    settings_business_units,
+    users,
+)
 
 log = logging.getLogger("dealgate.api")
 
@@ -221,6 +228,12 @@ app.include_router(saved_views.router)
 app.include_router(watchlist.router)
 app.include_router(timeline.router)
 app.include_router(user_preferences.router)
+# S23-PL2 lane L2 · personal workspace, business units, user ↔ HubSpot owner, config
+app.include_router(pipeline_personal.router)
+app.include_router(settings_business_units.router)
+app.include_router(users.router)
+app.include_router(admin_users.hubspot_owners_router)
+app.include_router(app_config.router)
 
 # `dev_seed` bypasses the S12 approval ceremony so E2E specs can browser-prove
 # S13a DoD #4. Never registered in prod (see is_dev_seed_enabled).

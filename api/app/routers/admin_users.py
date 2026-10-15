@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, require_role
 from app.db import get_session
+from app.models.user import User
+from app.services.hubspot_owners import list_owner_options, owner_links
 from app.services.user_identity import display_user_email, display_user_name
 from app.services.admin_users import (
     ALLOWED_GROUPS,
@@ -30,6 +32,8 @@ from app.services.admin_users import (
 )
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
+# S23-PL2 B4/F18: the owner picker for Settings → Users.
+hubspot_owners_router = APIRouter(prefix="/admin/hubspot-owners", tags=["admin"])
 
 
 # --- schemas ---------------------------------------------------------------
@@ -44,6 +48,12 @@ class UserRow(BaseModel):
     groups: list[str]
     last_login: datetime | None
     created_at: datetime
+    # S23-PL2 B4 (additive): the user's HubSpot owner link. ``state`` is
+    # active | archived | none; ``link`` is email | admin | null (undecided).
+    hubspot_owner_id: str | None = None
+    hubspot_owner_name: str | None = None
+    hubspot_owner_state: str | None = None
+    hubspot_owner_link: str | None = None
 
     @model_validator(mode="after")
     def resolve_identity(self):
@@ -86,6 +96,25 @@ class RoleHistoryResponse(BaseModel):
     items: list[RoleHistoryRow]
 
 
+class HubspotOwnerOption(BaseModel):
+    id: str
+    name: str | None
+    email: str | None
+    archived: bool
+    linked_user_id: uuid.UUID | None
+    linked_user_name: str | None
+
+
+async def _user_rows(session: AsyncSession, users: list[User]) -> list[UserRow]:
+    links = await owner_links(session, users)
+    return [
+        UserRow.model_validate(u).model_copy(
+            update={"hubspot_owner_name": links[u.id].name, "hubspot_owner_state": links[u.id].state}
+        )
+        for u in users
+    ]
+
+
 # --- endpoints -------------------------------------------------------------
 
 
@@ -101,7 +130,7 @@ async def list_users_endpoint(
     filters = UserListFilters(search=search, group=group, page=page, size=size)
     rows, total = await list_users(session, filters)
     return UserListResponse(
-        items=[UserRow.model_validate(u) for u in rows],
+        items=await _user_rows(session, list(rows)),
         page=page,
         size=size,
         total=total,
@@ -116,7 +145,7 @@ async def invite_user_endpoint(
 ) -> UserRow:
     payload = InviteUserPayload(email=str(body.email), name=body.name, groups=body.groups)
     user = await invite_user(session, actor_id=actor.id, payload=payload)
-    return UserRow.model_validate(user)
+    return (await _user_rows(session, [user]))[0]
 
 
 @router.patch("/{user_id}/groups", response_model=UserRow)
@@ -130,7 +159,7 @@ async def patch_user_groups_endpoint(
     user = await patch_user_groups(
         session, actor_id=actor.id, user_id=user_id, payload=payload
     )
-    return UserRow.model_validate(user)
+    return (await _user_rows(session, [user]))[0]
 
 
 @router.get("/{user_id}/role_history", response_model=RoleHistoryResponse)
@@ -141,3 +170,13 @@ async def get_user_role_history(
 ) -> RoleHistoryResponse:
     rows = await get_role_history(session, user_id)
     return RoleHistoryResponse(items=[RoleHistoryRow.model_validate(r) for r in rows])
+
+
+@hubspot_owners_router.get("", response_model=list[HubspotOwnerOption])
+async def list_hubspot_owners_endpoint(
+    _user: AuthUser = Depends(require_role("SystemAdmin")),
+    session: AsyncSession = Depends(get_session),
+) -> list[HubspotOwnerOption]:
+    """Every mirrored HubSpot owner, active first, with the user linked to it."""
+
+    return [HubspotOwnerOption(**option) for option in await list_owner_options(session)]

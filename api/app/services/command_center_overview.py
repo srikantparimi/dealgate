@@ -50,6 +50,7 @@ from app.services.engagement_forecast import (
     visible_client_ids,
 )
 from app.services.hubspot_pipeline import PipelineFilters, list_opportunities
+from app.services.pipeline_workspace import open_totals
 from app.services.people_demand import DEMAND_READ
 
 
@@ -117,6 +118,23 @@ def _href(
     }
     encoded = urlencode({key: value for key, value in query.items() if value not in (None, "")})
     return f"{path}?{encoded}" if encoded else path
+
+
+# S23-PL2 B2: the stricter open number (USD, weighted, no SOW and no engagement
+# link) has its own name; "open" alone means the Pipeline's open number.
+NOT_YET_IN_SOW_FLOW = "Not yet in the SOW flow"
+
+
+def _pipeline_href(query: dict[str, list[str]] | None, **extra: str) -> str | None:
+    """A Pipeline link in the workspace's own parameters (status, mapped BU, HubSpot owner).
+
+    None when the scope has no Pipeline equivalent (``open_totals``: an owner
+    with no HubSpot link, or the Unassigned placeholder): the page then shows the
+    number without a link.
+    """
+    if query is None:
+        return None
+    return f"/pipeline?{urlencode({'status': 'open', **query, **extra}, doseq=True)}"
 
 
 def _named_person(allocation: Allocation, resource: Resource) -> bool:
@@ -255,6 +273,13 @@ async def build_command_overview(
         page_size=10_000,
     )
     opportunities = list(opportunities_page.items)
+    # S23-PL2 B2: the Pipeline's own open number for this scope (one filter function),
+    # counted over exactly the list its link opens.
+    pipeline_open = await open_totals(session, scope)
+    pipeline_link = _pipeline_href(pipeline_open.pipeline_query)
+    # "Not yet in the SOW flow" opens the closest Pipeline list: open deals with no SOW. The
+    # tile is weighted and leaves out deals linked to an engagement; the page says so.
+    not_in_sow_flow_link = _pipeline_href(pipeline_open.pipeline_query, sow="none")
     engagements = await _permitted_engagements(
         session,
         actor=actor,
@@ -435,7 +460,9 @@ async def build_command_overview(
     )
     linked_opportunity_ids = {row.opportunity_id for row in engagements if row.opportunity_id}
     linked_hubspot_ids = {row.hubspot_deal_id for row in engagements if row.hubspot_deal_id}
-    open_pipeline = [
+    # The Revenue outlook's pipeline: open, no engagement link, selected currency, with or
+    # without a SOW (as before S23-PL2).
+    outlook_pipeline = [
         row
         for row in opportunities
         if not row.is_closed_won
@@ -444,6 +471,9 @@ async def build_command_overview(
         and row.hubspot_deal_id not in linked_hubspot_ids
         and row.currency == currency
     ]
+    # "Not yet in the SOW flow" (the stricter tile, its lifecycle row and the brief): the
+    # same deals without a live SOW.
+    open_pipeline = [row for row in outlook_pipeline if row.sow_count == 0]
     weighted_pipeline = ZERO
     gross_pipeline = ZERO
     pipeline_missing: list[str] = []
@@ -462,6 +492,11 @@ async def build_command_overview(
         weighted = row.amount * probability
         weighted_pipeline += weighted
         weighted_by_opportunity[row.opportunity_id] = weighted
+    outlook_weighted_by_opportunity = {
+        row.opportunity_id: row.amount * probabilities[row.stage_id]
+        for row in outlook_pipeline
+        if row.amount is not None and probabilities.get(row.stage_id) is not None
+    }
 
     expected_renewal_by_month = {month: ZERO for month in months}
     likely_renewal_ids: set[uuid.UUID] = set()
@@ -589,6 +624,16 @@ async def build_command_overview(
         (
             amount
             for opportunity_id, amount in weighted_by_opportunity.items()
+            if opportunity_id not in scheduled_opportunities
+        ),
+        ZERO,
+    )
+    # The note under the Revenue outlook bars: every outlook deal the bars leave out,
+    # SOW or not (the bars include SOW-linked deals that have a forecast schedule).
+    unscheduled_outlook_pipeline = sum(
+        (
+            amount
+            for opportunity_id, amount in outlook_weighted_by_opportunity.items()
             if opportunity_id not in scheduled_opportunities
         ),
         ZERO,
@@ -1072,9 +1117,7 @@ async def build_command_overview(
         "kind": "opportunity",
         "title": f"{_money(weighted_pipeline)} weighted pipeline across {len(weighted_by_opportunity)} eligible deal(s)",
         "detail": f"{_money(unscheduled_pipeline)} is unscheduled and remains outside monthly revenue.",
-        "href": _href(
-            "/pipeline", business_unit=business_unit, owner_id=owner_id, currency=currency
-        ),
+        "href": not_in_sow_flow_link,
     }
     blockers = [row for row in actions if row["missing_input"]]
     brief = [
@@ -1140,12 +1183,10 @@ async def build_command_overview(
     lifecycle_items = [
         {
             "key": "pipeline",
-            "label": "Pipeline",
+            "label": NOT_YET_IN_SOW_FLOW,
             "count": lifecycle_counts["pipeline"],
             "entity": "open deals",
-            "href": _href(
-                "/pipeline", business_unit=business_unit, owner_id=owner_id, currency=currency
-            ),
+            "href": not_in_sow_flow_link,
         },
         {
             "key": "sow_in_approval",
@@ -1292,6 +1333,7 @@ async def build_command_overview(
                 ),
             },
             "pipeline": {
+                "label": NOT_YET_IN_SOW_FLOW,
                 "weighted": _money(weighted_pipeline),
                 "gross": _money(gross_pipeline),
                 "eligible_deals": len(weighted_by_opportunity),
@@ -1301,13 +1343,7 @@ async def build_command_overview(
                 ),
                 "missing": sorted(set(pipeline_missing)),
                 "comparison": {"value": None, "basis": "Prior-month comparison not recorded"},
-                "href": _href(
-                    "/pipeline",
-                    business_unit=business_unit,
-                    owner_id=owner_id,
-                    currency=currency,
-                    extra={"open_closed": "open"},
-                ),
+                "href": not_in_sow_flow_link,
             },
             "people": {
                 "billable_people": len(current_named),
@@ -1340,7 +1376,13 @@ async def build_command_overview(
         "actions": actions[:50],
         "brief": brief,
         "metrics": {
-            "open_opportunity_value": _money(gross_pipeline) if open_pipeline else None,
+            # The Pipeline's open number (USD, Hold included), not the stricter tile. No href
+            # when the Pipeline cannot list this scope; the business units the number covers
+            # (the CC filters raw HubSpot regions, the Pipeline whole business units).
+            "open_opportunity_value": _money(pipeline_open.value_usd),
+            "open_opportunity_count": pipeline_open.count,
+            "open_opportunity_href": pipeline_link,
+            "open_opportunity_business_units": list(pipeline_open.business_units),
             "sows_in_progress": approval_total
             if approval_total is not None
             else sum(
@@ -1372,7 +1414,7 @@ async def build_command_overview(
                 sum(expected_renewal_by_month.values(), ZERO)
                 + sum(pipeline_by_month.values(), ZERO)
             ),
-            "unscheduled_weighted_pipeline": _money(unscheduled_pipeline),
+            "unscheduled_weighted_pipeline": _money(unscheduled_outlook_pipeline),
             "currency": currency,
             "months": revenue_months,
             "cost_coverage_complete": len(covered) == len(current_snapshots),

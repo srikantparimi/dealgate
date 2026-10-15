@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
+from app.services.csv_safety import safe_row
 from app.services.bulk_import import (
     BULK_IMPORT_ROLES,
     BatchOverview,
@@ -258,7 +259,8 @@ async def get_log_csv(
         buf = io.StringIO()
         writer = csv.writer(buf)
         for r in rows:
-            writer.writerow(r)
+            # S23-PL2 B10: uploaded file names and error text never run as formulas.
+            writer.writerow(safe_row(r))
             yield buf.getvalue()
             buf.seek(0)
             buf.truncate()

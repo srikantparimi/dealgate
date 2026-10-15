@@ -1,4 +1,9 @@
-"""S20 W6 · watchlist router — per-user stars on deals + clients."""
+"""S20 W6 · watchlist router — per-user stars on deals + clients.
+
+S23-PL2 B11: stars are keyed on the caller's DealGate user id (reads resolve
+it without writing; writes provision it first), a repeated star returns the
+existing one, and adding or removing a star is audited.
+"""
 
 from __future__ import annotations
 
@@ -6,13 +11,16 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import append_audit
 from app.auth import AuthUser, current_user
 from app.db import get_session
 from app.models.watchlist import WATCH_KINDS, WatchedItem
+from app.services.canonical_user import canonical_actor
+from app.services.pipeline_personal import reading_actor
 
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
@@ -56,6 +64,11 @@ async def _visible_ids(session, user, *, kind, item_ids):
     return await matching_opportunity_ids(session, replace(filters, opportunity_id=tuple(item_ids)))
 
 
+async def _watch_row(session, user_id: uuid.UUID, kind: str, item_id: uuid.UUID) -> WatchedItem | None:
+    return await session.scalar(select(WatchedItem).where(
+        WatchedItem.user_id == user_id, WatchedItem.kind == kind, WatchedItem.item_id == item_id))
+
+
 @router.get("", response_model=WatchedListOut)
 async def list_watchlist(
     user: AuthUser = Depends(current_user),
@@ -63,6 +76,7 @@ async def list_watchlist(
 ) -> WatchedListOut:
     from app.routers.pipeline import _require_reader
     _require_reader(user)
+    user = await reading_actor(session, user)
     rows = (
         await session.execute(
             select(WatchedItem).where(WatchedItem.user_id == user.id)
@@ -96,28 +110,29 @@ async def add_watch(
     from app.routers.pipeline import _require_reader
     _require_reader(user)
     _check_kind(body.kind)
-    if body.item_id not in await _visible_ids(session, user, kind=body.kind, item_ids=[body.item_id]):
+    actor = await canonical_actor(session, user)
+    if body.item_id not in await _visible_ids(session, actor, kind=body.kind, item_ids=[body.item_id]):
         raise HTTPException(status_code=404, detail="watch subject not found")
-    row = WatchedItem(user_id=user.id, kind=body.kind, item_id=body.item_id)
-    session.add(row)
-    try:
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
-        # Already watching — return the existing row for idempotency.
-        existing = (
-            await session.execute(
-                select(WatchedItem).where(
-                    WatchedItem.user_id == user.id,
-                    WatchedItem.kind == body.kind,
-                    WatchedItem.item_id == body.item_id,
-                )
+    existing = await _watch_row(session, actor.id, body.kind, body.item_id)
+    if existing is None:
+        row = WatchedItem(user_id=actor.id, kind=body.kind, item_id=body.item_id)
+        try:
+            async with session.begin_nested():
+                session.add(row)
+        except IntegrityError:
+            # A concurrent star landed first; only that case is idempotent.
+            existing = await _watch_row(session, actor.id, body.kind, body.item_id)
+            if existing is None:
+                raise
+        else:
+            await append_audit(
+                session, actor_id=actor.id, action="watch.added", entity="watched_item",
+                entity_id=str(row.id), before=None,
+                after={"kind": row.kind, "item_id": str(row.item_id), "user_id": str(actor.id)},
             )
-        ).scalar_one()
-        return WatchedItemOut(
-            id=existing.id, kind=existing.kind, item_id=existing.item_id
-        )
-    return WatchedItemOut(id=row.id, kind=row.kind, item_id=row.item_id)
+            existing = row
+    await session.commit()
+    return WatchedItemOut(id=existing.id, kind=existing.kind, item_id=existing.item_id)
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
@@ -128,13 +143,16 @@ async def remove_watch(
     session: AsyncSession = Depends(get_session),
 ) -> None:
     _check_kind(kind)
-    await session.execute(
-        delete(WatchedItem).where(
-            WatchedItem.user_id == user.id,
-            WatchedItem.kind == kind,
-            WatchedItem.item_id == item_id,
+    actor = await canonical_actor(session, user)
+    existing = await _watch_row(session, actor.id, kind, item_id)
+    if existing is not None:
+        before = {"kind": existing.kind, "item_id": str(existing.item_id), "user_id": str(actor.id)}
+        await session.delete(existing)
+        await session.flush()
+        await append_audit(
+            session, actor_id=actor.id, action="watch.removed", entity="watched_item",
+            entity_id=str(existing.id), before=before, after=None,
         )
-    )
     await session.commit()
     return None
 

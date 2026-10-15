@@ -39,6 +39,7 @@ import {
   type PipelineStageCount,
   type TimelineEntry,
 } from "../../api/client";
+import { hubspotDealUrl, useAppConfig } from "../../api/appConfig";
 import { EmptyState } from "../../ui-v2/EmptyState";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { PageHeader } from "../../ui-v2/PageHeader";
@@ -47,8 +48,6 @@ import { WatchStar } from "../../ui-v2/WatchStar";
 import { Badge } from "../../ui-v2/primitives/badge";
 import { Button } from "../../ui-v2/primitives/button";
 import { DealTracking } from "./DealTracking";
-
-const HUBSPOT_DEAL_URL = "https://app.hubspot.com/contacts/48656168/record/0-3/";
 
 const SOW_STATE_LABELS: Record<string, string> = {
   none: "No SOW",
@@ -122,6 +121,8 @@ export function DealDetailPage() {
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const trackingGeneration = useRef(0);
+  // S23-PL2 F19: the portal comes from GET /config; no portal, no HubSpot link.
+  const { hubspotPortalId } = useAppConfig();
 
   useEffect(() => {
     if (!id) return;
@@ -297,9 +298,9 @@ export function DealDetailPage() {
                 Create engagement from deal
               </Button>
             ) : null}
-            {deal.hubspot_deal_id ? (
+            {deal.hubspot_deal_id && hubspotPortalId ? (
               <a
-                href={`${HUBSPOT_DEAL_URL}${deal.hubspot_deal_id}`}
+                href={hubspotDealUrl(hubspotPortalId, deal.hubspot_deal_id)}
                 target="_blank"
                 rel="noopener noreferrer"
               >

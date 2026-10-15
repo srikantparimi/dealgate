@@ -92,6 +92,40 @@ async def savepoint_engine():
         await eng.dispose()
 
 
+def _sqlite_foreign_keys_on(eng) -> None:
+    @event.listens_for(eng.sync_engine, "connect")
+    def _fk_on(dbapi_connection, _record):  # noqa: ANN001
+        cur = dbapi_connection.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
+
+@pytest_asyncio.fixture
+async def fk_engine():
+    """Opt-in engine that enforces foreign keys, as PostgreSQL does (S23-PL2).
+
+    SQLite ignores foreign keys unless asked, so a row keyed on a login id
+    that is not a ``user.id`` (the HubSpot-created-user bug, B11) passes here
+    and fails on staging. A module opts in by overriding ``engine``::
+
+        @pytest_asyncio.fixture
+        async def engine(fk_engine):
+            return fk_engine
+    """
+    eng = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    _sqlite_foreign_keys_on(eng)
+    async with eng.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    try:
+        yield eng
+    finally:
+        await eng.dispose()
+
+
 @pytest_asyncio.fixture
 async def engine():
     eng = create_async_engine(

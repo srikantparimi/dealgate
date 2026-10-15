@@ -147,15 +147,57 @@ ENG_OUT=$(printf '%s' "$ENG_RESP" | python3 -c "$S22_PYTHON" 2>/dev/null || echo
 ENG_COUNT=$(printf '%s\n' "$ENG_OUT" | head -1)
 ENG_LEAKS=$(printf '%s\n' "$ENG_OUT" | tail -n +2)
 
-TOTAL=$((COUNT + APPROVER_COUNT + PEOPLE_COUNT + ENG_COUNT))
+# S23-PL2 T11: the bot's personal workspace. Saved views, tracking groups and
+# watches belong to the signed-in user, and a Pipeline spec that saves a view,
+# creates a group or stars a deal must undo it. Anything the bot still owns
+# after a run is a leak: custom views (built-ins are seeded per user and do
+# not count), every group and every watch. The /pipeline/* routes are new in
+# S23-PL2; a 404 (older image) counts as 0 there.
+PERSONAL_PYTHON=$(cat <<'PY'
+import json, sys
+kind, me = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print(0); sys.exit(0)
+if isinstance(data, dict) and data.get("detail") is not None and not data.get("items"):
+    print(0); sys.exit(0)
+rows = data if isinstance(data, list) else data.get("items", [])
+# Team-visible rows of other users are not the bot's; keep only its own.
+rows = [r for r in rows if not r.get("owner_id") or r.get("owner_id") == me]
+if kind == "saved-views":
+    rows = [r for r in rows if not r.get("is_builtin")]
+print(len(rows))
+for r in rows:
+    label = r.get("name") or r.get("item_name") or r.get("kind") or ""
+    print(f"PERSONAL-LEAK\t{kind}\t{r.get('id') or r.get('item_id')}\t{label}")
+PY
+)
+BOT_ID=$(curl -sS -H "Authorization: Bearer $ID_TOKEN" "$BASE_URL/api/me" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || echo "")
+PERSONAL_COUNT=0
+PERSONAL_LEAKS=""
+for ROUTE in "pipeline/views:pipeline-views" "pipeline/groups:pipeline-groups" "saved-views:saved-views" "tracking-groups:tracking-groups" "watchlist:watchlist"; do
+  PATH_PART="${ROUTE%%:*}"
+  KIND="${ROUTE##*:}"
+  RESP=$(curl -sS -H "Authorization: Bearer $ID_TOKEN" "$BASE_URL/api/$PATH_PART" 2>/dev/null || echo '[]')
+  OUT=$(printf '%s' "$RESP" | python3 -c "$PERSONAL_PYTHON" "$KIND" "$BOT_ID" 2>/dev/null || echo "0")
+  N=$(printf '%s\n' "$OUT" | head -1)
+  PERSONAL_COUNT=$((PERSONAL_COUNT + N))
+  if [ "$N" != "0" ]; then
+    PERSONAL_LEAKS="${PERSONAL_LEAKS}$(printf '%s\n' "$OUT" | tail -n +2)"$'\n'
+  fi
+done
+
+TOTAL=$((COUNT + APPROVER_COUNT + PEOPLE_COUNT + ENG_COUNT + PERSONAL_COUNT))
 if [ "$TOTAL" = "0" ]; then
-  echo "[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs + 0 tagged people + 0 tagged engagements on $BASE_URL"
+  echo "[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs + 0 tagged people + 0 tagged engagements + 0 bot views/groups/watches on $BASE_URL"
   exit 0
 fi
 
-echo "[gate] FAIL · $COUNT test-tagged clients + $APPROVER_COUNT e2e-approver leaks + $PEOPLE_COUNT tagged people + $ENG_COUNT tagged engagements on $BASE_URL" >&2
+echo "[gate] FAIL · $COUNT test-tagged clients + $APPROVER_COUNT e2e-approver leaks + $PEOPLE_COUNT tagged people + $ENG_COUNT tagged engagements + $PERSONAL_COUNT bot views/groups/watches on $BASE_URL" >&2
 printf '%s\n' "$LEAKS" >&2
 printf '%s\n' "$APPROVER_LEAKS" >&2
 printf '%s\n' "$PEOPLE_LEAKS" >&2
 printf '%s\n' "$ENG_LEAKS" >&2
+printf '%s' "$PERSONAL_LEAKS" >&2
 exit 1

@@ -16,20 +16,20 @@ const overview: commandApi.CommandOverview = {
   actions: [{ id: "11111111-1111-1111-1111-111111111111", rank: 1, category: "Closed-won without engagement", account: "Acme", title: "Expansion", detail: "Closed-won work has no linked delivery engagement.", owner: "Avery Owner", due: "2026-10-10", href: "/deals/11111111-1111-1111-1111-111111111111", action: "Create engagement from deal", impact: "500000", impact_label: "Contract value", period: "Closed-won deal", missing_input: null }],
   brief: [
     { kind: "risk", title: "Contract value: 500000.00", detail: "Acme · Closed-won work has no linked delivery engagement.", href: "/deals/11111111-1111-1111-1111-111111111111" },
-    { kind: "opportunity", title: "250000.00 weighted pipeline across 1 eligible deal(s)", detail: "250000.00 is unscheduled and remains outside monthly revenue.", href: "/pipeline" },
+    { kind: "opportunity", title: "250000.00 weighted pipeline across 1 eligible deal(s)", detail: "250000.00 is unscheduled and remains outside monthly revenue.", href: "/pipeline?status=open&sow=none" },
     { kind: "blocker", title: "1 record needs financial inputs", detail: "Applicable staffing cost rate", href: "/engagements/one" },
   ],
   tiles: {
     revenue: { forecast: "50000", actual_to_date: null, actual_cutoff: null, latest_actual_month: "2026-09", latest_actual: "20000", last_closed_billing_loss: null, comparison: { value: "5000", basis: "versus prior month" }, href: "/forecast?month=2026-10" },
     gm: { value: null, covered_engagements: 0, total_engagements: 1, revenue_coverage_pct: "0", confirmed_cost_engagements: 0, estimated_cost_engagements: 0, missing_cost_engagements: 1, comparison: { value: null, basis: "Prior-month comparison not recorded" }, href: "/portfolio?cost_coverage=covered", fix_href: "/settings/forecast" },
     backlog: { amount: "120000", engagements: 1, comparison: { value: null, basis: "Prior-month comparison not recorded" }, href: "/forecast?scenario=committed" },
-    pipeline: { weighted: "250000", gross: "500000", eligible_deals: 1, unscheduled_weighted: "250000", closed_won_gaps: 1, missing: [], comparison: { value: null, basis: "Prior-month comparison not recorded" }, href: "/pipeline" },
+    pipeline: { label: "Not yet in the SOW flow", weighted: "250000", gross: "500000", eligible_deals: 1, unscheduled_weighted: "250000", closed_won_gaps: 1, missing: [], comparison: { value: null, basis: "Prior-month comparison not recorded" }, href: "/pipeline?status=open&sow=none" },
     people: { billable_people: 4, billable_fte: "3.50", bench_people: 2, bench_basis: "active people without a current allocation", rolloffs_60_days: 1, open_seats: 1, open_seat_fte: "0.50", comparison: { value: 1, basis: "billable people versus prior month" }, billable_href: "/portfolio?people=billable", bench_href: "/people/supply?status=bench", rolloff_href: "/portfolio?view=rolloffs" },
   },
-  metrics: { open_opportunity_value: "500000", sows_in_progress: 2, committed_revenue: "120000", committed_gm_pct: null, planned_people: 4 },
+  metrics: { open_opportunity_value: "875000.50", open_opportunity_count: 3, open_opportunity_href: "/pipeline?status=open", open_opportunity_business_units: [], sows_in_progress: 2, committed_revenue: "120000", committed_gm_pct: null, planned_people: 4 },
   lifecycle: { pipeline: 1, sow_in_approval: 1, signed: 0, engagement_created: 1, active: 1, renewal_due: 0 },
   lifecycle_items: [
-    { key: "pipeline", label: "Pipeline", count: 1, entity: "open deals", href: "/pipeline" },
+    { key: "pipeline", label: "Not yet in the SOW flow", count: 1, entity: "open deals", href: "/pipeline?status=open&sow=none" },
     { key: "sow_in_approval", label: "SOW in approval", count: 2, entity: "SOWs", href: "/sows?status=in_review&population_revision=revision-a" },
     { key: "signed", label: "Signed", count: 0, entity: "signed SOWs", href: "/sows?state=signed" },
     { key: "engagement_created", label: "Engagement created", count: 1, entity: "engagements", href: "/portfolio" },
@@ -78,7 +78,7 @@ describe("Command Center redesign", () => {
     expect(screen.getByText("Not calculated")).toBeVisible();
     expect(screen.getByText(/No current-month actuals/)).toBeVisible();
     expect(screen.queryAllByText("Unknown")).toHaveLength(0);
-    expect(screen.getAllByRole("link", { name: /Revenue this month|GM this month|Signed backlog|Weighted pipeline/ })).toHaveLength(4);
+    expect(screen.getAllByRole("link", { name: /Revenue this month|GM this month|Signed backlog|Open opportunity value|Weighted · / })).toHaveLength(5);
     expect(screen.getByTestId("stage5-scope")).toHaveTextContent("HubSpot deals · Stage 5 and above");
     expect(screen.getByText("Open late-stage work, current-period wins and active delivery.")).toBeVisible();
     expect(screen.getByRole("columnheader", { name: "Business unit" })).toBeVisible();
@@ -185,5 +185,85 @@ describe("Command Center redesign", () => {
     expect(await screen.findByText("Could not load accounts: pipeline unavailable")).toBeInTheDocument();
     expect(await screen.findByText("$120,000")).toBeInTheDocument();
     expect(screen.getByText("Three facts to act on")).toBeVisible();
+  });
+
+  it("shows the Pipeline's open number and names the stricter one (S23-PL2 B2)", async () => {
+    renderPage();
+    const open = await screen.findByRole("link", { name: /Open opportunity value/ });
+    expect(open).toHaveAttribute("href", "/pipeline?status=open");
+    expect(open).toHaveTextContent("$875,001");
+    expect(open).toHaveTextContent("3 open deals · Hold included · unweighted");
+    expect(open).toHaveTextContent("Same number as the Pipeline");
+    const stricter = screen.getByRole("link", { name: /Weighted · 1 open deal/ });
+    expect(stricter).toHaveTextContent("Not yet in the SOW flow");
+    expect(stricter).not.toHaveTextContent("eligible open deal");
+    expect(screen.queryByText("Weighted pipeline")).not.toBeInTheDocument();
+    const lifecycle = screen.getByRole("link", { name: /Not yet in the SOW flow\s*1\s*open deals/ });
+    expect(lifecycle).toHaveAttribute("href", "/pipeline?status=open&sow=none");
+  });
+
+  it("links the stricter number to the closest Pipeline list and says what differs (review R4)", async () => {
+    renderPage();
+    const stricter = await screen.findByRole("link", { name: /Weighted · 1 open deal/ });
+    expect(stricter).toHaveAttribute("href", "/pipeline?status=open&sow=none");
+    expect(stricter).toHaveTextContent(
+      "Pipeline list: open deals with no SOW. This tile is weighted and leaves out deals linked to an engagement.",
+    );
+    expect(stricter).not.toHaveTextContent("Same number as the Pipeline");
+    expect(screen.getByRole("link", { name: /weighted pipeline across 1 eligible deal/ })).toHaveAttribute(
+      "href",
+      "/pipeline?status=open&sow=none",
+    );
+  });
+
+  it("names the business unit the open number covers when the scope is a HubSpot region (review R3/R4)", async () => {
+    vi.mocked(commandApi.getCommandOverview).mockResolvedValueOnce({
+      ...overview,
+      tiles: { ...overview.tiles, pipeline: { ...overview.tiles.pipeline, href: "/pipeline?status=open&bu=IT+Avalon&sow=none" } },
+      metrics: { ...overview.metrics, open_opportunity_count: 39, open_opportunity_href: "/pipeline?status=open&bu=IT+Avalon", open_opportunity_business_units: ["IT Avalon"] },
+    });
+    renderPage("/command?bu=US+-+IT+Avalon");
+    const open = await screen.findByRole("link", { name: /Open opportunity value/ });
+    expect(open).toHaveAttribute("href", "/pipeline?status=open&bu=IT+Avalon");
+    expect(open).toHaveTextContent("39 open deals in IT Avalon · Hold included · unweighted");
+    expect(open).toHaveTextContent("Same number as the Pipeline");
+    const stricter = screen.getByRole("link", { name: /Weighted · 1 open deal/ });
+    expect(stricter).toHaveTextContent("Pipeline list: open deals with no SOW in IT Avalon.");
+  });
+
+  it("says when a deal list has no business unit", async () => {
+    vi.mocked(commandApi.getCommandOverview).mockResolvedValueOnce({
+      ...overview,
+      metrics: { ...overview.metrics, open_opportunity_href: "/pipeline?status=open&bu=unmapped", open_opportunity_business_units: ["unmapped"] },
+    });
+    renderPage("/command?bu=Brazil");
+    const open = await screen.findByRole("link", { name: /Open opportunity value/ });
+    expect(open).toHaveTextContent("3 open deals with no business unit · Hold included · unweighted");
+  });
+
+  it("shows the open number without the Pipeline claim when the owner has no HubSpot link (review R2/R3)", async () => {
+    vi.mocked(commandApi.getCommandOverview).mockResolvedValueOnce({
+      ...overview,
+      brief: overview.brief.map((item) => (item.kind === "opportunity" ? { ...item, href: null } : item)),
+      tiles: { ...overview.tiles, pipeline: { ...overview.tiles.pipeline, href: null } },
+      metrics: { ...overview.metrics, open_opportunity_href: null },
+      lifecycle_items: overview.lifecycle_items.map((item) => (item.key === "pipeline" ? { ...item, href: null } : item)),
+    });
+    renderPage("/command?owner=33333333-3333-3333-3333-333333333333");
+    const figure = await screen.findByText("$875,001");
+    expect(screen.queryByText("Same number as the Pipeline")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Open opportunity value/ })).not.toBeInTheDocument();
+    const tile = figure.closest("[data-testid='tile']");
+    expect(tile).toHaveTextContent("Open opportunity value");
+    expect(tile).toHaveTextContent("3 open deals · Hold included · unweighted");
+    expect(tile).toHaveTextContent("Not on the Pipeline: this owner has no HubSpot link");
+    // The stricter tile, its lifecycle row and the brief line show their numbers without a link.
+    expect(screen.queryByRole("link", { name: /Weighted · 1 open deal/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Weighted · 1 open deal/)).toBeVisible();
+    expect(screen.queryByText(/^Pipeline list:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Not yet in the SOW flow\s*1\s*open deals/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Not yet in the SOW flow").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: /weighted pipeline across 1 eligible deal/ })).not.toBeInTheDocument();
+    expect(screen.getByText("250000.00 weighted pipeline across 1 eligible deal(s)")).toBeVisible();
   });
 });

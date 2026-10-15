@@ -17,15 +17,19 @@ Read-only in this slice (S18 §2). No POST/PATCH here.
 
 from __future__ import annotations
 
+import csv
+import io
 import uuid
 from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select as _select
+from sqlalchemy import text as _text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
@@ -41,7 +45,6 @@ from app.services.hubspot_pipeline import (
     PipelineFilters,
     PipelineSummary,
     SortSpec,
-    StageCount,
     VALID_DATE_FIELDS,
     VALID_MISSING_FIELDS,
     VALID_OPEN_CLOSED,
@@ -57,6 +60,13 @@ from app.services.hubspot_pipeline import (
     scope_pipeline_filters,
     matching_opportunity_ids,
     summary as _summary,
+)
+from app.services.pipeline_workspace import (
+    PAGE_SIZES,
+    SOW_FILTERS,
+    WorkspaceFilters,
+    build_workspace,
+    export_workspace,
 )
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
@@ -460,12 +470,20 @@ async def _resolve_scope(
 
     from app.models.tracking_group import TrackingGroup, TrackingGroupMember
     from app.models.watchlist import WatchedItem
+    from app.services.canonical_user import resolve_viewer
     from app.services.tracking_group import load_group
 
     opp_scope: set[uuid.UUID] = set()
     client_scope: set[uuid.UUID] = set()
     watching_ids: set[uuid.UUID] | None = None
     axis_used = False
+    # S23-PL2: watches and groups are keyed on the DealGate user id, which
+    # differs from the login id for HubSpot-created and invited users.
+    owner = user
+    if group_ids or watching:
+        viewer = await resolve_viewer(session, user)
+        if viewer.user_id is not None and viewer.user_id != user.id:
+            owner = AuthUser(viewer.user_id, user.email, user.name, tuple(user.groups))
 
     if group_ids:
         axis_used = True
@@ -475,7 +493,7 @@ async def _resolve_scope(
             )
         ).scalars().all()
         for grp in groups:
-            await load_group(session, actor=user, group_id=grp.id)
+            await load_group(session, actor=owner, group_id=grp.id)
             if grp.filter_json:
                 # Rule-based: evaluate through the same engine.
                 sub_filters = PipelineFilters(
@@ -515,7 +533,7 @@ async def _resolve_scope(
         axis_used = True
         rows = (
             await session.execute(
-                _select(WatchedItem).where(WatchedItem.user_id == user.id)
+                _select(WatchedItem).where(WatchedItem.user_id == owner.id)
             )
         ).scalars().all()
         watching_ids = set()
@@ -923,6 +941,315 @@ async def list_pipeline_facets_endpoint(
             OwnerFacetOut(id=o.id, name=o.name, email=o.email) for o in facets.owners
         ],
         business_units=list(facets.business_units),
+    )
+
+
+# ---------------------------------------------------------------------------
+# S23-PL2 — the Pipeline workspace (B1) and its export (B10).
+# Everything is computed in app.services.pipeline_workspace from one
+# population with one filter function; this layer parses and validates.
+# Money is a decimal string (CLAUDE.md rule 2), dates are LA calendar dates.
+# ---------------------------------------------------------------------------
+
+_PAGE_SIZE_DETAIL = "page_size must be one of 25, 50, 100"
+
+Tab = Literal["deals", "clients"]
+Status = Literal["open", "all", "won", "lost", "hold"]
+BusinessUnitFilter = Literal["ST21", "IT Avalon", "Retro Rabbit", "unmapped"]
+Attention = Literal["overdue", "past_close", "no_owner", "inactive", "pending_approval", "any"]
+Missing = Literal["owner", "close", "activity", "next_action", "nda", "msa", "agreements"]
+DateField = Literal["close", "created", "activity"]
+DatePreset = Literal["any", "passed", "next7", "next30", "next90", "last7", "last30", "last90", "month",
+                     "quarter", "custom"]
+Sort = Literal["value", "close", "activity", "name"]
+Layout = Literal["list", "board"]
+
+
+class WorkspaceOwnerOut(BaseModel):
+    name: str | None
+    state: Literal["active", "archived", "none"]
+
+
+class WorkspaceAgreementsOut(BaseModel):
+    nda_on_file: bool
+    msa_on_file: bool
+
+
+class WorkspaceDealClientOut(BaseModel):
+    id: uuid.UUID | None
+    name: str | None
+
+
+class WorkspaceNextActionOut(BaseModel):
+    id: uuid.UUID
+    text: str | None
+    due_on: date | None
+
+
+class WorkspaceDealRowOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    client: WorkspaceDealClientOut
+    stage_id: int | None
+    stage_label: str | None
+    status: Literal["open", "hold", "won", "lost"] = Field(
+        description="Additive: open (Hold reads hold and counts as open), won or lost.")
+    amount: str | None = Field(description="Decimal string; null when HubSpot has no amount.")
+    currency: str | None
+    business_unit: str | None
+    region: str | None
+    region_note: str | None
+    hubspot_region: str | None
+    bu_unmapped: bool
+    deal_owner: WorkspaceOwnerOut
+    account_owner: WorkspaceOwnerOut
+    close_date: date | None
+    created_date: date | None
+    last_activity_date: date | None
+    days_since_activity: int | None
+    sow_state: str
+    sow_state_label: str
+    sow_count: int
+    agreements: WorkspaceAgreementsOut
+    next_action: WorkspaceNextActionOut | None
+    flags: list[Literal["action_overdue", "close_passed", "no_owner", "inactive_14d"]]
+    watching: bool
+    hubspot_deal_id: str | None = Field(description="Only for building the HubSpot link; never display text.")
+    pipeline_label: str | None
+
+
+class WorkspaceClientRowOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    account_owner: WorkspaceOwnerOut
+    matching_deals: int
+    open_deals: int
+    matching_value_usd: str | None
+    earliest_close_date: date | None
+    last_activity_date: date | None
+    days_since_activity: int | None
+    agreements: WorkspaceAgreementsOut
+    flags: list[Literal["no_owner", "action_overdue", "close_passed"]]
+    hubspot_company_id: str | None
+
+
+class OpenDealsMetricOut(BaseModel):
+    value: int
+    accounts: int
+    drill: dict[str, Any]
+
+
+class OpenValueMetricOut(BaseModel):
+    value: str
+    includes_on_hold: int
+    deals: int
+    drill: dict[str, Any]
+
+
+class ClosingMetricOut(BaseModel):
+    value: int
+    value_usd: str
+    drill: dict[str, Any]
+
+
+class OverdueMetricOut(BaseModel):
+    value: int
+    with_next_action: int
+    drill: dict[str, Any]
+
+
+class PendingMetricOut(BaseModel):
+    value: int
+    drill: dict[str, Any]
+
+
+class AgreementGapMetricOut(BaseModel):
+    value: int
+    clients_total: int
+    any_agreement_files: bool
+    drill: dict[str, Any]
+
+
+class WorkspaceMetricsOut(BaseModel):
+    open_deals: OpenDealsMetricOut
+    open_value_usd: OpenValueMetricOut
+    closing_this_month: ClosingMetricOut
+    overdue_next_actions: OverdueMetricOut
+    pending_approvals: PendingMetricOut
+    agreement_gap_clients: AgreementGapMetricOut
+
+
+class WorkspaceStageOut(BaseModel):
+    stage_id: int
+    label: str
+    full_label: str
+    deals: int
+    known_value_usd: str
+    deals_without_amount: int
+
+
+class WorkspaceFocusOut(BaseModel):
+    all_open: int
+    closing_this_month: int
+    mine: int | None
+    mine_available: bool
+    needs_attention: int
+    watching: int
+
+
+class WorkspaceLaneOut(BaseModel):
+    total: int
+    value_usd: str
+    deals: list[WorkspaceDealRowOut]
+
+
+class WorkspacePageOut(BaseModel):
+    number: int
+    size: int
+    total_rows: int
+    total_value_usd: str | None
+
+
+class WorkspaceTabCountsOut(BaseModel):
+    deals: int
+    clients: int
+
+
+class WorkspaceOwnerOptionOut(BaseModel):
+    id: str
+    name: str
+
+
+class WorkspaceBusinessUnitOptionOut(BaseModel):
+    business_unit: str
+    regions: list[str]
+
+
+class WorkspaceSowStateOptionOut(BaseModel):
+    value: str
+    label: str
+
+
+class WorkspaceOptionsOut(BaseModel):
+    deal_owners: list[WorkspaceOwnerOptionOut]
+    account_owners: list[WorkspaceOwnerOptionOut]
+    business_units: list[WorkspaceBusinessUnitOptionOut]
+    sow_states: list[WorkspaceSowStateOptionOut]
+
+
+class WorkspaceOut(BaseModel):
+    freshness: dict[str, Any] = Field(description="GET /hubspot/sync-health, unchanged (contract Freshness).")
+    metrics: WorkspaceMetricsOut
+    stages: list[WorkspaceStageOut]
+    focus: WorkspaceFocusOut
+    unmapped_regions: int
+    rows: list[WorkspaceDealRowOut] | list[WorkspaceClientRowOut]
+    rows_by_stage: dict[str, WorkspaceLaneOut] | None
+    page: WorkspacePageOut
+    tab_counts: WorkspaceTabCountsOut
+    options: WorkspaceOptionsOut
+    today: date
+
+
+def _workspace_filters(
+    tab: Tab = Query("deals"),
+    status_: Status = Query("open", alias="status"),
+    stage: list[int] | None = Query(None),
+    owner: list[str] | None = Query(None),
+    account_owner: list[str] | None = Query(None),
+    bu: list[BusinessUnitFilter] | None = Query(None),
+    q: str | None = Query(None, max_length=120),
+    sow: str | None = Query(None),
+    attention: Attention | None = Query(None),
+    missing: Missing | None = Query(None),
+    group: uuid.UUID | None = Query(None),
+    watching: bool = Query(False),
+    mine: bool = Query(False),
+    date_field: DateField = Query("close"),
+    date_preset: DatePreset = Query("any"),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    include_unmatched_clients: bool = Query(False),
+    sort: Sort = Query("value"),
+    client: uuid.UUID | None = Query(None),
+) -> WorkspaceFilters:
+    """The workspace filters shared by ``/workspace`` and ``/export`` (422 on bad values)."""
+    if stage and any(value < 1 or value > 9 for value in stage):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "stage must be between 1 and 9")
+    if sow is not None and sow not in SOW_FILTERS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"sow must be one of {', '.join(SOW_FILTERS)}")
+    if date_preset == "custom" and date_from and date_to and date_from > date_to:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "date_from must be on or before date_to")
+
+    def _clean(values: list[str] | None) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(value.strip() for value in values or () if value.strip()))
+
+    return WorkspaceFilters(
+        tab=tab, status=status_, stage=tuple(sorted(set(stage or ()))), owner=_clean(owner),
+        account_owner=_clean(account_owner), bu=tuple(dict.fromkeys(bu or ())), q=(q or "").strip() or None,
+        sow=sow, attention=attention, missing=missing, group=group, watching=watching, mine=mine,
+        date_field=date_field, date_preset=date_preset, date_from=date_from, date_to=date_to,
+        include_unmatched_clients=include_unmatched_clients, sort=sort, client=client,
+    )
+
+
+@router.get("/workspace", response_model=WorkspaceOut)
+async def workspace_endpoint(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+    filters: WorkspaceFilters = Depends(_workspace_filters),
+    layout: Layout = Query("list"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25),
+) -> dict[str, Any]:
+    """S23-PL2 B1: everything the Pipeline page shows, in one request."""
+    _require_reader(user)
+    if page_size not in PAGE_SIZES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, _PAGE_SIZE_DETAIL)
+    return await build_workspace(
+        session, actor=user, filters=replace(filters, layout=layout, page=page, page_size=page_size))
+
+
+@router.get("/export")
+async def export_endpoint(
+    user: AuthUser = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+    filters: WorkspaceFilters = Depends(_workspace_filters),
+) -> StreamingResponse:
+    """S23-PL2 B10: every filtered row of the active tab as CSV (UTF-8 BOM, CRLF).
+
+    The same roles as the Reports export (Presales stays without export).
+    Every cell is neutralised against spreadsheet formulas.
+    """
+    from app.routers.reports import _READ_ROLES as export_roles
+
+    if not any(role in export_roles for role in user.groups):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "insufficient role")
+    # One consistent snapshot for every statement, as the Reports export does.
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        if session.in_transaction():
+            raise HTTPException(status.HTTP_409_CONFLICT, "Pipeline export requires a fresh snapshot transaction")
+        await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+        await session.execute(_text("SET TRANSACTION READ ONLY"))
+    elif dialect == "sqlite" and not session.in_transaction():
+        await session.execute(_text("BEGIN"))
+    header, rows = await export_workspace(session, actor=user, filters=filters)
+
+    def _stream():
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)  # CRLF line endings
+        yield "﻿"
+        for row in (header, *rows):
+            writer.writerow(row)
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate()
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="DealGate_Pipeline_{filters.tab}.csv"'},
     )
 
 

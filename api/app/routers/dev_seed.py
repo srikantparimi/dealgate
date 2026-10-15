@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Any
+from decimal import Decimal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -50,11 +51,26 @@ def is_dev_seed_enabled() -> bool:
 router = APIRouter(prefix="/dev", tags=["dev"])
 
 
+class FixturePipelineDeal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: int = Field(default=1, ge=1, le=12)
+    amount: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    region: str | None = Field(default=None, min_length=1, max_length=255)
+    owner: Literal["active", "former", "none"] = "active"
+    close_in_days: int | None = Field(default=30, ge=-730, le=730)
+    created_days_ago: int = Field(default=10, ge=0, le=3650)
+    activity_days_ago: int | None = Field(default=None, ge=0, le=3650)
+    draft_sow: bool = False
+
+
 class FixtureCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     label: str = Field(min_length=1, max_length=100)
     reviewer_ids: list[uuid.UUID] = Field(max_length=20)
     hours: int = Field(default=4, ge=1, le=24)
+    # S23-PL2 T12: a populated Pipeline deal (stage, amount, dates, region, owner, draft SOW).
+    pipeline_deal: FixturePipelineDeal | None = None
 
 
 @router.post("/test-fixtures", status_code=201)
@@ -70,6 +86,7 @@ async def create_test_fixture(
     result = await create_fixture(
         session, actor_id=db_user.id, label=body.label,
         reviewer_ids=body.reviewer_ids, hours=body.hours,
+        pipeline_deal=body.pipeline_deal.model_dump() if body.pipeline_deal else None,
     )
     await session.commit()
     return result

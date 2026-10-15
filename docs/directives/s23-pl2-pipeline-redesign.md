@@ -4,14 +4,14 @@ Branch `feat/s23-pl2` from main (staging runs main 6a3c63f). **Start only after 
 
 Source of truth, in this order: (1) this file, (2) `docs/reference/openapi-pipeline.yaml`, (3) `docs/reference/prototype/dealgate-pipeline.html` (approved clickable prototype: behaviour, information and copy; open it, use both its "Work data" modes and all three "Sync" states). Build with the app's own component kit and tokens, not the prototype's CSS. Do not redesign. Any deviation goes in `docs/bugs/s23-pl2.md` with the reason.
 
-The discovery report (S23-PL0, `/tmp/pipeline-discovery-*.md`) is the factual base. Its numbers on staging tonight: 109 open deals, USD 21,596,444.14, 0 missing amount/owner/BU/client, Hold counts as open (2 deals), 8 past their close date, 61 with no activity date, every open deal "No SOW", 0 agreements, 0 next actions.
+The discovery report (S23-PL0, `/tmp/pipeline-discovery-*.md`) is the factual base. Its numbers at discovery time (PL1's first sync has refreshed 74 deals since, so re-read them before you compare): 109 open deals, USD 21,596,444.14, 0 missing amount/owner/BU/client, Hold counts as open (2 deals), 8 past their close date, 61 with no activity date, every open deal "No SOW", 0 agreements, 0 next actions.
 
 ## Rules (they apply every time)
 
 1. **No session token or time budget. Do not get stuck.** One bounded attempt per issue; if it does not yield, log it in `docs/bugs/s23-pl2.md` with what you tried and move on. Finish ALL fundamental code first (code-complete: every B and F item), then test, then fix the logged bugs one by one, each recorded in the file. Efficient and quick.
 2. **Anti-glossing.** Report **every** numbered item (B1–B15, F1–F20, T1–T12, D-items) by its number in exactly one of five states: **verified working / fixed and tested / missing / blocked / deferred**, each with proof (test name and result, request and response, screenshot path, or file:line). A "complete" or "zero deferrals" summary may not replace the list. An item missing from your report counts as not done. "Deferred" needs my agreement in the item text, so only D-items marked DEFERRED may use it.
 3. **Heartbeat.** One line at every step boundary and at least every 15 minutes while a long command runs: `PL2 · item · result · next`.
-4. CLAUDE.md applies: rule 12 no infra via console or CLI, rule 14 branch → staging → smoke → Kanna's click → squash merge, rule 15 never a scripted-yes terraform, rule 17 parallel lanes, rule 18 any click-through finding becomes a failing Playwright test first. Deploy through `scripts/deploy-smoke.sh`. HubSpot token is test-only, never printed, committed or reused. **No Terraform change is needed here. If you think one is, stop and ask.** Database migrations go through the normal release path.
+4. CLAUDE.md applies: rule 12 no infra via console or CLI, rule 14 branch → staging → smoke → Kanna's click → squash merge, rule 15 never a scripted-yes terraform, rule 17 parallel lanes, rule 18 any click-through finding becomes a failing Playwright test first. Deploy exactly the way PL1 did: an image-only Terraform roll applied from a saved plan (show me the plan summary; if it contains anything other than the image, stop and ask), then run `scripts/deploy-smoke.sh`, which only smoke-tests. Never a scripted yes. HubSpot token is test-only, never printed, committed or reused. **No Terraform change is needed here. If you think one is, stop and ask.** Database migrations go through the normal release path.
 5. Test data stays under run tags and the leak gate. Never render a raw id. Never invent a number: a missing value shows its reason, never a zero.
 
 ## Disposition of the discovery findings
@@ -58,7 +58,7 @@ Each line says what happens. A line marked BUILT points at the items that do it.
 
 **B2. One definition of "open", shared.** One filter function serves the workspace, the export and the Command Center. The Command Center tile "Open opportunity value" becomes the Pipeline's own open number (109 deals, USD 21,596,444.14 tonight). The stricter variant (USD only, weighted, no SOW or engagement link) stays but gets its own label, e.g. "Not yet in the SOW flow". Regression-test every Command Center tile you touch.
 
-**B3. Business unit.** Table mapping HubSpot region value → business unit, region, note. Seed: `South Africa` → Retro Rabbit, South Africa; `US - IT Avalon (Staffing)` → IT Avalon, US, note Staffing; `US - IT Avalon` → IT Avalon, US; `US` → ST21, US. `GET/PUT /api/settings/business-units` (admin write). Deal rows return `business_unit`, `region`, `region_note`, the raw `hubspot_region` and `bu_unmapped`. The `bu` filter accepts the three BUs and `unmapped`. Editing the mapping takes effect with no resync. Report the resulting counts on staging; they must be Retro Rabbit 47, IT Avalon 40, ST21 22.
+**B3. Business unit.** Table mapping HubSpot region value → business unit, region, note. Seed: `South Africa` → Retro Rabbit, South Africa; `US - IT Avalon (Staffing)` → IT Avalon, US, note Staffing; `US - IT Avalon` → IT Avalon, US; `US` → ST21, US. `GET/PUT /api/settings/business-units` (admin write). Deal rows return `business_unit`, `region`, `region_note`, the raw `hubspot_region` and `bu_unmapped`. The `bu` filter accepts the three BUs and `unmapped`. Editing the mapping takes effect with no resync. Report the resulting deal counts per business unit on staging and confirm each equals the SQL count of deals by HubSpot region. (At discovery time, before PL1's first sync refreshed 74 deals, they were Retro Rabbit 47, IT Avalon 40, ST21 22; staging numbers may have moved since, so they are a reference, not a target.)
 
 **B4. User ↔ HubSpot owner.** Nullable `hubspot_owner_id` on the user. Link automatically by exact email match (at login and at owner sync); admin override at `PUT /api/users/{id}/hubspot-owner`. `mine=true` filters on it. No link → `focus.mine_available=false`.
 
@@ -82,7 +82,7 @@ Each line says what happens. A line marked BUILT points at the items that do it.
 
 **B14. Portal id.** `GET /api/config` returns `hubspot_portal_id` from the configuration Terraform already provides. No infra change.
 
-**B15. Freshness.** `workspace.freshness` reads PL1's sync-health. If PL1 is not merged, code against the contract and say so.
+**B15. Freshness.** `workspace.freshness` reads PL1's sync-health (PL1 is built; rebase onto main once it merges). Freshness comes from run records only, never the intake heartbeat.
 
 ## Frontend items
 
@@ -90,7 +90,7 @@ Each line says what happens. A line marked BUILT points at the items that do it.
 
 **F2. One data hook.** `useWorkspace(filters)` makes one request, cancels a stale one, debounces search by 300 ms, and keeps every filter in the URL query string so a link or the back button restores the view. A saved view stores that same shape.
 
-**F3. Freshness line.** Three states with the prototype's copy: fresh (quiet), stale (amber), failed (red, naming the last good sync). "Inspect sync" opens the details panel. Times in America/Los_Angeles.
+**F3. Freshness line.** Three states with the prototype's copy: fresh (quiet), stale (amber), failed (red, naming the last good sync). "Inspect sync" opens the details panel. Times in America/Los_Angeles. The admin "Run sync now" action returns before the sync finishes (CloudFront times out at 30 seconds while the sync completes on the server): show "Sync started", poll `sync-health`, and never show that timeout as a failure.
 
 **F4. Metric cards.** Six cards. A click applies the card's `drill` to the current filters and opens the list. The number on the card equals the list length. Agreement gaps opens the Clients tab. When no client anywhere has a file, the card says "no agreement files uploaded yet".
 
@@ -145,4 +145,4 @@ Write them first for any bug you find (rule 18). All run in the existing Playwri
 
 ## Done means
 
-Every numbered item above reported by number in the five states with proof; staging deployed through `scripts/deploy-smoke.sh`; smoke green; screenshots of the three sync states and both data situations; the before and after query counts. **Do not merge.** Kanna clicks through staging first.
+Every numbered item above reported by number in the five states with proof; staging deployed by an image-only roll from a saved plan, then smoke green via `scripts/deploy-smoke.sh`; screenshots of the three sync states and both data situations; the before and after query counts. **Do not merge.** Kanna clicks through staging first.

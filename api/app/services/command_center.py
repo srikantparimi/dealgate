@@ -502,6 +502,8 @@ async def command_accounts_csv(
         if not page.items:
             break
         page_number += 1
+    from app.services.csv_safety import safe_row
+
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(
@@ -525,7 +527,7 @@ async def command_accounts_csv(
         ]
     )
     for row in rows:
-        writer.writerow(
+        writer.writerow(safe_row(  # S23-PL2 B10: no cell may run as a formula
             [
                 row.account_name,
                 row.engagement_name,
@@ -544,7 +546,7 @@ async def command_accounts_csv(
                 row.next_action or "",
                 row.next_action_due or "",
             ]
-        )
+        ))
     return output.getvalue()
 
 

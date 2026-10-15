@@ -2,6 +2,10 @@
 
 Thin router — all validation, permissions, transitions and audit
 emission live in :mod:`app.services.next_action`.
+
+S23-PL2 B11: every route acts as the caller's DealGate user id (creator,
+event actor and ``can_edit`` all compare against it); reads resolve it
+without writing, writes provision it first.
 """
 
 from __future__ import annotations
@@ -10,12 +14,14 @@ import uuid
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
+from app.services.canonical_user import canonical_actor
+from app.services.pipeline_personal import reading_actor
 from app.services.next_action import (
     NextActionCreate,
     NextActionPatch,
@@ -113,6 +119,7 @@ async def list_next_actions_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> NextActionListResponse:
+    user = await reading_actor(session, user)
     candidates = []
     if opportunity_id is not None:
         await require_deal_access(session, user, opportunity_id)
@@ -142,6 +149,7 @@ async def create_next_action_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> NextActionRow:
+    user = await canonical_actor(session, user)
     action = await create_action(
         session,
         actor=user,
@@ -165,6 +173,7 @@ async def get_next_action_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> NextActionRow:
+    user = await reading_actor(session, user)
     action = await load_action(session, action_id)
     await require_deal_access(session, user, action.opportunity_id)
     return await _to_row(session, user, action)
@@ -177,6 +186,7 @@ async def patch_next_action_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> NextActionRow:
+    user = await canonical_actor(session, user)
     action = await load_action(session, action_id)
     action = await patch_action(
         session,
@@ -205,6 +215,7 @@ async def get_next_action_events_endpoint(
     user: AuthUser = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> NextActionEventList:
+    user = await reading_actor(session, user)
     action = await load_action(session, action_id)
     await require_deal_access(session, user, action.opportunity_id)
     events = await list_events(session, action_id)

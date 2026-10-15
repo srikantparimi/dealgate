@@ -32,6 +32,7 @@ test.describe("T16 · W6 tracking (S20 Session 4b)", () => {
   test("item 2: latest-comment column exists on the opportunities table", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await openOpps(page);
     const header = page
       .getByTestId("opportunities-table")
@@ -42,6 +43,7 @@ test.describe("T16 · W6 tracking (S20 Session 4b)", () => {
   test("item 4: group filter select is present with the server's group list", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await openOpps(page);
     const groupSelect = page.getByTestId("filter-group");
     await expect(groupSelect).toBeVisible();
@@ -71,6 +73,7 @@ test.describe("T16 · W6 tracking (S20 Session 4b)", () => {
   test("item 8: filtering by Watching returns a deterministic set (deals counted once)", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     // On a fresh user the watchlist is empty — the filter returns zero rows
     // (not "all rows"). This locks the honest-zero semantics in.
     await page.goto(`${BASE}/pipeline?watching=true`);
@@ -102,6 +105,7 @@ test.describe("T16 · W6 tracking (S20 Session 4b)", () => {
   test("item 1: overdue next action sorts to top (surface check)", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     // When a staging portal has at least one deal with an overdue
     // next_action, the first opportunity row must carry the attention
     // badge for `overdue_action`. On a portal with no overdue rows,

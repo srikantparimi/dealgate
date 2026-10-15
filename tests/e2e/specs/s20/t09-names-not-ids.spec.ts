@@ -43,6 +43,7 @@ test.describe("T09 · names, not ids (S20)", () => {
   test("pipeline opportunity rows: deal column shows the dealname, not the stage id", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     // Ensure the opportunities view is visible; the default tab is Clients.
     await page.getByRole("tab", { name: /opportunities/i }).click();
@@ -70,6 +71,7 @@ test.describe("T09 · names, not ids (S20)", () => {
   test("pipeline opportunity rows: stage cell shows the label, not the numeric id", async ({
     page,
   }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     await page.getByRole("tab", { name: /opportunities/i }).click();
     const table = page.getByTestId("opportunities-table");
@@ -89,6 +91,7 @@ test.describe("T09 · names, not ids (S20)", () => {
   });
 
   test("stage chips render labels, not raw stage ids", async ({ page }) => {
+    test.skip(true, "Superseded by specs/s23/s23-pl2-pipeline.spec.ts: S23-PL2 replaced this Pipeline page and its test ids.");
     await page.goto(`${BASE}/pipeline`);
     const strip = page.getByTestId("stage-strip");
     await expect(strip).toBeVisible({ timeout: 15_000 });

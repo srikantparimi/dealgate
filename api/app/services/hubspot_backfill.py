@@ -63,7 +63,7 @@ from app.services.hubspot_intake import (
     _resolve_secondary_clients,
     _upsert_opportunity,
 )
-from app.services.hubspot_owners import sync_owner_mirror
+from app.services.hubspot_owners import link_all_by_email, sync_owner_mirror
 from app.services.hubspot_properties import HubspotPropertyMapping, discover_business_unit
 from app.services.hubspot_stage_mirror import StageMap, sync_stage_mirror
 from app.services.hubspot_intake import UnmappedStageError
@@ -519,6 +519,16 @@ async def run_backfill(
             await session.commit()
         if owner_counts.errors:
             counts.record_error("owners", "owner mirror: owner list fetch failed")
+        else:
+            # S23-PL2 B4: link the users still undecided to their owner, once the mirror
+            # has committed and in a transaction of its own. A conflict or a deadlock with
+            # a sign-in is logged and retried next run; nothing here fails the deal sync.
+            try:
+                async with factory() as session:
+                    await link_all_by_email(session)
+                    await session.commit()
+            except Exception:
+                log.exception("hubspot_owner_link_failed")
 
         # S20 W1 D10 — discover the Business Unit custom property. A failed or
         # unusable discovery is recorded; deals keep the stored mapping, and

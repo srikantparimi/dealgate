@@ -30,8 +30,8 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -59,13 +59,25 @@ class SavedView(Base):
             "visibility IN ('private','team')",
             name="ck_saved_view_visibility",
         ),
-        # A user cannot end up with two built-ins of the same key. Custom
-        # views have key='custom' and are not deduplicated.
-        UniqueConstraint(
+        # A user cannot end up with two built-ins of the same key. (S23-PL2
+        # B11: the old unique key on (owner_id, key, is_builtin) also caught
+        # custom views, which all share one key, so a second view collided.)
+        Index(
+            "ux_saved_view_builtin_key",
             "owner_id",
             "key",
-            "is_builtin",
-            name="uq_saved_view_owner_key_builtin",
+            unique=True,
+            postgresql_where=text("is_builtin"),
+            sqlite_where=text("is_builtin"),
+        ),
+        # A user's live custom views are unique by case-insensitive name.
+        Index(
+            "ux_saved_view_owner_name",
+            "owner_id",
+            text("lower(name)"),
+            unique=True,
+            postgresql_where=text("archived_at IS NULL AND NOT is_builtin"),
+            sqlite_where=text("archived_at IS NULL AND NOT is_builtin"),
         ),
         Index("ix_saved_view_owner", "owner_id"),
     )
