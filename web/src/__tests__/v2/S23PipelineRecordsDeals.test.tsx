@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
-import type { DealRow } from "../../api/pipelineWorkspace";
+import type { Agreements, DealRow } from "../../api/pipelineWorkspace";
 import { RecordsPanel, type RecordsPanelProps } from "../../pages/v2/pipeline/RecordsPanel";
 import {
   INJECTION_CLIENT,
@@ -52,6 +52,16 @@ function rowOf(title: string): HTMLElement {
   return row as HTMLElement;
 }
 
+/** S24-AG1 F6 · the state tag that follows a kind's name in the "SOW / agreements" cell. */
+function stateTag(row: ReturnType<typeof within>, kind: "NDA" | "MSA"): HTMLElement {
+  const tag = row.getByText(kind, { selector: "span" }).nextElementSibling;
+  if (!(tag instanceof HTMLElement)) throw new Error(`no state tag after ${kind}`);
+  return tag;
+}
+
+/** Tonight on staging: a net-new client past stage 1 holds neither document (S24-AG1). */
+const MISSING_BOTH: Agreements = { nda_on_file: false, msa_on_file: false, nda_state: "missing", msa_state: "missing" };
+
 describe("deals list columns (F8)", () => {
   it("has the select-page box and the seven columns of the spec, in order", () => {
     renderPanel([deal()]);
@@ -69,7 +79,7 @@ describe("deals list columns (F8)", () => {
   });
 
   it("shows tonight's first row the way staging looks tonight (D31 empty work columns)", () => {
-    renderPanel([deal()]);
+    renderPanel([deal({ agreements: MISSING_BOTH })]);
     const row = within(rowOf("Cloud modernization"));
     expect(row.getByRole("button", { name: "Vector Systems" })).toHaveTextContent("Vector Systems ↗");
     expect(row.getByText("No flags")).toBeInTheDocument();
@@ -82,8 +92,8 @@ describe("deals list columns (F8)", () => {
     expect(row.getByText("Dec 28")).toBeInTheDocument();
     expect(row.getByText("No activity recorded")).toBeInTheDocument();
     expect(row.getByText("No SOW")).toBeInTheDocument();
-    expect(row.getByText("NDA missing")).toBeInTheDocument();
-    expect(row.getByText("MSA missing")).toBeInTheDocument();
+    expect(stateTag(row, "NDA")).toHaveTextContent("Missing");
+    expect(stateTag(row, "MSA")).toHaveTextContent("Missing");
     expect(row.getByRole("button", { name: "Set next action" })).toHaveTextContent("Set next action →");
     const star = row.getByRole("button", { name: "Watch Cloud modernization" });
     expect(star).toHaveAttribute("aria-pressed", "false");
@@ -104,14 +114,16 @@ describe("deals list columns (F8)", () => {
     expect(row.queryByRole("button", { name: "Set next action" })).not.toBeInTheDocument();
   });
 
-  it("shows activity days, a pending SOW in the pending tone, and agreements on file", () => {
-    renderPanel([reviewDeal()]);
+  it("shows activity days, a pending SOW in the pending tone, and the agreement states", () => {
+    renderPanel([reviewDeal({ agreements: { nda_on_file: true, msa_on_file: false, nda_state: "client", msa_state: "missing" } })]);
     const row = within(rowOf("Application support"));
     expect(row.getByText("11d since activity")).toBeInTheDocument();
     const sow = row.getByText("In review · delivery/hr");
     expect(sow.className).toContain("bg-primary-subtle");
-    expect(row.getByText("NDA on file").className).toContain("bg-success-surface");
-    expect(row.getByText("MSA missing").className).toContain("bg-warning-surface");
+    expect(stateTag(row, "NDA")).toHaveTextContent("✓ Client copy");
+    expect(stateTag(row, "NDA").className).toContain("bg-success-surface");
+    expect(stateTag(row, "MSA")).toHaveTextContent("Missing");
+    expect(stateTag(row, "MSA").className).toContain("bg-danger-surface");
     expect(row.getByText("MH")).toBeInTheDocument();
     expect(row.getByText("Michael")).toBeInTheDocument();
   });
@@ -216,10 +228,19 @@ describe("deals list columns (F8)", () => {
 
 describe("a deal without a client", () => {
   it("says 'No client' and offers no client link (never an empty link)", () => {
-    renderPanel([deal({ title: "Standalone advisory", client: { id: null, name: null } })]);
+    renderPanel([
+      deal({
+        title: "Standalone advisory",
+        client: { id: null, name: null },
+        agreements: { nda_on_file: false, msa_on_file: false, nda_state: null, msa_state: null },
+      }),
+    ]);
     const row = screen.getByRole("row", { name: /Standalone advisory/ });
     expect(within(row).getByText("No client")).toBeInTheDocument();
     expect(within(row).queryByRole("button", { name: /↗|^\s*$/ })).toBeNull();
+    // S24-AG1: no client, so no agreement state (never a "Missing" for nobody).
+    expect(within(row).queryByText("NDA")).toBeNull();
+    expect(within(row).queryByText("Missing")).toBeNull();
   });
 });
 

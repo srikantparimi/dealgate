@@ -2,11 +2,13 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import {
   forwardRef,
+  useRef,
   type ComponentPropsWithoutRef,
   type ElementRef,
   type HTMLAttributes,
 } from "react";
 import { cn } from "../../lib/cn";
+import { useEscapeAboveToasts } from "./escapeAboveToasts";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -31,32 +33,43 @@ DialogOverlay.displayName = "DialogOverlay";
 export const DialogContent = forwardRef<
   ElementRef<typeof DialogPrimitive.Content>,
   ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPrimitive.Portal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2",
-        "gap-4 rounded-dialog bg-surface p-6 shadow-dialog",
-        "text-text focus:outline-none",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close
+>(({ className, children, onEscapeKeyDown, ...props }, ref) => {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeAboveToasts(contentRef, closeRef, onEscapeKeyDown);
+  return (
+    <DialogPrimitive.Portal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={(node) => {
+          contentRef.current = node;
+          if (typeof ref === "function") ref(node);
+          else if (ref) ref.current = node;
+        }}
+        onEscapeKeyDown={onEscapeKeyDown}
         className={cn(
-          "absolute right-4 top-4 rounded-control p-1 text-text-secondary",
-          "hover:bg-primary-subtle focus-visible:outline-focus transition-motion",
+          "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2",
+          "gap-4 rounded-dialog bg-surface p-6 shadow-dialog",
+          "text-text focus:outline-none",
+          className,
         )}
-        aria-label="Close"
+        {...props}
       >
-        <X className="h-4 w-4" />
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPrimitive.Portal>
-));
+        {children}
+        <DialogPrimitive.Close
+          ref={closeRef}
+          className={cn(
+            "absolute right-4 top-4 rounded-control p-1 text-text-secondary",
+            "hover:bg-primary-subtle focus-visible:outline-focus transition-motion",
+          )}
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  );
+});
 DialogContent.displayName = "DialogContent";
 
 export function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

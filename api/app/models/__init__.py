@@ -17,6 +17,13 @@ from app.models.audit import AuditEvent
 from app.models.capability import CapabilityCatalog
 from app.models.ceo_exception import CeoDelegate, CeoException
 from app.models.client import Agreement, Client, LegalEntity
+from app.models.agreements import (
+    AgreementBatch,
+    AgreementHubspotMap,
+    AgreementMark,
+    AgreementsSettings,
+    StandardAgreement,
+)
 from app.models.client_alias import ClientAlias
 from app.models.client_contact import ClientContact as ClientContact
 from app.models.client_rate_card import ClientRateCard, ClientRateCardRow
@@ -75,6 +82,11 @@ from app.models.gm_model_phase import GmModelPhase  # noqa: E402
 from app.models.gm_model_template import GmModelTemplate  # noqa: E402
 
 __all__ = [
+    "AgreementBatch",
+    "AgreementHubspotMap",
+    "AgreementMark",
+    "AgreementsSettings",
+    "StandardAgreement",
     "Allocation",
     "CalendarLocation",
     "CostRateCard",

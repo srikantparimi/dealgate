@@ -142,3 +142,6 @@ class Opportunity(Base):
     hubspot_secondary_client_ids: Mapped[Any | None] = mapped_column(
         _JsonB, nullable=True
     )
+    # S24-AG1: HubSpot's raw ``msa_type`` deal property, stored as sent. A hint
+    # an admin can map to "MSA covered"; never a state by itself.
+    hubspot_msa_type: Mapped[str | None] = mapped_column(String(200), nullable=True)

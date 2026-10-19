@@ -468,6 +468,7 @@ export function PipelinePage() {
             today={data.today}
             onOpenDeal={openDeal}
             onShowClientDeals={showClientDeals}
+            onChanged={refetch}
           />
         </>
       ) : null}

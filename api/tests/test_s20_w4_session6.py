@@ -179,13 +179,15 @@ async def test_card_ceo_pending_equals_deep_link_count(session):
 @pytest.mark.asyncio
 async def test_card_agreements_uploaded_matches_agreement_count(session):
     """`agreements_uploaded` on the summary === count of Agreement rows."""
-    c = Client(name="Agr Corp")
-    session.add(c)
+    # S24-AG1 B1: one agreement per client and kind (ux_agreement_client_kind), so the three rows sit on two
+    # clients (NDA + MSA, then NDA).
+    clients = [Client(name="Agr Corp"), Client(name="Agr Corp Two")]
+    session.add_all(clients)
     await session.flush()
     for i in range(3):
         session.add(
             Agreement(
-                client_id=c.id,
+                client_id=clients[i // 2].id,
                 kind="NDA" if i % 2 == 0 else "MSA",
                 file_key=f"s3://b/agr_{i}.pdf",
                 filename=f"agr_{i}.pdf",

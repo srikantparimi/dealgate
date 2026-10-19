@@ -341,6 +341,12 @@ export interface ClientOption {
   source: "hubspot" | "manual";
 }
 
+/** POST /clients: the client, and whether this call created it (false when the name matched an existing one). */
+export interface CreatedClient extends ClientOption {
+  /** S24-AG1 F11 (additive): optional so older fixtures still type-check; the API always sends it. */
+  created?: boolean;
+}
+
 export interface Resource {
   id: UUID;
   name: string;
@@ -587,6 +593,47 @@ export function dismissImportNote(engagementId: UUID): void {
   }
 }
 
+const AGREEMENTS_OFFER_KEY = "dealgate.s24.agreements-offer";
+
+/**
+ * S24-AG1 F11: a client created by hand with this engagement. The engagement page offers
+ * "Add the NDA and MSA now (optional)" until it is dismissed; `uploaded` lists what was added.
+ */
+export interface AgreementsOffer {
+  client_id: UUID;
+  client_name: string;
+  uploaded: ("NDA" | "MSA")[];
+}
+
+export function rememberAgreementsOffer(engagementId: UUID, offer: AgreementsOffer): void {
+  try {
+    sessionStorage.setItem(`${AGREEMENTS_OFFER_KEY}:${engagementId}`, JSON.stringify(offer));
+  } catch {
+    /* storage unavailable: the offer is simply not shown */
+  }
+}
+
+export function takeAgreementsOffer(engagementId: UUID): AgreementsOffer | null {
+  try {
+    const raw = sessionStorage.getItem(`${AGREEMENTS_OFFER_KEY}:${engagementId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AgreementsOffer>;
+    if (typeof parsed.client_id !== "string" || typeof parsed.client_name !== "string") return null;
+    const uploaded = Array.isArray(parsed.uploaded) ? parsed.uploaded.filter((k) => k === "NDA" || k === "MSA") : [];
+    return { client_id: parsed.client_id, client_name: parsed.client_name, uploaded };
+  } catch {
+    return null;
+  }
+}
+
+export function dismissAgreementsOffer(engagementId: UUID): void {
+  try {
+    sessionStorage.removeItem(`${AGREEMENTS_OFFER_KEY}:${engagementId}`);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function importAllocations(engagementId: UUID, file: File): Promise<{ created: number; allocation_ids: UUID[] }> {
   const form = new FormData();
   form.set("engagement_id", engagementId);
@@ -642,8 +689,8 @@ export function listClientOptions(): Promise<ClientOption[]> {
   return request<ClientOption[]>("/portfolio/clients");
 }
 
-export function createClient(name: string): Promise<ClientOption> {
-  return request<ClientOption>("/clients", { method: "POST", body: JSON.stringify({ name }) });
+export function createClient(name: string): Promise<CreatedClient> {
+  return request<CreatedClient>("/clients", { method: "POST", body: JSON.stringify({ name }) });
 }
 
 export function listResources(): Promise<Resource[]> {

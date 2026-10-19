@@ -110,6 +110,7 @@ const config: Config = {
         danger: {
           DEFAULT: "var(--dg-danger)",
           surface: "var(--dg-danger-surface)",
+          fg: "var(--dg-on-danger)",
         },
         dangerSurface: "var(--dg-danger-surface)",
         focus: "var(--dg-focus)",

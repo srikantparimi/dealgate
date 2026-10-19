@@ -257,7 +257,8 @@ async def test_summary_open_value_by_currency_and_agreement_gaps(session, counte
     )
     await _seed_agreement(session, client=c1, kind="NDA", owner=owner)
     await _seed_agreement(session, client=c1, kind="MSA", owner=owner)
-    # c2 has an open deal but no agreements → agreement gap.
+    # c2 is net new with an open deal and no agreements → it needs attention (S24-AG1: the gap count is the
+    # shared Needs-attention number, bug #79).
     await session.commit()
 
     counter.reset()
@@ -267,7 +268,12 @@ async def test_summary_open_value_by_currency_and_agreement_gaps(session, counte
     assert result.open_value_by_currency["USD"] == Decimal("350")
     assert result.closing_this_month >= 1
     assert result.agreement_gaps == 1
-    assert counter.n <= 3, f"summary used {counter.n} queries"
+    # Two counting queries, then the shared agreement population (no second gap definition).
+    assert counter.n <= 2 + 8, f"summary used {counter.n} queries"
+    from app.services.agreement_pipeline import attention_clients
+    from app.services.hubspot_pipeline import PipelineFilters
+
+    assert result.agreement_gaps == await attention_clients(session, PipelineFilters())
 
 
 @pytest.mark.asyncio

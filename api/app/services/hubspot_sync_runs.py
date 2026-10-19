@@ -193,7 +193,41 @@ async def run_deal_sync(kind: str, client: HubSpotClient | None = None, *,
         event, run_id=str(outcome.run_id), kind=kind, deals_seen=outcome.deals_seen,
         deals_written=outcome.deals_written, error_count=outcome.error_count,
         errors=outcome.errors, fatal_error=outcome.fatal_error)
+    if outcome.status == "ok":
+        await _after_successful_sync(factory, run_id=outcome.run_id)
     return outcome
+
+
+async def _after_successful_sync(factory: async_sessionmaker[AsyncSession], *,
+                                 run_id: uuid.UUID) -> None:
+    """S24-AG1 B8/B9: after a clean sync (every deal read), settle the relationship of clients created
+    since the cutover, then apply the saved ``msa_type`` mapping.
+
+    Only after an ``ok`` run: a partial run may have refused the very deal that decides a client's
+    relationship. The run is already finished and recorded; each step runs in its own transaction, and a
+    failure is logged and never raised, so neither step can change the run row, its counts, its outcome or
+    the worker's exit code (a post step must never fail the nightly sync).
+    """
+    from app.services.agreement_hooks import settle_pending_relationships
+    from app.services.agreement_hubspot import apply_mapping
+
+    try:
+        async with factory() as session:
+            stamped = await settle_pending_relationships(session, correlation_id=f"hubspot_sync:{run_id}")
+            await session.commit()
+        if stamped:
+            log.info("agreements_relationships_settled_after_sync", run_id=str(run_id), stamped=stamped)
+    except Exception:
+        log.exception("agreements_relationship_settle_failed", run_id=str(run_id))
+    try:
+        async with factory() as session:
+            result = await apply_mapping(session, dry_run=False, trigger="sync", actor_id=None)
+            await session.commit()
+        if result.marked:
+            log.info("agreements_hubspot_mapping_applied_after_sync", run_id=str(run_id),
+                     would_mark=result.would_mark, marked=result.marked)
+    except Exception:
+        log.exception("agreements_hubspot_apply_failed", run_id=str(run_id))
 
 
 # ---------------------------------------------------------------------------

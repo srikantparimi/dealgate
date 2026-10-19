@@ -3,11 +3,13 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import {
   forwardRef,
+  useRef,
   type ComponentPropsWithoutRef,
   type ElementRef,
   type HTMLAttributes,
 } from "react";
 import { cn } from "../../lib/cn";
+import { useEscapeAboveToasts } from "./escapeAboveToasts";
 
 /**
  * Right-side drawer built on Radix Dialog. Used for quick task editing,
@@ -54,30 +56,44 @@ export interface SheetContentProps
 export const SheetContent = forwardRef<
   ElementRef<typeof DialogPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <DialogPrimitive.Portal>
-    <SheetOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close
-        className={cn(
-          "absolute right-4 top-4 rounded-control p-1 text-text-secondary",
-          "hover:bg-primary-subtle focus-visible:outline-focus transition-motion",
-        )}
-        aria-label="Close"
+>(({ side = "right", className, children, onEscapeKeyDown, ...props }, ref) => {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscapeAboveToasts(contentRef, closeRef, onEscapeKeyDown);
+  return (
+    <DialogPrimitive.Portal>
+      <SheetOverlay />
+      <DialogPrimitive.Content
+        ref={(node) => {
+          contentRef.current = node;
+          if (typeof ref === "function") ref(node);
+          else if (ref) ref.current = node;
+        }}
+        className={cn(sheetVariants({ side }), className)}
+        onEscapeKeyDown={onEscapeKeyDown}
+        {...props}
       >
-        <X className="h-4 w-4" />
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPrimitive.Portal>
-));
+        {children}
+        <DialogPrimitive.Close
+          ref={closeRef}
+          className={cn(
+            "absolute right-4 top-4 rounded-control p-1 text-text-secondary",
+            "hover:bg-primary-subtle focus-visible:outline-focus transition-motion",
+          )}
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  );
+});
 SheetContent.displayName = "SheetContent";
 
-export function SheetHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+export function SheetHeader({
+  className,
+  ...props
+}: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("flex flex-col gap-1", className)} {...props} />;
 }
 

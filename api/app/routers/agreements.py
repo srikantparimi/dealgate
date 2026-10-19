@@ -1,64 +1,52 @@
-"""Agreements as a flat NDA/MSA document store (S17).
+"""NDA and MSA documents: the batch attach of the standard copies and the legacy document routes (S24-AG1).
 
-Contract: one row per uploaded file. Client + kind (NDA/MSA) + file. The
-list is client, type, filename, uploaded by, uploaded date. No states,
-owners, next actions, expiry dates or extraction — S16a's tracking is
-gone. Nothing else in the app reads these rows to gate a decision.
+Every write goes through ``app.services.agreements_service`` (the per-client rules, B5 file rules, compensating
+delete, audit) or ``app.services.agreement_batches`` (B7); nothing here classifies a client. Roles (B11, enforced
+here whatever the page shows): every role reads and downloads; Legal and SystemAdmin write; SystemAdmin alone
+runs and undoes batches. Reads never write, except downloads, which record who downloaded what.
 
-Endpoints:
+Routes (the workspace, export, documents, activity and standard routes live in ``agreements_workspace``; the
+per-client routes in ``client_agreements``):
 
-- ``POST   /agreements``             — multipart upload; picks client + kind + file.
-- ``GET    /agreements``             — governance-role list (filterable by client).
-- ``GET    /agreements/{id}/download`` — short-lived S3 GET url for the stored file.
-- ``DELETE /agreements/{id}``        — SystemAdmin or Legal removes the row + S3 object.
+- ``POST /agreements/batches`` — dry run (default, 200) or start the job (202). ``GET /agreements/batches``,
+  ``GET /agreements/batches/{label}``, ``POST /agreements/batches/{label}/undo`` (202).
+- Legacy, kept for existing callers with the same rules: ``GET /agreements`` (+ source, standard version, batch
+  label, note), ``POST /agreements`` (a kind the client already holds becomes a new version),
+  ``POST /agreements/{id}/replace``, ``GET /agreements/{id}/versions``, the two download routes (audited) and
+  ``DELETE /agreements/{id}`` (a client copy starts a deletion job, 202; a standard attachment is removed, 200).
 """
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import uuid
-from datetime import UTC, datetime
-from typing import Literal
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.audit import append_audit
-from app.auth import AuthUser, current_user, require_role
+from app.auth import AuthUser, require_role
 from app.db import get_session
-from app.integrations.s3_evidence import EvidenceS3, UnsupportedContentType, get_evidence_s3
-from app.integrations.s3_sow import MAX_SOW_BYTES
+from app.integrations.s3_evidence import EvidenceS3, get_evidence_s3
+from app.models.agreements import AgreementBatch, StandardAgreement
 from app.models.client import Agreement, AgreementFileVersion, Client
 from app.models.user import User
+from app.services import agreement_batches, agreements_service
+from app.services.agreement_files import check_upload
+from app.services.agreement_status import iso_z
+from app.services.agreements_service import ADMIN_ROLES, READ_ROLES, WRITE_ROLES
+from app.services.test_fixtures import account_scope, user_allowed
 from app.services.user_identity import display_user_name
 from app.services.user_provisioning import ensure_user
-from app.services.test_fixtures import account_scope, user_allowed
 
 router = APIRouter(prefix="/agreements", tags=["agreements"])
 
-_READ_ROLES: tuple[str, ...] = (
-    "Marketing",
-    "Sales",
-    "SalesLeader",
-    "Presales",
-    "Delivery",
-    "HR",
-    "Finance",
-    "Legal",
-    "CEO",
-    "SystemAdmin",
-)
-_MUTATE_ROLES: tuple[str, ...] = ("Legal", "SystemAdmin")
+# Kept under their S17 names for importers.
+_READ_ROLES = READ_ROLES
+_MUTATE_ROLES = WRITE_ROLES
 _ALLOWED_KINDS: frozenset[str] = frozenset({"NDA", "MSA"})
-_ALLOWED_CTS: frozenset[str] = frozenset(
-    {
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    }
-)
 
 
 class AgreementRow(BaseModel):
@@ -74,6 +62,11 @@ class AgreementRow(BaseModel):
     uploaded_by_name: str
     uploaded_at: str
     version_no: int
+    # S24-AG1 (additive): where the current version came from; batch is the label (AG-0001), never an id.
+    source: Literal["client", "standard"] = "client"
+    standard_version: int | None = None
+    batch_id: str | None = None
+    note: str | None = None
 
 
 class AgreementListResponse(BaseModel):
@@ -87,54 +80,23 @@ async def _actor(session: AsyncSession, user: AuthUser) -> User:
     return actor
 
 
-async def _authorize_client(session: AsyncSession, actor: User, client_id: uuid.UUID) -> None:
+async def _authorize_client(session: AsyncSession, actor, client_id: uuid.UUID) -> None:
     if not user_allowed(actor, await account_scope(session, client_id)):
         raise HTTPException(status_code=404, detail="client not found")
 
 
-async def _read_document(file: UploadFile) -> tuple[bytes, str]:
-    content_type = (file.content_type or "").lower()
-    if content_type not in _ALLOWED_CTS:
-        raise HTTPException(422, "Upload a PDF or a .docx Word document.")
-    content = await file.read(MAX_SOW_BYTES + 1)
-    if not content:
-        raise HTTPException(422, "file is empty")
-    if len(content) > MAX_SOW_BYTES:
-        raise HTTPException(413, "Document exceeds the supported upload size")
-    return content, content_type
+async def _labels(session: AsyncSession, rows) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, str]]:
+    standard_ids = {r.standard_agreement_id for r in rows if r.standard_agreement_id}
+    batch_ids = {r.batch_id for r in rows if r.batch_id}
+    versions = dict((await session.execute(select(StandardAgreement.id, StandardAgreement.version_no)
+                                           .where(StandardAgreement.id.in_(standard_ids)))).all()) if standard_ids else {}
+    labels = dict((await session.execute(select(AgreementBatch.id, AgreementBatch.label)
+                                         .where(AgreementBatch.id.in_(batch_ids)))).all()) if batch_ids else {}
+    return versions, labels
 
 
-async def _store_document(s3: EvidenceS3, identity: uuid.UUID, file: UploadFile, content_type: str, content: bytes) -> str:
-    try:
-        return await asyncio.to_thread(s3.put_object, identity, file.filename or "agreement", content_type, content)
-    except UnsupportedContentType as exc:
-        raise HTTPException(422, str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(502, "Document storage is unavailable") from exc
-
-
-def _snapshot(row: Agreement, file_hash: str | None) -> AgreementFileVersion:
-    return AgreementFileVersion(agreement_id=row.id, version_no=row.version_no,
-        file_key=row.file_key, filename=row.filename, file_size=row.file_size,
-        file_hash=file_hash, uploaded_by=row.uploaded_by, uploaded_at=row.uploaded_at)
-
-
-async def _locked_agreement(session: AsyncSession, actor: User, identity: uuid.UUID) -> Agreement:
-    account_id = await session.scalar(select(Agreement.client_id).where(Agreement.id == identity))
-    if account_id is None:
-        raise HTTPException(404, "agreement not found")
-    await _authorize_client(session, actor, account_id)
-    await session.scalar(select(Client).where(Client.id == account_id).with_for_update()
-        .execution_options(populate_existing=True))
-    row = await session.scalar(select(Agreement).where(Agreement.id == identity).with_for_update()
-        .execution_options(populate_existing=True))
-    if row is None:
-        raise HTTPException(404, "agreement not found")
-    await _authorize_client(session, actor, account_id)
-    return row
-
-
-def _serialize(row: Agreement, client: Client, uploader: User | None) -> AgreementRow:
+def _serialize(row: Agreement, client: Client, uploader: User | None, versions: dict | None = None,
+               labels: dict | None = None) -> AgreementRow:
     return AgreementRow(
         id=row.id,
         client_id=row.client_id,
@@ -143,23 +105,112 @@ def _serialize(row: Agreement, client: Client, uploader: User | None) -> Agreeme
         filename=row.filename,
         file_size=row.file_size,
         uploaded_by=row.uploaded_by,
-        uploaded_by_name=(
-            display_user_name(uploader.name, uploader.email) if uploader else "Unassigned"
-        ),
-        uploaded_at=row.uploaded_at.isoformat() if row.uploaded_at else "",
+        uploaded_by_name=display_user_name(uploader.name, uploader.email) if uploader else "Unassigned",
+        uploaded_at=iso_z(row.uploaded_at) or "",
         version_no=row.version_no,
+        source=row.source or "client",  # type: ignore[arg-type]
+        standard_version=(versions or {}).get(row.standard_agreement_id) if row.standard_agreement_id else None,
+        batch_id=(labels or {}).get(row.batch_id) if row.batch_id else None,
+        note=row.note,
     )
+
+
+async def _serialize_one(session: AsyncSession, row: Agreement, client: Client, uploader: User | None) -> AgreementRow:
+    versions, labels = await _labels(session, [row])
+    return _serialize(row, client, uploader, versions, labels)
+
+
+# --- batches (B7) — registered before the /{agreement_id} routes ------------------------------
+
+
+class BatchRequestBody(BaseModel):
+    kinds: list[Literal["NDA", "MSA"]] = Field(min_length=1)
+    dry_run: bool = True
+    include_net_new_past_stage_1: bool = False
+    include_client_ids: list[uuid.UUID] = Field(default_factory=list)
+    exclude_client_ids: list[uuid.UUID] = Field(default_factory=list)
+    idempotency_key: str | None = Field(default=None, max_length=80)
+    confirm: str | None = None
+
+
+BatchLauncher = Callable[[uuid.UUID, str], Awaitable[None]]
+
+
+def get_batch_launcher() -> BatchLauncher:
+    """Starts the job after the 202. Tests override it to run the job inline on their own database."""
+    return agreement_batches.launch_in_background
+
+
+@router.post("/batches")
+async def post_batch(
+    body: BatchRequestBody,
+    response: Response,
+    user: AuthUser = Depends(require_role(*ADMIN_ROLES)),
+    session: AsyncSession = Depends(get_session),
+    launch: BatchLauncher = Depends(get_batch_launcher),
+) -> dict[str, Any]:
+    if body.dry_run:
+        viewer = await agreements_service.reader(session, user)
+        return await agreement_batches.dry_run(
+            session, viewer, kinds=body.kinds, include_net_new=body.include_net_new_past_stage_1,
+            include_ids=body.include_client_ids, exclude_ids=body.exclude_client_ids)
+    actor = await _actor(session, user)
+    batch_id, created = await agreement_batches.start(
+        session, actor=actor, kinds=body.kinds, include_net_new=body.include_net_new_past_stage_1,
+        include_ids=body.include_client_ids, exclude_ids=body.exclude_client_ids,
+        idempotency_key=body.idempotency_key, confirm=body.confirm)
+    if created:
+        await launch(batch_id, "run")
+    response.status_code = status.HTTP_202_ACCEPTED
+    return await agreement_batches.batch_payload_by_id(session, batch_id)
+
+
+@router.get("/batches")
+async def list_batches(
+    _user: AuthUser = Depends(require_role(*READ_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    return {"items": await agreement_batches.batch_payloads(session)}
+
+
+@router.get("/batches/{label}")
+async def get_batch(
+    label: str,
+    _user: AuthUser = Depends(require_role(*READ_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    items = await agreement_batches.batch_payloads(session, label=label.strip().upper())
+    if not items:
+        raise HTTPException(404, "Unknown batch")
+    return items[0]
+
+
+@router.post("/batches/{label}/undo", status_code=status.HTTP_202_ACCEPTED)
+async def undo_batch(
+    label: str,
+    user: AuthUser = Depends(require_role(*ADMIN_ROLES)),
+    session: AsyncSession = Depends(get_session),
+    launch: BatchLauncher = Depends(get_batch_launcher),
+) -> dict[str, Any]:
+    actor = await _actor(session, user)
+    batch_id, started = await agreement_batches.start_undo(session, actor=actor, label=label.strip().upper())
+    if started:
+        await launch(batch_id, "undo")
+    return await agreement_batches.batch_payload_by_id(session, batch_id)
+
+
+# --- legacy document routes -------------------------------------------------------------------
 
 
 @router.get("", response_model=AgreementListResponse)
 async def list_agreements(
     client_id: uuid.UUID | None = Query(default=None),
-    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
+    _user: AuthUser = Depends(require_role(*READ_ROLES)),
     session: AsyncSession = Depends(get_session),
 ) -> AgreementListResponse:
-    actor = await _actor(session, _user)
+    viewer = await agreements_service.reader(session, _user)
     if client_id is not None:
-        await _authorize_client(session, actor, client_id)
+        await _authorize_client(session, viewer, client_id)
     stmt = select(Agreement).order_by(Agreement.uploaded_at.desc())
     if client_id is not None:
         stmt = stmt.where(Agreement.client_id == client_id)
@@ -168,28 +219,15 @@ async def list_agreements(
         return AgreementListResponse(items=[])
     client_ids = {r.client_id for r in rows}
     uploader_ids = {r.uploaded_by for r in rows}
-    clients = {
-        c.id: c
-        for c in (
-            await session.execute(select(Client).where(Client.id.in_(client_ids)))
-        ).scalars()
-    }
+    clients = {c.id: c for c in (await session.execute(select(Client).where(Client.id.in_(client_ids)))).scalars()}
     for identity in list(clients):
-        if not user_allowed(actor, await account_scope(session, identity)):
+        if not user_allowed(viewer, await account_scope(session, identity)):
             del clients[identity]
-    users = {
-        u.id: u
-        for u in (
-            await session.execute(select(User).where(User.id.in_(uploader_ids)))
-        ).scalars()
-    }
-    return AgreementListResponse(
-        items=[
-            _serialize(r, clients[r.client_id], users.get(r.uploaded_by))
-            for r in rows
-            if r.client_id in clients
-        ]
-    )
+    users = {u.id: u for u in (await session.execute(select(User).where(User.id.in_(uploader_ids)))).scalars()}
+    visible = [r for r in rows if r.client_id in clients]
+    versions, labels = await _labels(session, visible)
+    return AgreementListResponse(items=[
+        _serialize(r, clients[r.client_id], users.get(r.uploaded_by), versions, labels) for r in visible])
 
 
 @router.post("", response_model=AgreementRow, status_code=status.HTTP_201_CREATED)
@@ -197,158 +235,140 @@ async def upload_agreement(
     client_id: uuid.UUID = Form(...),
     kind: str = Form(...),
     file: UploadFile = File(...),
-    user: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
+    note: str | None = Form(default=None),
+    user: AuthUser = Depends(require_role(*WRITE_ROLES)),
     session: AsyncSession = Depends(get_session),
     s3: EvidenceS3 = Depends(get_evidence_s3),
 ) -> AgreementRow:
-    db_user = await _actor(session, user)
-    await _authorize_client(session, db_user, client_id)
+    """A client's own copy. A kind the client already holds becomes a new version of the same agreement."""
+    actor = await _actor(session, user)
+    await _authorize_client(session, actor, client_id)
     kind_upper = kind.strip().upper()
     if kind_upper not in _ALLOWED_KINDS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"kind must be one of {sorted(_ALLOWED_KINDS)}",
-        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"kind must be one of {sorted(_ALLOWED_KINDS)}")
     client = await session.get(Client, client_id)
     if client is None or client.archived_at is not None:
         raise HTTPException(status_code=404, detail="client not found")
-    file_bytes, content_type = await _read_document(file)
-
-    client = await session.scalar(select(Client).where(Client.id == client_id)
-        .with_for_update().execution_options(populate_existing=True))
-    await _authorize_client(session, db_user, client_id)
-    agreement_id = uuid.uuid4()
-    key = await _store_document(s3, agreement_id, file, content_type, file_bytes)
-
-    row = Agreement(
-        id=agreement_id,
-        client_id=client_id,
-        kind=kind_upper,
-        file_key=key,
-        filename=file.filename or "agreement",
-        file_size=len(file_bytes),
-        uploaded_by=db_user.id,
-        uploaded_at=datetime.now(UTC),
-        version_no=1,
-    )
-    session.add(row)
-    await session.flush()
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
-    session.add(_snapshot(row, file_hash))
-    await append_audit(
-        session,
-        actor_id=db_user.id,
-        action="agreement.uploaded",
-        entity="agreement",
-        entity_id=str(row.id),
-        before=None,
-        after={
-            "client_id": str(client_id),
-            "kind": kind_upper,
-            "filename": row.filename,
-            "file_size": row.file_size,
-            "version_no": row.version_no,
-            "file_hash": file_hash,
-        },
-    )
-    await session.commit()
-    return _serialize(row, client, db_user)
+    agreements_service.clean_note(note)
+    checked = await check_upload(file)
+    row = await agreements_service.store_client_copy(session, s3, actor=actor, client_id=client_id,
+                                                     kind=kind_upper, checked=checked, note=note)
+    return await _serialize_one(session, row, await session.get(Client, client_id), actor)
 
 
 @router.post("/{agreement_id}/replace", response_model=AgreementRow)
-async def replace_agreement(agreement_id: uuid.UUID, expected_version: int = Form(...),
-    file: UploadFile = File(...), user: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
-    session: AsyncSession = Depends(get_session), s3: EvidenceS3 = Depends(get_evidence_s3)):
+async def replace_agreement(
+    agreement_id: uuid.UUID,
+    expected_version: int = Form(...),
+    file: UploadFile = File(...),
+    note: str | None = Form(default=None),
+    user: AuthUser = Depends(require_role(*WRITE_ROLES)),
+    session: AsyncSession = Depends(get_session),
+    s3: EvidenceS3 = Depends(get_evidence_s3),
+) -> AgreementRow:
+    """A new version of this agreement (over a standard copy it becomes the client's own copy)."""
     actor = await _actor(session, user)
     existing = await session.get(Agreement, agreement_id)
     if existing is None:
         raise HTTPException(404, "agreement not found")
-    await _authorize_client(session, actor, existing.client_id)
-    content, content_type = await _read_document(file)
-    row = await _locked_agreement(session, actor, agreement_id)
-    if row.version_no != expected_version:
-        raise HTTPException(409, "Document was replaced; reload before replacing it again")
-    previous = await session.get(AgreementFileVersion, (row.id, row.version_no))
-    if previous is None:
-        # Preserve legacy roots without a snapshot; mixed old writers are not safe.
-        session.add(_snapshot(row, None))
-    before = {"version_no": row.version_no, "filename": row.filename, "file_key": row.file_key}
-    key = await _store_document(s3, row.id, file, content_type, content)
-    row.version_no += 1
-    row.file_key, row.filename, row.file_size = key, file.filename or "agreement", len(content)
-    row.uploaded_by, row.uploaded_at = actor.id, datetime.now(UTC)
-    file_hash = hashlib.sha256(content).hexdigest()
-    session.add(_snapshot(row, file_hash))
-    await append_audit(session, actor_id=actor.id, action="agreement.replaced", entity="agreement",
-        entity_id=str(row.id), before=before, after={"version_no": row.version_no,
-        "filename": row.filename, "file_key": row.file_key, "file_hash": file_hash})
-    await session.commit()
-    return _serialize(row, await session.get(Client, row.client_id), actor)
+    client_id, kind = existing.client_id, existing.kind
+    await _authorize_client(session, actor, client_id)
+    agreements_service.clean_note(note)
+    checked = await check_upload(file)
+    row = await agreements_service.store_client_copy(
+        session, s3, actor=actor, client_id=client_id, kind=kind, checked=checked, note=note,
+        agreement_id=agreement_id, expected_version=expected_version)
+    return await _serialize_one(session, row, await session.get(Client, client_id), actor)
 
 
 @router.get("/{agreement_id}/versions")
-async def agreement_versions(agreement_id: uuid.UUID,
-    user: AuthUser = Depends(require_role(*_READ_ROLES)), session: AsyncSession = Depends(get_session)):
-    actor = await _actor(session, user)
+async def agreement_versions(
+    agreement_id: uuid.UUID,
+    user: AuthUser = Depends(require_role(*READ_ROLES)),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    viewer = await agreements_service.reader(session, user)
     row = await session.get(Agreement, agreement_id)
     if row is None:
         raise HTTPException(404, "agreement not found")
-    await _authorize_client(session, actor, row.client_id)
+    await _authorize_client(session, viewer, row.client_id)
     versions = (await session.scalars(select(AgreementFileVersion)
         .where(AgreementFileVersion.agreement_id == agreement_id)
         .order_by(AgreementFileVersion.version_no.desc()))).all()
+    users = {u.id: u for u in (await session.scalars(
+        select(User).where(User.id.in_({v.uploaded_by for v in versions})))).all()} if versions else {}
+    standard_versions, labels = await _labels(session, versions)
     items = []
     for version in versions:
-        uploader = await session.get(User, version.uploaded_by)
-        items.append({"version_no": version.version_no, "filename": version.filename,
-            "file_size": version.file_size, "file_hash": version.file_hash,
-            "uploaded_by": str(version.uploaded_by),
+        uploader = users.get(version.uploaded_by)
+        items.append({
+            "version_no": version.version_no, "filename": version.filename, "file_size": version.file_size,
+            "file_hash": version.file_hash, "uploaded_by": str(version.uploaded_by),
             "uploaded_by_name": display_user_name(uploader.name, uploader.email) if uploader else "Unassigned",
-            "uploaded_at": version.uploaded_at.isoformat()})
+            "uploaded_at": iso_z(version.uploaded_at),
+            # S24-AG1 (additive)
+            "source": version.source or "client",
+            "standard_version": standard_versions.get(version.standard_agreement_id)
+            if version.standard_agreement_id else None,
+            "batch_id": labels.get(version.batch_id) if version.batch_id else None,
+            "note": version.note,
+        })
     return {"items": items}
 
 
-@router.get("/{agreement_id}/versions/{version_no}/download")
-async def download_agreement_version(agreement_id: uuid.UUID, version_no: int,
-    user: AuthUser = Depends(require_role(*_READ_ROLES)), session: AsyncSession = Depends(get_session),
-    s3: EvidenceS3 = Depends(get_evidence_s3)):
-    actor = await _actor(session, user)
+async def _download(session: AsyncSession, s3, user: AuthUser, agreement_id: uuid.UUID,
+                    version_no: int | None) -> dict[str, Any]:
+    actor = await _actor(session, user)  # a download is recorded in the audit log: credit a real user
     row = await session.get(Agreement, agreement_id)
     if row is None:
         raise HTTPException(404, "agreement not found")
     await _authorize_client(session, actor, row.client_id)
-    version = await session.get(AgreementFileVersion, (agreement_id, version_no))
-    if version is None:
-        raise HTTPException(404, "document version not found")
-    return {"url": s3.generate_download_url(version.file_key), "filename": version.filename}
+    version = None
+    if version_no is not None:
+        version = await session.get(AgreementFileVersion, (agreement_id, version_no))
+        if version is None:
+            raise HTTPException(404, "document version not found")
+    client = await session.get(Client, row.client_id)
+    link = await agreements_service.audited_link(session, s3, actor=actor, client=client, row=row, version=version)
+    return {**link, "filename": link["file_name"]}  # ``filename`` kept for S17 callers
+
+
+@router.get("/{agreement_id}/versions/{version_no}/download")
+async def download_agreement_version(
+    agreement_id: uuid.UUID,
+    version_no: int,
+    user: AuthUser = Depends(require_role(*READ_ROLES)),
+    session: AsyncSession = Depends(get_session),
+    s3: EvidenceS3 = Depends(get_evidence_s3),
+) -> dict[str, Any]:
+    return await _download(session, s3, user, agreement_id, version_no)
 
 
 @router.get("/{agreement_id}/download")
 async def download_agreement(
     agreement_id: uuid.UUID,
-    _user: AuthUser = Depends(require_role(*_READ_ROLES)),
+    _user: AuthUser = Depends(require_role(*READ_ROLES)),
     session: AsyncSession = Depends(get_session),
     s3: EvidenceS3 = Depends(get_evidence_s3),
-) -> dict[str, str]:
-    actor = await _actor(session, _user)
-    row = await session.get(Agreement, agreement_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="agreement not found")
-    await _authorize_client(session, actor, row.client_id)
-    return {"url": s3.generate_download_url(row.file_key), "filename": row.filename}
+) -> dict[str, Any]:
+    return await _download(session, s3, _user, agreement_id, None)
 
 
 @router.delete("/{agreement_id}", status_code=status.HTTP_202_ACCEPTED)
 async def delete_agreement(
     agreement_id: uuid.UUID,
-    user: AuthUser = Depends(require_role(*_MUTATE_ROLES)),
+    response: Response,
+    user: AuthUser = Depends(require_role(*WRITE_ROLES)),
     session: AsyncSession = Depends(get_session),
-    s3: EvidenceS3 = Depends(get_evidence_s3),
 ):
-    db_user = await _actor(session, user)
-    row = await _locked_agreement(session, db_user, agreement_id)
-    from app.services.parent_deletion import request_agreement_deletion
+    """Detach through the shared service: a client copy starts a deletion job (202); a standard attachment
+    removes only this client's row (200), because the stored object is shared."""
     from app.routers.deletion import _job_response
-    job = await request_agreement_deletion(session, actor_id=db_user.id, agreement=row)
-    await session.commit()
-    return _job_response(job)
+
+    actor = await _actor(session, user)
+    result = await agreements_service.detach(session, actor=actor, agreement_id=agreement_id)
+    if result.job is not None:
+        return _job_response(result.job)
+    response.status_code = status.HTTP_200_OK
+    return await agreements_service.card(session, actor, result.client_id, result.kind)

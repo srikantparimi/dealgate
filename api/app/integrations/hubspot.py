@@ -121,10 +121,16 @@ class HubSpotClient:
     # `opportunity` gets pulled in one CRM read. The label itself lives on
     # the pipelines endpoint (see `list_pipelines`) — the mapper resolves
     # `dealstage` (id) to its label via the mirror.
+    #
+    # S24-AG1 B9: `msa_type` is stored raw on the deal as a hint an admin may map
+    # to "MSA covered" (never a state by itself). It is a deal property, so the
+    # read-only `crm.objects.deals.read` scope already covers it; HubSpot simply
+    # omits a requested property a portal does not have.
+    MSA_TYPE_PROPERTY: str = "msa_type"
     _DEAL_PROPERTIES: str = (
         "dealname,dealstage,pipeline,hubspot_owner_id,engagement_type,"
         "amount,closedate,deal_currency_code,createdate,"
-        "hs_lastmodifieddate,notes_last_updated"
+        "hs_lastmodifieddate,notes_last_updated," + MSA_TYPE_PROPERTY
     )
 
     async def get_deal(self, deal_id: str, *, additional_properties: tuple[str, ...] = ()) -> dict[str, Any]:

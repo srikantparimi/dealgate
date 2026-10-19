@@ -2,6 +2,8 @@
 // value and deal counts, agreement documents, and every linked opportunity with
 // whether it matches the current view. Two workspace reads, both scoped to the
 // client: every deal (any status), and the deals matching the page's filters.
+// S24-AG1 F3 · the agreement documents are the shared client panel (section
+// variant): the same states, warning and actions as the Agreements page.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -9,7 +11,6 @@ import {
   DEFAULT_WORKSPACE_QUERY,
   getWorkspace,
   workspaceParams,
-  type Agreements,
   type ClientRow,
   type DealRow,
   type Owner,
@@ -17,10 +18,11 @@ import {
 } from "../../../api/pipelineWorkspace";
 import { Button } from "../../../ui-v2/primitives/button";
 import { Sheet, SheetContent, SheetTitle } from "../../../ui-v2/primitives/sheet";
+import { ClientAgreementsPanel } from "../agreements/ClientAgreementsPanel";
 import { Callout, Fact, kickerClass, previewSheetClass } from "./DealPreview";
 import { linkButtonClass } from "./DealsTable";
 import { fullMoney, shortMoney } from "./format";
-import { AgreementTags, Glyph, Tag, agreementFilesText, ownerFullName } from "./tags";
+import { Glyph, Tag, ownerFullName } from "./tags";
 import type { WorkspaceUrlState } from "./workspaceState";
 
 /** The client-level facts a Clients row shows; every deal row of the client carries them too. */
@@ -37,7 +39,6 @@ export interface ClientRef {
 }
 
 const NO_OWNER: Owner = { name: null, state: "none" };
-const NO_AGREEMENTS: Agreements = { nda_on_file: false, msa_on_file: false };
 
 export interface ClientPreviewProps {
   client: ClientRef | null;
@@ -48,6 +49,8 @@ export interface ClientPreviewProps {
   onOpenDeal: (deal: DealRow) => void;
   /** "Show this client’s deals": the page resets the filters, status All, search = the client's name, Opportunities. */
   onShowClientDeals: (clientName: string) => void;
+  /** After an agreement change in the panel (upload, mark, attach…): the page asks for the workspace again. */
+  onChanged?: () => void;
 }
 
 /** Room for every deal of one client in one answer. */
@@ -65,6 +68,7 @@ export function ClientPreview({
   state,
   onOpenDeal,
   onShowClientDeals,
+  onChanged,
 }: ClientPreviewProps) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +129,7 @@ export function ClientPreview({
                 loaded={loaded}
                 onOpenDeal={onOpenDeal}
                 onShowClientDeals={onShowClientDeals}
+                onChanged={onChanged}
               />
             )}
           </>
@@ -139,20 +144,21 @@ function ClientPreviewBody({
   loaded,
   onOpenDeal,
   onShowClientDeals,
+  onChanged,
 }: {
   client: ClientRef;
   loaded: Loaded;
   onOpenDeal: (deal: DealRow) => void;
   onShowClientDeals: (clientName: string) => void;
+  onChanged?: () => void;
 }) {
   const { all, matching } = loaded;
   const deals = all.rows as DealRow[];
   const matchingIds = new Set((matching.rows as DealRow[]).map((d) => d.id));
-  // Account owner and agreements belong to the client: every deal row of it carries them, and
-  // the Clients row passes them for a client without deals. With neither, none is recorded.
+  // The account owner belongs to the client: every deal row of it carries it, and the Clients row
+  // passes it for a client without deals. With neither, none is recorded.
   const first = deals[0] ?? null;
   const accountOwner = first?.account_owner ?? client.facts?.account_owner ?? NO_OWNER;
-  const agreements = first?.agreements ?? client.facts?.agreements ?? NO_AGREEMENTS;
   const fullLabel = (stageId: number | null, fallback: string) =>
     all.stages.find((s) => s.stage_id === stageId)?.full_label ?? fallback;
 
@@ -164,14 +170,9 @@ function ClientPreviewBody({
         <Fact label="All open deal value">{fullMoney(all.metrics.open_value_usd.value)}</Fact>
         <Fact label="Deals matching current filters">{String(matching.page.total_rows)}</Fact>
         <Fact label="Total open deals">{String(all.metrics.open_deals.value)}</Fact>
-        <Fact label="Agreement files">{agreementFilesText(agreements)}</Fact>
       </dl>
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-section text-text">Agreement documents</h3>
-        <AgreementTags agreements={agreements} />
-        <p className="text-secondary text-text-secondary">Client-level files on record, independent of deal stage.</p>
-      </section>
+      <ClientAgreementsPanel clientId={client.id} variant="section" onChanged={onChanged} />
 
       <section className="flex flex-col gap-2">
         <h3 className="text-section text-text">{`All linked opportunities · ${all.page.total_rows}`}</h3>

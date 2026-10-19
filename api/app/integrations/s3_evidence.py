@@ -187,14 +187,54 @@ def _presign(
     )
 
 
-def _aws_credentials() -> tuple[str, str, str | None]:
-    """Read credentials from env. Falls back to bogus values so the URL still
-    parses on a dev laptop without AWS access; StubS3 is what tests use."""
+class SignerCredentialsMissing(RuntimeError):
+    """S24-AG1 B13: no real AWS credentials outside local/test, so no upload link is signed."""
 
-    access = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAEXAMPLE")
-    secret = os.environ.get("AWS_SECRET_ACCESS_KEY", "SECRETEXAMPLE")
+
+def _local_or_test() -> bool:
+    return os.environ.get("DEALGATE_ENV", "local") in ("local", "test")
+
+
+def _aws_credentials() -> tuple[str, str, str | None]:
+    """Credentials for the hand-rolled upload-link signer.
+
+    Environment keys first. On a dev laptop or in tests (``DEALGATE_ENV``
+    local/test) a missing key still falls back to placeholder values so the
+    URL parses; ``StubS3`` is what tests use. Anywhere else (S24-AG1 B13,
+    AG0 S14) the signer never signs with placeholder keys: it asks boto3's
+    default chain (an ECS task role publishes its credentials on the
+    container endpoint, not in the environment) and fails loudly when that
+    has nothing either, instead of handing out a URL that S3 rejects with a
+    signature mismatch.
+    """
+
+    access = os.environ.get("AWS_ACCESS_KEY_ID")
+    secret = os.environ.get("AWS_SECRET_ACCESS_KEY")
     token = os.environ.get("AWS_SESSION_TOKEN")
-    return access, secret, token
+    if access and secret:
+        return access, secret, token
+    if _local_or_test():
+        return access or "AKIAEXAMPLE", secret or "SECRETEXAMPLE", token
+    try:
+        import boto3
+
+        resolved = boto3.Session().get_credentials()
+    except Exception as exc:  # noqa: BLE001 — any resolver failure is the same refusal
+        raise SignerCredentialsMissing(
+            "No AWS credentials are available to sign an agreements upload link; refusing to sign with "
+            "placeholder keys."
+        ) from exc
+    if resolved is None:
+        raise SignerCredentialsMissing(
+            "No AWS credentials are available to sign an agreements upload link; refusing to sign with "
+            "placeholder keys."
+        )
+    frozen = resolved.get_frozen_credentials()
+    if not frozen.access_key or not frozen.secret_key:
+        raise SignerCredentialsMissing(
+            "The AWS credentials found are incomplete; refusing to sign an agreements upload link."
+        )
+    return frozen.access_key, frozen.secret_key, frozen.token
 
 
 # --- Public interface ----------------------------------------------------
@@ -253,6 +293,19 @@ class EvidenceS3:
         _client().put_object(Bucket=self._bucket, Key=key, Body=body, ContentType=content_type)
         return key
 
+    def put_object_at(self, key: str, content_type: str, body: bytes) -> str:
+        """S24-AG1: store at a key the caller built (agreement_files.client_copy_key / standard_key)."""
+        from app.integrations.s3_sow import _client
+
+        if content_type not in _ALLOWED_CONTENT_TYPES:
+            raise UnsupportedContentType("Only PDF and DOCX files are accepted")
+        _client().put_object(Bucket=self._bucket, Key=key, Body=body, ContentType=content_type)
+        return key
+
+    @property
+    def bucket(self) -> str:
+        return self._bucket
+
 
 class StubS3(EvidenceS3):
     """Deterministic in-process client for tests / offline dev.
@@ -276,6 +329,16 @@ class StubS3(EvidenceS3):
         key = _build_s3_key(agreement_id, filename, content_type)
         self.objects[key] = body
         return key
+
+    def put_object_at(self, key: str, content_type: str, body: bytes) -> str:
+        if content_type not in _ALLOWED_CONTENT_TYPES:
+            raise UnsupportedContentType("Only PDF and DOCX files are accepted")
+        self.objects[key] = body
+        return key
+
+    def delete_object(self, key: str) -> None:
+        """Tests only: the real API role cannot delete; cleanup goes through a deletion job."""
+        self.objects.pop(key, None)
 
     def generate_upload_url(
         self,
@@ -303,14 +366,37 @@ class StubS3(EvidenceS3):
         return f"https://{self._bucket}.local/get/{s3_key}?stub=1"
 
 
-def get_evidence_s3() -> EvidenceS3:
-    """FastAPI dependency. Override with :class:`StubS3` in tests."""
+# One in-memory store per process, so an object a request stores is still there
+# for the next request (an upload, then its download) while the stub is selected.
+_PROCESS_STUB: StubS3 | None = None
 
+
+def _stub_selected() -> bool:
+    return os.environ.get("S3_STUB") == "1" or os.environ.get("DEALGATE_ENV") in ("local", "test")
+
+
+def get_evidence_s3() -> EvidenceS3:
+    """FastAPI dependency. Override with :class:`StubS3` in tests.
+
+    S24-AG1 S18: ``S3_STUB=1`` or ``DEALGATE_ENV`` local/test selects one
+    process-wide :class:`StubS3`, as ``get_sow_s3`` does for SOW files. The
+    CI e2e job sets both, but agreement uploads used to reach real boto3
+    without credentials and returned 502. The stub's bucket is the bucket
+    name the deletion jobs resolve, so a queued cleanup names the same
+    bucket. Staging and production set neither, so they get the real client.
+    """
+
+    global _PROCESS_STUB
+    if _stub_selected():
+        if _PROCESS_STUB is None:
+            _PROCESS_STUB = StubS3(bucket=_bucket_name())
+        return _PROCESS_STUB
     return EvidenceS3()
 
 
 __all__ = [
     "EvidenceS3",
+    "SignerCredentialsMissing",
     "StubS3",
     "UnsupportedContentType",
     "UploadUrl",

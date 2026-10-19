@@ -19,9 +19,12 @@ from app.routers import (
     admin_users,
     adviser,
     agreements,
+    agreements_hubspot,
+    agreements_workspace,
     approvals,
     audit,
     capability_catalog,
+    client_agreements,
     ceo_exception,
     client_rate_cards,
     clients,
@@ -185,7 +188,11 @@ app.include_router(admin_users.router)
 app.include_router(clients.router)
 app.include_router(command_center.router)
 app.include_router(client_rate_cards.router)
+# S24-AG1: the literal /agreements/... routes register before the legacy /agreements/{id} ones.
+app.include_router(agreements_workspace.router)
+app.include_router(agreements_hubspot.router)
 app.include_router(agreements.router)
+app.include_router(client_agreements.router)
 app.include_router(projects.router)
 app.include_router(tasks.router)
 app.include_router(notifications.router)

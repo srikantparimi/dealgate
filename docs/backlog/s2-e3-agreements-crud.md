@@ -1,5 +1,7 @@
 # S2 E3 — Agreements (NDA/MSA) CRUD + evidence upload + expiry
 
+> **Superseded.** This story's agreement lifecycle (the ten-state machine, owner, due date, effective and expiry dates) was removed in S17. Since S24-AG1 an NDA or MSA has one of seven states (Client copy, Standard copy, Marked covered, Missing, Due at stage 2, Not needed now, Existing, none attached) from the shared service `api/app/services/agreement_status.py`, and a missing document only warns: nothing blocks review or signature. See `docs/directives/s24-ag1-agreements.md` and `docs/reference/openapi-agreements.yaml`. Kept as the historical record of what was asked.
+
 ## User story
 As Legal, I create and maintain NDA and MSA records on the client legal
 entity. Each has a state, owner, next action, due date, effective / expiry

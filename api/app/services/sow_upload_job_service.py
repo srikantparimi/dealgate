@@ -48,6 +48,7 @@ from app.models.client_alias import ClientAlias
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
 from app.models.sow_upload_job import SowUploadJob
+from app.services.agreement_hooks import stamp_new_client
 from app.services.document_type import (
     ALLOWED_START_TYPES,
     classify_text_document,
@@ -323,7 +324,30 @@ async def _create_new_client(
         before=None,
         after={"name": name, "source": "sow_upload"},
     )
+    # S24-AG1 B8: after the cutover a client created from a SOW starts net new.
+    await stamp_new_client(session, client, actor_id=uploader_id, origin="sow_upload")
     return client
+
+
+async def picked_client(
+    session: AsyncSession, job: SowUploadJob
+) -> tuple[uuid.UUID, str] | None:
+    """The client a resolved job's SOW was filed under (id, name), or None before the pick.
+
+    S24-AG1 F11: the pick response names the client so the studio can offer to add
+    its NDA and MSA right after "create new client".
+    """
+
+    if job.opportunity_id is None:
+        return None
+    row = (
+        await session.execute(
+            select(Client.id, Client.name)
+            .join(Opportunity, Opportunity.client_id == Client.id)
+            .where(Opportunity.id == job.opportunity_id)
+        )
+    ).first()
+    return (row[0], row[1]) if row is not None else None
 
 
 async def _adopt_alias(

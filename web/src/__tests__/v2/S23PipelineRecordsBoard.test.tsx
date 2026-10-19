@@ -166,15 +166,16 @@ describe("clients cards (F10)", () => {
   }
 
   it("shows a client card: mark and name, open deals, money and matching tag, agreements, owner, preview", () => {
-    const c = client();
+    const c = client({ agreements: { nda_on_file: false, msa_on_file: true, nda_state: "existing_none", msa_state: "client" } });
     const props = renderCards([c]);
     const card = within(screen.getByRole("article"));
     expect(card.getByText("BB")).toBeInTheDocument();
     expect(card.getByText("2 open deals")).toBeInTheDocument();
     expect(card.getByText("$665.5k")).toBeInTheDocument();
     expect(card.getByText("2 matching deals")).toBeInTheDocument();
-    expect(card.getByText("NDA on file")).toBeInTheDocument();
-    expect(card.getByText("MSA on file")).toBeInTheDocument();
+    // S24-AG1 F6: the states, each after its kind's name.
+    expect(card.getByText("NDA", { selector: "span" }).nextElementSibling).toHaveTextContent("Existing · none attached");
+    expect(card.getByText("MSA", { selector: "span" }).nextElementSibling).toHaveTextContent("✓ Client copy");
     expect(card.getByText("Srikanth")).toBeInTheDocument();
     fireEvent.click(card.getByRole("button", { name: "Bramble Bank" }));
     fireEvent.click(card.getByRole("button", { name: "Preview Bramble Bank" }));

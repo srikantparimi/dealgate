@@ -5,20 +5,30 @@
  * Everything shown is the engine's output served by the API; the page never
  * computes a number. Edits PATCH the ledger and the whole page reloads from
  * the server, so a change on one tab is reflected on the others.
+ *
+ * S24-AG1 F11: an engagement created together with a new client (by hand, on
+ * New engagement) shows "Add the NDA and MSA now (optional)" until dismissed. It
+ * opens the shared upload dialog for that client; Legal and SystemAdmin upload,
+ * every other role sees the button locked with the reason (the API refuses them too).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { AGREEMENT_KINDS, type AgreementKind } from "../../../api/agreements";
 import {
   ENGAGEMENT_TYPE_LABEL,
+  dismissAgreementsOffer,
   dismissImportNote,
   getEngagement,
   getEngagementForecast,
   getForecastSettings,
   listAllocations,
   listCosts,
+  rememberAgreementsOffer,
+  takeAgreementsOffer,
   takeImportNote,
+  type AgreementsOffer,
   type Allocation,
   type Engagement,
   type EngagementCost,
@@ -27,6 +37,8 @@ import {
 } from "../../../api/engagements";
 import { Button } from "../../../ui-v2/primitives/button";
 import { ErrorState } from "../../../ui-v2/ErrorState";
+import { LockedButton } from "../../../ui-v2/LockedButton";
+import { UploadDialog } from "../agreements/UploadDialog";
 import { PageHeader } from "../../../ui-v2/PageHeader";
 import { StatusBadge } from "../../../ui-v2/StatusBadge";
 import { Tabs, TabsList, TabsTrigger } from "../../../ui-v2/primitives/tabs";
@@ -37,6 +49,9 @@ import { ForecastTab } from "./ForecastTab";
 import { SetupTab } from "./SetupTab";
 
 export type EngagementTab = "allocations" | "forecast" | "setup";
+
+/** Agreements writers (S24-AG1 B11): Legal and SystemAdmin. */
+const AGREEMENT_WRITE_ROLES = ["Legal", "SystemAdmin"];
 
 /** Whole hours without a trailing .0, otherwise two places — display only. */
 function hoursText(value: number): string {
@@ -68,6 +83,8 @@ export function EngagementPage() {
   const [loading, setLoading] = useState(true);
   // P4-4: an engagement created from the sheet shows its import warnings + hours check once.
   const [importNote, setImportNote] = useState(() => takeImportNote(id));
+  // S24-AG1 F11: a client created by hand with this engagement.
+  const [agreementsOffer, setAgreementsOffer] = useState(() => takeAgreementsOffer(id));
 
   const reload = useCallback(async () => {
     setError(null);
@@ -169,6 +186,21 @@ export function EngagementPage() {
         </div>
       ) : null}
 
+      {agreementsOffer ? (
+        <AgreementsOfferNote
+          offer={agreementsOffer}
+          canWrite={hasAny(groups, AGREEMENT_WRITE_ROLES)}
+          onUploaded={(next) => {
+            rememberAgreementsOffer(id, next);
+            setAgreementsOffer(next);
+          }}
+          onDismiss={() => {
+            dismissAgreementsOffer(id);
+            setAgreementsOffer(null);
+          }}
+        />
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-3 rounded-card border border-divider bg-surface px-4 py-3" data-testid="status-line" role="status">
         <StatusPill status={forecast.status} />
         <b className="font-display text-section">GM {pct(forecast.totals.gm_pct)}</b>
@@ -203,6 +235,79 @@ export function EngagementPage() {
       ) : (
         <SetupTab data={data} canWrite={canWrite} onChanged={reload} />
       )}
+    </div>
+  );
+}
+
+/** "NDA", "MSA" or "NDA and MSA". */
+function kindsText(kinds: readonly AgreementKind[]): string {
+  return kinds.join(" and ");
+}
+
+/**
+ * S24-AG1 F11 — the optional offer for a client created with this engagement. Opens the shared
+ * upload dialog preset to the client (client fixed, client copy, the first kind not yet added).
+ */
+function AgreementsOfferNote({
+  offer,
+  canWrite,
+  onUploaded,
+  onDismiss,
+}: {
+  offer: AgreementsOffer;
+  canWrite: boolean;
+  onUploaded: (next: AgreementsOffer) => void;
+  onDismiss: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const dismiss = useRef<HTMLButtonElement | null>(null);
+  const remaining = AGREEMENT_KINDS.filter((kind) => !offer.uploaded.includes(kind));
+  const uploaded = AGREEMENT_KINDS.filter((kind) => offer.uploaded.includes(kind));
+
+  function close() {
+    setOpen(false);
+    // Focus returns to the control that opened the dialog (or to Dismiss once nothing is left to add).
+    window.setTimeout(() => (opener.current ?? dismiss.current)?.focus(), 0);
+  }
+
+  return (
+    <div className="rounded-card border border-dashed border-primary bg-primary-subtle px-4 py-3 text-body" data-testid="agreements-offer">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium">
+            New client: <span data-testid="agreements-offer-client">{offer.client_name}</span>
+          </p>
+          {uploaded.length > 0 ? (
+            <p className="mt-1 text-secondary" role="status">
+              {kindsText(uploaded)} uploaded.
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {remaining.length > 0 ? (
+            <LockedButton ref={opener} size="sm" lock={canWrite ? null : "writer"} onClick={() => setOpen(true)}>
+              {`Add the ${kindsText(remaining)} now (optional)`}
+            </LockedButton>
+          ) : null}
+          <Button ref={dismiss} size="sm" variant="secondary" onClick={onDismiss}>
+            Dismiss
+          </Button>
+        </div>
+      </div>
+      {canWrite && remaining.length > 0 ? (
+        <UploadDialog
+          open={open}
+          target={{ mode: "client", clientId: offer.client_id, clientName: offer.client_name, kind: remaining[0], lockTarget: true }}
+          canWrite={canWrite}
+          onOpenChange={(next) => (next ? setOpen(true) : close())}
+          onUploaded={(result) => {
+            const kinds = new Set<AgreementKind>([...offer.uploaded, result.kind]);
+            onUploaded({ ...offer, uploaded: AGREEMENT_KINDS.filter((kind) => kinds.has(kind)) });
+            close();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

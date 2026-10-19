@@ -41,6 +41,13 @@ function rowOf(name: string): HTMLElement {
   return row as HTMLElement;
 }
 
+/** S24-AG1 F6 · the state tag that follows a kind's name in the Agreements cell. */
+function stateTag(row: ReturnType<typeof within>, kind: "NDA" | "MSA"): HTMLElement {
+  const tag = row.getByText(kind, { selector: "span" }).nextElementSibling;
+  if (!(tag instanceof HTMLElement)) throw new Error(`no state tag after ${kind}`);
+  return tag;
+}
+
 describe("clients list (F9)", () => {
   it("has the seven columns of the spec and no selection box", () => {
     renderClients([client()]);
@@ -57,7 +64,7 @@ describe("clients list (F9)", () => {
   });
 
   it("shows a client row: mark, open deals, owner, matching / open, value, agreements, no flags, activity", () => {
-    renderClients([client()]);
+    renderClients([client({ agreements: { nda_on_file: true, msa_on_file: true, nda_state: "client", msa_state: "standard" } })]);
     const row = within(rowOf("Bramble Bank"));
     expect(row.getByText("BB")).toBeInTheDocument();
     expect(row.getByText("2 open deals")).toBeInTheDocument();
@@ -66,8 +73,9 @@ describe("clients list (F9)", () => {
     expect(row.getByText("/ 2")).toBeInTheDocument();
     expect(row.getByText("$665.5k")).toBeInTheDocument();
     expect(row.getByText("USD · unweighted")).toBeInTheDocument();
-    expect(row.getByText("NDA on file")).toBeInTheDocument();
-    expect(row.getByText("MSA on file")).toBeInTheDocument();
+    expect(stateTag(row, "NDA")).toHaveTextContent("✓ Client copy");
+    expect(stateTag(row, "MSA")).toHaveTextContent("✓ Standard copy");
+    expect(stateTag(row, "MSA").className).toContain("bg-primary-subtle");
     expect(row.getByText("No flags")).toBeInTheDocument();
     expect(row.getByText("Oct 8")).toBeInTheDocument();
     expect(row.getByText("6 days ago")).toBeInTheDocument();
@@ -82,7 +90,7 @@ describe("clients list (F9)", () => {
         open_deals: 1,
         matching_deals: 1,
         flags: ["no_owner", "action_overdue", "close_passed"],
-        agreements: { nda_on_file: false, msa_on_file: false },
+        agreements: { nda_on_file: false, msa_on_file: false, nda_state: "missing", msa_state: "covered" },
         days_since_activity: 1,
       }),
     ]);
@@ -92,8 +100,9 @@ describe("clients list (F9)", () => {
     expect(row.getByText("Not assigned").className).toContain("bg-warning-surface");
     expect(row.getByText("1 open deal")).toBeInTheDocument();
     expect(row.getByText("1 day ago")).toBeInTheDocument();
-    expect(row.getByText("NDA missing")).toBeInTheDocument();
-    expect(row.getByText("MSA missing")).toBeInTheDocument();
+    // S24-AG1: a covered mark holds no file but is not missing.
+    expect(stateTag(row, "NDA")).toHaveTextContent("Missing");
+    expect(stateTag(row, "MSA")).toHaveTextContent("✓ Marked covered");
   });
 
   it("shows a client without matching deals (include unmatched): zeros as counts, reasons for the rest", () => {

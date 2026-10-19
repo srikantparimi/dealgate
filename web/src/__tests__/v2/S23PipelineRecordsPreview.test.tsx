@@ -5,11 +5,15 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as agreementsApi from "../../api/agreements";
+import type { ClientAgreements } from "../../api/agreements";
 import * as api from "../../api/client";
 import * as wsApi from "../../api/pipelineWorkspace";
 import { DEFAULT_WORKSPACE_QUERY, type DealRow, type WorkspaceQuery } from "../../api/pipelineWorkspace";
 import { ClientPreview, type ClientPreviewProps } from "../../pages/v2/pipeline/ClientPreview";
 import { DealPreview, type DealPreviewProps } from "../../pages/v2/pipeline/DealPreview";
+import { Toaster } from "../../ui-v2/primitives/toaster";
+import { TooltipProvider } from "../../ui-v2/primitives/tooltip";
 import {
   INJECTION_CLIENT,
   INJECTION_TITLE,
@@ -76,7 +80,8 @@ function valueOf(label: string): string | null | undefined {
 
 describe("deal preview (spec §6.1)", () => {
   it("shows tonight's deal: kicker, title, client, business unit, stage, pipeline and the eight facts", () => {
-    const d = deal();
+    // S24-AG1 F6: the row carries the client's NDA / MSA states from the shared agreement service.
+    const d = deal({ agreements: { nda_on_file: false, msa_on_file: false, nda_state: "missing", msa_state: "missing" } });
     const props = renderDeal(d);
     const dialog = within(screen.getByRole("dialog"));
     expect(dialog.getByText("Opportunity · quick preview")).toBeInTheDocument();
@@ -97,12 +102,14 @@ describe("deal preview (spec §6.1)", () => {
     expect(dialog.getByRole("textbox", { name: "Next action" })).toHaveAttribute("maxlength", "140");
     expect(dialog.getByLabelText("Due date")).toHaveAttribute("type", "date");
     expect(dialog.getByRole("button", { name: "Save next action" })).toBeEnabled();
-    expect(dialog.getByText("NDA missing")).toBeInTheDocument();
-    expect(dialog.getByText("MSA missing")).toBeInTheDocument();
+    // S24-AG1 F6: each kind's name followed by its shared state tag (AgreementTags in tags.tsx).
+    expect(dialog.getAllByText("Missing")).toHaveLength(2);
+    expect(dialog.getByText("NDA", { selector: "span" })).toBeInTheDocument();
+    expect(dialog.getByText("MSA", { selector: "span" })).toBeInTheDocument();
     expect(dialog.getByText("No SOW").className).toContain("bg-primary-subtle");
     expect(
       dialog.getByText(
-        "NDA and MSA show whether a file is on file. The SOW state is separate from the HubSpot sales stage.",
+        "NDA and MSA show the client's state: Client copy, Standard copy, Marked covered, Missing or Due at stage 2. A warning only; nothing is blocked. The SOW state is separate from the HubSpot sales stage.",
       ),
     ).toBeInTheDocument();
     fireEvent.click(dialog.getByRole("button", { name: "Vector Systems" }));
@@ -361,6 +368,31 @@ describe("client preview (spec §6.2)", () => {
   });
   const unowned = deal({ title: "Unowned rollout", deal_owner: { name: null, state: "none" }, amount: null });
 
+  // S24-AG1 F3: the agreement documents are the shared client panel (GET /clients/{id}/agreements).
+  function agreements(overrides: Partial<ClientAgreements> = {}): ClientAgreements {
+    return {
+      client_id: CLIENT.id,
+      name: "Vector Systems",
+      relationship: "net_new",
+      relationship_basis: "none",
+      requirement: "required",
+      needs_attention: true,
+      possible_duplicates: [],
+      deals: { open: 2, won: 0, lost: 1, furthest_open_stage: 6 },
+      nda: { kind: "NDA", state: "missing", history: [] },
+      msa: { kind: "MSA", state: "missing", history: [] },
+      can_write: true,
+      basis_text: "No earlier work found",
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.spyOn(agreementsApi, "getClientAgreements").mockResolvedValue(agreements());
+    vi.spyOn(agreementsApi, "getStandardDocuments").mockResolvedValue({ NDA: null, MSA: null });
+    vi.spyOn(agreementsApi, "getHubspotValues").mockResolvedValue({ stored: false, items: [] });
+  });
+
   function mockWorkspaces(allRows: DealRow[], matchingRows: DealRow[]) {
     return vi.spyOn(wsApi, "getWorkspace").mockImplementation(async (q: Partial<WorkspaceQuery>) => {
       const matching = (q.bu ?? []).length > 0;
@@ -390,7 +422,11 @@ describe("client preview (spec §6.2)", () => {
     };
     render(
       <MemoryRouter>
-        <ClientPreview {...props} />
+        <TooltipProvider>
+          <Toaster>
+            <ClientPreview {...props} />
+          </Toaster>
+        </TooltipProvider>
       </MemoryRouter>,
     );
     return props;
@@ -410,7 +446,7 @@ describe("client preview (spec §6.2)", () => {
     );
   });
 
-  it("shows the owner, the four facts, the agreements and every linked deal with its match tag", async () => {
+  it("shows the owner, the deal facts, the shared agreements panel and every linked deal with its match tag", async () => {
     mockWorkspaces([observability, cloud, lost, unowned], [observability, cloud]);
     const props = renderClient();
     expect(await screen.findByText("All linked opportunities · 4")).toBeInTheDocument();
@@ -421,10 +457,17 @@ describe("client preview (spec §6.2)", () => {
     expect(valueOf("All open deal value")).toBe("$609,000");
     expect(valueOf("Deals matching current filters")).toBe("2");
     expect(valueOf("Total open deals")).toBe("2");
-    expect(valueOf("Agreement files")).toBe("None on file");
-    expect(dialog.getByText("Agreement documents", { selector: "h3" })).toBeInTheDocument();
-    expect(dialog.getByText("NDA missing")).toBeInTheDocument();
-    expect(dialog.getByText("Client-level files on record, independent of deal stage.")).toBeInTheDocument();
+    expect(dialog.queryByText("Agreement files")).toBeNull();
+    expect(dialog.getByRole("heading", { name: "Agreement documents" })).toBeInTheDocument();
+    expect(
+      await dialog.findByText(
+        "This client is net new and past stage 1 with NDA and MSA missing. This is a warning only. Nothing is blocked.",
+      ),
+    ).toBeInTheDocument();
+    expect(valueOf("Relationship")).toBe("Net newNo earlier work found");
+    expect(within(dialog.getByRole("article", { name: "NDA" })).getByText("Missing")).toBeInTheDocument();
+    expect(within(dialog.getByRole("article", { name: "MSA" })).getByText("Missing")).toBeInTheDocument();
+    expect(agreementsApi.getClientAgreements).toHaveBeenCalledWith(CLIENT.id, expect.anything());
 
     expect(dialog.getByRole("button", { name: "Observability service" })).toHaveTextContent("Observability service →");
     expect(dialog.getByText("2 · Qualification · $67k · Michael Holman")).toBeInTheDocument();
@@ -444,13 +487,59 @@ describe("client preview (spec §6.2)", () => {
     );
   });
 
-  it("names the agreement files on record", async () => {
-    const both = deal({ agreements: { nda_on_file: true, msa_on_file: true }, account_owner: { name: "Janice Krpan", state: "active" } });
-    mockWorkspaces([both], [both]);
-    renderClient();
+  it("shows the client's NDA and MSA as the Agreements page does, and an attach refreshes the Pipeline", async () => {
+    const owned = deal({ account_owner: { name: "Janice Krpan", state: "active" } });
+    mockWorkspaces([owned], [owned]);
+    vi.mocked(agreementsApi.getClientAgreements).mockResolvedValue(
+      agreements({
+        relationship: "existing",
+        relationship_basis: "closed_won",
+        basis_text: "Closed Won deal",
+        needs_attention: false,
+        nda: {
+          kind: "NDA",
+          state: "standard",
+          source: "standard",
+          standard_version: 1,
+          batch_id: "AG-0001",
+          file_name: "SmarTek21_Standard_NDA.pdf",
+          file_size: 214000,
+          uploaded_by: "Srikanth Parimi",
+          uploaded_at: "2026-10-15T18:00:00Z",
+          history: [],
+        },
+        msa: { kind: "MSA", state: "existing_none", history: [] },
+      }),
+    );
+    vi.mocked(agreementsApi.getStandardDocuments).mockResolvedValue({
+      NDA: null,
+      MSA: {
+        kind: "MSA",
+        version: 1,
+        file_name: "SmarTek21_Standard_MSA.pdf",
+        file_size: 388000,
+        uploaded_by: "Srikanth Parimi",
+        uploaded_at: "2026-10-15T18:00:00Z",
+        attached_clients: 85,
+      },
+    });
+    const attach = vi.spyOn(agreementsApi, "attachStandardToClient").mockResolvedValue({
+      kind: "MSA",
+      state: "standard",
+      history: [],
+    });
+    const onChanged = vi.fn();
+    renderClient({ onChanged });
     await screen.findByText("All linked opportunities · 1");
-    expect(valueOf("Agreement files")).toBe("NDA MSA");
     expect(screen.getByText("Account owner: Janice Krpan")).toBeInTheDocument();
+    const nda = within(await screen.findByRole("article", { name: "NDA" }));
+    expect(nda.getByText("✓ Standard copy")).toBeInTheDocument();
+    expect(nda.getByText("Standard NDA v1 · batch AG-0001")).toBeInTheDocument();
+    const msa = within(screen.getByRole("article", { name: "MSA" }));
+    expect(msa.getByText("Existing · none attached")).toBeInTheDocument();
+    fireEvent.click(msa.getByRole("button", { name: "Attach standard copy" }));
+    await waitFor(() => expect(attach).toHaveBeenCalledWith(CLIENT.id, "MSA"));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
   });
 
   it("says when no opportunity is linked", async () => {
@@ -460,8 +549,19 @@ describe("client preview (spec §6.2)", () => {
     expect(screen.getByText("All linked opportunities · 0")).toBeInTheDocument();
   });
 
-  it("a client with no HubSpot deals keeps the account owner and agreements its Clients row showed", async () => {
+  it("a client with no HubSpot deals keeps the account owner its Clients row showed; its agreements come from the panel", async () => {
     mockWorkspaces([], []);
+    vi.mocked(agreementsApi.getClientAgreements).mockResolvedValue(
+      agreements({
+        relationship: "existing",
+        relationship_basis: "sow_engagement",
+        basis_text: "Engagement from the forecast model",
+        needs_attention: false,
+        deals: { open: 0, won: 0, lost: 0, furthest_open_stage: 0 },
+        nda: { kind: "NDA", state: "client", source: "client", file_name: "Vector-NDA.pdf", history: [] },
+        msa: { kind: "MSA", state: "existing_none", history: [] },
+      }),
+    );
     renderClient({
       client: {
         ...CLIENT,
@@ -474,22 +574,21 @@ describe("client preview (spec §6.2)", () => {
     expect(await screen.findByText("No opportunities linked to this client.")).toBeInTheDocument();
     const dialog = within(screen.getByRole("dialog"));
     expect(dialog.getByText("Account owner: Janice Krpan")).toBeInTheDocument();
-    expect(valueOf("Agreement files")).toBe("NDA");
-    expect(dialog.getByText("Agreement documents", { selector: "h3" })).toBeInTheDocument();
-    expect(dialog.getByText("NDA on file")).toBeInTheDocument();
-    expect(dialog.getByText("MSA missing")).toBeInTheDocument();
+    expect(dialog.getByRole("heading", { name: "Agreement documents" })).toBeInTheDocument();
+    expect(within(await dialog.findByRole("article", { name: "NDA" })).getByText("✓ Client copy")).toBeInTheDocument();
+    expect(within(dialog.getByRole("article", { name: "MSA" })).getByText("Existing · none attached")).toBeInTheDocument();
+    expect(dialog.getByText("Engagement from the forecast model")).toBeInTheDocument();
   });
 
-  it("without deals or row facts it says 'Not assigned' and 'None on file' instead of hiding the lines", async () => {
+  it("without deals or row facts it says 'Not assigned' and still shows both agreement states", async () => {
     mockWorkspaces([], []);
     renderClient();
     expect(await screen.findByText("No opportunities linked to this client.")).toBeInTheDocument();
     const dialog = within(screen.getByRole("dialog"));
     expect(dialog.getByText("Account owner: Not assigned")).toBeInTheDocument();
-    expect(valueOf("Agreement files")).toBe("None on file");
-    expect(dialog.getByText("Agreement documents", { selector: "h3" })).toBeInTheDocument();
-    expect(dialog.getByText("NDA missing")).toBeInTheDocument();
-    expect(dialog.getByText("MSA missing")).toBeInTheDocument();
+    expect(dialog.getByRole("heading", { name: "Agreement documents" })).toBeInTheDocument();
+    expect(within(await dialog.findByRole("article", { name: "NDA" })).getByText("Missing")).toBeInTheDocument();
+    expect(within(dialog.getByRole("article", { name: "MSA" })).getByText("Missing")).toBeInTheDocument();
   });
 
   it("lists a linked deal with no currency without '$'", async () => {

@@ -9,6 +9,15 @@ a missing region, a deal with no amount and one in EUR, overdue, dated and
 undated next actions, NDA / MSA on some clients, all nine SOW states and a deal
 with two SOWs.
 
+S24-AG1 B10: the agreements cutover is set (a month ago) and the clients carry
+stored relationships, so NDA / MSA are states from the shared agreement service:
+Acme existing (both client copies), Bolt net new (NDA client copy, MSA missing),
+Cobalt net new (NDA missing, MSA marked covered), Delta existing (NDA none
+attached, MSA client copy), Echo net new and required only by an SOW created after
+the cutover (NDA standard copy v1, MSA missing), Garnet net new with its first
+Closed Won deal after the cutover (both client copies), Fjord unstamped with no
+deals (NDA not needed, MSA client copy). Bolt, Cobalt and Echo need attention.
+
 The caller is a HubSpot-created user: the login id differs from the DealGate
 user id, and watches, groups and the HubSpot owner link are keyed on the
 DealGate id (foreign keys enforced, as on PostgreSQL).
@@ -30,6 +39,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth import AuthUser, current_user
 from app.db import get_session
+from app.models.agreements import AgreementMark, AgreementsSettings, StandardAgreement
 from app.models.approval import ApprovalPackage
 from app.models.client import Agreement, Client
 from app.models.gm_model import GmModel
@@ -91,6 +101,27 @@ CLIENTS = {
     "fjord": ("Fjord Energy", "101", False, True),  # no deals at all
     "garnet": ("Garnet Labs", "102", True, True),  # closed-won deals only
 }
+# S24-AG1: the cutover and each client's stored relationship (basis); Fjord stays unstamped.
+CUTOVER = date(2026, 9, 14)
+RELATIONSHIPS = {
+    "acme": ("existing", "manual"),
+    "bolt": ("net_new", "none"),
+    "cobalt": ("net_new", "none"),
+    "delta": ("existing", "closed_won_and_sow"),
+    "echo": ("net_new", "none"),
+    "garnet": ("net_new", "none"),
+}
+# client → (NDA state, MSA state) and "needs attention", as the shared service classifies the seed.
+AGREEMENT_STATES = {
+    "acme": ("client", "client"),
+    "bolt": ("client", "missing"),
+    "cobalt": ("missing", "covered"),
+    "delta": ("existing_none", "client"),
+    "echo": ("standard", "missing"),
+    "fjord": ("not_needed", "client"),
+    "garnet": ("client", "client"),
+}
+NEEDS_ATTENTION = ("bolt", "cobalt", "echo")
 
 
 def day(offset: int) -> date:
@@ -204,7 +235,11 @@ async def seed_population(session, *, region_map: bool = True) -> Seed:
     if region_map:
         session.add_all([HubspotRegionMap(**row) for row in DEFAULT_REGION_MAP])
     for key, (name, owner, nda, msa) in CLIENTS.items():
-        client = Client(name=name, hubspot_company_id=f"c-{key}", hubspot_owner_id=owner)
+        relationship, basis = RELATIONSHIPS.get(key, (None, None))
+        client = Client(name=name, hubspot_company_id=f"c-{key}", hubspot_owner_id=owner,
+                        relationship=relationship, relationship_basis=basis,
+                        relationship_set_by=writer.id if basis == "manual" else None,
+                        relationship_set_at=NOW - timedelta(days=30) if relationship else None)
         session.add(client)
         await session.flush()
         seed.clients[key] = client.id
@@ -212,6 +247,27 @@ async def seed_population(session, *, region_map: bool = True) -> Seed:
             if on_file:
                 session.add(Agreement(client_id=client.id, kind=kind, file_key=f"agreements/{key}/{kind}.pdf",
                                       filename=f"{kind}.pdf", file_size=1024, uploaded_by=writer.id))
+    # S24-AG1: the cutover (the settings row exists on a migrated Postgres), Echo's standard NDA, and
+    # Cobalt's MSA marked covered (plus a removed mark on its NDA, which must not count).
+    settings = await session.get(AgreementsSettings, 1)
+    if settings is None:
+        settings = AgreementsSettings(id=1)
+        session.add(settings)
+    settings.cutover_date, settings.set_by, settings.set_at = CUTOVER, writer.id, NOW - timedelta(days=30)
+    standard = StandardAgreement(kind="NDA", version_no=1, file_key="agreements/standard/NDA/standard-nda.pdf",
+                                 filename="Standard NDA.pdf", file_size=2048, sha256="c" * 64,
+                                 uploaded_by=writer.id)
+    session.add(standard)
+    await session.flush()
+    session.add(Agreement(client_id=seed.clients["echo"], kind="NDA", file_key=standard.file_key,
+                          filename=standard.filename, file_size=standard.file_size, uploaded_by=writer.id,
+                          source="standard", standard_agreement_id=standard.id))
+    session.add_all([
+        AgreementMark(client_id=seed.clients["cobalt"], kind="MSA", reason="signed_outside_dealgate",
+                      marked_on=TODAY - timedelta(days=3), marked_by=writer.id),
+        AgreementMark(client_id=seed.clients["cobalt"], kind="NDA", reason="other", marked_on=TODAY - timedelta(days=9),
+                      marked_by=writer.id, removed_at=NOW - timedelta(days=8), removed_by=writer.id),
+    ])
     archived_client = Client(name="Old Co", hubspot_company_id="c-old", archived_at=NOW)
     session.add(archived_client)
     await session.flush()
@@ -379,9 +435,10 @@ async def test_default_response_has_the_contract_shape(api, seeded):
     assert body["metrics"]["overdue_next_actions"] == {"value": 2, "with_next_action": 6,
                                                        "drill": {"tab": "deals", "attention": "overdue"}}
     assert body["metrics"]["pending_approvals"] == {"value": 3, "drill": {"tab": "deals", "sow": "pending"}}
+    # S24-AG1 B10: clients that need attention (Bolt, Cobalt, Echo) of the six with a deal, every status.
     assert body["metrics"]["agreement_gap_clients"] == {
-        "value": 4, "clients_total": 5, "any_agreement_files": True,
-        "drill": {"tab": "clients", "missing": "agreements", "include_unmatched_clients": False}}
+        "value": 3, "clients_total": 6, "any_agreement_files": True,
+        "drill": {"tab": "clients", "status": "all", "missing": "agreements", "include_unmatched_clients": False}}
     assert body["focus"] == {"all_open": 12, "closing_this_month": 6, "mine": 2, "mine_available": True,
                              "needs_attention": 8, "watching": 2}
     assert body["unmapped_regions"] == 3
@@ -429,7 +486,7 @@ async def test_deal_row_fields(api, seeded):
         "account_owner": {"name": "Ava Archer", "state": "active"},
         "close_date": "2026-10-19", "created_date": "2026-09-04", "last_activity_date": "2026-10-12",
         "days_since_activity": 2, "sow_state": "none", "sow_state_label": "No SOW", "sow_count": 0,
-        "agreements": {"nda_on_file": True, "msa_on_file": True},
+        "agreements": {"nda_on_file": True, "msa_on_file": True, "nda_state": "client", "msa_state": "client"},
         "next_action": {"id": str(seeded.actions["d01"]), "text": "Send revised proposal", "due_on": "2026-10-11"},
         "flags": ["action_overdue"], "watching": True, "hubspot_deal_id": "hs-d01",
         "pipeline_label": PIPELINE_LABEL,
@@ -455,6 +512,21 @@ async def test_deal_row_fields(api, seeded):
     assert d13["next_action"]["text"] == "Demo loyalty flow" and d13["next_action"]["due_on"] == "2026-10-24"
     d12 = rows[str(seeded.deals["d12"])]
     assert d12["client"] == {"id": None, "name": None} and d12["account_owner"] == {"name": None, "state": "none"}
+    # S24-AG1: a deal with no client has no agreement state.
+    assert d12["agreements"] == {"nda_on_file": False, "msa_on_file": False, "nda_state": None, "msa_state": None}
+
+
+async def test_every_deal_carries_its_clients_agreement_state(api, seeded):
+    # S24-AG1 B10: every deal of a client shows the client's state; on file = a client or standard copy.
+    rows = (await workspace(api, status="all", page_size=50))["rows"]
+    for row in rows:
+        if row["client"]["id"] is None:
+            continue
+        key = next(k for k, v in seeded.clients.items() if str(v) == row["client"]["id"])
+        nda, msa = AGREEMENT_STATES[key]
+        assert row["agreements"] == {"nda_on_file": nda in ("client", "standard"),
+                                     "msa_on_file": msa in ("client", "standard"),
+                                     "nda_state": nda, "msa_state": msa}, (key, row["title"])
 
 
 async def test_closed_deals_never_carry_flags(api, seeded):
@@ -579,7 +651,7 @@ async def test_client_rows(api, seeded):
         "account_owner": {"name": "Ava Archer", "state": "active"},
         "matching_deals": 3, "open_deals": 3, "matching_value_usd": "470000.00",
         "earliest_close_date": "2026-10-04", "last_activity_date": "2026-10-12", "days_since_activity": 2,
-        "agreements": {"nda_on_file": True, "msa_on_file": True},
+        "agreements": {"nda_on_file": True, "msa_on_file": True, "nda_state": "client", "msa_state": "client"},
         "flags": ["action_overdue", "close_passed"], "hubspot_company_id": "c-acme",
     }
     cobalt = rows[str(seeded.clients["cobalt"])]
@@ -618,7 +690,9 @@ async def test_include_unmatched_clients(api, seeded):
     fjord = body["rows"][5]
     assert (fjord["matching_deals"], fjord["open_deals"], fjord["matching_value_usd"], fjord["flags"]) == (
         0, 0, None, [])
-    assert fjord["agreements"] == {"nda_on_file": False, "msa_on_file": True}
+    # S24-AG1: a client without deals is classified too (unstamped after the cutover: net new, nothing due).
+    assert fjord["agreements"] == {"nda_on_file": False, "msa_on_file": True, "nda_state": "not_needed",
+                                   "msa_state": "client"}
     assert body["tab_counts"]["clients"] == 7
     # A search keeps every matched client and adds unmatched ones by name only.
     searched = await workspace(api, tab="clients", include_unmatched_clients="true", q="energy")
@@ -653,9 +727,12 @@ async def test_client_sorts(api, seeded, sort, names):
     ({"missing": "close"}, ["d04"]),
     ({"missing": "activity"}, ["d03", "d16"]),
     ({"missing": "next_action"}, ["d03", "d06", "d10", "d12", "d15", "d16"]),
-    ({"missing": "nda"}, ["d05", "d06", "d07", "d10", "d12", "d16"]),
-    ({"missing": "msa"}, ["d03", "d04", "d05", "d06", "d10", "d12", "d15"]),
-    ({"missing": "agreements"}, ["d03", "d04", "d05", "d06", "d07", "d10", "d12", "d15", "d16"]),
+    # S24-AG1 B10: the state "missing" (net new, past stage 1), never "no file": Delta is existing,
+    # Cobalt's MSA is marked covered, Echo's NDA is a standard copy, d12 has no client.
+    ({"missing": "nda"}, ["d05", "d06"]),
+    ({"missing": "msa"}, ["d03", "d04", "d10", "d15"]),
+    ({"missing": "agreements"}, ["d03", "d04", "d05", "d06", "d10", "d15"]),
+    ({"missing": "agreements", "status": "all"}, ["d03", "d04", "d05", "d06", "d09", "d10", "d15"]),
     ({"bu": "ST21"}, ["d01", "d06", "d10", "d12", "d13"]),
     ({"bu": "IT Avalon"}, ["d02", "d04", "d15"]),
     ({"bu": "Retro Rabbit"}, ["d03"]),

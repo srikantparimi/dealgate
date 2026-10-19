@@ -11,7 +11,10 @@ Rules to encode in code (mirror of the Build Guide §2, do not diverge):
 - India work: 50% GM floor, tested on the India component alone.
 - Mixed onshore/offshore: each component tested on its own; blended shown for information.
 - Any floor missed → CEO exception with generated brief; release stays locked.
-- No valid NDA + MSA → SOW cannot move to signature. Coverage attaches to the legal entity.
+- A missing NDA or MSA never blocks a SOW, an approval or signature. It is a warning and a flag only: a net-new client past
+  stage 1 without an NDA or MSA is flagged in the Pipeline, the Command Center and the client panel. Coverage is recorded per
+  client (the client's own copy, a standard copy, or a mark). S17 removed the signature gate; S24-AG1 confirmed warn-only
+  (`docs/questions.md`, S24-AG1).
 - Any post-approval change to scope, price, cost, staffing or allocation voids approvals.
 - Missing cost → GM sheet is "incomplete". Never treat missing as zero.
 - AI estimate labeled "Indicative estimate, requires Delivery and Finance validation".

@@ -98,10 +98,11 @@ export class ApiError extends Error {
   }
 }
 
-const BASE_URL =
+export const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 
-async function authHeaders(): Promise<Record<string, string>> {
+// Exported for uploads that need byte progress (XMLHttpRequest), S24-AG1 F2.
+export async function authHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
   const token = await getAccessToken();
   if (token) {
@@ -1321,6 +1322,11 @@ export interface SowUploadJobResponse {
   file_hash: string;
   s3_key: string | null;
   needs_pick: SowUploadNeedsPickPayload | null;
+  /** S24-AG1 F11 (additive, pick response only): the client the SOW was filed under. */
+  client_id?: UUID | null;
+  client_name?: string | null;
+  /** S24-AG1 F11 (additive, pick response only): true when the pick created that client. */
+  created?: boolean | null;
 }
 
 export interface UploadSowResponse {

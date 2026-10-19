@@ -52,6 +52,7 @@ from app.models.legacy import LegacyImportBatch
 from app.models.opportunity import Opportunity
 from app.models.sow import Sow, SowVersion
 from app.models.task import Task
+from app.services.agreement_hooks import stamp_new_client
 
 
 LEGACY_ROLES: tuple[str, ...] = ("Finance", "CEO", "SystemAdmin")
@@ -274,7 +275,7 @@ async def bulk_upload_sows(
 
     versions: list[SowVersion] = []
     for u in uploads:
-        client_id = await _find_or_create_client(session, u.client_name)
+        client_id = await _find_or_create_client(session, u.client_name, actor_id=actor_id)
         opportunity = Opportunity(
             id=uuid.uuid4(),
             hubspot_deal_id=f"LEGACY-{uuid.uuid4().hex[:16]}",
@@ -363,9 +364,13 @@ def _synthetic_hash(s3_key: str) -> str:
 
 
 async def _find_or_create_client(
-    session: AsyncSession, name: str | None
+    session: AsyncSession, name: str | None, *, actor_id: uuid.UUID
 ) -> uuid.UUID | None:
-    """Return an existing client id by name, or create a new row."""
+    """Return an existing client id by name, or create a new row.
+
+    S24-AG1 B8: a created client gets the ``client.created`` audit row this path
+    never wrote, and the relationship hook (net new after the cutover).
+    """
 
     if not name:
         return None
@@ -380,6 +385,16 @@ async def _find_or_create_client(
     client = Client(id=uuid.uuid4(), name=normalized)
     session.add(client)
     await session.flush()
+    await append_audit(
+        session,
+        actor_id=actor_id,
+        action="client.created",
+        entity="client",
+        entity_id=str(client.id),
+        before=None,
+        after={"name": normalized, "source": "legacy_import"},
+    )
+    await stamp_new_client(session, client, actor_id=actor_id, origin="legacy_import")
     return client.id
 
 

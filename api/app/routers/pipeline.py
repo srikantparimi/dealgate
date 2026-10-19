@@ -963,6 +963,8 @@ DatePreset = Literal["any", "passed", "next7", "next30", "next90", "last7", "las
                      "quarter", "custom"]
 Sort = Literal["value", "close", "activity", "name"]
 Layout = Literal["list", "board"]
+# S24-AG1 B10: the seven agreement states (agreement_status.DOC_STATES, docs/reference/openapi-agreements.yaml).
+DocState = Literal["client", "standard", "covered", "missing", "due_later", "not_needed", "existing_none"]
 
 
 class WorkspaceOwnerOut(BaseModel):
@@ -971,8 +973,12 @@ class WorkspaceOwnerOut(BaseModel):
 
 
 class WorkspaceAgreementsOut(BaseModel):
-    nda_on_file: bool
-    msa_on_file: bool
+    nda_on_file: bool = Field(description="True only when the client holds a client copy or a standard copy.")
+    msa_on_file: bool = Field(description="True only when the client holds a client copy or a standard copy.")
+    nda_state: DocState | None = Field(
+        description="S24-AG1: the client's NDA state from the shared agreement service; null for a deal with no client.")
+    msa_state: DocState | None = Field(
+        description="S24-AG1: the client's MSA state from the shared agreement service; null for a deal with no client.")
 
 
 class WorkspaceDealClientOut(BaseModel):
@@ -1064,9 +1070,12 @@ class PendingMetricOut(BaseModel):
 
 
 class AgreementGapMetricOut(BaseModel):
+    """S24-AG1 B10: clients that need attention (net new, past stage 1, NDA or MSA missing) among the
+    clients with a deal in the filtered population; the drill lists exactly them (every status)."""
+
     value: int
-    clients_total: int
-    any_agreement_files: bool
+    clients_total: int = Field(description="Clients with a deal in the same list without the missing filter.")
+    any_agreement_files: bool = Field(description="Whether any agreement file exists anywhere (kept; unused by the page).")
     drill: dict[str, Any]
 
 

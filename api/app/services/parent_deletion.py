@@ -8,6 +8,7 @@ from sqlalchemy import delete, or_, select, update
 
 from app.audit import append_audit
 from app.models.actual import FinancialActual
+from app.models.agreements import AgreementMark
 from app.models.approval import ApprovalPackage
 from app.models.client import Agreement, AgreementFileVersion, Client, LegalEntity
 from app.models.client_alias import ClientAlias
@@ -61,7 +62,7 @@ async def _new_job(session, kind, identity, actor_id, account_id, title):
     return job
 
 
-async def _finish(session, job, children, counts):
+async def _finish(session, job, children, counts, *, audit_after=None):
     job.objects = [item for item in job.objects if item["key"] and
         not await key_is_referenced(session, item["bucket"], item["key"])]
     job.summary = {**job.summary, "source_deleted": True, "counts": counts,
@@ -70,7 +71,8 @@ async def _finish(session, job, children, counts):
         job.status, job.completed_at = "done", datetime.now(UTC)
     await append_audit(session, actor_id=job.actor_id, action=f"{job.subject_type}.deleted",
         entity=job.subject_type, entity_id=str(job.subject_id), before={
-            "name": job.summary["sow_title"], "counts": counts}, after={"job_id": str(job.id)})
+            "name": job.summary["sow_title"], "counts": counts},
+        after={**(audit_after or {}), "job_id": str(job.id)})
     await session.flush()
     return job
 
@@ -80,18 +82,49 @@ def _add_counts(counts, child):
         counts[key] = counts.get(key, 0) + value
 
 
-async def request_agreement_deletion(session, *, actor_id, agreement):
-    """Caller holds Client then Agreement locks and has checked current authority."""
+async def request_agreement_deletion(session, *, actor_id, agreement, client_name=None):
+    """Caller holds Client then Agreement locks and has checked current authority.
+
+    S24-AG1: a client copy is detached through this job (its own objects are removed by the cleanup
+    worker); keys still referenced elsewhere, such as a standard copy kept in this row's history, are
+    dropped from the job by ``key_is_referenced``. The audit row names the client, kind and file so the
+    Activity feed reads it without the deleted row.
+    """
     job = await _new_job(session, "agreement", agreement.id, actor_id,
         agreement.client_id, agreement.filename)
     versions = (await session.scalars(select(AgreementFileVersion)
         .where(AgreementFileVersion.agreement_id == agreement.id))).all()
     keys = {agreement.file_key, *(version.file_key for version in versions)}
     job.objects = [{"bucket": agreement_bucket(), "key": key} for key in sorted(keys)]
+    described = {
+        "client_id": str(agreement.client_id), "client_name": client_name, "kind": agreement.kind,
+        "filename": agreement.filename, "source": agreement.source, "version_no": agreement.version_no,
+    }
     await session.execute(delete(AgreementFileVersion).where(AgreementFileVersion.agreement_id == agreement.id))
     await session.delete(agreement)
     await session.flush()
-    return await _finish(session, job, [], {"agreements": 1, "agreement_versions": len(versions)})
+    return await _finish(session, job, [], {"agreements": 1, "agreement_versions": len(versions)},
+        audit_after=described)
+
+
+async def queue_storage_cleanup(session, *, actor_id, account_id, keys, title, subject_type="agreement_upload"):
+    """S24-AG1 B5/S10: the compensating delete for an object stored before its row could be committed.
+
+    The API task role may only Put/Get in the agreements bucket, so the object is not deleted here: a
+    pending deletion job names the exact key(s) and the every-minute deletion-cleanup worker removes them
+    (after re-checking that nothing references them). The caller has rolled back its own transaction and
+    commits this one.
+    """
+    tenant, environment = _scope()
+    objects = [{"bucket": agreement_bucket(), "key": key} for key in sorted({k for k in keys if k})]
+    job = DeletionJob(id=uuid.uuid4(), tenant_id=tenant, environment=environment, sow_id=None,
+        subject_type=subject_type, subject_id=uuid.uuid4(), actor_id=actor_id, account_id=account_id,
+        objects=objects, summary={"sow_title": title or "Agreement upload", "test_fixture": False,
+                                  "source_deleted": True, "counts": {}, "reason": "upload not committed"},
+        status="pending")
+    session.add(job)
+    await session.flush()
+    return job
 
 
 async def request_opportunity_deletion(session, *, actor_id, opportunity_id):
@@ -194,6 +227,10 @@ async def request_client_deletion(session, *, actor_id, client_id):
     job.objects = [{"bucket": agreement_bucket(), "key": key} for key in sorted(keys)]
     await session.execute(delete(AgreementFileVersion).where(AgreementFileVersion.agreement_id.in_(agreement_ids)))
     await session.execute(delete(Agreement).where(Agreement.client_id == client_id))
+    # S24-AG1: marks (active and removed) belong to the client; standard keys gathered above stay
+    # protected by key_is_referenced (standard_agreement still points at them).
+    marks = (await session.scalars(select(AgreementMark.id).where(AgreementMark.client_id == client_id))).all()
+    await session.execute(delete(AgreementMark).where(AgreementMark.client_id == client_id))
     await session.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
     await session.execute(delete(ClientAlias).where(ClientAlias.client_id == client_id))
     cards = select(ClientRateCard.id).where(ClientRateCard.client_id == client_id)
@@ -206,5 +243,6 @@ async def request_client_deletion(session, *, actor_id, client_id):
         Notification.related_entity_id == str(client_id)))
     await session.flush()
     await session.execute(delete(Client).where(Client.id == client_id))
-    counts.update({"agreements": len(agreements), "agreement_versions": len(agreement_versions), "forecast_plans": len(plans)})
+    counts.update({"agreements": len(agreements), "agreement_versions": len(agreement_versions),
+        "agreement_marks": len(marks), "forecast_plans": len(plans)})
     return await _finish(session, job, children, counts)

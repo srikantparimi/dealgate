@@ -11,9 +11,18 @@
 # be added without a deploy. Keep it in sync with the nightly worker at
 # worker/e2e_cleanup.py::_PREFIX_RE.
 #
+# S24-AG1 T11: it also lists the agreements bucket under agreements/e2e/
+# (where every test upload is keyed) and fails on an object older than
+# AGREEMENTS_GRACE_MINUTES (30); a younger one is printed as pending cleanup.
+# Read-only: it lists, it never deletes.
+#
 # Usage:
 #   scripts/check-test-data-clean.sh                 # against staging default
 #   BASE_URL=... scripts/check-test-data-clean.sh    # against any other env
+#   AGREEMENTS_BUCKET=... scripts/check-test-data-clean.sh   # another bucket
+#                                   # (default officeapp-dev-agreements-<account>)
+#
+# Exit 0 clean, 1 leaks found, 2 the gate could not read what it checks.
 
 set -euo pipefail
 
@@ -40,7 +49,7 @@ import json, re, sys
 prefix_re = re.compile(
     r"^(?:s1[2-9]-|s17-|s18-|"
     r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |S23 e2e |S24 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|"
     r"S17 delete-everywhere)",
     re.IGNORECASE,
@@ -70,7 +79,7 @@ import json, re, sys
 prefix_re = re.compile(
     r"^(?:s1[2-9]-|s17-|s18-|"
     r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |S23 e2e |S24 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|"
     r"S17 delete-everywhere)",
     re.IGNORECASE,
@@ -116,7 +125,7 @@ import json, re, sys
 prefix_re = re.compile(
     r"^(?:s1[2-9]-|s17-|s18-|"
     r"S1[2-9] e2e |S14b e2e |S16a e2e |S13a e2e |"
-    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |"
+    r"S17 e2e |S18 e2e |S20 e2e |S21 e2e |S22 e2e |S23 e2e |S24 e2e |"
     r"smoke |Peppermill Casino \(smoke fixture\)|"
     r"S17 delete-everywhere)",
     re.IGNORECASE,
@@ -188,16 +197,72 @@ for ROUTE in "pipeline/views:pipeline-views" "pipeline/groups:pipeline-groups" "
   fi
 done
 
-TOTAL=$((COUNT + APPROVER_COUNT + PEOPLE_COUNT + ENG_COUNT + PERSONAL_COUNT))
+# S24-AG1 T11: test uploads. The API keys every upload on a server-issued
+# fixture under agreements/e2e/<run_id>/ (agreements_service.client_object_key)
+# and never a real client's. A spec removes its fixtures' copies and the
+# every-minute deletion-cleanup worker deletes the objects, so an object under
+# that prefix older than the grace period is a leak; a younger one is printed
+# as pending cleanup and does not fail the gate. One list call; nothing is
+# deleted here.
+AGREEMENTS_E2E_PREFIX="agreements/e2e/"
+AGREEMENTS_GRACE_MINUTES="${AGREEMENTS_GRACE_MINUTES:-30}"
+if [ -z "${AGREEMENTS_BUCKET:-}" ]; then
+  ACCOUNT_ID=$(aws --region "$AWS_REGION_" sts get-caller-identity --query Account --output text 2>/dev/null || true)
+  [ -n "$ACCOUNT_ID" ] && [ "$ACCOUNT_ID" != "None" ] || { echo "[gate] cannot read the AWS account id for the agreements bucket" >&2; exit 2; }
+  AGREEMENTS_BUCKET="officeapp-dev-agreements-${ACCOUNT_ID}"
+fi
+AGR_JSON=$(aws --region "$AWS_REGION_" s3api list-objects-v2 --bucket "$AGREEMENTS_BUCKET" \
+  --prefix "$AGREEMENTS_E2E_PREFIX" --output json 2>/dev/null) || {
+  echo "[gate] cannot list s3://$AGREEMENTS_BUCKET/$AGREEMENTS_E2E_PREFIX" >&2; exit 2; }
+AGREEMENTS_PYTHON=$(cat <<'PY'
+import json, sys
+from datetime import datetime, timedelta, timezone
+grace = timedelta(minutes=float(sys.argv[1]))
+raw = sys.stdin.read().strip()
+data = json.loads(raw) if raw else {}
+now = datetime.now(timezone.utc)
+leaks, pending = [], []
+for obj in (data.get("Contents") or []) if isinstance(data, dict) else []:
+    key, stamp = obj.get("Key") or "", str(obj.get("LastModified") or "")
+    try:
+        modified = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        if modified.tzinfo is None:
+            modified = modified.replace(tzinfo=timezone.utc)
+        age = now - modified
+    except ValueError:
+        age = None  # an unreadable time counts as old: reported, never hidden
+    (leaks if age is None or age > grace else pending).append((key, stamp, age))
+def old(age):
+    return "age unknown" if age is None else f"{max(0, int(age.total_seconds() // 60))} min old"
+print(len(leaks))
+for key, stamp, age in leaks:
+    print(f"AGREEMENT-LEAK\t{key}\t{stamp}\t{old(age)}")
+for key, stamp, age in pending:
+    print(f"AGREEMENT-PENDING\t{key}\t{stamp}\t{old(age)}, pending cleanup")
+PY
+)
+AGR_OUT=$(printf '%s' "$AGR_JSON" | python3 -c "$AGREEMENTS_PYTHON" "$AGREEMENTS_GRACE_MINUTES") || {
+  echo "[gate] cannot read the listing of s3://$AGREEMENTS_BUCKET/$AGREEMENTS_E2E_PREFIX" >&2; exit 2; }
+AGR_COUNT=${AGR_OUT%%$'\n'*}  # the first line (no pipe: a long listing cannot SIGPIPE under pipefail)
+AGR_LEAKS=$(printf '%s\n' "$AGR_OUT" | grep '^AGREEMENT-LEAK' || true)
+AGR_PENDING=$(printf '%s\n' "$AGR_OUT" | grep '^AGREEMENT-PENDING' || true)
+
+TOTAL=$((COUNT + APPROVER_COUNT + PEOPLE_COUNT + ENG_COUNT + PERSONAL_COUNT + AGR_COUNT))
 if [ "$TOTAL" = "0" ]; then
-  echo "[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs + 0 tagged people + 0 tagged engagements + 0 bot views/groups/watches on $BASE_URL"
+  echo "[gate] clean · 0 test-tagged clients + 0 e2e approvers on real SOWs + 0 tagged people + 0 tagged engagements + 0 bot views/groups/watches on $BASE_URL + 0 test uploads older than $AGREEMENTS_GRACE_MINUTES min in s3://$AGREEMENTS_BUCKET/$AGREEMENTS_E2E_PREFIX"
+  if [ -n "$AGR_PENDING" ]; then
+    echo "[gate] pending cleanup · test uploads younger than $AGREEMENTS_GRACE_MINUTES min (the deletion-cleanup worker removes them):"
+    printf '%s\n' "$AGR_PENDING"
+  fi
   exit 0
 fi
 
-echo "[gate] FAIL · $COUNT test-tagged clients + $APPROVER_COUNT e2e-approver leaks + $PEOPLE_COUNT tagged people + $ENG_COUNT tagged engagements + $PERSONAL_COUNT bot views/groups/watches on $BASE_URL" >&2
+echo "[gate] FAIL · $COUNT test-tagged clients + $APPROVER_COUNT e2e-approver leaks + $PEOPLE_COUNT tagged people + $ENG_COUNT tagged engagements + $PERSONAL_COUNT bot views/groups/watches on $BASE_URL + $AGR_COUNT test uploads older than $AGREEMENTS_GRACE_MINUTES min in s3://$AGREEMENTS_BUCKET/$AGREEMENTS_E2E_PREFIX" >&2
 printf '%s\n' "$LEAKS" >&2
 printf '%s\n' "$APPROVER_LEAKS" >&2
 printf '%s\n' "$PEOPLE_LEAKS" >&2
 printf '%s\n' "$ENG_LEAKS" >&2
 printf '%s' "$PERSONAL_LEAKS" >&2
+if [ -n "$AGR_LEAKS" ]; then printf '%s\n' "$AGR_LEAKS" >&2; fi
+if [ -n "$AGR_PENDING" ]; then printf '%s\n' "$AGR_PENDING" >&2; fi
 exit 1

@@ -6,6 +6,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as agreementsApi from "../../api/agreements";
 import * as appConfig from "../../api/appConfig";
 import * as api from "../../api/client";
 import * as wsApi from "../../api/pipelineWorkspace";
@@ -28,7 +29,7 @@ const CLIENT: ClientRow = {
   earliest_close_date: "2026-12-28",
   last_activity_date: null,
   days_since_activity: null,
-  agreements: { nda_on_file: false, msa_on_file: false },
+  agreements: { nda_on_file: false, msa_on_file: false, nda_state: "missing", msa_state: "missing" },
   flags: [],
   hubspot_company_id: null,
 };
@@ -138,7 +139,10 @@ describe("the page shell with the real records", () => {
     expect(pagesAsked).toEqual([9, 1]);
   });
 
-  it("a client without HubSpot deals, previewed from the Clients tab, keeps the owner and agreements of its row", async () => {
+  it("a client without HubSpot deals, previewed from the Clients tab, keeps the owner and asks for its agreements", async () => {
+    // S24-AG1 F3: the preview's agreement documents are the shared client panel, which reads the client's
+    // NDA and MSA from the server (held pending here; the panel's own tests cover what it shows).
+    const clientAgreements = vi.spyOn(agreementsApi, "getClientAgreements").mockReturnValue(new Promise(() => {}));
     const local: ClientRow = {
       ...CLIENT,
       id: "client-9",
@@ -147,7 +151,7 @@ describe("the page shell with the real records", () => {
       matching_deals: 0,
       open_deals: 0,
       matching_value_usd: null,
-      agreements: { nda_on_file: true, msa_on_file: true },
+      agreements: { nda_on_file: true, msa_on_file: true, nda_state: "client", msa_state: "standard" },
     };
     vi.mocked(wsApi.getWorkspace).mockImplementation(async (query: Partial<WorkspaceQuery>) => {
       const ws = answerFor(query, populated());
@@ -160,9 +164,8 @@ describe("the page shell with the real records", () => {
     const preview = await screen.findByRole("dialog", { name: "Local SOW Client" });
     expect(await within(preview).findByText("No opportunities linked to this client.")).toBeInTheDocument();
     expect(within(preview).getByText("Account owner: Janice Krpan")).toBeInTheDocument();
-    expect(within(preview).getByText("Agreement files", { selector: "dt" }).nextElementSibling).toHaveTextContent(
-      "NDA MSA",
-    );
+    expect(within(preview).getByRole("region", { name: "Agreement documents" })).toBeInTheDocument();
+    expect(clientAgreements).toHaveBeenCalledWith("client-9", expect.anything());
   });
 
   it("a deal title opens the real preview; its Watch deal goes through the page", async () => {

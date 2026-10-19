@@ -33,6 +33,7 @@ from app.models.notification import Notification
 from app.models.opportunity import Opportunity
 from app.models.renewal import Renewal
 from app.models.user import User
+from app.services.agreement_pipeline import attention_clients, needs_attention_href
 from app.services.approval_workflow import active_functions
 from app.services.approvals import (
     ListFilters,
@@ -280,6 +281,11 @@ async def build_command_overview(
     # "Not yet in the SOW flow" opens the closest Pipeline list: open deals with no SOW. The
     # tile is weighted and leaves out deals linked to an engagement; the page says so.
     not_in_sow_flow_link = _pipeline_href(pipeline_open.pipeline_query, sow="none")
+    # S24-AG1 B10 / F7: net-new clients past stage 1 without an NDA or MSA, from the shared
+    # agreement service over every client the caller may see — the Needs-attention card of the
+    # NDA & MSA page, which its link opens. The page has no owner filter and its business units
+    # come from deals and engagements, so this dashboard's BU and owner filters do not apply.
+    agreement_attention = await attention_clients(session, scope)
     engagements = await _permitted_engagements(
         session,
         actor=actor,
@@ -1383,6 +1389,9 @@ async def build_command_overview(
             "open_opportunity_count": pipeline_open.count,
             "open_opportunity_href": pipeline_link,
             "open_opportunity_business_units": list(pipeline_open.business_units),
+            # S24-AG1 F7: one tile, "Net-new clients past stage 1 without an NDA or MSA".
+            "agreement_attention_clients": agreement_attention,
+            "agreement_attention_href": needs_attention_href(),
             "sows_in_progress": approval_total
             if approval_total is not None
             else sum(

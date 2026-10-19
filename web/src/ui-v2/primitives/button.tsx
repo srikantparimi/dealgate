@@ -29,7 +29,7 @@ export const buttonVariants = cva(
         secondary:
           "bg-surface text-text border border-input-border hover:bg-primary-subtle",
         tertiary: "bg-transparent text-primary hover:bg-primary-subtle",
-        destructive: "bg-danger text-white hover:opacity-95",
+        destructive: "bg-danger text-danger-fg hover:opacity-95",
         ghost: "bg-transparent text-text hover:bg-primary-subtle",
         hero: "bg-hero text-hero-fg hover:opacity-95",
       },

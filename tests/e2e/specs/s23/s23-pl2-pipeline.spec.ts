@@ -136,12 +136,14 @@ test("tonight's situation: empty work columns read exactly as the prototype, and
     await expect(page.getByRole("region", { name: "Pipeline summary" }).getByRole("button", { name })).toBeVisible();
   }
   await expect(page.getByText("No deal has a next action yet")).toBeVisible();
-  await expect(page.getByText(/no agreement files uploaded yet/)).toBeVisible();
+  // S24-AG1 F6: the gap card's note is the NDA & MSA page's definition (the "no agreement files uploaded yet" note is retired).
+  await expect(page.getByRole("region", { name: "Pipeline summary" }).getByText("Net new, past stage 1, NDA or MSA missing")).toBeVisible();
   const records = page.getByRole("region", { name: "Pipeline records" });
   await expect(records.getByText("Set next action").first()).toBeVisible();
   await expect(records.getByText("No SOW").first()).toBeVisible();
-  await expect(records.getByText("NDA missing").first()).toBeVisible();
-  await expect(records.getByText("MSA missing").first()).toBeVisible();
+  // S24-AG1 F6: each tag follows its kind's name and reads the shared state ("Missing": net new, past stage 1, nothing held).
+  await expect(records.locator("span").filter({ hasText: /^NDA\s*Missing$/ }).first()).toBeVisible();
+  await expect(records.locator("span").filter({ hasText: /^MSA\s*Missing$/ }).first()).toBeVisible();
   await expect(records.getByText("On hold", { exact: true }).first()).toBeVisible();
   // T6: the label is shown as text; nothing ran and no image element was made from it.
   await expect(records.getByText(INJECTION, { exact: false }).first()).toBeVisible();
@@ -193,11 +195,11 @@ test("the populated situation: next action, NDA file, draft SOW, watch, group an
 
   await openPipeline(page);
   await expect(page.getByText(/of \d+ deals? with a next action/)).toBeVisible();
-  await expect(page.getByText(/missing an NDA or MSA/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Pipeline summary" }).getByText("Net new, past stage 1, NDA or MSA missing")).toBeVisible();
   const records = page.getByRole("region", { name: "Pipeline records" });
   await expect(records.getByText(`${RUN_TAG} confirm commercial terms`)).toBeVisible();
   await expect(records.getByText(/· overdue/).first()).toBeVisible();
-  await expect(records.getByText("NDA on file").first()).toBeVisible();
+  await expect(records.locator("span").filter({ hasText: /^NDA\s*✓ Client copy$/ }).first()).toBeVisible(); // S24-AG1 F6
   await expect(records.getByText("Draft").first()).toBeVisible();
 
   // Watch a deal from its star; the Watching focus view counts it.
@@ -240,6 +242,8 @@ test("previews, next-action editor, export, Create in HubSpot, settings screens;
   await expect(preview.getByText(/Opportunity · quick preview/i)).toBeVisible();
   await expect(preview.getByText("Deal value · USD")).toBeVisible();
   await expect(preview.getByText("HubSpot region")).toBeVisible();
+  // S24-AG1 F6: the preview says what the NDA and MSA tags mean.
+  await expect(preview.getByText("NDA and MSA show the client's state: Client copy, Standard copy, Marked covered, Missing or Due at stage 2. A warning only; nothing is blocked. The SOW state is separate from the HubSpot sales stage.")).toBeVisible();
   await preview.getByRole("textbox", { name: "Next action" }).fill(`${RUN_TAG} validate scope assumptions`);
   await preview.getByRole("button", { name: "Save next action" }).click();
   expect((await saved).status()).toBeLessThan(300);

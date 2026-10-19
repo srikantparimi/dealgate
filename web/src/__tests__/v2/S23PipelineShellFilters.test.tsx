@@ -258,7 +258,17 @@ describe("F7 · more filters", () => {
     ]);
     expect(
       within(d.getByRole("combobox", { name: "Missing information" })).getAllByRole("option").map((o) => o.textContent),
-    ).toEqual(["No missing-data filter", "Deal owner", "Close date", "Activity date", "Next action", "NDA file", "MSA file", "NDA or MSA file"]);
+    ).toEqual([
+      "No missing-data filter",
+      "Deal owner",
+      "Close date",
+      "Activity date",
+      "Next action",
+      // S24-AG1 F6: the state "Missing" (a net-new client past stage 1), not "no file".
+      "NDA (net new, past stage 1)",
+      "MSA (net new, past stage 1)",
+      "NDA or MSA (net new, past stage 1)",
+    ]);
     await waitFor(() =>
       expect(within(d.getByRole("combobox", { name: "Tracking group" })).getAllByRole("option").map((o) => o.textContent)).toEqual([
         "All groups",
@@ -285,7 +295,7 @@ describe("F7 · more filters", () => {
     for (const [chip, key] of [
       ["SOW: pending approval", "sow"],
       ["Attention: 14d+ inactive", "attention"],
-      ["Missing: NDA", "missing"],
+      ["Missing: NDA (net new, past stage 1)", "missing"],
       ["Group: Q4 priorities", "group"],
       ["Watching", "watching"],
     ]) {
@@ -299,7 +309,7 @@ describe("F7 · more filters", () => {
     renderAt(<PipelinePage />, "/pipeline?sow=in_review_finance_legal&missing=agreements&attention=past_close");
     await ready();
     expect(screen.getByRole("button", { name: "Remove SOW: In review · finance/legal" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove Missing: NDA or MSA" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Missing: NDA or MSA (net new, past stage 1)" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove Attention: close date passed" })).toBeInTheDocument();
   });
 });

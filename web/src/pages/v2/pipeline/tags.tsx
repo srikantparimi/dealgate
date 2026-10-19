@@ -2,12 +2,15 @@
 // stage, SOW, agreement and flag tags, business unit with its region, owner
 // chips and the watch star. Every HubSpot-sourced value is a React text node.
 // Colours map spec §16 onto the app's tokens: violet stage and pending tags →
-// primary, green → success, amber → warning, red → danger.
+// primary, green → success, amber → warning, red → danger. S24-AG1 F6: the
+// NDA and MSA tags come from the shared agreement-state map (ui-v2/AgreementStateTag).
 import { Star } from "lucide-react";
 import type { ReactNode } from "react";
 
+import type { AgreementKind, DocState } from "../../../api/agreements";
 import type { Agreements, ClientFlag, DealRow, Owner } from "../../../api/pipelineWorkspace";
 import { cn } from "../../../lib/cn";
+import { AgreementStateTag } from "../../../ui-v2/AgreementStateTag";
 import { Badge } from "../../../ui-v2/primitives/badge";
 import { initials, plural } from "./format";
 
@@ -127,20 +130,32 @@ export function sowMore(sowCount: number): string {
   return `+${sowCount - 1} more`;
 }
 
+/**
+ * S24-AG1 F6 · the client's NDA and MSA states with the prototype's wording ("✓ Client copy",
+ * "✓ Standard copy", "✓ Marked covered", "Missing", "Due at stage 2", "Not needed now",
+ * "Existing · none attached"). Both kinds share one cell, so each tag follows its kind's name.
+ * A deal with no client has no state and shows none.
+ */
 export function AgreementTags({ agreements }: { agreements: Agreements }) {
+  const kinds: [AgreementKind, DocState | null | undefined][] = [
+    ["NDA", agreements.nda_state],
+    ["MSA", agreements.msa_state],
+  ];
+  const shown = kinds.filter((entry): entry is [AgreementKind, DocState] => Boolean(entry[1]));
+  if (!shown.length) return null;
   return (
-    <span className="inline-flex flex-wrap gap-1">
-      <Tag tone={agreements.nda_on_file ? "success" : "warning"}>
-        {agreements.nda_on_file ? "NDA on file" : "NDA missing"}
-      </Tag>
-      <Tag tone={agreements.msa_on_file ? "success" : "warning"}>
-        {agreements.msa_on_file ? "MSA on file" : "MSA missing"}
-      </Tag>
+    <span className="inline-flex flex-wrap gap-x-2 gap-y-1">
+      {shown.map(([kind, state]) => (
+        <span key={kind} className="inline-flex flex-wrap items-center gap-1">
+          <span className="text-secondary font-medium text-text-secondary">{kind}</span>
+          <AgreementStateTag state={state} />
+        </span>
+      ))}
     </span>
   );
 }
 
-/** "None on file", "NDA MSA", "NDA" or "MSA" (client preview). */
+/** "None on file", "NDA MSA", "NDA" or "MSA": the files held (a client or standard copy; client preview). */
 export function agreementFilesText(agreements: Agreements): string {
   const parts = [agreements.nda_on_file ? "NDA" : null, agreements.msa_on_file ? "MSA" : null].filter(Boolean);
   return parts.length ? parts.join(" ") : "None on file";

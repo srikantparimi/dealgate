@@ -23,11 +23,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import append_audit
 from app.integrations.bedrock_sow_extract import BedrockSowExtract
 from app.models.import_batch import (
-    IMPORT_FILE_STATUSES,
+    IMPORT_FILE_STATUSES,  # noqa: F401 — re-exported through __all__.append below
     ImportBatch,
     ImportFile,
 )
 from app.models.client import Client
+from app.services.agreement_hooks import stamp_new_client
 from app.services.sow_upload_pipeline import (
     PipelineOutcome,
     PipelineResult,
@@ -291,6 +292,17 @@ async def _auto_create_and_retry(
         client = Client(id=uuid.uuid4(), name=legal_name)
         session.add(client)
         await session.flush()
+        # S24-AG1 B8: this path wrote no audit row for the client it creates.
+        await append_audit(
+            session,
+            actor_id=actor_id,
+            action="client.created",
+            entity="client",
+            entity_id=str(client.id),
+            before=None,
+            after={"name": legal_name, "source": "bulk_import"},
+        )
+        await stamp_new_client(session, client, actor_id=actor_id, origin="bulk_import")
     return await apply_pipeline(
         session,
         file_bytes=payload,

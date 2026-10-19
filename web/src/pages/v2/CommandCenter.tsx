@@ -231,7 +231,7 @@ export function CommandCenterPage() {
 
       {overviewLoading ? <SectionState text="Loading business evidence…" /> : overviewError ? (
         <div className={panel}><SectionState text={`Could not load actions: ${overviewError}`} /></div>
-      ) : overview ? <ActionTiles overview={overview} currency={currency} /> : null}
+      ) : overview ? <ActionTiles overview={overview} currency={currency} scoped={Boolean(businessUnit || ownerId)} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
         <section className={panel} aria-labelledby="attention-title">
@@ -332,9 +332,11 @@ export function CommandCenterPage() {
   );
 }
 
-function ActionTiles({ overview, currency }: { overview: CommandOverview; currency: string }) {
+function ActionTiles({ overview, currency, scoped }: { overview: CommandOverview; currency: string; scoped: boolean }) {
   const { revenue, gm, backlog, pipeline, people } = overview.tiles;
   const { open_opportunity_value: openValue, open_opportunity_count: openCount, open_opportunity_href: openHref, open_opportunity_business_units: openUnits } = overview.metrics;
+  // S24-AG1 F7: shown only when the API sends the count (an older API, mid-deploy, still renders).
+  const agreementAttention = overview.metrics.agreement_attention_clients;
   // The Pipeline filters whole business units, so a Command Center region opens (and counts) its unit.
   // (`?? []`: an API from before this field, during a deploy, still renders.)
   const unitScope = businessUnitScope(openUnits ?? []);
@@ -347,6 +349,17 @@ function ActionTiles({ overview, currency }: { overview: CommandOverview; curren
         <Tile href={backlog.href} label="Signed backlog" value={money(backlog.amount, currency)} note={`${backlog.engagements} engagement${backlog.engagements === 1 ? "" : "s"} through effective end dates`} comparison={backlog.comparison.basis} detail="Recognized revenue excluded" />
         <Tile href={openHref} label="Open opportunity value" value={money(openValue, "USD")} note={`${openCount} open deal${openCount === 1 ? "" : "s"}${unitScope} · Hold included · unweighted`} comparison={openHref ? "Same number as the Pipeline" : "Not on the Pipeline: this owner has no HubSpot link"} detail="USD deals; other currencies are not converted" />
         <Tile href={pipeline.href} label={pipeline.label} value={money(pipeline.weighted, currency)} note={`Weighted · ${pipeline.eligible_deals} open deal${pipeline.eligible_deals === 1 ? "" : "s"} · ${money(pipeline.gross, currency)} gross`} linkNote={pipeline.href ? `Pipeline list: open deals with no SOW${unitScope}. This tile is weighted and leaves out deals linked to an engagement.` : undefined} comparison={pipeline.comparison.basis} detail={`${money(pipeline.unscheduled_weighted, currency)} unscheduled · ${pipeline.closed_won_gaps} closed-won gap${pipeline.closed_won_gaps === 1 ? "" : "s"}`} warning={pipeline.missing.length > 0} />
+        {typeof agreementAttention === "number" ? (
+          <Tile
+            href={overview.metrics.agreement_attention_href ?? null}
+            label={AGREEMENT_TILE_LABEL}
+            value={String(agreementAttention)}
+            note="Warn and flag only. Nothing is blocked anywhere."
+            detail={scoped ? "Counts every client: the business unit and owner selected here do not apply" : "Counts every client"}
+            comparison="Opens NDA & MSA filtered to “Needs attention”"
+            warning={agreementAttention > 0}
+          />
+        ) : null}
         <div className="min-h-40 rounded-card border border-border bg-surface p-4">
           <span className="block text-secondary text-text-muted">People</span><strong className="my-2 block text-[23px] text-text">{people.billable_people} billable</strong>
           <div className="space-y-1 text-secondary"><Link className="block text-primary" to={people.billable_href}>{people.billable_fte} FTE allocated</Link><Link className="block text-primary" to={people.bench_href}>{people.bench_people === null ? "Bench not attributable in this scope" : `${people.bench_people} on bench`}</Link><Link className="block text-primary" to={people.rolloff_href}>{people.rolloffs_60_days} roll-offs in 60 days</Link><span className="block text-text-muted">{people.open_seats} open seats · {people.open_seat_fte} FTE</span><small className="block font-medium text-primary">{people.comparison.value > 0 ? "+" : ""}{people.comparison.value} {people.comparison.basis}</small></div>
@@ -355,6 +368,9 @@ function ActionTiles({ overview, currency }: { overview: CommandOverview; curren
     </section>
   );
 }
+
+/** S24-AG1 F7 · the directive's tile label (the prototype: "net-new clients are past stage 1 without an NDA or MSA"). */
+const AGREEMENT_TILE_LABEL = "Net-new clients past stage 1 without an NDA or MSA";
 
 function Tile({ href, label, value, note, comparison, detail, linkNote, warning = false }: { href: string | null; label: string; value: string; note: string; comparison: string; detail: string; linkNote?: string; warning?: boolean }) {
   return <MaybeLink to={href} testId="tile" className={cn("min-h-40 rounded-card border bg-surface p-4", warning ? "border-warning/40" : "border-border")} hoverClassName="hover:border-primary"><span className="block text-secondary text-text-muted">{label}</span><strong className="my-2 block text-[23px] text-text">{value}</strong><span className="block text-secondary text-text-secondary">{note}</span><small className="mt-2 block text-text-muted">{detail}</small>{linkNote ? <small className="mt-2 block text-text-muted">{linkNote}</small> : null}<small className={cn("mt-2 block font-medium", href ? "text-primary" : "text-text-muted")}>{comparison}</small></MaybeLink>;

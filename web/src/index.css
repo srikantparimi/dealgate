@@ -45,6 +45,7 @@
   --dg-warning-surface: #FFF1D6;
   --dg-danger: #B12A3E;
   --dg-danger-surface: #FBE8EB;
+  --dg-on-danger: #FFFFFF; /* text on a danger fill: 6.4:1 on #B12A3E */
   --dg-focus: #6D42C8;
   --dg-chart-series-1: #6D42C8;
   --dg-chart-series-2: #128F7C;
@@ -82,6 +83,7 @@
   --dg-warning-surface: #3D2E17;
   --dg-danger: #FF9AAA;
   --dg-danger-surface: #41222F;
+  --dg-on-danger: #1A1230; /* dark text on the light dark-theme danger fill: 8.9:1 on #FF9AAA */
   --dg-focus: #B8A4F2;
   --dg-chart-series-1: #8F76DE;
   --dg-chart-series-2: #23A38E;

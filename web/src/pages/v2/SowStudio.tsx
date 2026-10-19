@@ -15,9 +15,11 @@
  * "A blank form on open is a defect." Every visible input on the
  * confirmation view is pre-populated from the API payload.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
+import { AGREEMENT_KINDS, type AgreementKind } from "../../api/agreements";
+import { useAuth } from "../../auth/AuthProvider";
 import {
   ApiError,
   confirmSowField,
@@ -36,6 +38,8 @@ import { PageHeader } from "../../ui-v2/PageHeader";
 import { ErrorState } from "../../ui-v2/ErrorState";
 import { StatusBadge } from "../../ui-v2/StatusBadge";
 import { Button } from "../../ui-v2/primitives/button";
+import { LockedButton } from "../../ui-v2/LockedButton";
+import { UploadDialog } from "./agreements/UploadDialog";
 import { UploadPanel } from "./sow-studio/confirmation/UploadPanel";
 import { PipelineProgress } from "./sow-studio/upload/PipelineProgress";
 import { ClientPickerModal } from "./sow-studio/upload/ClientPickerModal";
@@ -164,6 +168,12 @@ function UploadFlow({
     jobId: string;
     others: NonNullable<UploadSowResponse["other_open_sows"]>;
   } | null>(null);
+  // S24-AG1 F11: the pick created a new client — offer its NDA and MSA before staffing.
+  const [newClient, setNewClient] = useState<{
+    clientId: UUID;
+    clientName: string;
+    opportunityId: string;
+  } | null>(null);
 
   const handleUpload = useCallback(
     async ({ file }: { file: File }) => {
@@ -229,6 +239,10 @@ function UploadFlow({
     (job: SowUploadJobResponse) => {
       setNeedsPickJob(null);
       if (job.status === "done" && job.opportunity_id) {
+        if (job.created && job.client_id && job.client_name) {
+          setNewClient({ clientId: job.client_id, clientName: job.client_name, opportunityId: job.opportunity_id });
+          return;
+        }
         onDone(job.opportunity_id);
       }
     },
@@ -239,6 +253,16 @@ function UploadFlow({
     setNeedsPickJob(null);
     onReset();
   }, [onReset]);
+
+  if (newClient) {
+    return (
+      <NewClientAgreementsPrompt
+        clientId={newClient.clientId}
+        clientName={newClient.clientName}
+        onContinue={() => onDone(newClient.opportunityId)}
+      />
+    );
+  }
 
   if (parallel) {
     // Stop and ask before creating a second opportunity for this client.
@@ -315,6 +339,83 @@ function UploadFlow({
           error={uploadError}
         />
       )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* New client: optional NDA and MSA (S24-AG1 F11)                             */
+/* -------------------------------------------------------------------------- */
+
+/** Agreements writers (S24-AG1 B11): Legal and SystemAdmin. */
+const AGREEMENT_WRITE_ROLES = ["Legal", "SystemAdmin"];
+
+/**
+ * Shown once, after "Create new client" in the picker: the SOW is saved, and the
+ * new client's NDA and MSA can be added now through the shared upload dialog
+ * (optional; nothing is blocked). Legal and SystemAdmin upload; every other role
+ * sees the button locked with the reason, and the API refuses them too.
+ */
+function NewClientAgreementsPrompt({
+  clientId,
+  clientName,
+  onContinue,
+}: {
+  clientId: UUID;
+  clientName: string;
+  onContinue: () => void;
+}) {
+  const { user } = useAuth();
+  const canWrite = (user?.groups ?? []).some((group) => AGREEMENT_WRITE_ROLES.includes(group));
+  const [open, setOpen] = useState(false);
+  const [uploaded, setUploaded] = useState<AgreementKind[]>([]);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const proceed = useRef<HTMLButtonElement | null>(null);
+  const remaining = AGREEMENT_KINDS.filter((kind) => !uploaded.includes(kind));
+  const done = AGREEMENT_KINDS.filter((kind) => uploaded.includes(kind));
+
+  function close() {
+    setOpen(false);
+    window.setTimeout(() => (opener.current ?? proceed.current)?.focus(), 0);
+  }
+
+  return (
+    <div className="space-y-4" data-testid="new-client-agreements-prompt">
+      <PageHeader
+        title="New client created"
+        subtitle={
+          <>
+            The SOW is saved under <span data-testid="new-client-name">{clientName}</span>, a new client.
+          </>
+        }
+      />
+      {done.length > 0 ? (
+        <p className="text-body text-text-secondary" role="status">
+          {done.join(" and ")} uploaded.
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-3">
+        {remaining.length > 0 ? (
+          <LockedButton ref={opener} variant="secondary" lock={canWrite ? null : "writer"} onClick={() => setOpen(true)}>
+            {`Add the ${remaining.join(" and ")} now (optional)`}
+          </LockedButton>
+        ) : null}
+        <Button ref={proceed} onClick={onContinue} data-testid="continue-to-staffing">
+          Continue to staffing <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
+        </Button>
+      </div>
+      {canWrite && remaining.length > 0 ? (
+        <UploadDialog
+          open={open}
+          target={{ mode: "client", clientId, clientName, kind: remaining[0], lockTarget: true }}
+          canWrite={canWrite}
+          onOpenChange={(next) => (next ? setOpen(true) : close())}
+          onUploaded={(result) => {
+            setUploaded((prev) => (prev.includes(result.kind) ? prev : [...prev, result.kind]));
+            close();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

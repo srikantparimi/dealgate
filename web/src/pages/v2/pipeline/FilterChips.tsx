@@ -9,6 +9,7 @@ import type {
 } from "../../../api/pipelineWorkspace";
 import { DATE_FIELD_LABELS } from "./DateDialog";
 import { calendarDate } from "./format";
+import { AGREEMENT_MISSING_TEXT } from "./MoreFiltersDialog";
 import { setStages, withFilters, type WorkspaceUrlState } from "./workspaceState";
 
 const STATUS_CHIPS: Record<WorkspaceStatus, string> = {
@@ -45,9 +46,8 @@ const MISSING_CHIPS: Record<string, string> = {
   close: "close date",
   activity: "activity date",
   next_action: "next action",
-  nda: "NDA",
-  msa: "MSA",
-  agreements: "NDA or MSA",
+  // S24-AG1 F6: the state "Missing" (net new, past stage 1), as the filter option says.
+  ...AGREEMENT_MISSING_TEXT,
 };
 
 export interface Chip {

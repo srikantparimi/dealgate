@@ -267,3 +267,46 @@ describe("Command Center redesign", () => {
     expect(screen.getByText("250000.00 weighted pipeline across 1 eligible deal(s)")).toBeVisible();
   });
 });
+
+describe("S24-AG1 F7 · the NDA & MSA tile", () => {
+  const withAttention = (count: number): commandApi.CommandOverview => ({
+    ...overview,
+    metrics: { ...overview.metrics, agreement_attention_clients: count, agreement_attention_href: "/agreements?status=attention" },
+  });
+
+  it("counts net-new clients past stage 1 without an NDA or MSA and opens NDA & MSA filtered to Needs attention", async () => {
+    vi.mocked(commandApi.getCommandOverview).mockResolvedValue(withAttention(4));
+    renderPage();
+    const tile = await screen.findByRole("link", { name: /Net-new clients past stage 1 without an NDA or MSA/ });
+    expect(tile).toHaveAttribute("href", "/agreements?status=attention");
+    expect(tile).toHaveAttribute("data-testid", "tile");
+    expect(tile).toHaveTextContent("Net-new clients past stage 1 without an NDA or MSA4");
+    expect(tile).toHaveTextContent("Warn and flag only. Nothing is blocked anywhere.");
+    expect(tile).toHaveTextContent("Counts every client");
+    expect(tile).not.toHaveTextContent("do not apply");
+    expect(tile).toHaveTextContent("Opens NDA & MSA filtered to “Needs attention”");
+    expect(tile.className).toContain("border-warning/40");
+  });
+
+  it("says the dashboard's business unit and owner do not apply to it", async () => {
+    vi.mocked(commandApi.getCommandOverview).mockResolvedValue(withAttention(4));
+    renderPage("/command?bu=ST21");
+    const tile = await screen.findByRole("link", { name: /Net-new clients past stage 1 without an NDA or MSA/ });
+    expect(tile).toHaveTextContent("Counts every client: the business unit and owner selected here do not apply");
+  });
+
+  it("shows a real zero without the warning border", async () => {
+    vi.mocked(commandApi.getCommandOverview).mockResolvedValue(withAttention(0));
+    renderPage();
+    const tile = await screen.findByRole("link", { name: /Net-new clients past stage 1 without an NDA or MSA/ });
+    expect(tile).toHaveTextContent("without an NDA or MSA0");
+    expect(tile.className).not.toContain("border-warning/40");
+  });
+
+  it("is left out when the API does not send the count (an older API during a deploy)", async () => {
+    renderPage();
+    expect(await screen.findByText("Open opportunity value")).toBeInTheDocument();
+    expect(screen.queryByText("Net-new clients past stage 1 without an NDA or MSA")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("tile")).toHaveLength(5);
+  });
+});

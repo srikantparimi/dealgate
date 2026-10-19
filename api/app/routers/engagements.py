@@ -656,9 +656,11 @@ async def create_client(
             status_code=403,
             detail="Test identities create accounts through POST /dev/test-fixtures (S21 runtime isolation)",
         )
-    row = await svc.create_manual_client(session, actor=actor, name=body.name)
+    row, created = await svc.get_or_create_manual_client(session, actor=actor, name=body.name)
     await session.commit()
-    return {"id": str(row.id), "name": row.name, "source": svc.client_source(row)}
+    # S24-AG1 F11: ``created`` (additive) is False when the name matched an existing client, so the page
+    # offers to add the NDA and MSA only for a client it really created.
+    return {"id": str(row.id), "name": row.name, "source": svc.client_source(row), "created": created}
 
 
 @router.get("/portfolio/clients")

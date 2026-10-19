@@ -23,6 +23,16 @@ conversion) and are returned as decimal strings.
 Statements per workspace call: viewer, fixture scope, sync health, stage
 mirror, region map, population, SOW facts, plus visible clients when
 ``include_unmatched_clients`` is set — at most eight.
+
+S24-AG1 B10: NDA and MSA are agreement *states* from the shared service
+(:mod:`app.services.agreement_pipeline` → ``agreement_status.classify``), not
+"a file exists". The per-client facts are one derived table joined into the
+population and visible-client statements (no added statement); each client is
+classified once with all its deals. ``nda_on_file`` / ``msa_on_file`` stay and
+mean a client or standard copy is held; ``missing=nda|msa`` means that kind's
+state is ``missing`` and ``missing=agreements`` means the client needs
+attention (net new, past stage 1, NDA or MSA missing), which is also the gap
+card.
 """
 
 from __future__ import annotations
@@ -53,6 +63,16 @@ from app.models.sow import Sow, SowVersion
 from app.models.tracking_group import TrackingGroup, TrackingGroupMember
 from app.models.user import User
 from app.models.watchlist import WatchedItem
+from app.services.agreement_pipeline import (
+    AGREEMENT_MISSING,
+    ON_FILE_STATES,
+    agreement_missing,
+    classify_clients,
+    fact_columns,
+    facts_from_row,
+    facts_subquery,
+)
+from app.services.agreement_status import STATE_LABELS
 from app.services.business_time import business_now, business_today, la_date, preset_range
 from app.services.canonical_user import Viewer, resolve_viewer
 from app.services.csv_safety import safe_row
@@ -128,7 +148,10 @@ DRILLS: dict[str, dict[str, Any]] = {
     "closing_this_month": {"tab": "deals", "status": "open", "date_field": "close", "date_preset": "month"},
     "overdue_next_actions": {"tab": "deals", "attention": "overdue"},
     "pending_approvals": {"tab": "deals", "sow": "pending"},
-    "agreement_gap_clients": {"tab": "clients", "missing": "agreements", "include_unmatched_clients": False},
+    # S24-AG1 B10: clients that need attention (net new, past stage 1, NDA or MSA missing). Every
+    # status, so a net-new client whose only deal is Closed Won after the cutover still counts.
+    "agreement_gap_clients": {"tab": "clients", "status": "all", "missing": "agreements",
+                              "include_unmatched_clients": False},
 }
 # Focus views reset every filter (status back to open), then apply their preset.
 FOCUS_PRESETS: dict[str, dict[str, Any]] = {
@@ -139,14 +162,15 @@ FOCUS_PRESETS: dict[str, dict[str, Any]] = {
     "watching": {"watching": True},
 }
 
+# S24-AG1 B10 appends the NDA and MSA states (the Pipeline tags' labels); the PL2 columns keep their order.
 DEAL_EXPORT_COLUMNS = (
     "Opportunity", "Client", "Deal owner", "Account owner", "Business unit", "HubSpot region", "Sales stage",
     "Amount", "Currency", "Close date", "Created", "Last activity", "SOW state", "NDA on file", "MSA on file",
-    "Next action", "Next action due",
+    "Next action", "Next action due", "NDA status", "MSA status",
 )
 CLIENT_EXPORT_COLUMNS = (
     "Client", "Account owner", "Matching deals", "Open deals", "Matching value USD", "NDA on file",
-    "MSA on file", "Last matching activity",
+    "MSA on file", "Last matching activity", "NDA status", "MSA status",
 )
 
 
@@ -368,6 +392,12 @@ class DealFact:
     flags: tuple[str, ...] = ()
     days_since_activity: int | None = None
     search_fields: tuple[str, ...] = ()
+    # S24-AG1 B10: the client's NDA / MSA state and "needs attention" from the shared service
+    # (None / False for a deal with no client); ``agreement_facts`` is the raw input row.
+    nda_state: str | None = None
+    msa_state: str | None = None
+    agreement_attention: bool = False
+    agreement_facts: Any = None
 
     @property
     def is_hold(self) -> bool:
@@ -387,6 +417,10 @@ class ClientFact:
     account_owner: Owner
     nda: bool
     msa: bool
+    nda_state: str | None = None
+    msa_state: str | None = None
+    agreement_attention: bool = False
+    agreement_facts: Any = None
 
 
 def _owner_columns(alias, prefix: str) -> list:
@@ -418,10 +452,6 @@ def _ranked_next_actions():
     )
 
 
-def _agreement_on_file(kind: str, client_id):
-    return select(Agreement.id).where(Agreement.client_id == client_id, Agreement.kind == kind).exists()
-
-
 def _derive_row_flags(fact: DealFact, today: date) -> None:
     flags: list[str] = []
     if is_open(fact):
@@ -446,10 +476,13 @@ async def load_population(
     today: date,
     group_id: uuid.UUID | None = None,
     with_sow: bool = True,
+    with_agreements: bool = False,
 ) -> tuple[list[DealFact], bool]:
     """Every live authorized HubSpot deal, all statuses (one statement), plus SOW facts (one).
 
-    Returns the deals and whether any agreement file exists anywhere.
+    Returns the deals and whether any agreement file exists anywhere. ``with_agreements`` joins
+    each client's agreement facts into the same statement (S24-AG1 B10); the caller classifies them
+    with :func:`attach_agreement_states` once it holds every deal of each client.
     """
     deal_owner = aliased(HubspotOwner, name="deal_owner")
     account_owner = aliased(HubspotOwner, name="account_owner")
@@ -472,10 +505,11 @@ async def load_population(
         _effective_bu_column().label("raw_region"),
         next_action.c.id.label("na_id"), next_action.c.text.label("na_text"),
         next_action.c.due_date.label("na_due"),
-        _agreement_on_file("NDA", Opportunity.client_id).correlate(Opportunity).label("nda"),
-        _agreement_on_file("MSA", Opportunity.client_id).correlate(Opportunity).label("msa"),
         select(Agreement.id).exists().label("any_agreement"),
     ]
+    agreement_facts = facts_subquery() if with_agreements else None
+    if agreement_facts is not None:
+        columns += fact_columns(agreement_facts)
     if viewer.user_id is not None:
         columns.append(
             select(WatchedItem.id).where(
@@ -500,13 +534,18 @@ async def load_population(
         .outerjoin(next_action, and_(next_action.c.opportunity_id == Opportunity.id, next_action.c.position == 1))
         .where(*_base_opportunity_filter(replace(scope, include_closed=True, open_closed="any")))
     )
+    if agreement_facts is not None:
+        stmt = stmt.outerjoin(agreement_facts, agreement_facts.c.client_id == Opportunity.client_id)
     facts: list[DealFact] = []
     any_agreement: bool | None = None
+    client_facts: dict[Any, Any] = {}  # one parsed facts row per client, shared by its deals
     for row in (await session.execute(stmt)).mappings():
         any_agreement = bool(row["any_agreement"])
         raw_region = row["raw_region"]
         deal_owner_id = (row["deal_owner_raw"] or "").strip() or None
         account_owner_id = (row["account_owner_raw"] or "").strip() or None
+        if agreement_facts is not None and row["client_id"] not in client_facts:
+            client_facts[row["client_id"]] = facts_from_row(row)
         fact = DealFact(
             id=row["id"],
             title=(row["title"] or "").strip() or UNNAMED_DEAL,
@@ -536,10 +575,11 @@ async def load_population(
             next_action_id=row["na_id"],
             next_action_text=row["na_text"] if row["na_id"] is not None else None,
             next_action_due=row["na_due"] if row["na_id"] is not None else None,
-            nda=bool(row["nda"]),
-            msa=bool(row["msa"]),
+            nda=False,  # set from the client's state by attach_agreement_states
+            msa=False,
             watching=bool(row["watching"]) if "watching" in row else False,
             in_group=bool(row["in_group"]) if "in_group" in row else False,
+            agreement_facts=client_facts.get(row["client_id"]),
         )
         _derive_row_flags(fact, today)
         fact.search_fields = tuple(text.casefold() for text in (
@@ -610,15 +650,16 @@ async def load_sow_facts(session: AsyncSession, deal_ids: Iterable[uuid.UUID]) -
 
 
 async def load_visible_clients(session: AsyncSession, scope: PipelineFilters) -> list[ClientFact]:
-    """Every client the caller may see (for "include clients without matching deals")."""
+    """Every client the caller may see (for "include clients without matching deals"), with its
+    agreement facts joined into the same statement (classified by attach_agreement_states)."""
     account_owner = aliased(HubspotOwner, name="account_owner")
+    facts = facts_subquery()
     rows = (await session.execute(
         select(Client.id, Client.name, Client.hubspot_company_id, Client.hubspot_owner_id,
-               *_owner_columns(account_owner, "account_owner"),
-               _agreement_on_file("NDA", Client.id).correlate(Client).label("nda"),
-               _agreement_on_file("MSA", Client.id).correlate(Client).label("msa"))
+               *_owner_columns(account_owner, "account_owner"), *fact_columns(facts))
         .select_from(Client)
         .outerjoin(account_owner, account_owner.id == Client.hubspot_owner_id)
+        .outerjoin(facts, facts.c.client_id == Client.id)
         .where(*_client_visibility(scope))
     )).mappings()
     out = []
@@ -630,7 +671,32 @@ async def load_visible_clients(session: AsyncSession, scope: PipelineFilters) ->
             account_owner=owner_of(owner_id, row["account_owner_id"], row["account_owner_first"],
                                    row["account_owner_last"], row["account_owner_email"],
                                    row["account_owner_archived"]),
-            nda=bool(row["nda"]), msa=bool(row["msa"])))
+            nda=False, msa=False, agreement_facts=facts_from_row(row)))
+    return out
+
+
+def attach_agreement_states(population: list[DealFact], visible: Iterable[ClientFact] = ()) -> list[ClientFact]:
+    """Each client's NDA / MSA state and "needs attention" from the shared service (S24-AG1 B10).
+
+    Every deal of a client gets its client's state; ``nda`` / ``msa`` (on file) mean a client or a
+    standard copy is held. ``population`` must hold every deal of each client (the workspace's
+    fixture scope, all statuses). Returns ``visible`` with the same fields set.
+    """
+    visible = list(visible)
+    statuses = classify_clients(population, visible)
+    for fact in population:
+        status = statuses.get(fact.client_id) if fact.client_id is not None else None
+        if status is None:
+            continue
+        fact.nda_state, fact.msa_state = status.nda, status.msa
+        fact.nda, fact.msa = status.nda in ON_FILE_STATES, status.msa in ON_FILE_STATES
+        fact.agreement_attention = status.needs_attention
+    out: list[ClientFact] = []
+    for client in visible:
+        status = statuses.get(client.id)
+        out.append(client if status is None else replace(
+            client, nda=status.nda in ON_FILE_STATES, msa=status.msa in ON_FILE_STATES,
+            nda_state=status.nda, msa_state=status.msa, agreement_attention=status.needs_attention))
     return out
 
 
@@ -667,11 +733,8 @@ def _missing_ok(row: DealFact, missing: str) -> bool:
         return row.activity_date is None
     if missing == "next_action":
         return is_open(row) and row.next_action_id is None
-    if missing == "nda":
-        return not row.nda
-    if missing == "msa":
-        return not row.msa
-    return not (row.nda and row.msa)  # agreements: either missing
+    # nda / msa / agreements: agreement states (S24-AG1 B10), never "no file".
+    return agreement_missing(row.nda_state, row.msa_state, row.agreement_attention, missing)
 
 
 def _date_value(row: DealFact, date_field: str) -> date | None:
@@ -756,7 +819,8 @@ def build_client_rows(population: list[DealFact], f: WorkspaceFilters, ctx: Cont
     """Clients with at least one matching deal, then the account-owner filter.
 
     With ``include_unmatched_clients`` every other visible client is added
-    (still filtered by account owner; a search matches the client name only).
+    (still filtered by account owner; a search matches the client name only;
+    a missing NDA / MSA filter applies to the client's own state, S24-AG1).
     Flags come from the client's matching OPEN deals only.
     """
     open_counts = Counter(row.client_id for row in population if row.client_id is not None and is_open(row))
@@ -766,10 +830,11 @@ def build_client_rows(population: list[DealFact], f: WorkspaceFilters, ctx: Cont
             matched.setdefault(row.client_id, []).append(row)
     out: list[ClientRowData] = []
     for client_id, deals in matched.items():
-        first = deals[0]
+        first = deals[0]  # the client's state is the same on every one of its deals
         client = ClientFact(id=client_id, name=first.client_name or "", hubspot_company_id=first.client_hubspot_company_id,
                             account_owner_id=first.account_owner_id, account_owner=first.account_owner,
-                            nda=first.nda, msa=first.msa)
+                            nda=first.nda, msa=first.msa, nda_state=first.nda_state, msa_state=first.msa_state,
+                            agreement_attention=first.agreement_attention)
         if f.account_owner and not owner_matches(client.account_owner_id, client.account_owner, f.account_owner):
             continue
         usd = [row.usd_amount for row in deals if row.usd_amount is not None]
@@ -792,6 +857,9 @@ def build_client_rows(population: list[DealFact], f: WorkspaceFilters, ctx: Cont
                                                      f.account_owner):
                 continue
             if needle and needle not in client.name.casefold():
+                continue
+            if f.missing in AGREEMENT_MISSING and not agreement_missing(
+                    client.nda_state, client.msa_state, client.agreement_attention, f.missing):
                 continue
             out.append(ClientRowData(client=client, matching_deals=0, open_deals=open_counts[client.id],
                                      matching_value_usd=None, earliest_close_date=None, last_activity_date=None,
@@ -863,7 +931,8 @@ def deal_wire(row: DealFact) -> dict[str, Any]:
         "sow_state": row.sow_state,
         "sow_state_label": SOW_STATE_LABELS[row.sow_state],
         "sow_count": row.sow_count,
-        "agreements": {"nda_on_file": row.nda, "msa_on_file": row.msa},
+        "agreements": {"nda_on_file": row.nda, "msa_on_file": row.msa,
+                       "nda_state": row.nda_state, "msa_state": row.msa_state},
         "next_action": ({"id": row.next_action_id, "text": row.next_action_text, "due_on": row.next_action_due}
                         if row.next_action_id is not None else None),
         "flags": list(row.flags),
@@ -885,7 +954,8 @@ def client_wire(row: ClientRowData) -> dict[str, Any]:
         "earliest_close_date": row.earliest_close_date,
         "last_activity_date": row.last_activity_date,
         "days_since_activity": row.days_since_activity,
-        "agreements": {"nda_on_file": client.nda, "msa_on_file": client.msa},
+        "agreements": {"nda_on_file": client.nda, "msa_on_file": client.msa,
+                       "nda_state": client.nda_state, "msa_state": client.msa_state},
         "flags": list(row.flags),
         "hubspot_company_id": client.hubspot_company_id,
     }
@@ -899,9 +969,10 @@ def build_metrics(population: list[DealFact], f: WorkspaceFilters, ctx: Context,
 
     open_list = deals(DRILLS["open_deals"])
     closing = deals(DRILLS["closing_this_month"])
+    # S24-AG1 B10: clients needing attention among the clients with a deal in the population; the
+    # denominator is the same client list without the missing filter.
     gaps = build_client_rows(population, f.merge(DRILLS["agreement_gap_clients"]), ctx)
-    clients_total = build_client_rows(
-        population, f.merge({"tab": "clients", "include_unmatched_clients": False, "missing": None}), ctx)
+    clients_total = build_client_rows(population, f.merge({**DRILLS["agreement_gap_clients"], "missing": None}), ctx)
     return {
         "open_deals": {"value": len(open_list),
                        "accounts": len({row.client_id for row in open_list if row.client_id is not None}),
@@ -987,8 +1058,12 @@ async def load_workspace_data(session: AsyncSession, *, actor: AuthUser, filters
         freshness = await compute_sync_health(session, now=now)
     reference = await load_reference(session)
     population, any_agreement = await load_population(
-        session, scope, viewer=viewer, reference=reference, today=today, group_id=filters.group)
+        session, scope, viewer=viewer, reference=reference, today=today, group_id=filters.group,
+        with_agreements=True)
     visible = await load_visible_clients(session, scope) if filters.include_unmatched_clients else []
+    # The scope is the caller's fixture scope only (all statuses), so the population holds every deal
+    # of every client: each client is classified with all of them, as on the Agreements page.
+    visible = attach_agreement_states(population, visible)
     ctx = Context(today=today, mine_owner_id=viewer.hubspot_owner_id, group_id=filters.group)
     return WorkspaceData(ctx, reference, population, any_agreement, visible, freshness)
 
@@ -1045,6 +1120,11 @@ def _yes_no(value: bool) -> str:
     return "Yes" if value else "No"
 
 
+def _state_text(state: str | None) -> str:
+    """The state's label ("Client copy", "Missing", ...); blank for a deal with no client."""
+    return STATE_LABELS.get(state, "") if state else ""
+
+
 def deal_export_cells(row: DealFact) -> list[str]:
     if row.region is not None:
         unit = f"{row.region.business_unit} · {row.region.region}"
@@ -1056,7 +1136,7 @@ def deal_export_cells(row: DealFact) -> list[str]:
         row.hubspot_region or "", stage, format(row.amount, "f") if row.amount is not None else "",
         row.currency or "", _iso(row.close_date), _iso(row.created_date), _iso(row.activity_date),
         SOW_STATE_LABELS[row.sow_state], _yes_no(row.nda), _yes_no(row.msa), row.next_action_text or "",
-        _iso(row.next_action_due),
+        _iso(row.next_action_due), _state_text(row.nda_state), _state_text(row.msa_state),
     ])
 
 
@@ -1065,7 +1145,7 @@ def client_export_cells(row: ClientRowData) -> list[str]:
     return safe_row([
         client.name, client.account_owner.export_text(), row.matching_deals, row.open_deals,
         money(row.matching_value_usd) or "", _yes_no(client.nda), _yes_no(client.msa),
-        _iso(row.last_activity_date),
+        _iso(row.last_activity_date), _state_text(client.nda_state), _state_text(client.msa_state),
     ])
 
 
@@ -1150,6 +1230,6 @@ async def open_totals(session: AsyncSession, scope: PipelineFilters, *, now: dat
 __all__ = [
     "ATTENTION", "BU_FILTERS", "CLIENT_EXPORT_COLUMNS", "DATE_FIELDS", "DEAL_EXPORT_COLUMNS", "DRILLS",
     "LAYOUTS", "MISSING", "PAGE_SIZES", "SORTS", "SOW_FILTERS", "SOW_STATE_LABELS", "STATUSES", "TABS",
-    "OpenTotals", "WorkspaceFilters", "apply_filters", "build_workspace", "export_workspace", "matches",
-    "open_totals",
+    "OpenTotals", "WorkspaceFilters", "apply_filters", "attach_agreement_states", "build_workspace",
+    "export_workspace", "matches", "open_totals",
 ]

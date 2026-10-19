@@ -58,6 +58,7 @@ from app.models.engagement import (
 )
 from app.models.user import User
 from app.services import forecast as engine
+from app.services.agreement_hooks import stamp_new_client
 from app.services.forecast import forecast_model_import as model_import
 from app.services.forecast.workbook_import import ImportedEngagement, parse_workbook
 from app.services.test_fixtures import E2E_USER_GROUP, account_scope, user_allowed
@@ -1044,8 +1045,13 @@ async def delete_resource(session: AsyncSession, *, actor: AuthUser, row: Resour
     )
 
 
-async def create_manual_client(session: AsyncSession, *, actor: AuthUser, name: str) -> Client:
-    """POST /clients — a client by name when no HubSpot company matches (never a mirror row)."""
+async def get_or_create_manual_client(session: AsyncSession, *, actor: AuthUser, name: str) -> tuple[Client, bool]:
+    """POST /clients — a client by name when no HubSpot company matches (never a mirror row).
+
+    Returns ``(client, created)``: an existing client with the same name (any case) is returned with
+    ``created`` False, so the caller can tell a new client from a match (S24-AG1 F11 offers the NDA and
+    MSA upload only for a new one).
+    """
 
     name = name.strip()
     if not name:
@@ -1054,7 +1060,7 @@ async def create_manual_client(session: AsyncSession, *, actor: AuthUser, name: 
         await session.execute(select(Client).where(func.lower(Client.name) == name.lower()).limit(1))
     ).scalar_one_or_none()
     if existing is not None:
-        return existing
+        return existing, False
     row = Client(id=uuid.uuid4(), name=name, hubspot_company_id=None)
     session.add(row)
     await session.flush()
@@ -1067,6 +1073,15 @@ async def create_manual_client(session: AsyncSession, *, actor: AuthUser, name: 
         before=None,
         after={"name": name, "source": "manual"},
     )
+    # S24-AG1 B8: after the cutover a client created by hand starts net new.
+    await stamp_new_client(session, row, actor_id=actor.id, origin="manual")
+    return row, True
+
+
+async def create_manual_client(session: AsyncSession, *, actor: AuthUser, name: str) -> Client:
+    """The client by name, found or created (the workbook and forecast-model imports use this)."""
+
+    row, _created = await get_or_create_manual_client(session, actor=actor, name=name)
     return row
 
 

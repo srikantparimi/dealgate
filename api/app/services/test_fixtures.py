@@ -89,6 +89,10 @@ async def create_fixture(session, *, actor_id, label, reviewer_ids, hours=4, pip
         },
         correlation_id=str(run_id),
     )
+    # S24-AG1 B8: a fixture client is created like any other (net new after the cutover).
+    from app.services.agreement_hooks import stamp_new_client
+
+    await stamp_new_client(session, client, actor_id=actor_id, origin="test_fixture", correlation_id=str(run_id))
     return {
         "run_id": run_id,
         "client_id": client.id,

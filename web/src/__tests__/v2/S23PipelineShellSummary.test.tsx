@@ -53,7 +53,8 @@ describe("F4 · metric cards", () => {
       "Closing this month↗15$2.68m proposed value",
       "Overdue next actions↗0No deal has a next action yet",
       "Pending approvals↗0Deals with a SOW in review or CEO exception",
-      "Agreement gaps↗55of 55 clients · no agreement files uploaded yet",
+      // S24-AG1 F6: the clients that need attention, with the NDA & MSA page's note.
+      "Agreement gaps↗55Net new, past stage 1, NDA or MSA missing",
     ]);
   });
 
@@ -66,7 +67,7 @@ describe("F4 · metric cards", () => {
     );
     expect(within(region).getByRole("button", { name: /^Pending approvals/ })).toHaveTextContent("11");
     expect(within(region).getByRole("button", { name: /^Agreement gaps/ })).toHaveTextContent(
-      "33of 55 clients missing an NDA or MSA",
+      "33Net new, past stage 1, NDA or MSA missing",
     );
   });
 
@@ -90,7 +91,8 @@ describe("F4 · metric cards", () => {
     expect(card(/^Open value/)).toHaveTextContent("$0unweighted");
     expect(card(/^Closing this month/)).toHaveTextContent("$0 proposed value");
     expect(card(/^Overdue next actions/)).toHaveTextContent("of 1 deal with a next action");
-    expect(card(/^Agreement gaps/)).toHaveTextContent("of 1 client missing an NDA or MSA");
+    // S24-AG1: no denominator any more; zero clients need attention is a real zero.
+    expect(card(/^Agreement gaps/)).toHaveTextContent("0Net new, past stage 1, NDA or MSA missing");
   });
 
   it.each([

@@ -67,11 +67,12 @@ from tests.test_s23_pl2_workspace import PIPELINE_ID, STAGES, VIEWER, client_for
 # Shared fixtures, bound as module globals so pytest finds them here.
 api, engine, frozen_clock, seeded = shared.api, shared.engine, shared.frozen_clock, shared.seeded
 
+# S24-AG1 B10 appends the NDA and MSA states; the PL2 columns keep their order.
 DEAL_HEADER = ["Opportunity", "Client", "Deal owner", "Account owner", "Business unit", "HubSpot region",
                "Sales stage", "Amount", "Currency", "Close date", "Created", "Last activity", "SOW state",
-               "NDA on file", "MSA on file", "Next action", "Next action due"]
+               "NDA on file", "MSA on file", "Next action", "Next action due", "NDA status", "MSA status"]
 CLIENT_HEADER = ["Client", "Account owner", "Matching deals", "Open deals", "Matching value USD", "NDA on file",
-                 "MSA on file", "Last matching activity"]
+                 "MSA on file", "Last matching activity", "NDA status", "MSA status"]
 
 
 async def export(api, **params) -> tuple[list[list[str]], str]:
@@ -95,11 +96,17 @@ async def test_deals_export_has_every_filtered_row_in_order(api, seeded):
     assert by_title["Acme rollout"] == [
         "Acme rollout", "Acme Retail", "Ava Archer", "Ava Archer", "ST21 · US", "US",
         "1 · Initial Contact / Prospecting", "100000.00", "USD", "2026-10-19", "2026-09-04", "2026-10-12",
-        "No SOW", "Yes", "Yes", "Send revised proposal", "2026-10-11"]
+        "No SOW", "Yes", "Yes", "Send revised proposal", "2026-10-11", "Client copy", "Client copy"]
     assert by_title["Bolt warehouse scanners"] == [
         "Bolt warehouse scanners", "Bolt Logistics", "Unassigned", "Former HubSpot user", "IT Avalon · US",
         "US - IT Avalon (Staffing)", "4 · Proposal", "", "USD", "", "2026-10-09", "2026-10-13", "No SOW", "Yes",
-        "No", "Confirm budget owner", ""]
+        "No", "Confirm budget owner", "", "Client copy", "Missing"]
+    # A covered mark is not a file (on file: No) but its state says so; a standard copy is on file.
+    assert by_title["Cobalt clinic portal"][13:15] + by_title["Cobalt clinic portal"][17:] == [
+        "No", "No", "Missing", "Marked covered"]
+    assert by_title["Echo studio tools"][13:15] + by_title["Echo studio tools"][17:] == [
+        "Yes", "No", "Standard copy", "Missing"]
+    assert by_title["Delta supply chain"][17:] == ["Existing, none attached", "Client copy"]
     assert by_title["Cobalt clinic portal"][4:9] == ["Unmapped · Brazil", "Brazil", "5 · Negotiation", "75000.00",
                                                      "EUR"]
     assert by_title["Delta supply chain"][4:6] == ["", ""]  # no region at all
@@ -121,11 +128,13 @@ async def test_clients_export(api, seeded):
     rows, disposition = await export(api, tab="clients", sort="name", include_unmatched_clients="true")
     assert disposition == 'attachment; filename="DealGate_Pipeline_clients.csv"'
     assert rows[0] == CLIENT_HEADER
-    assert rows[1] == ["Acme Retail", "Ava Archer", "3", "3", "470000.00", "Yes", "Yes", "2026-10-12"]
+    assert rows[1] == ["Acme Retail", "Ava Archer", "3", "3", "470000.00", "Yes", "Yes", "2026-10-12", "Client copy",
+                       "Client copy"]
     by_name = {row[0]: row for row in rows[1:]}
     assert by_name["Bolt Logistics"][1] == "Former HubSpot user"
     assert by_name["Cobalt Health"][1] == "Unassigned"
-    assert by_name["Fjord Energy"] == ["Fjord Energy", "Ava Archer", "0", "0", "", "No", "Yes", ""]
+    assert by_name["Fjord Energy"] == ["Fjord Energy", "Ava Archer", "0", "0", "", "No", "Yes", "", "Not needed now",
+                                       "Client copy"]
     assert len(rows) - 1 == 7
 
 

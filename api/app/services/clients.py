@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit import append_audit
 from app.models.client import Client, LegalEntity
 from app.models.opportunity import Opportunity
+from app.services.agreement_hooks import stamp_new_client
 from app.services.user_identity import display_user_name
 
 log = structlog.get_logger("clients")
@@ -97,6 +98,11 @@ async def upsert_client_from_hubspot(
             },
             correlation_id=correlation_id,
         )
+        # S24-AG1 B8: the creation hook. A HubSpot company's deals are linked after
+        # this row exists, so its relationship is settled after the sync.
+        await stamp_new_client(
+            session, client, actor_id=None, origin="hubspot", correlation_id=correlation_id
+        )
     else:
         client = existing
         before = {"name": client.name, "timezone": client.timezone}
@@ -153,6 +159,10 @@ async def upsert_unknown_client_for_deal(
         before=None,
         after={"name": client.name, "reason": "no HubSpot company on deal"},
         correlation_id=correlation_id,
+    )
+    # S24-AG1 B8: no HubSpot company, so after the cutover it starts net new.
+    await stamp_new_client(
+        session, client, actor_id=None, origin="hubspot_placeholder", correlation_id=correlation_id
     )
     await ensure_default_legal_entity(
         session, client=client, country=None, correlation_id=correlation_id

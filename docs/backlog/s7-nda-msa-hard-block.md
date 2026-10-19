@@ -1,5 +1,7 @@
 # S7 — NDA + MSA hard block + cost-field response filtering + SLA timers
 
+> **Superseded.** This story's agreement lifecycle (user story A, the Executed-NDA-and-MSA gate at package submission) was removed in S17. Since S24-AG1 an NDA or MSA has one of seven states (Client copy, Standard copy, Marked covered, Missing, Due at stage 2, Not needed now, Existing, none attached) from the shared service `api/app/services/agreement_status.py`, and a missing document only warns: nothing blocks review or signature. See `docs/directives/s24-ag1-agreements.md` and `docs/reference/openapi-agreements.yaml`. Kept as the historical record of what was asked.
+
 ## User story A: NDA + MSA gate
 As Legal, no approval package can be submitted for a client that lacks an
 Executed NDA AND an Executed MSA on any of its legal entities. The blueprint

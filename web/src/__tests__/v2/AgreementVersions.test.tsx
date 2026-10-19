@@ -1,257 +1,122 @@
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+// S24-AG1 F8 (was S17/S21 "agreement versions") · the old register lives on as
+// the Documents tab of the NDA & MSA page: every stored file with its version
+// history and per-version download, Replace through the upload dialog (the same
+// checks, note and progress as every upload), and Download through the audited
+// route. Write controls are locked with a reason, never hidden (F1), and no raw
+// id is shown anywhere (F12): the old "Cleanup receipt {job id}" link is gone
+// (a client copy's removal now lives in the client panel).
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
-import { AgreementsRegisterPage } from "../../pages/v2/AgreementsRegister";
-import * as api from "../../api/client";
-vi.mock("../../api/client", () => ({
-  getMe: vi.fn(),
-  listAgreements: vi.fn(),
-  listClients: vi.fn(),
-  uploadAgreement: vi.fn(),
-  deleteAgreement: vi.fn(),
-  getAgreementDownloadUrl: vi.fn(),
-  listAgreementVersions: vi.fn(),
-  replaceAgreement: vi.fn(),
-  getAgreementVersionDownloadUrl: vi.fn(),
-  getDeletionJob: vi.fn(),
-  retryDeletionJob: vi.fn(),
+
+import * as agreementsApi from "../../api/agreements";
+import * as clientApi from "../../api/client";
+import { DOC_CLIENT, DOC_STANDARD, IDS, ROLES, UUID_RE, after, renderAgreements } from "./S24FeAFixtures";
+
+vi.mock("../../pages/v2/agreements/UploadDialog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../pages/v2/agreements/UploadDialog")>()),
+  UploadDialog: (await import("./S24FeAStandIns")).UploadDialogStandIn,
 }));
-afterEach(cleanup);
+vi.mock("../../pages/v2/agreements/ClientAgreementsPanel", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../pages/v2/agreements/ClientAgreementsPanel")>()),
+  ClientAgreementsPanel: (await import("./S24FeAStandIns")).ClientAgreementsPanelStandIn,
+}));
+vi.mock("../../pages/v2/agreements/AttachWizard", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../pages/v2/agreements/AttachWizard")>()),
+  AttachWizard: (await import("./S24FeAStandIns")).AttachWizardStandIn,
+}));
+vi.mock("../../pages/v2/agreements/UndoBatchDialog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../pages/v2/agreements/UndoBatchDialog")>()),
+  UndoBatchDialog: (await import("./S24FeAStandIns")).UndoBatchDialogStandIn,
+}));
+vi.mock("../../pages/v2/agreements/HubspotHintsDialog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../pages/v2/agreements/HubspotHintsDialog")>()),
+  HubspotHintsDialog: (await import("./S24FeAStandIns")).HubspotHintsDialogStandIn,
+}));
+
+let role: keyof typeof ROLES = "legal";
+
 beforeEach(() => {
-  vi.resetAllMocks();
-  vi.mocked(api.getMe).mockResolvedValue({
-    groups: ["Legal"],
-  } as api.MeResponse);
-  vi.mocked(api.listClients).mockResolvedValue({
-    items: [{ id: "a", name: "Alpha" }],
-  } as api.ClientListResponse);
-  vi.mocked(api.listAgreements).mockResolvedValue({
+  role = "legal";
+  vi.spyOn(agreementsApi, "getAgreementsWorkspace").mockImplementation(async () => after({ ...ROLES[role] }));
+  vi.spyOn(agreementsApi, "getAgreementDocuments").mockResolvedValue({ total: 2, items: [DOC_CLIENT, DOC_STANDARD] });
+  vi.spyOn(agreementsApi, "getAgreementActivity").mockResolvedValue({ total: 0, items: [] });
+  vi.spyOn(clientApi, "listAgreementVersions").mockResolvedValue({
     items: [
       {
-        id: "doc",
-        client_id: "a",
-        client_name: "Alpha",
-        kind: "NDA",
-        filename: "original.pdf",
+        version_no: 2,
+        filename: "revision.pdf",
         file_size: 2,
+        file_hash: null,
+        uploaded_by: "u-legal",
         uploaded_by_name: "Legal",
-        uploaded_at: "2026-10-01",
-        version_no: 2,
+        uploaded_at: "2026-10-01T17:00:00Z",
       },
-    ] as api.AgreementRow[],
-  });
-  vi.mocked(api.listAgreementVersions).mockResolvedValue({
-    items: [
-      {
-        version_no: 2,
-        filename: "original.pdf",
-        uploaded_by_name: "Legal",
-        uploaded_at: "2026-10-01",
-      },
-    ] as api.AgreementFileVersion[],
-  });
-});
-
-it("keeps a durable cleanup receipt and exposes failure, retry and completion", async () => {
-  const pending = {
-    job_id: "cleanup",
-    status: "pending",
-    source_deleted: true,
-    counts: { agreements: 1, files: 2 },
-    last_error: null,
-    sow_title: "original.pdf",
-    attempts: 0,
-    next_attempt_at: null,
-    completed_at: null,
-    state: "deleted",
-    reason: "Agreement deleted; file cleanup pending",
-    subject_type: "agreement",
-  } satisfies api.DeletionJobResponse;
-  vi.mocked(api.deleteAgreement).mockResolvedValue(pending);
-  vi.mocked(api.getDeletionJob)
-    .mockResolvedValueOnce({
-      ...pending,
-      status: "failed",
-      last_error: "Storage unavailable",
-    })
-    .mockResolvedValueOnce({ ...pending, status: "done" });
-  vi.mocked(api.retryDeletionJob).mockResolvedValue(pending);
-  render(
-    <MemoryRouter>
-      <AgreementsRegisterPage />
-    </MemoryRouter>,
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Delete original.pdf" }),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-  expect(await screen.findByText("File cleanup pending")).toBeTruthy();
-  expect(
-    screen
-      .getByRole("link", { name: "Cleanup receipt cleanup" })
-      .getAttribute("href"),
-  ).toBe("/deletions/cleanup");
-  fireEvent.click(screen.getByRole("button", { name: "Refresh cleanup" }));
-  expect(await screen.findByText("File cleanup failed")).toBeTruthy();
-  expect(screen.getByText("Storage unavailable")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Retry cleanup" }));
-  await waitFor(() =>
-    expect(api.retryDeletionJob).toHaveBeenCalledWith("cleanup"),
-  );
-  await screen.findByText("File cleanup pending");
-  fireEvent.click(screen.getByRole("button", { name: "Refresh cleanup" }));
-  expect(await screen.findByText("File cleanup complete")).toBeTruthy();
-});
-it("preselects scoped upload and keeps mutation controls hidden for readers", async () => {
-  vi.mocked(api.getMe).mockResolvedValue({
-    groups: ["Sales"],
-  } as api.MeResponse);
-  render(
-    <MemoryRouter
-      initialEntries={["/agreements?client_id=a&kind=NDA&upload=1"]}
-    >
-      <AgreementsRegisterPage />
-    </MemoryRouter>,
-  );
-  await screen.findByText("original.pdf");
-  expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
-  expect(
-    screen.queryByRole("button", { name: "Replace original.pdf" }),
-  ).toBeNull();
-});
-
-it("does not require client-directory permission to show Marketing agreement documents", async () => {
-  vi.mocked(api.getMe).mockResolvedValue({
-    groups: ["Marketing"],
-  } as api.MeResponse);
-  vi.mocked(api.listClients).mockRejectedValue(
-    new Error("403: client directory forbidden"),
-  );
-  render(
-    <MemoryRouter initialEntries={["/agreements?client_id=a"]}>
-      <AgreementsRegisterPage />
-    </MemoryRouter>,
-  );
-  expect(await screen.findByText("original.pdf")).toBeTruthy();
-  expect(api.listClients).not.toHaveBeenCalled();
-  expect(
-    screen.getByRole("button", { name: "History original.pdf" }),
-  ).toBeTruthy();
-  expect(
-    screen.getByRole("button", { name: "Download original.pdf" }),
-  ).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
-  expect(
-    screen.queryByRole("button", { name: "Delete original.pdf" }),
-  ).toBeNull();
-  expect(
-    screen.queryByRole("button", { name: "Replace original.pdf" }),
-  ).toBeNull();
-});
-it("shows version history and preserves replacement file after conflict", async () => {
-  vi.mocked(api.replaceAgreement).mockRejectedValue(
-    new Error("409: refresh latest version"),
-  );
-  render(
-    <MemoryRouter initialEntries={["/agreements?client_id=a&kind=NDA"]}>
-      <AgreementsRegisterPage />
-    </MemoryRouter>,
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Replace original.pdf" }),
-  );
-  const file = new File(["new"], "revision.pdf", { type: "application/pdf" });
-  fireEvent.change(screen.getByLabelText("Replacement file"), {
-    target: { files: [file] },
-  });
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Save replacement" }),
-    ).toBeEnabled(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Save replacement" }));
-  await screen.findByText("409: refresh latest version");
-  expect(api.replaceAgreement).toHaveBeenCalledWith("doc", 2, file);
-  expect(screen.getByLabelText("Replacement file")).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Reload latest version" }),
-  );
-  await waitFor(() =>
-    expect(api.listAgreementVersions).toHaveBeenCalledTimes(2),
-  );
-});
-
-it("submits an additional document with the prebound client and kind", async () => {
-  render(
-    <MemoryRouter
-      initialEntries={["/agreements?client_id=a&kind=MSA&upload=1"]}
-    >
-      <AgreementsRegisterPage />
-    </MemoryRouter>,
-  );
-  const input = await screen.findByLabelText("Agreement file");
-  expect((screen.getByLabelText("Client") as HTMLSelectElement).value).toBe(
-    "a",
-  );
-  expect(
-    (screen.getByRole("radio", { name: "MSA" }) as HTMLInputElement).checked,
-  ).toBe(true);
-  expect(
-    (screen.getByRole("radio", { name: "NDA" }) as HTMLInputElement).checked,
-  ).toBe(false);
-  const file = new File(["msa"], "msa.pdf", { type: "application/pdf" });
-  fireEvent.change(input, { target: { files: [file] } });
-  const dialog = screen.getByRole("dialog");
-  const button = Array.from(dialog.querySelectorAll("button")).find(
-    (b) => b.textContent === "Upload",
-  )!;
-  fireEvent.click(button);
-  await waitFor(() =>
-    expect(api.uploadAgreement).toHaveBeenCalledWith("a", "MSA", file),
-  );
-});
-
-it("downloads the selected historical revision without replacing the root", async () => {
-  vi.mocked(api.listAgreementVersions).mockResolvedValue({
-    items: [
       {
         version_no: 1,
         filename: "old.pdf",
+        file_size: 2,
+        file_hash: null,
+        uploaded_by: "u-author",
         uploaded_by_name: "Original author",
-        uploaded_at: "2026-09-01",
+        uploaded_at: "2026-09-01T17:00:00Z",
       },
-    ] as api.AgreementFileVersion[],
+    ],
   });
-  vi.mocked(api.getAgreementVersionDownloadUrl).mockResolvedValue({
-    url: "https://example.test/old",
-    filename: "old.pdf",
-  });
+});
+
+afterEach(() => vi.restoreAllMocks());
+
+it("shows the version history of a document and downloads a historical version without replacing anything", async () => {
+  vi.spyOn(clientApi, "getAgreementVersionDownloadUrl").mockResolvedValue({ url: "https://example.test/old", filename: "old.pdf" });
+  const replace = vi.spyOn(clientApi, "replaceAgreement");
   const open = vi.spyOn(window, "open").mockImplementation(() => null);
-  render(
-    <MemoryRouter>
-      <AgreementsRegisterPage />
-    </MemoryRouter>,
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "History original.pdf" }),
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Download version 1" }),
-  );
-  await waitFor(() =>
-    expect(open).toHaveBeenCalledWith(
-      "https://example.test/old",
-      "_blank",
-      "noopener,noreferrer",
-    ),
-  );
-  expect(api.getAgreementVersionDownloadUrl).toHaveBeenCalledWith("doc", 1);
-  expect(api.replaceAgreement).not.toHaveBeenCalled();
-  open.mockRestore();
+  renderAgreements("/agreements?tab=documents");
+  fireEvent.click(await screen.findByRole("button", { name: "History of Lakeside Group MSA" }));
+  const drawer = await screen.findByRole("dialog", { name: "MSA document history" });
+  expect(await within(drawer).findByText("v2: revision.pdf")).toBeInTheDocument();
+  expect(within(drawer).getByText("v1: old.pdf")).toBeInTheDocument();
+  expect(within(drawer).getByText("Original author · Sep 1, 2026")).toBeInTheDocument();
+  fireEvent.click(within(drawer).getByRole("button", { name: "Download version 1" }));
+  await waitFor(() => expect(open).toHaveBeenCalledWith("https://example.test/old", "_blank", "noopener,noreferrer"));
+  expect(clientApi.getAgreementVersionDownloadUrl).toHaveBeenCalledWith(DOC_CLIENT.agreement_id, 1);
+  expect(replace).not.toHaveBeenCalled();
+});
+
+it("a failed history load says so inside the drawer", async () => {
+  vi.mocked(clientApi.listAgreementVersions).mockRejectedValue(new Error("History unavailable"));
+  renderAgreements("/agreements?tab=documents");
+  fireEvent.click(await screen.findByRole("button", { name: "History of Lakeside Group NDA" }));
+  const drawer = await screen.findByRole("dialog", { name: "NDA document history" });
+  expect(await within(drawer).findByRole("alert")).toHaveTextContent("History unavailable");
+});
+
+it("Replace goes through the upload dialog for that client and kind (a new version, never a raw file input)", async () => {
+  renderAgreements("/agreements?tab=documents");
+  fireEvent.click(await screen.findByRole("button", { name: "Replace Lakeside Group MSA" }));
+  const dialog = screen.getByRole("dialog", { name: "Upload dialog stand-in" });
+  expect(dialog).toHaveAttribute("data-mode", "client");
+  expect(dialog).toHaveAttribute("data-client", IDS.lakeside);
+  expect(dialog).toHaveAttribute("data-client-name", "Lakeside Group");
+  expect(dialog).toHaveAttribute("data-kind", "MSA");
+  expect(dialog).toHaveAttribute("data-lock-target", "true");
+  expect(screen.queryByLabelText("Replacement file")).toBeNull();
+});
+
+it("readers keep history and download; every write control stays visible, locked with the reason", async () => {
+  role = "sales";
+  renderAgreements("/agreements?tab=documents");
+  await screen.findByRole("table", { name: "Documents" });
+  for (const kind of ["MSA", "NDA"]) {
+    expect(screen.getByRole("button", { name: `History of Lakeside Group ${kind}` })).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: `Download Lakeside Group ${kind}` })).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: `Replace Lakeside Group ${kind}` })).toHaveAttribute("aria-disabled", "true");
+  }
+  expect(screen.getByRole("button", { name: /Upload document/ })).toHaveAttribute("data-locked", "writer");
+});
+
+it("never shows a raw id: no cleanup-receipt link with a job id, no client or agreement id", async () => {
+  renderAgreements("/agreements?tab=documents");
+  await screen.findByRole("table", { name: "Documents" });
+  expect(screen.queryByText(/Cleanup receipt/)).toBeNull();
+  expect(document.body.textContent ?? "").not.toMatch(UUID_RE);
 });

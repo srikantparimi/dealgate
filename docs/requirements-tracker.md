@@ -39,12 +39,14 @@ Status codes: `done` · `partial` · `blocked` · `pending`.
 | --- | --- | --- | --- |
 | S2-1 | opportunity→client FK + client upsert on HubSpot intake | services/clients.py, alembic 0002a | done |
 | S2-2 | Client page with legal entities + agreements + opportunities + activity | pages/ClientList.tsx, ClientDetail.tsx | done |
-| S2-3 | Agreements NDA/MSA CRUD + 10-state machine + S3 evidence upload | services/agreement_state.py, routers/agreements.py, integrations/s3_evidence.py | done |
+| S2-3 | Agreements NDA/MSA CRUD + 10-state machine + S3 evidence upload (states removed in S17; S24-AG1 replaced them with seven computed states, see note below) | services/agreement_state.py, routers/agreements.py, integrations/s3_evidence.py | done |
 | S2-4 | Rate cards + policy admin (Finance-only, immutable versions) | services/rate_cards.py, policy.py, routers/admin_rate_cards.py, admin_policy.py | done |
 | S2-5 | Tasks inbox + lifecycle + snooze + reassign | services/tasks.py, routers/tasks.py, pages/MyTasks.tsx | done |
 | S2-6 | Notification schema + settings + inbox + bell | services/notifications.py, ui/NotificationBell.tsx | done |
 | S2-7 | Alert scheduler (4 triggers) + SES sender + exponential backoff | worker/alert_scheduler.py, notification_sender.py, integrations/ses.py | done |
 | S2-8 | GM sandbox — M1 sign-off screen with §7 discounted case as HTTP evidence | routers/gm.py, services/gm_sandbox.py, pages/GMSandbox.tsx | **done + M1 evidence** |
+
+> S24-AG1 (Oct 2026): agreement status is computed, not stored — a relationship (Existing / Net new, judged at the cutover) and, per NDA and MSA, one of Client copy, Standard copy, Marked covered, Missing, Due at stage 2, Not needed now, Existing, none attached — by `services/agreement_status.py` for the NDA & MSA page (`routers/agreements_workspace.py`), the Pipeline and the Command Center. Standard copies are one stored object each (`services/agreement_standard.py`); every agreement event is read back from the audit log. Warn only.
 
 ## Sprint 3 — E5 SOW extract, E6 delivery model, E11 adviser
 

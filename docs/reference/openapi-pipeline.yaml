@@ -25,7 +25,7 @@ paths:
         - {name: q, in: query, schema: {type: string, maxLength: 120}, description: "Searches deal name, client name, deal owner name and next-action text."}
         - {name: sow, in: query, schema: {type: string}, description: "One SOW state value, or the literal pending (SOW in review or CEO exception)."}
         - {name: attention, in: query, schema: {type: string, enum: [overdue, past_close, no_owner, inactive, pending_approval, any]}}
-        - {name: missing, in: query, schema: {type: string, enum: [owner, close, activity, next_action, nda, msa, agreements]}}
+        - {name: missing, in: query, schema: {type: string, enum: [owner, close, activity, next_action, nda, msa, agreements]}, description: "S24-AG1: nda and msa mean the client's NDA or MSA state is missing (a net-new client past stage 1 without it, from the shared agreement service; an existing client, a standard copy or a covered mark is never missing). agreements means the client needs attention (either is missing). A deal with no client never matches. With include_unmatched_clients, the same state applies to clients without matching deals."}
         - {name: group, in: query, schema: {type: string}, description: "Tracking group id."}
         - {name: watching, in: query, schema: {type: boolean}}
         - {name: mine, in: query, schema: {type: boolean}, description: "Deals whose HubSpot owner is the caller's linked HubSpot owner. If the caller has no link the response says so in focus.mine_available."}
@@ -52,8 +52,11 @@ paths:
         Same query parameters as the workspace except page, page_size and layout. Streams text/csv, UTF-8 with BOM.
         Deals tab columns, in order: Opportunity, Client, Deal owner, Account owner, Business unit, HubSpot region,
         Sales stage, Amount, Currency, Close date, Created, Last activity, SOW state, NDA on file, MSA on file, Next action,
-        Next action due. Clients tab columns: Client, Account owner, Matching deals, Open deals, Matching value USD,
-        NDA on file, MSA on file, Last matching activity. Any cell that begins with = + - @ tab or carriage return is
+        Next action due, NDA status, MSA status. Clients tab columns: Client, Account owner, Matching deals, Open deals,
+        Matching value USD, NDA on file, MSA on file, Last matching activity, NDA status, MSA status. "On file" is Yes
+        only for a client copy or a standard copy; NDA status and MSA status (S24-AG1, appended) are the state labels
+        (Client copy, Standard copy, Marked covered, Missing, Due at stage 2, Not needed now, Existing, none attached),
+        blank for a deal with no client. Any cell that begins with = + - @ tab or carriage return is
         prefixed with an apostrophe. The same neutralisation applies to every other CSV export in the product.
       responses:
         "200": {description: CSV, content: {text/csv: {schema: {type: string}}}}
@@ -165,7 +168,7 @@ components:
         closing_this_month: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Open deals whose expected close date is in the current calendar month, including dates already passed."}
         overdue_next_actions: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Count of DEALS (not actions) with an open next action due before today. with_next_action is the denominator."}
         pending_approvals: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Count of DEALS whose SOW state is in review or CEO exception. The agent confirms this matches what the SOW board calls pending and reports any difference."}
-        agreement_gap_clients: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "Count of CLIENTS (of those with deals in the population) missing an NDA file or an MSA file. clients_total is the denominator; when no client anywhere has a file the UI says no agreement files have been uploaded yet."}
+        agreement_gap_clients: {allOf: [{$ref: "#/components/schemas/Metric"}], description: "S24-AG1 B10: count of CLIENTS with a deal in the population (every status) that need attention: net new, past stage 1, NDA or MSA missing, from the shared agreement service (docs/reference/openapi-agreements.yaml). drill is {tab: clients, status: all, missing: agreements, include_unmatched_clients: false}. In the default view it equals the Agreements page's Needs-attention card, except a net-new client required only by an SOW or engagement created after the cutover and with no HubSpot deal (the Pipeline lists deals). clients_total is the same client list without the missing filter (not shown); any_agreement_files is kept for compatibility and no longer drives any copy."}
     Metric:
       type: object
       required: [value, drill]
@@ -213,7 +216,7 @@ components:
         last_activity_date: {type: string, format: date, nullable: true}
         sow_state: {type: string, description: "One of the real SOW states the code derives (nine today). The PL2 report lists them and how each is labelled. Scope & GM is not one of them."}
         sow_count: {type: integer, description: "Number of SOWs linked to the deal. sow_state is that of the most recently updated one."}
-        agreements: {type: object, properties: {nda_on_file: {type: boolean}, msa_on_file: {type: boolean}}}
+        agreements: {$ref: "#/components/schemas/Agreements"}
         next_action: {type: object, nullable: true, properties: {text: {type: string}, due_on: {type: string, format: date, nullable: true}}}
         flags: {type: array, items: {type: string, enum: [action_overdue, close_passed, no_owner, inactive_14d]}, description: "inactive_14d only when a last-activity date exists and the deal is open. no_owner only for open deals."}
         watching: {type: boolean}
@@ -229,8 +232,25 @@ components:
         matching_value_usd: {type: number, nullable: true}
         earliest_close_date: {type: string, format: date, nullable: true}
         last_activity_date: {type: string, format: date, nullable: true}
-        agreements: {type: object, properties: {nda_on_file: {type: boolean}, msa_on_file: {type: boolean}}}
+        agreements: {$ref: "#/components/schemas/Agreements"}
         flags: {type: array, items: {type: string, enum: [no_owner, action_overdue, close_passed]}, description: "Computed from the client's matching open deals only. A client with no open deals is never flagged."}
+    Agreements:
+      type: object
+      description: >-
+        The client's NDA and MSA (S24-AG1 B10). Every deal of a client carries the client's values. States come from
+        the one shared agreement service, the same as the Agreements page and the Command Center.
+      required: [nda_on_file, msa_on_file, nda_state, msa_state]
+      properties:
+        nda_on_file: {type: boolean, description: "True only when the client holds a client copy or a standard copy (a covered mark holds no file)."}
+        msa_on_file: {type: boolean, description: "True only when the client holds a client copy or a standard copy (a covered mark holds no file)."}
+        nda_state: {allOf: [{$ref: "#/components/schemas/DocState"}], nullable: true, description: "Null for a deal with no client."}
+        msa_state: {allOf: [{$ref: "#/components/schemas/DocState"}], nullable: true, description: "Null for a deal with no client."}
+    DocState:
+      type: string
+      enum: [client, standard, covered, missing, due_later, not_needed, existing_none]
+      description: >-
+        As docs/reference/openapi-agreements.yaml components.DocState. The page labels them Client copy, Standard copy,
+        Marked covered, Missing, Due at stage 2, Not needed now and Existing · none attached.
     SavedView:
       type: object
       properties:

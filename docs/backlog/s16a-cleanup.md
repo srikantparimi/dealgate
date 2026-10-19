@@ -17,6 +17,9 @@ this phase ships, receives product-owner click-through, and merges.
    and MSA produce idempotent obtain-agreement tasks for its account owner.
    Replaying intake creates no duplicate tasks. Executing an agreement completes
    its gap task. Coverage never blocks functional review, but blocks signature.
+   (Superseded: S17 removed the signature block and S24-AG1 confirms warn-only. A net-new client past
+   stage 1 without an NDA or MSA is flagged on the NDA & MSA page, the Pipeline, the Command Center and
+   the client panel; nothing blocks.)
 4. Given a released SOW, Projects shows its client/project, frozen staffing
    resources and server-computed approved versus latest forecast GM. Drafts and
    unsigned SOWs are absent. No actuals-import/reconciliation controls appear;

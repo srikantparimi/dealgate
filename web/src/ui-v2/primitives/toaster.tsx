@@ -21,6 +21,8 @@ interface ToastItem {
   description?: ReactNode;
   variant?: "default" | "success" | "warning" | "destructive";
   durationMs?: number;
+  /** When it opened: a dialog opened before it hands Escape back to itself (escapeAboveToasts). */
+  openedAt?: number;
 }
 
 interface ToastContextValue {
@@ -44,7 +46,7 @@ export function Toaster({ children }: { children: ReactNode }) {
 
   const toast = useCallback((t: Omit<ToastItem, "id">) => {
     const id = crypto.randomUUID();
-    setItems((prev) => [...prev, { ...t, id }]);
+    setItems((prev) => [...prev, { ...t, id, openedAt: Date.now() }]);
     return id;
   }, []);
 
@@ -57,6 +59,8 @@ export function Toaster({ children }: { children: ReactNode }) {
         {items.map((item) => (
           <Toast
             key={item.id}
+            data-dg-toast=""
+            data-dg-toast-at={item.openedAt}
             variant={item.variant}
             duration={item.durationMs ?? 5000}
             onOpenChange={(open) => {

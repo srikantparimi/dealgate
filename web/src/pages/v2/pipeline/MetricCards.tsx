@@ -1,6 +1,8 @@
 // S23-PL2 F4 / B7 · six metric cards. Every number is computed on the server
 // over the current filters; a click adds the card's `drill` to the current
 // filters (applyDrill), so the list it opens has exactly the card's number.
+// S24-AG1 F6: "Agreement gaps" counts the clients that need attention on the
+// NDA & MSA page (net new, past stage 1, NDA or MSA missing), with that page's note.
 import type { MetricDrill, WorkspaceMetrics } from "../../../api/pipelineWorkspace";
 import { plural, shortMoney } from "./format";
 
@@ -13,9 +15,11 @@ interface Card {
   accent?: boolean;
 }
 
+/** The gap card's note: the prototype's definition, the same words as the NDA & MSA page's card. */
+export const AGREEMENT_GAP_NOTE = "Net new, past stage 1, NDA or MSA missing";
+
 function cards(m: WorkspaceMetrics): Card[] {
   const gaps = m.agreement_gap_clients;
-  const clients = `${gaps.clients_total} ${plural(gaps.clients_total, "client", "clients")}`;
   return [
     {
       key: "open_deals",
@@ -61,10 +65,7 @@ function cards(m: WorkspaceMetrics): Card[] {
       key: "agreement_gap_clients",
       label: "Agreement gaps",
       value: String(gaps.value),
-      note:
-        gaps.value > 0 && !gaps.any_agreement_files
-          ? `of ${clients} · no agreement files uploaded yet`
-          : `of ${clients} missing an NDA or MSA`,
+      note: AGREEMENT_GAP_NOTE,
       drill: gaps.drill,
     },
   ];

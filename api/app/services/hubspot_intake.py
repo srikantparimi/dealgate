@@ -364,6 +364,19 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         return None
 
 
+MSA_TYPE_MAX = 200  # opportunity.hubspot_msa_type is String(200)
+
+
+def _parse_msa_type(raw: Any) -> str | None:
+    """S24-AG1 B9: the deal's raw ``msa_type`` as stored — trimmed, None when blank,
+    at most 200 characters (a longer value would refuse the whole deal on Postgres)."""
+
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    return value[:MSA_TYPE_MAX] or None
+
+
 def _dedup_company_ids(deal_payload: dict[str, Any]) -> list[str]:
     """S19 G3: HubSpot lists each company association twice (labeled +
     unlabeled). Return ordered unique company ids preserving the labeled
@@ -479,6 +492,7 @@ async def _upsert_opportunity(
     hubspot_created_at = _parse_timestamp(props.get("createdate"))
     hubspot_last_modified_at = _parse_timestamp(props.get("hs_lastmodifieddate"))
     hubspot_last_activity_at = _parse_timestamp(props.get("notes_last_updated"))
+    msa_type = _parse_msa_type(props.get("msa_type"))
     secondary_ids = list(secondary_client_ids or [])
 
     result = await session.execute(
@@ -520,6 +534,7 @@ async def _upsert_opportunity(
             hubspot_last_modified_at=hubspot_last_modified_at,
             primary_client_id=client_row.id,
             hubspot_secondary_client_ids=secondary_ids or None,
+            hubspot_msa_type=msa_type,
         )
         session.add(opp)
         _observe_source(opp, props, business_unit, "deal", seen_at)
@@ -550,6 +565,7 @@ async def _upsert_opportunity(
                 "currency": currency,
                 "primary_client_id": str(client_row.id),
                 "secondary_client_ids": secondary_ids or [],
+                "hubspot_msa_type": msa_type,
                 **_source_snapshot(opp),
             },
             correlation_id=correlation_id,
@@ -570,6 +586,7 @@ async def _upsert_opportunity(
         "is_closed_lost": opp.is_closed_lost,
         "currency": opp.currency,
         "primary_client_id": str(opp.primary_client_id) if opp.primary_client_id else None,
+        "hubspot_msa_type": opp.hubspot_msa_type,
     }
     changed = False
     _observe_source(opp, props, business_unit, "deal", seen_at)
@@ -618,6 +635,10 @@ async def _upsert_opportunity(
         changed = True
     if "deal_currency_code" in props and opp.currency != currency:
         opp.currency = currency
+        changed = True
+    # S24-AG1 B9: stored raw; recorded in this same opportunity.updated row (never a second one).
+    if "msa_type" in props and opp.hubspot_msa_type != msa_type:
+        opp.hubspot_msa_type = msa_type
         changed = True
     if "createdate" in props and opp.hubspot_created_at != hubspot_created_at:
         opp.hubspot_created_at = hubspot_created_at
@@ -668,6 +689,7 @@ async def _upsert_opportunity(
                 "is_closed_lost": opp.is_closed_lost,
                 "currency": opp.currency,
                 "primary_client_id": str(opp.primary_client_id) if opp.primary_client_id else None,
+                "hubspot_msa_type": opp.hubspot_msa_type,
             },
             correlation_id=correlation_id,
         )

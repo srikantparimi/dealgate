@@ -188,7 +188,7 @@ function DealPreviewBody({
           <SowTag deal={deal} tone="progress" />
         </p>
         <p className="text-secondary text-text-secondary">
-          NDA and MSA show whether a file is on file. The SOW state is separate from the HubSpot sales stage.
+          NDA and MSA show the client's state: Client copy, Standard copy, Marked covered, Missing or Due at stage 2. A warning only; nothing is blocked. The SOW state is separate from the HubSpot sales stage.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button asChild>

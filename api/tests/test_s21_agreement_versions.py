@@ -8,11 +8,11 @@ from app.integrations.s3_evidence import StubS3, get_evidence_s3
 from app.models.audit import AuditEvent
 from app.models.client import Agreement, AgreementFileVersion, Client
 from app.models.deletion import DeletionJob
-from tests.test_signed_sow import app_with_session, _client, _seed_user, _local_env
+from tests.test_signed_sow import app_with_session, _client, _seed_user, _local_env  # noqa: F401 (fixtures)
 
 
 @pytest.mark.asyncio
-async def test_replacement_is_versioned_and_stale_writes_do_not_store(app_with_session, session, monkeypatch):
+async def test_replacement_is_versioned_and_stale_writes_do_not_store(app_with_session, session, monkeypatch):  # noqa: F811
     monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Legal")
     legal = await _seed_user(session, "agreement-versions@example.test", ["Legal"])
     account = Client(name="Synthetic versioned documents")
@@ -21,7 +21,8 @@ async def test_replacement_is_versioned_and_stale_writes_do_not_store(app_with_s
     storage = StubS3()
     monkeypatch.setitem(app_with_session.dependency_overrides, get_evidence_s3, lambda: storage)
     headers = {"X-Test-User": legal.email}
-    first, second = b"%PDF synthetic NDA revision one", b"%PDF synthetic NDA revision two"
+    # S24-AG1 B5: the first bytes must be %PDF- (a header check, not the browser's content type).
+    first, second = b"%PDF-1.4 synthetic NDA revision one", b"%PDF-1.4 synthetic NDA revision two"
     async with _client(app_with_session) as client:
         response = await client.post("/agreements", headers=headers,
             data={"client_id": str(account.id), "kind": "NDA"},
@@ -49,7 +50,7 @@ async def test_replacement_is_versioned_and_stale_writes_do_not_store(app_with_s
         assert previous.json()["filename"] == "nda-v1.pdf"
         stored = dict(storage.objects)
         stale = await client.post(f"/agreements/{identity}/replace", headers=headers,
-            data={"expected_version": "1"}, files={"file": ("stale.pdf", b"%PDF stale", "application/pdf")})
+            data={"expected_version": "1"}, files={"file": ("stale.pdf", b"%PDF-1.4 stale", "application/pdf")})
         assert stale.status_code == 409, stale.text
         assert storage.objects == stored
         listed = await client.get(f"/agreements?client_id={account.id}", headers=headers)
@@ -64,7 +65,7 @@ async def test_replacement_is_versioned_and_stale_writes_do_not_store(app_with_s
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["document", "client"])
-async def test_delete_queues_every_revision_after_database_removal(app_with_session, session, monkeypatch, mode):
+async def test_delete_queues_every_revision_after_database_removal(app_with_session, session, monkeypatch, mode):  # noqa: F811
     from app.services.parent_deletion import request_client_deletion
     monkeypatch.setenv("DEALGATE_TEST_GROUPS", "Legal")
     monkeypatch.setenv("DEALGATE_TENANT_ID", "agreement-delete-test")
@@ -82,11 +83,11 @@ async def test_delete_queues_every_revision_after_database_removal(app_with_sess
     async with _client(app_with_session) as client:
         first = await client.post("/agreements", headers=headers,
             data={"client_id": str(account.id), "kind": "NDA"},
-            files={"file": ("nda.pdf", b"%PDF one", "application/pdf")})
+            files={"file": ("nda.pdf", b"%PDF-1.4 one", "application/pdf")})
         assert first.status_code == 201, first.text
         identity = first.json()["id"]
         replacement = await client.post(f"/agreements/{identity}/replace", headers=headers,
-            data={"expected_version": "1"}, files={"file": ("nda.pdf", b"%PDF two", "application/pdf")})
+            data={"expected_version": "1"}, files={"file": ("nda.pdf", b"%PDF-1.4 two", "application/pdf")})
         assert replacement.status_code == 200, replacement.text
         keys = set(storage.objects)
         assert len(keys) == 2

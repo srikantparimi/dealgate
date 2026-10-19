@@ -3,6 +3,10 @@
  * project block, "+ New client…", and "Create engagement from deal" for a
  * Closed-Won HubSpot deal (pre-filled from the deal, via ?deal=<opportunity id>
  * or the picker). Pick the type first — it decides which money field applies.
+ *
+ * S24-AG1 F11: when "+ New client…" really creates a client (the API's `created`
+ * flag; a name that matches an existing client is not new), the engagement page
+ * offers "Add the NDA and MSA now (optional)" for it.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +24,7 @@ import {
   importWorkbook,
   listClientOptions,
   missingFrom,
+  rememberAgreementsOffer,
   rememberImportNote,
   type BusinessUnit,
   type ClientOption,
@@ -120,6 +125,9 @@ export function NewEngagementPage() {
   const [sheetMessage, setSheetMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
+  // S24-AG1 F11: the client this page created (kept across a failed engagement call, so a retry
+  // reuses it instead of posting it again, and the offer still knows it is new).
+  const newClient = useRef<{ id: string; name: string; created: boolean } | null>(null);
 
   async function uploadSheet(file: File | undefined) {
     if (!file) return;
@@ -191,6 +199,11 @@ export function NewEngagementPage() {
       if (clientId === NEW_CLIENT) {
         const created = await createClient(form.new_client.trim());
         clientId = created.id;
+        newClient.current = { id: created.id, name: created.name, created: created.created === true };
+        setClients((prev) =>
+          prev.some((c) => c.id === created.id) ? prev : [...prev, { id: created.id, name: created.name, source: created.source }],
+        );
+        setForm((prev) => ({ ...prev, client_id: created.id, new_client: "" }));
       }
       const engagement = await createEngagement({
         client_id: clientId,
@@ -210,6 +223,10 @@ export function NewEngagementPage() {
         sales_owner: form.sales_owner.trim() || null,
         delivery_owner: form.delivery_owner.trim() || null,
       });
+      const made = newClient.current;
+      if (made && made.created && made.id === clientId) {
+        rememberAgreementsOffer(engagement.id, { client_id: made.id, client_name: made.name, uploaded: [] });
+      }
       navigate(`/engagements/${engagement.id}/allocations`);
     } catch (cause) {
       const missing = missingFrom(cause);

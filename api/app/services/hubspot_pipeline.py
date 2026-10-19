@@ -2138,10 +2138,10 @@ async def summary(
 ) -> PipelineSummary:
     """Aggregate summary across every authorized matching record.
 
-    Query budget: 3 executes — (1) open counts + values per currency
-    across all matching opps; (2) pending approvals + overdue action
-    counters; (3) agreement gaps (clients with open deals lacking NDA
-    or MSA).
+    Query budget: (1) open counts + values per currency across all
+    matching opps; (2) pending approvals + overdue action counters;
+    then the shared agreement population for the Needs-attention count
+    (``agreement_pipeline.attention_clients``, S24-AG1 B2).
     """
 
     filters = filters or PipelineFilters()
@@ -2273,38 +2273,16 @@ async def summary(
     ceo_pending = int(combined_rows[2][0]) if len(combined_rows) > 2 else 0
     agreements_uploaded = int(combined_rows[3][0]) if len(combined_rows) > 3 else 0
 
-    # Q3 — agreement gaps. A client with at least one open deal AND no
-    # NDA OR no MSA file counts as one gap.
-    open_client_ids_subq = (
-        select(Opportunity.client_id)
-        .join(Client, Client.id == Opportunity.client_id, isouter=True)
-        .where(*open_conditions)
-        .where(Opportunity.client_id.is_not(None))
-        .distinct()
-        .subquery()
-    )
-    agreements_present_subq = (
-        select(Agreement.client_id, Agreement.kind)
-        .where(Agreement.client_id.in_(select(open_client_ids_subq.c.client_id)))
-        .subquery()
-    )
-    gap_stmt = select(
-        open_client_ids_subq.c.client_id,
-        func.max(case((agreements_present_subq.c.kind == "NDA", 1), else_=0)).label("has_nda"),
-        func.max(case((agreements_present_subq.c.kind == "MSA", 1), else_=0)).label("has_msa"),
-    ).select_from(
-        open_client_ids_subq.outerjoin(
-            agreements_present_subq,
-            agreements_present_subq.c.client_id == open_client_ids_subq.c.client_id,
-        )
-    ).group_by(open_client_ids_subq.c.client_id)
-    gap_rows = (await session.execute(gap_stmt)).all()
-    agreement_gaps = sum(1 for _cid, has_nda, has_msa in gap_rows if not has_nda or not has_msa)
+    # Q3 — agreement gaps (S24-AG1 B2, bug #79): the shared Needs-attention count (net new, past stage 1, NDA or
+    # MSA missing) over every client the caller may see. It is the Agreements page's card, the Pipeline
+    # workspace's gap card and the Command Center tile; this endpoint keeps no definition of its own.
+    from app.services.agreement_pipeline import attention_clients
+
+    agreement_gaps = await attention_clients(session, filters, now=now)
 
     # S20 W4 Session 6 · command-center card scalars are already
     # populated above as part of the Q2 UNION ALL (overdue + pending +
-    # ceo_pending + agreements_uploaded). This keeps the execute budget
-    # at 3 (Q1 currency + Q2 UNION of 4 counts + Q3 agreement gaps).
+    # ceo_pending + agreements_uploaded).
 
     return PipelineSummary(
         open_count=open_count,

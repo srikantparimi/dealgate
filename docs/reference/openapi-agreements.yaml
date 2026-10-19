@@ -1,0 +1,677 @@
+openapi: 3.0.3
+info:
+  title: DealGate NDA and MSA (Agreements)
+  version: "1.0"
+  description: >-
+    Target shape for the redesigned Agreements page (S24-AG1). Where a route already exists, extend it and keep its
+    name; where this file names a new route, use that name. Report every difference between this file and what you
+    built in the AG1 report. Dates are calendar dates (YYYY-MM-DD) in America/Los_Angeles. Every state, count and
+    list below is computed by ONE shared service (agreement_status) that the Agreements page, the Pipeline, the
+    Command Center and the client panel all call, so a card and the list it opens always agree.
+    Writer roles: Legal and SystemAdmin upload, replace, detach, mark and change relationship. SystemAdmin only:
+    batches (run and undo), HubSpot mapping (save and apply). Every role can view and download.
+    Nothing in this file blocks any workflow: a missing agreement only produces a warning and a flag.
+paths:
+  /api/agreements/workspace:
+    get:
+      summary: Everything the Agreements page needs in one request
+      description: >-
+        Returns the cutover line, the six cards, the two standard documents and the client rows. The cards are
+        computed over ALL clients and ignore the filters; the rows follow the filters. Each card carries a drill:
+        applying it to the filters returns a list whose length equals the card value.
+      parameters:
+        - {name: relationship, in: query, schema: {type: string, enum: [all, existing, net_new], default: all}}
+        - {name: status, in: query, schema: {type: string, enum: [any, attention, missing_nda, missing_msa, has_standard, has_client, marked_covered, possible_duplicate], default: any}}
+        - {name: stage, in: query, schema: {type: string, enum: [any, past_stage_1, stage_1_only, no_active_deal], default: any}, description: "Furthest open stage. Hold counts as open. past_stage_1 means stage 2 to 6."}
+        - {name: bu, in: query, style: form, explode: true, schema: {type: array, items: {type: string, enum: [ST21, IT Avalon, Retro Rabbit]}}}
+        - {name: q, in: query, schema: {type: string, maxLength: 120}, description: "Client name."}
+        - {name: sort, in: query, schema: {type: string, enum: [attention, name, stage], default: attention}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, enum: [25, 50, 100], default: 25}, description: "Any other value returns 422 naming the allowed sizes."}
+      responses:
+        "200":
+          description: The workspace
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgreementsWorkspace"}
+        "422": {description: Invalid filter value}
+  /api/agreements/export:
+    get:
+      summary: CSV of the entire filtered client view, every row
+      description: >-
+        Same filters as the workspace except page and page_size. UTF-8 with BOM. Columns, in order: Client, Business
+        unit, Relationship, Relationship basis, Furthest open stage, NDA, MSA, Needs attention, Possible duplicate.
+        Business unit is written with its region ("IT Avalon · US"). Any cell that begins with = + - @ tab or carriage
+        return is prefixed with an apostrophe. The export is recorded in the audit log.
+      responses:
+        "200": {description: CSV, content: {text/csv: {schema: {type: string}}}}
+  /api/agreements/documents:
+    get:
+      summary: One row per stored document (the old register, extended)
+      description: >-
+        Replaces the old unpaginated GET /agreements list for the Documents tab; keep GET /agreements for existing
+        callers and add source, standard_version and batch to its items. Search covers client name, kind, file name and
+        uploader.
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 120}}
+        - {name: kind, in: query, schema: {type: string, enum: [NDA, MSA]}}
+        - {name: source, in: query, schema: {type: string, enum: [client, standard]}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, enum: [25, 50, 100], default: 25}}
+      responses:
+        "200":
+          description: Documents
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, items]
+                properties:
+                  total: {type: integer}
+                  items: {type: array, items: {$ref: "#/components/schemas/DocumentRow"}}
+  /api/agreements/activity:
+    get:
+      summary: Agreement events from the audit log (uploads, attaches, marks, relationship changes, batches, undo, downloads, exports)
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 120}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, enum: [25, 50, 100], default: 25}}
+      responses:
+        "200":
+          description: Events, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, items]
+                properties:
+                  total: {type: integer}
+                  items: {type: array, items: {$ref: "#/components/schemas/ActivityRow"}}
+  /api/agreements/standard:
+    get:
+      summary: Current standard NDA and MSA with how many clients hold each
+      responses:
+        "200":
+          description: Both kinds. A kind never uploaded is null.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StandardDocuments"}
+  /api/agreements/standard/{kind}:
+    parameters:
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [NDA, MSA]}}
+    post:
+      summary: Upload a standard copy (creates the next version)
+      description: >-
+        Legal or SystemAdmin. Same file rules as every agreement upload (see components.FileRules). The object is stored
+        under agreements/standard/{kind}/. A new version never changes copies already attached to clients.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "201":
+          description: The new current version
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StandardVersion"}
+        "403": {description: Not a writer role}
+        "413": {description: Larger than 25 MiB}
+        "415": {description: Not a PDF or DOCX by extension or by content}
+        "422": {description: Empty file or unreadable}
+  /api/agreements/standard/{kind}/download:
+    parameters:
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [NDA, MSA]}}
+    get:
+      summary: Presigned download of the current standard copy (300 seconds). Recorded in the audit log.
+      responses:
+        "200":
+          description: Link
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DownloadLink"}
+        "404": {description: No standard copy of this kind yet}
+  /api/clients/{client_id}/agreements:
+    parameters:
+      - {name: client_id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      summary: Everything the client panel needs (shared by the Agreements page and the Pipeline client panel)
+      responses:
+        "200":
+          description: Relationship, requirement, both document cards and the HubSpot hint
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientAgreements"}
+        "404": {description: Unknown client}
+  /api/clients/{client_id}/agreements/{kind}/client-copy:
+    parameters:
+      - {name: client_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [NDA, MSA]}}
+    post:
+      summary: Upload this client's own copy (a first copy, a new version, or a replacement for the standard copy)
+      description: >-
+        Thin wrapper over the existing POST /agreements and POST /agreements/{id}/replace, which stay and gain the same
+        rules. First upload creates the agreement; a later upload adds a version and keeps the earlier file in history.
+        If the client held a standard copy or a "covered" mark for this kind, the client copy takes its place and the
+        earlier state is kept in history. Uploader is the calling user.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                note: {type: string, maxLength: 200, description: "Optional note about this version, for example updated payment terms. Shown on the card and in history."}
+      responses:
+        "201":
+          description: The kind's card for this client
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DocCard"}
+        "403": {description: Not a writer role}
+        "413": {description: Larger than 25 MiB}
+        "415": {description: Not a PDF or DOCX by extension or by content}
+        "422": {description: Empty file or unreadable}
+  /api/clients/{client_id}/agreements/{kind}/attach-standard:
+    parameters:
+      - {name: client_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [NDA, MSA]}}
+    post:
+      summary: Attach the current standard copy to one client
+      description: Creates an agreement row of source standard that points at the same stored object. No file is copied. 409 if the client already holds this kind (a file or a mark).
+      responses:
+        "201":
+          description: The kind's card
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DocCard"}
+        "404": {description: No standard copy of this kind yet}
+        "409": {description: The client already has this kind}
+  /api/clients/{client_id}/agreements/{kind}/mark:
+    parameters:
+      - {name: client_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [NDA, MSA]}}
+    put:
+      summary: Mark this kind covered with no file
+      description: >-
+        For a document that is in place but not attachable here. Records who, when it was signed or confirmed, why, and an
+        optional note. marked_on cannot be in the future (422). Replaces an earlier mark of the same kind; refuses (409)
+        when the client holds a file of this kind (detach it first).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MarkRequest"}
+      responses:
+        "200":
+          description: The kind's card
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DocCard"}
+        "409": {description: The client holds a file of this kind}
+        "422": {description: Invalid reason or date}
+    delete:
+      summary: "Remove the mark (soft: kept in history)"
+      responses:
+        "200":
+          description: The kind's card after removal
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DocCard"}
+        "404": {description: No mark}
+  /api/clients/{client_id}/agreements/{kind}:
+    parameters:
+      - {name: client_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [NDA, MSA]}}
+    delete:
+      summary: Detach this kind's file from the client
+      description: >-
+        For a client copy this follows the existing deletion-job path. For a standard attachment it removes only the
+        client's row; the shared stored object stays because other rows use it (existing deletion_storage.py rule).
+        Recorded in the audit log.
+      responses:
+        "202": {description: "Accepted. A client copy starts a deletion job."}
+        "200": {description: "Detached. This was a standard attachment."}
+        "404": {description: Nothing attached}
+  /api/clients/{client_id}/agreements/{kind}/download:
+    parameters:
+      - {name: client_id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [NDA, MSA]}}
+    get:
+      summary: Presigned download (300 seconds), recorded in the audit log with who and which client
+      description: The existing GET /agreements/{id}/download keeps working and gains the same audit row.
+      responses:
+        "200":
+          description: Link
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DownloadLink"}
+        "404": {description: No file for this kind}
+  /api/clients/{client_id}/relationship:
+    parameters:
+      - {name: client_id, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      summary: Set a client's relationship by hand (Legal or SystemAdmin)
+      description: >-
+        existing or net_new. Sets relationship_basis to manual and records who and when. Does not attach anything. Used
+        to correct duplicates and test records and for clients the rule cannot see. Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [relationship]
+              properties:
+                relationship: {type: string, enum: [existing, net_new]}
+                note: {type: string, maxLength: 200}
+      responses:
+        "200":
+          description: The client's agreements
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientAgreements"}
+  /api/agreements/batches:
+    post:
+      summary: Attach the standard copies to existing clients, and optionally pipeline clients past stage 1, in one step (dry run by default)
+      description: >-
+        SystemAdmin only. dry_run defaults to true and changes nothing: it returns the targets and the exclusions with
+        reasons. Existing clients are targets; net-new clients with requirement required are targets when include_net_new_past_stage_1 is true. With dry_run=false it starts a background job and returns 202 at once with the batch id; the browser polls
+        GET /api/agreements/batches/{id}. The job commits in groups of 25 clients (the audit log serialises writes on one
+        lock, so a single long transaction would stall every other writer). It is idempotent per (client, kind): a client
+        that already holds the kind (file or mark) is skipped and counted. The first non-dry run also sets the cutover date
+        (see components.Cutover) and stamps every client's relationship. A repeated idempotency_key returns the original
+        batch. confirm must equal "ATTACH " followed by the number of target clients, exactly, or the request is refused
+        with 422.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BatchRequest"}
+      responses:
+        "200":
+          description: Dry run result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BatchPreview"}
+        "202":
+          description: Job started
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Batch"}
+        "403": {description: Not SystemAdmin}
+        "409": {description: A batch is already running}
+        "422": {description: "A chosen kind has no standard copy, confirm phrase wrong, or an unknown client id"}
+    get:
+      summary: List batches, newest first
+      responses:
+        "200":
+          description: Batches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: "#/components/schemas/Batch"}}
+  /api/agreements/batches/{batch_id}:
+    parameters:
+      - {name: batch_id, in: path, required: true, schema: {type: string}}
+    get:
+      summary: Progress and result of one batch
+      responses:
+        "200":
+          description: Batch
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Batch"}
+        "404": {description: Unknown batch}
+  /api/agreements/batches/{batch_id}/undo:
+    parameters:
+      - {name: batch_id, in: path, required: true, schema: {type: string}}
+    post:
+      summary: Remove exactly what this batch attached
+      description: >-
+        SystemAdmin only. Detaches only agreement rows whose batch_id is this batch and whose source is still standard.
+        A client that has since received a client copy or a mark is untouched. The standard files, the cutover date and
+        every relationship stay. Runs as a job like the batch. Audited with the count.
+      responses:
+        "202":
+          description: Undo started
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Batch"}
+        "409": {description: Already undone}
+  /api/agreements/hubspot-values:
+    get:
+      summary: Distinct msa_type values found on synced HubSpot deals, with client counts and the saved mapping
+      description: Empty items with stored=false until the sync has started storing the property.
+      responses:
+        "200":
+          description: Values
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HubspotValues"}
+  /api/agreements/hubspot-mapping:
+    put:
+      summary: Save which msa_type values mean the MSA is covered (SystemAdmin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [value, action]
+                    properties:
+                      value: {type: string, maxLength: 200}
+                      action: {type: string, enum: [covered, ignore]}
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HubspotValues"}
+  /api/agreements/hubspot-mapping/apply:
+    post:
+      summary: Mark the MSA covered for clients whose msa_type value is mapped to covered (SystemAdmin, dry run by default)
+      description: >-
+        Fills only clients that hold nothing for the MSA (no file, no mark). Never changes a client that has a record, so
+        DealGate's own record always wins. Each mark carries source hubspot, the value found, and credits the admin who last
+        saved the mapping. The nightly sync runs the same apply after each successful sync, only for mapped values.
+        Marks stay if HubSpot is switched off later.
+      parameters:
+        - {name: dry_run, in: query, schema: {type: boolean, default: true}}
+      responses:
+        "200":
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dry_run, would_mark, marked]
+                properties:
+                  dry_run: {type: boolean}
+                  would_mark: {type: integer}
+                  marked: {type: integer, description: "0 on a dry run"}
+components:
+  schemas:
+    FileRules:
+      description: >-
+        Documentation schema, not returned by any route. Every agreement upload (standard, client, replace) enforces: PDF
+        or DOCX; at most 25 MiB; not empty; the first bytes match the extension (%PDF- for pdf, PK 03 04 for docx), because
+        the browser-supplied content type is not trusted; the stored name is sanitised to letters, digits, dot, dash,
+        underscore and space, at most 80 characters before the extension, with exactly one extension (no .pdf.pdf); the
+        original name is kept for display only and always rendered escaped; the object is written before the database row
+        and removed again if the row cannot be committed.
+      type: object
+    Cutover:
+      description: >-
+        Documentation schema. The cutover date is the America/Los_Angeles calendar date of the first non-dry batch (stored
+        once, never moved). A client is existing if, at that moment, it has a Closed Won deal with a close date on or before
+        it, or an SOW or engagement created on or before it, or an admin set it so. Clients created afterwards start
+        net_new, except that at creation a client whose HubSpot company already has a Closed Won deal dated on or before
+        the cutover starts existing. A later Closed Won deal or SOW never turns a net_new client into existing, so a new
+        client's first win keeps its warning until its own client copy is attached or it is marked covered.
+      type: object
+    Relationship:
+      type: string
+      enum: [existing, net_new]
+    RelationshipBasis:
+      type: string
+      enum: [closed_won, sow_engagement, closed_won_and_sow, manual, none]
+      description: "none for net_new clients created by the rule."
+    DocState:
+      type: string
+      enum: [client, standard, covered, missing, due_later, not_needed, existing_none]
+      description: >-
+        client: the client's own file (a client copy, or a version updated for that client). standard: a standard copy attached. covered: marked, no file. missing: net_new, past
+        stage 1 (or won), nothing held. due_later: net_new with open deals only in stage 1. not_needed: net_new with no open
+        deal and no win. existing_none: existing client with nothing attached.
+    Requirement:
+      type: string
+      enum: [required, later, none]
+      description: >-
+        net_new only. required: an open or on-hold deal at stage 2 to 6, or a Closed Won deal, or an SOW or engagement
+        created after the cutover. later: open deals exist and all are stage 1. none: otherwise. Existing clients are none.
+    BusinessUnit:
+      type: object
+      required: [name, region]
+      properties:
+        name: {type: string, enum: [ST21, IT Avalon, Retro Rabbit]}
+        region: {type: string, enum: [US, South Africa]}
+    Card:
+      type: object
+      required: [key, label, value, note, drill]
+      properties:
+        key: {type: string, enum: [clients, existing, net_new, needs_attention, standard_attached, client_copies]}
+        label: {type: string}
+        value: {type: integer}
+        note: {type: string}
+        drill: {type: object, additionalProperties: true, description: "Query parameters for /api/agreements/workspace that return exactly value clients."}
+    AgreementsWorkspace:
+      type: object
+      required: [cutover, cards, standard, total, items]
+      properties:
+        cutover:
+          type: object
+          required: [set]
+          properties:
+            set: {type: boolean}
+            date: {type: string, format: date, nullable: true}
+            latest_batch: {allOf: [{$ref: "#/components/schemas/Batch"}], nullable: true}
+        cards:
+          type: array
+          description: Exactly six, in the order of the Card.key enum.
+          items: {$ref: "#/components/schemas/Card"}
+        standard: {$ref: "#/components/schemas/StandardDocuments"}
+        total: {type: integer, description: "Clients matching the filters, across all pages."}
+        items: {type: array, items: {$ref: "#/components/schemas/ClientRow"}}
+    ClientRow:
+      type: object
+      required: [client_id, name, relationship, relationship_basis, requirement, nda, msa, needs_attention, furthest_open_stage, business_units, deal_count, flags]
+      properties:
+        client_id: {type: string, format: uuid}
+        name: {type: string}
+        relationship: {$ref: "#/components/schemas/Relationship"}
+        relationship_basis: {$ref: "#/components/schemas/RelationshipBasis"}
+        requirement: {$ref: "#/components/schemas/Requirement"}
+        nda: {$ref: "#/components/schemas/DocBrief"}
+        msa: {$ref: "#/components/schemas/DocBrief"}
+        needs_attention: {type: boolean}
+        furthest_open_stage: {type: integer, minimum: 0, maximum: 6, description: "0 means no open deal. Hold counts as open at its stage."}
+        business_units: {type: array, items: {$ref: "#/components/schemas/BusinessUnit"}, description: "From the client's deals and engagements. A US unit is always paired with its region."}
+        deal_count: {type: integer}
+        flags:
+          type: array
+          items: {type: string, enum: [possible_duplicate, test_data, unknown_company, no_hubspot_link]}
+    DocBrief:
+      type: object
+      required: [state]
+      properties:
+        state: {$ref: "#/components/schemas/DocState"}
+        source_label: {type: string, nullable: true, description: "For example Standard v1, Client copy, or Marked by HubSpot."}
+    DocCard:
+      type: object
+      required: [kind, state, history]
+      properties:
+        kind: {type: string, enum: [NDA, MSA]}
+        state: {$ref: "#/components/schemas/DocState"}
+        agreement_id: {type: string, format: uuid, nullable: true}
+        file_name: {type: string, nullable: true}
+        file_size: {type: integer, nullable: true}
+        source: {type: string, enum: [client, standard], nullable: true}
+        standard_version: {type: integer, nullable: true}
+        batch_id: {type: string, nullable: true}
+        version_no: {type: integer, nullable: true}
+        uploaded_by: {type: string, nullable: true, description: "Display name of a real user."}
+        uploaded_at: {type: string, format: date-time, nullable: true}
+        mark: {allOf: [{$ref: "#/components/schemas/Mark"}], nullable: true}
+        hubspot_hint: {type: string, nullable: true, description: "Raw msa_type for the MSA card only, when stored. A hint, never a state."}
+        history: {type: array, items: {$ref: "#/components/schemas/HistoryEntry"}}
+    Mark:
+      type: object
+      required: [reason, marked_on, marked_by, source]
+      properties:
+        reason: {type: string, enum: [signed_outside_dealgate, covered_by_earlier_work, confirmed_with_client, per_hubspot, other]}
+        note: {type: string, nullable: true, maxLength: 200}
+        marked_on: {type: string, format: date}
+        marked_by: {type: string}
+        source: {type: string, enum: [dealgate, hubspot]}
+        hubspot_value: {type: string, nullable: true}
+    MarkRequest:
+      type: object
+      required: [reason, marked_on]
+      properties:
+        reason: {type: string, enum: [signed_outside_dealgate, covered_by_earlier_work, confirmed_with_client, other]}
+        marked_on: {type: string, format: date}
+        note: {type: string, maxLength: 200}
+    HistoryEntry:
+      type: object
+      required: [at, by, what]
+      properties:
+        at: {type: string, format: date-time}
+        by: {type: string}
+        what: {type: string}
+    ClientAgreements:
+      type: object
+      required: [client_id, name, relationship, relationship_basis, requirement, needs_attention, deals, nda, msa, can_write]
+      properties:
+        client_id: {type: string, format: uuid}
+        name: {type: string}
+        relationship: {$ref: "#/components/schemas/Relationship"}
+        relationship_basis: {$ref: "#/components/schemas/RelationshipBasis"}
+        relationship_set_by: {type: string, nullable: true}
+        relationship_set_at: {type: string, format: date-time, nullable: true}
+        requirement: {$ref: "#/components/schemas/Requirement"}
+        needs_attention: {type: boolean}
+        possible_duplicates: {type: array, items: {type: string}, description: "Names of other clients whose normalised name collides. Flag only. There is no merge."}
+        deals:
+          type: object
+          required: [open, won, lost, furthest_open_stage]
+          properties:
+            open: {type: integer}
+            won: {type: integer}
+            lost: {type: integer}
+            furthest_open_stage: {type: integer}
+        nda: {$ref: "#/components/schemas/DocCard"}
+        msa: {$ref: "#/components/schemas/DocCard"}
+        can_write: {type: boolean, description: "Legal or SystemAdmin. The page locks every write control when false and keeps view and download."}
+    StandardVersion:
+      type: object
+      required: [kind, version, file_name, file_size, uploaded_by, uploaded_at, attached_clients]
+      properties:
+        kind: {type: string, enum: [NDA, MSA]}
+        version: {type: integer}
+        file_name: {type: string}
+        file_size: {type: integer}
+        sha256: {type: string}
+        uploaded_by: {type: string}
+        uploaded_at: {type: string, format: date-time}
+        attached_clients: {type: integer, description: "Clients whose standard copy of this kind is this version."}
+    StandardDocuments:
+      type: object
+      required: [NDA, MSA]
+      properties:
+        NDA: {allOf: [{$ref: "#/components/schemas/StandardVersion"}], nullable: true}
+        MSA: {allOf: [{$ref: "#/components/schemas/StandardVersion"}], nullable: true}
+    DownloadLink:
+      type: object
+      required: [url, expires_in_seconds, file_name]
+      properties:
+        url: {type: string}
+        expires_in_seconds: {type: integer, enum: [300]}
+        file_name: {type: string, description: "Original name for display. The link itself carries the stored object name."}
+    DocumentRow:
+      type: object
+      required: [client_id, client_name, kind, file_name, source, uploaded_by, uploaded_at]
+      properties:
+        client_id: {type: string, format: uuid}
+        client_name: {type: string}
+        kind: {type: string, enum: [NDA, MSA]}
+        file_name: {type: string}
+        source: {type: string, enum: [client, standard]}
+        standard_version: {type: integer, nullable: true}
+        batch_id: {type: string, nullable: true}
+        uploaded_by: {type: string}
+        uploaded_at: {type: string, format: date-time}
+    ActivityRow:
+      type: object
+      required: [at, by, action, text]
+      properties:
+        at: {type: string, format: date-time}
+        by: {type: string}
+        action: {type: string, enum: [standard_uploaded, client_uploaded, client_replaced, standard_attached, detached, marked, mark_removed, relationship_changed, batch_run, batch_undone, hubspot_applied, downloaded, exported]}
+        text: {type: string}
+        client_id: {type: string, format: uuid, nullable: true}
+    BatchRequest:
+      type: object
+      required: [kinds]
+      properties:
+        kinds: {type: array, minItems: 1, items: {type: string, enum: [NDA, MSA]}}
+        dry_run: {type: boolean, default: true}
+        include_net_new_past_stage_1: {type: boolean, default: false, description: "Also target net-new clients whose requirement is required (past stage 1). They stay net new, receive the standard copy and show Standard copy. The page sends true by default because Kanna asked for pipeline clients past stage 1 to be covered in the same step."}
+        include_client_ids: {type: array, items: {type: string, format: uuid}, description: "Clients excluded by default (stage 1 only, test data) that the admin chose to include."}
+        exclude_client_ids: {type: array, items: {type: string, format: uuid}, description: "Clients the admin unticked."}
+        idempotency_key: {type: string, maxLength: 80, description: "Required when dry_run is false."}
+        confirm: {type: string, description: "Required when dry_run is false. Exactly ATTACH followed by a space and the target count."}
+    BatchTarget:
+      type: object
+      required: [client_id, name, relationship, included, reason]
+      properties:
+        client_id: {type: string, format: uuid}
+        name: {type: string}
+        relationship: {$ref: "#/components/schemas/Relationship"}
+        included: {type: boolean}
+        reason: {type: string, enum: ["", stage_1_only, test_data], description: "Why an existing client starts excluded. Empty for a normal target."}
+    BatchPreview:
+      type: object
+      required: [kinds, will_receive, net_new_included, already_hold, net_new_untouched, targets]
+      properties:
+        kinds: {type: array, items: {type: string}}
+        will_receive: {type: integer}
+        net_new_included: {type: integer, description: "How many of will_receive are net-new clients past stage 1."}
+        already_hold: {type: integer, description: "Targets that already hold every chosen kind."}
+        net_new_untouched: {type: integer, description: "Net-new clients not included (stage 1 only or no active deal, or left out)."}
+        targets: {type: array, items: {$ref: "#/components/schemas/BatchTarget"}}
+    Batch:
+      type: object
+      required: [id, status, kinds, created_by, created_at, target_count, done_count, attached_count, skipped_count]
+      properties:
+        id: {type: string, description: "Human label such as AG-0001."}
+        status: {type: string, enum: [running, done, failed, undoing, undone]}
+        kinds: {type: array, items: {type: string}}
+        created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        target_count: {type: integer}
+        done_count: {type: integer, description: "Clients processed so far (progress)."}
+        attached_count: {type: integer, description: "Agreement rows created (a client with both kinds counts two)."}
+        skipped_count: {type: integer}
+        error: {type: string, nullable: true}
+        undone_at: {type: string, format: date-time, nullable: true}
+        undone_by: {type: string, nullable: true}
+    HubspotValues:
+      type: object
+      required: [stored, items]
+      properties:
+        stored: {type: boolean, description: "False until the sync stores msa_type."}
+        items:
+          type: array
+          items:
+            type: object
+            required: [value, clients, action]
+            properties:
+              value: {type: string}
+              clients: {type: integer}
+              action: {type: string, enum: [covered, ignore]}

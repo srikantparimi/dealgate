@@ -118,6 +118,14 @@ export interface CommandOverview {
     open_opportunity_href: string | null;
     /** The Pipeline business units the number covers ("unmapped" = no business unit); [] = all. */
     open_opportunity_business_units: string[];
+    /**
+     * S24-AG1 F7: net-new clients past stage 1 without an NDA or MSA, over every client the viewer
+     * may see (the NDA & MSA page's Needs-attention card; this dashboard's business unit and owner do
+     * not apply). Optional so the page still renders against an API from before the field.
+     */
+    agreement_attention_clients?: number;
+    /** The NDA & MSA page filtered to Needs attention ("/agreements?status=attention"). */
+    agreement_attention_href?: string;
     sows_in_progress: number;
     committed_revenue: DecimalStr | null;
     committed_gm_pct: DecimalStr | null;

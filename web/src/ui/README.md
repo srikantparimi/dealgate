@@ -22,7 +22,7 @@ header and primary nav. Sprint 3 adds the approval card. See
 | `FilterBar.tsx` | Layout row for filter inputs; ships `Pager` for Prev/Next. |
 | `Modal.tsx`     | Centered dialog with backdrop + Escape close.    |
 | `Drawer.tsx`    | Right-anchored slide-out panel for edit surfaces.|
-| `FileDropzone.tsx` | Click / drag-drop file picker with MIME whitelist. |
+| `FileDropzone.tsx` | Keyboard-operable click / drag-drop file picker: extension list, async `validate` (the agreement upload checks type, size, empty and first bytes), ok/bad states, `role=alert` errors. |
 
 ## Rules
 

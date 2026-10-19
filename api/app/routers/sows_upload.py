@@ -42,6 +42,7 @@ from app.services.sow_upload_job_service import (
     UploadPipelineError,
     find_by_hash,
     get_job,
+    picked_client,
     resume_after_pick,
     serialize_job,
     start_upload,
@@ -99,6 +100,12 @@ class JobStatusResponse(BaseModel):
     file_hash: str
     s3_key: str | None
     needs_pick: dict[str, Any] | None
+    # S24-AG1 F11 (additive, pick response only): the client the SOW was filed
+    # under and whether the pick created it, so the studio can offer to add its
+    # NDA and MSA right away. None on the status poll.
+    client_id: uuid.UUID | None = None
+    client_name: str | None = None
+    created: bool | None = None
 
 
 class PickCreateNew(BaseModel):
@@ -448,7 +455,12 @@ async def pick_upload_job(
         ) from exc
 
     await session.commit()
-    return _job_to_response(job)
+    response = _job_to_response(job)
+    picked = await picked_client(session, job)
+    if picked is not None:
+        response.client_id, response.client_name = picked
+        response.created = job.resolution == "created"
+    return response
 
 
 # --- module-local helpers -------------------------------------------------

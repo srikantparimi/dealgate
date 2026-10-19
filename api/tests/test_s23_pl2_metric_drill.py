@@ -152,10 +152,12 @@ async def test_every_metric_equals_the_list_its_drill_opens(api, seeded):
         gaps = await get(api, apply_drill(params, metrics["agreement_gap_clients"]["drill"]))
         assert gaps["page"]["total_rows"] == metrics["agreement_gap_clients"]["value"], context
         assert gaps["tab_counts"]["clients"] == metrics["agreement_gap_clients"]["value"], context
+        # S24-AG1 B10: every listed client needs attention: net new, past stage 1, NDA or MSA missing.
+        assert all("missing" in (row["agreements"]["nda_state"], row["agreements"]["msa_state"])
+                   for row in gaps["rows"]), context
         assert all(not (row["agreements"]["nda_on_file"] and row["agreements"]["msa_on_file"])
                    for row in gaps["rows"]), context
-        total = await get(api, apply_drill(
-            params, {"tab": "clients", "include_unmatched_clients": False, "missing": None}))
+        total = await get(api, apply_drill(params, {**metrics["agreement_gap_clients"]["drill"], "missing": None}))
         assert total["page"]["total_rows"] == metrics["agreement_gap_clients"]["clients_total"], context
 
         for name, metric in metrics.items():

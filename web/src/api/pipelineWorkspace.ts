@@ -2,6 +2,7 @@
 // One request per view carries freshness, metrics, stage counts, focus counts
 // and the rows of the active tab. Money arrives as decimal strings summed on
 // the server (CLAUDE.md rule 2); the browser formats it and never adds it up.
+import type { DocState } from "./agreements";
 import {
   request,
   requestBlob,
@@ -36,6 +37,11 @@ export type DatePreset =
   | "month"
   | "quarter"
   | "custom";
+/**
+ * S24-AG1 B10: nda / msa mean the client's NDA / MSA state is "missing" (net new, past stage 1);
+ * agreements means the client needs attention (either is missing). A deal with no client never matches.
+ */
+export type AgreementMissingFilter = Extract<MissingFilter, "nda" | "msa" | "agreements">;
 export type WorkspaceSort = "value" | "close" | "activity" | "name";
 export type WorkspaceLayout = "list" | "board";
 export type WorkspacePageSize = 25 | 50 | 100;
@@ -117,9 +123,15 @@ export interface WorkspaceMetrics {
   closing_this_month: { value: number; value_usd: DecimalStr; drill: MetricDrill };
   overdue_next_actions: { value: number; with_next_action: number; drill: MetricDrill };
   pending_approvals: { value: number; drill: MetricDrill };
+  /**
+   * S24-AG1 B10: clients that need attention (net new, past stage 1, NDA or MSA missing) among the
+   * clients with a deal in the population. The drill lists exactly them (every status).
+   */
   agreement_gap_clients: {
     value: number;
+    /** Clients with a deal in the same list without the missing filter (not shown). */
     clients_total: number;
+    /** Kept on the wire; the card no longer depends on it. */
     any_agreement_files: boolean;
     drill: MetricDrill;
   };
@@ -150,8 +162,15 @@ export interface Owner {
 }
 
 export interface Agreements {
+  /** True only when the client holds a client copy or a standard copy. */
   nda_on_file: boolean;
   msa_on_file: boolean;
+  /**
+   * S24-AG1 B10: the client's NDA / MSA state from the shared agreement service; null for a deal
+   * with no client. Optional so a row built before the field (a fixture, an older API) still types.
+   */
+  nda_state?: DocState | null;
+  msa_state?: DocState | null;
 }
 
 export type DealFlag = "action_overdue" | "close_passed" | "no_owner" | "inactive_14d";

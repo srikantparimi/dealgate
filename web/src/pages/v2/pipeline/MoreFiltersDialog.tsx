@@ -4,6 +4,7 @@
 import { useId, useState, type FormEvent } from "react";
 
 import type {
+  AgreementMissingFilter,
   AttentionFilter,
   MissingFilter,
   TrackingGroupSummary,
@@ -22,14 +23,25 @@ export const ATTENTION_OPTIONS: { value: AttentionFilter; label: string }[] = [
   { value: "any", label: "Any flag" },
 ];
 
+/**
+ * S24-AG1 F6 · the missing-agreement filters mean the state "Missing" (a net-new client past
+ * stage 1 without it), not "no file": an existing client, a standard copy or a covered mark is not
+ * missing. The option and its chip use these words.
+ */
+export const AGREEMENT_MISSING_TEXT: Record<AgreementMissingFilter, string> = {
+  nda: "NDA (net new, past stage 1)",
+  msa: "MSA (net new, past stage 1)",
+  agreements: "NDA or MSA (net new, past stage 1)",
+};
+
 export const MISSING_OPTIONS: { value: MissingFilter; label: string }[] = [
   { value: "owner", label: "Deal owner" },
   { value: "close", label: "Close date" },
   { value: "activity", label: "Activity date" },
   { value: "next_action", label: "Next action" },
-  { value: "nda", label: "NDA file" },
-  { value: "msa", label: "MSA file" },
-  { value: "agreements", label: "NDA or MSA file" },
+  { value: "nda", label: AGREEMENT_MISSING_TEXT.nda },
+  { value: "msa", label: AGREEMENT_MISSING_TEXT.msa },
+  { value: "agreements", label: AGREEMENT_MISSING_TEXT.agreements },
 ];
 
 export type MoreFilters = Pick<WorkspaceQuery, "sow" | "attention" | "missing" | "group" | "watching">;

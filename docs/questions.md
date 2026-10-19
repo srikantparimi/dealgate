@@ -226,3 +226,15 @@ guess. Each question names the sprint it blocks.
   owner's rule and is tested; the open question is whether HR and Sales
   reviews should be REMOVED from the flow. Rule 1: approval order is
   policy — not changed without an explicit owner decision. (S22.)
+
+## S24-AG1 NDA & MSA (answered by Kanna, recorded 2026-10-15 before the build)
+
+Source: `docs/directives/s24-ag1-agreements.md` §"What Kanna decided". Each answer below is recorded as given; the build follows it.
+
+- [x] **Documents.** ANSWERED: Kanna uploads the standard NDA and the standard MSA once and attaches them in bulk to existing clients and to the clients currently in the pipeline past stage 1, in the same step. Those pipeline clients stay net new but show "Standard copy" and are no longer flagged. Any other net-new client brings its own copy, uploaded per client. Any client can be given its own updated copy at any time, with an optional note; it replaces the standard copy for that client only, and the earlier version stays in history. Legal or SystemAdmin can also mark a kind covered, remove it, or change a client's relationship by hand.
+- [x] **Existing client.** ANSWERED: a client the company has worked with before: HubSpot has a Closed Won deal for it, or DealGate has any SOW or engagement for it (the 81 forecast-model engagements included). Everyone else is net new. Refinement to confirm in the click-through: this is judged as of a cutover date (the first real batch run) and the result is stored. After the cutover a later win or SOW never turns a net-new client into existing.
+- [x] **Enforcement.** ANSWERED: warn and flag only. A net-new client past stage 1 with an NDA or MSA missing is flagged in the Pipeline, the Command Center and the client panel. Nothing is blocked anywhere. This supersedes `docs/blueprint.md:14` (fixed in the same change).
+- [x] **Backfill scope.** ANSWERED: every existing client plus every net-new client past stage 1 (requirement `required`), except clients whose deals are only in stage 1 and test data. The admin can include or leave out any client in the dry run.
+- [x] **Who.** ANSWERED: Legal and SystemAdmin upload, replace, detach, mark and change relationship. SystemAdmin alone runs and undoes batches and saves the HubSpot mapping. Every role can view and download, as today. Sales roles get no write controls.
+- [x] **HubSpot `msa_type`.** ANSWERED: DealGate is the source of truth. A HubSpot value is a hint that an admin maps to "covered"; an admin or Legal can always mark the status by hand, and DealGate's record always wins. Marks made from HubSpot are stored in DealGate and stay if HubSpot is switched off.
+- [x] **Defaults (taken unless Kanna objects).** ANSWERED: the e2e test client is excluded from the backfill; the two "Unknown company" placeholders count as net new and are only flagged; duplicate clients are flagged, never merged; the 58 forecast-model engagements on 18 clients with no HubSpot link keep the clients they have (the 2 possible name matches are listed in the AG1 report, not linked); the SOW upload's "NDA and MSA are signed" checkbox stays exactly as it is; NDA and MSA downloads are audited.

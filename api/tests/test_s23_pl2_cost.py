@@ -326,7 +326,8 @@ async def test_workspace_on_postgres(frozen_clock):
     assert body["metrics"]["closing_this_month"]["value_usd"] == "855000.00"
     assert body["metrics"]["overdue_next_actions"]["with_next_action"] == 6
     assert body["metrics"]["pending_approvals"]["value"] == 3
-    assert body["metrics"]["agreement_gap_clients"]["value"] == 4
+    assert body["metrics"]["agreement_gap_clients"]["value"] == 3  # S24-AG1: Bolt, Cobalt, Echo need attention
+    assert body["metrics"]["agreement_gap_clients"]["clients_total"] == 6
     assert body["focus"] == {"all_open": 12, "closing_this_month": 6, "mine": 2, "mine_available": True,
                              "needs_attention": 8, "watching": 2}
     assert [s["deals"] for s in body["stages"]] == [2, 3, 2, 1, 1, 1, 2, 1, 2]
@@ -343,7 +344,8 @@ async def test_workspace_cost_on_postgres(frozen_clock):
         # Staging's tables carry autovacuum statistics; rows inserted in this open transaction do not.
         await session.execute(text(
             "ANALYZE opportunity, client, hubspot_owner, next_action, agreement, watched_item, hubspot_pipeline, "
-            "hubspot_stage, sow, sow_version, approval_package, tracking_group_member, hubspot_property_mapping"))
+            "hubspot_stage, sow, sow_version, approval_package, tracking_group_member, hubspot_property_mapping, "
+            "agreement_mark, agreements_settings, standard_agreement, engagement"))
         report = await _report(session, pg, "postgres local")
     assert all(row["statements"] <= BUDGET for row in report["after"].values()), report
     assert report["before"]["statements"] > report["after"]["deals_default"]["statements"]
